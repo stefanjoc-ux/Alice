@@ -1,0 +1,78 @@
+AI SUBSTRATE — PROJECT HANDOVER
+Prepared 29 September 2026. This is a project summary, not a verbatim chat export.
+
+OWNER AND GOAL
+Stefan is learning to build a personal AI substrate on Windows at D:\AISubstrate.
+Goal: one web interface with model selection, persistent knowledge and chat history,
+shared approved memory, enforceable rules, and an advisory steward called Temple.
+Azure hosting and connections from subscription AI interfaces are planned, not deployed.
+
+CURRENT LOCAL SYSTEM
+Start-AISubstrate.cmd launches the FastAPI web app (localhost:8000) and FastMCP server
+(localhost:8001/mcp). Python virtual environment: .venv. Keys remain in local .env.
+The database is data/substrate.db; back up while both servers are stopped.
+Files: app.py, admin_ui.py, substrate_store.py, mcp_server.py, temple.py,
+temple_chat.py, usage_meter.py. No public authentication or Azure deployment yet.
+
+MODELS AND COSTS
+The OpenAI choice now uses gpt-6-luna via Responses API, reasoning effort none.
+Claude choices: claude-haiku-4-5-20251001 and claude-sonnet-5-5. Sonnet uses
+low effort, adaptive thinking, 4096 maximum output tokens per round and the same
+ANTHROPIC_API_KEY. Its standard uncached estimate is $2/M input, $10/M output. Grok chat uses grok-4.7 via the xAI
+Responses endpoint, with low reasoning and XAI_API_KEY from .env. All three
+chat providers use the same bounded MCP tools. Temple remains OpenAI/Claude.
+Temple has a separate OpenAI/Claude reviewer setting. Calls use API keys and billing.
+Usage & costs logs Chat and Temple responses, including tool rounds. Claude chat and
+Temple use automatic 5-minute prompt caching. OpenAI/Grok use provider-managed caching;
+chat sends a stable per-chat cache key. Reuse depends on prefix matches, minimum lengths,
+retention and context truncation. No cache warm-up calls are made.
+New estimates account for reported cached input and cache writes for all four models.
+Claude input totals now include cache reads/writes; old rows/estimates are unchanged.
+Cache counters are derived from stored raw usage. Luna missing write details are priced
+conservatively as writes. Rates assume standard global processing.
+Historical requests before this update and failures without usage data are not included.
+No enforced spending cap. Provider billing is authoritative. Azure costs are separate.
+
+CAPABILITIES
+Persistent conversations with rename/delete and per-answer tool activity. The model
+receives up to ten recent completed exchanges within 60,000 characters, not the entire
+archive. File uploads: XLSX, CSV, text PDF, TXT; originals and extracted text are stored.
+No OCR or general image understanding in this app yet. No trusted calculation tool.
+MCP: list_files, search_files, read_file, search_records, propose_record.
+Models can propose memories; only the human admin can approve, replace or retire them.
+Conflicts are called frictions. Resolve friction / replace approves a proposal and
+supersedes the chosen active memory atomically. History and reasons are retained.
+Retired/superseded memories are excluded from active memory searches and new Temple
+comparison contexts. Old conversations and historical review snapshots retain their text.
+
+TEMPLE
+Record reviewer: advisory duplicates, frictions, unclear sources; comparisons are bounded.
+Conversation panel: background suggestions after an answer, up to four recent exchanges
+and a bounded recent memory sample. Four kinds: memory, knowledge note, response guidance,
+rule implementation request. Each suggestion has a verified literal USER quote; suggested
+conclusions are not independently verified. Review/Later/Dismiss; saved with the chat.
+Memory capture creates a proposal. Knowledge capture creates a searchable TXT file.
+Guidance capture appends to web-chat instructions after human confirmation.
+Rule requests are tracked requests, NOT automatically implemented or enforced.
+Temple cannot approve records or make arbitrary tool calls. Automatic analysis adds cost.
+
+ADMIN AND DESIGN
+Separate Overview, Knowledge, Memories, Rules, Activity, Temple, Usage & costs pages.
+Latest design uses pale panels and dark text for readability, retaining angular command-deck styling.
+Response guidance is model instruction; enforced rules run in Python. Guidance does not
+automatically follow a direct external MCP client. Chat and records remain local-only.
+
+DEVELOPMENT LIMITATIONS
+This app's current MCP tools cannot edit project files, run shell commands, deploy Azure,
+or browse the web. The chat can discuss changes and retrieve saved project notes; it is
+not yet a replacement for a coding environment. Do not claim to have edited or deployed
+anything using tools that are not present. Original code files need to be supplied to an
+appropriate coding environment for future changes. Never put API keys into chat or notes.
+
+NEXT STEPS
+1. Verify Luna access on Stefan's API account and inspect Usage & costs after a test chat.
+2. Verify the readable colour scheme locally.
+3. Choose Azure hosting, authenticated website access, durable database/storage and backups.
+4. Separately configure an authenticated MCP endpoint for supported ChatGPT/Claude clients.
+Subscription chat usage and custom-web-app API billing are different paths. Do not assume
+moving to Azure lets the web app spend ChatGPT or Claude subscription quotas.

@@ -1,0 +1,31 @@
+AI SUBSTRATE — SONNET 5.5 AND GROK UPDATE
+
+1. Stop both servers and back up D:\AISubstrate (including data).
+2. Copy the seven .py files from this archive into D:\AISubstrate,
+   replacing the existing files. Keep your .env, data and .venv.
+3. Add this line to your existing .env, inserting your own key:
+   XAI_API_KEY=your_key_here
+   Keep existing OPENAI_API_KEY and ANTHROPIC_API_KEY entries.
+4. Run your existing Start-AISubstrate.cmd, then refresh the browser with Ctrl+F5.
+5. Open Admin > Usage & costs > Check Grok connection.
+6. Select Grok · 4.7 in Chat and try: What approved preferences do you have for me?
+
+No new dependencies are required beyond the previous working release.
+Temple still uses its separately selected OpenAI or Claude provider.
+Connection checks and chat requests use paid API credits.
+Usage estimates are not invoices or enforced spending limits.
+Validated with simulated model responses and the real in-process MCP server;
+live xAI access is verified through the connection check after installation.
+
+SONNET 5.5
+Select Claude · Sonnet 5.5 in Chat. It uses your existing ANTHROPIC_API_KEY.
+Haiku remains available. Temple retains its existing reviewer setting.
+Sonnet uses low effort and a 4096-token output limit per model round.
+Validated through simulated responses; live account access still needs a chat test.
+
+PROMPT CACHING UPDATE
+Replace all seven Python files and restart both servers. No new keys or packages.
+Claude chat and Temple request automatic five-minute caching. OpenAI and Grok
+use provider-managed caching with stable per-chat cache keys. Usage & costs now
+shows reported cache read/write tokens and cache-aware estimates for new calls.
+First writes can cost more; savings require reuse. Short prompts may not cache.

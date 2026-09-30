@@ -1,0 +1,12 @@
+.env
+.env.*
+data/
+.venv/
+__pycache__/
+*.pyc
+*.zip
+alice-activity-*.csv
+Downloads/
+*.bak
+~$*
+manifest-*.json
