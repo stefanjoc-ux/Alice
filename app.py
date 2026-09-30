@@ -981,9 +981,18 @@ class KnowledgeChange(BaseModel):
 
 class KnowledgeReview(BulkIds):
     decision: Literal['approved','rejected']
+    retire_replaced: bool = False
+
+class KnowledgeSupersede(BaseModel):
+    old_id: str = Field(min_length=32,max_length=32)
+    new_id: str = Field(min_length=32,max_length=32)
+    reason: str = Field(min_length=1,max_length=500)
+
+class ReplacementAction(BulkIds):
+    action: Literal['accept','dismiss']
 
 @app.get('/admin/api/knowledge')
-def admin_knowledge(kind: str=Query('',max_length=10), status: Literal['active','draft','rejected','archived','all']='active',
+def admin_knowledge(kind: str=Query('',max_length=10), status: Literal['active','draft','rejected','archived','replaced','all']='active',
                     category: str=Query('',max_length=40), client: str=Query('',max_length=60), label: str=Query('',max_length=10),
                     query: str=Query('',max_length=200), offset: int=Query(0,ge=0)):
     d=knowledge.listing(kind,status,category,client,label,query,offset)
@@ -1053,7 +1062,33 @@ def admin_knowledge_update(ch: KnowledgeChange):
     return knowledge.bulk_update(ch.ids,**fields)
 
 @app.post('/admin/api/knowledge/review')
-def admin_knowledge_review(r: KnowledgeReview): return knowledge.review(r.ids,r.decision)
+def admin_knowledge_review(r: KnowledgeReview): return knowledge.review(r.ids,r.decision,r.retire_replaced)
+
+@app.get('/admin/api/knowledge/{fid}/history')
+def admin_knowledge_history(fid: str):
+    try: return {'items':knowledge.history(fid)}
+    except ValueError as e: raise HTTPException(404,str(e)) from None
+
+@app.post('/admin/api/knowledge/supersede')
+def admin_knowledge_supersede(s: KnowledgeSupersede):
+    try: return knowledge.supersede(s.old_id,s.new_id,s.reason)
+    except ValueError as e: raise HTTPException(409,str(e)) from None
+
+@app.get('/admin/api/knowledge/replacements')
+def admin_knowledge_replacements(status: Literal['pending','accepted','dismissed','superseded','all']='pending'):
+    return {'items':knowledge.replacements(status)}
+
+@app.post('/admin/api/knowledge/replacements')
+def admin_knowledge_replacement_action(a: ReplacementAction):
+    r=knowledge.resolve_replacements(a.ids,a.action)
+    if a.action=='accept' and not r['done'] and r['errors']: raise HTTPException(409,' '.join(r['errors']))
+    return r
+
+@app.post('/admin/api/knowledge/find-replaced')
+async def admin_knowledge_find_replaced():
+    import temple_supersede
+    try: return await asyncio.to_thread(temple_supersede.sweep)
+    except Exception: raise HTTPException(502,'Temple could not check for replaced items right now. Check the reviewer API key and try again.') from None
 
 @app.post('/admin/api/knowledge/categorise')
 async def admin_knowledge_categorise():

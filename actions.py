@@ -20,7 +20,8 @@ def summary():
     kinds = store.record_kinds(i['id'] for i in q['items'])
     items = [{'type': 'proposal', 'id': i['id'], 'title': i['title'],
               'detail': (i['reason'] or i['content'].replace('\n', ' ')[:160]),
-              'verdict': i['verdict'], 'kind': (kinds.get(i['id']) or {}).get('kind', 'fact')} for i in q['items']]
+              'verdict': i['verdict'], 'kind': (kinds.get(i['id']) or {}).get('kind', 'fact'),
+              'replaces': i.get('replaces')} for i in q['items']]
     decisions = sum(1 for i in items if i['kind'] == 'decision')
     out.append(_section('proposals', 'Memories and decisions awaiting approval', q['views']['pending'],
                         '/admin/memories?status=proposed', items,
@@ -28,8 +29,21 @@ def summary():
 
     # 2. Knowledge drafts proposed by models
     d = knowledge.listing(status='draft')
-    out.append(_section('drafts', 'Knowledge drafts awaiting approval', d['total'], '/admin/knowledge',
-                        [{'type': 'draft', 'id': i['id'], 'title': i['title'], 'detail': i['source'] + ' · ' + i['added_by']} for i in d['items']]))
+    def _draft(i):
+        rep = [{'id': p['old_id'], 'title': p['old_title']} for p in i['replacement_suggestions']
+               if p['new_id'] == i['id'] and p['source'] == 'proposer']
+        return {'type': 'draft', 'id': i['id'], 'title': i['title'], 'replaces': rep,
+                'detail': i['source'] + ' · ' + i['added_by'] + (' · replaces ' + ', '.join('“' + x['title'] + '”' for x in rep) if rep else '')}
+    out.append(_section('drafts', 'Knowledge drafts awaiting approval', d['total'], '/admin/knowledge', [_draft(i) for i in d['items']]))
+
+    # 2b. Older knowledge that a newer, approved item replaces (proposer's word or Temple's suggestion)
+    reps = [p for p in knowledge.replacements('pending') if p['new_status'] == 'active']
+    out.append(_section('replacements', 'Older knowledge that may be replaced', len(reps), '/admin/knowledge',
+                        [{'type': 'replacement', 'id': p['id'], 'title': f"Retire “{p['old_title']}”",
+                          'detail': f"Replaced by “{p['new_title']}” · " + ('Temple' if p['source'] == 'temple' else 'the proposer')
+                                    + (': ' + p['reason'] if p['reason'] else '') + (f" · quote: “{p['quote'][:160]}”" if p['quote'] else '')}
+                         for p in reps],
+                        'Retiring archives the older item with a link to its replacement; models are pointed to the new one. Restore undoes it.'))
 
     # 3. Temple's chat suggestions
     s = temple.chat_suggestions('pending')

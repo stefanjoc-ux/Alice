@@ -86,8 +86,9 @@ A browser refresh is not enough: the old server process keeps running the old co
 | `temple_chat.py` | Temple's suggestions after chat answers |
 | `temple_categorise.py` | Temple category assignment |
 | `temple_ask.py` | Ask Temple: read-only tools over activity, actions, usage |
+| `temple_supersede.py` | Temple finds older knowledge a newer item replaces (wording first, then a quoted model check); suggestions only |
 | `conversations.py` | Saved conversations, Claude export import (incl. manifest download), whole-chat reviews |
-| `knowledge.py` | Knowledge library: kinds, drafts, labels, meeting extracts, Word in/out |
+| `knowledge.py` | Knowledge library: kinds, drafts, labels, meeting extracts, Word in/out, replacements (`supersede`, `history`) |
 | `clients.py` | Clients, tagging, alias detection, separation enforcement |
 | `actions.py` | Everything awaiting a decision (Actions page) |
 | `activity_log.py` | Activity log labels, types, filters, CSV |

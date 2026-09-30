@@ -127,7 +127,10 @@ def read_file(file_id: str,
         connection.close()
     if row is None:
         raise ValueError('File not found. Call list_files to obtain a current ID.')
-    reason = knowledge.model_block(file_id, external=bool(CLIENT)) or rules_engine.file_blocked(row['text'])
+    retired = knowledge.model_block(file_id, external=bool(CLIENT))
+    if retired.startswith('Retired'):      # a replaced item: point to the current version rather than a security block
+        raise ValueError(retired)
+    reason = retired or rules_engine.file_blocked(row['text'])
     if not reason and CLIENT and clients.external_file_blocked(file_id): reason = 'Withheld by Client separation: client material is not shared with external apps.'
     if reason:
         rules_engine.log_block('client_separation' if 'Client' in reason else 'protective_marking' if 'marking' in reason else 'secret_detection', row['name'], 'read_file withheld')
@@ -175,10 +178,14 @@ def search_files(query: Annotated[str, Field(min_length=1, max_length=200)],
         else:
             rows = connection.execute('SELECT id,name,text FROM files ORDER BY created_at DESC,id')
         found_file = False
-        withheld = 0
+        withheld = retired = 0
         for row in rows:
             found_file = True
-            if (knowledge.model_block(row['id'], external=bool(CLIENT)) or rules_engine.file_blocked(row['text'])
+            kb = knowledge.model_block(row['id'], external=bool(CLIENT))
+            if kb.startswith('Retired'):
+                retired += 1
+                continue
+            if (kb or rules_engine.file_blocked(row['text'])
                     or (CLIENT and clients.external_file_blocked(row['id']))):
                 withheld += 1
                 continue
@@ -200,7 +207,8 @@ def search_files(query: Annotated[str, Field(min_length=1, max_length=200)],
     return {'query': query, 'matches': matches, 'total_matching_lines': total,
             'next_offset': offset + len(matches) if offset + len(matches) < total else None,
             'method': 'Case-insensitive literal words: all words must occur on the same extracted line.',
-            **({'withheld_files': f'{withheld} file(s) skipped by security rules.'} if withheld else {})}
+            **({'withheld_files': f'{withheld} file(s) skipped by security rules.'} if withheld else {}),
+            **({'retired_files': f'{retired} older version(s) skipped: they were replaced by newer items.'} if retired else {})}
 
 
 @mcp.tool(annotations={'readOnlyHint': True, 'destructiveHint': False})
@@ -281,12 +289,16 @@ def propose_knowledge(title: Annotated[str, Field(min_length=1, max_length=200)]
                       meeting_date: Annotated[str, Field(max_length=10)] = '',
                       attendees: Annotated[list[str], Field(max_length=40)] = [],
                       decisions: Annotated[list[str], Field(max_length=40)] = [],
-                      actions: Annotated[list[str], Field(max_length=60)] = []) -> dict:
+                      actions: Annotated[list[str], Field(max_length=60)] = [],
+                      supersedes: Annotated[list[str], Field(max_length=10)] = []) -> dict:
     """Save a summary, note or meeting extract to the user's knowledge library AS A DRAFT.
     Use when the user asks you to save, file or add something to their substrate or knowledge base.
     kind='meeting' for meeting records (give meeting_date YYYY-MM-DD, attendees, decisions, actions).
     source: where it came from (e.g. 'Teams meeting 30 Sep 2026', 'Summary of this conversation').
     category/client: only if they are the user's existing names; otherwise leave empty.
+    supersedes: titles (or file IDs from list_files) of existing knowledge items this one replaces, when the user
+    or the content says so (e.g. "Supersedes the Project handover note"). Nothing is retired automatically: the user
+    decides when approving. Leave empty if unsure; Temple also looks for replaced items.
     Drafts are invisible to models until the user approves them in the Knowledge page. Tell them so.
     """
     meeting = {}
@@ -296,14 +308,18 @@ def propose_knowledge(title: Annotated[str, Field(min_length=1, max_length=200)]
     by = f'model via {CLIENT}' if CLIENT else 'model via web chat'
     try:
         result = knowledge.create(kind, title, content, source + (f' [via {CLIENT}]' if CLIENT else ''), by, status='draft',
-                                  category=category, client=client, meeting=meeting, client_by='model')
+                                  category=category, client=client, meeting=meeting, client_by='model', supersedes=supersedes)
     except rules_engine.RuleViolation as e:
         raise ValueError(str(e) + ' Tell the user why it was not saved.') from None
     if CLIENT: _captured('knowledge', result.get('id'))
     if result.get('duplicate'):
         return {'id': result['id'], 'status': result['status'], 'message': 'Identical content already exists in the knowledge library.'}
-    return {'id': result['id'], 'status': 'draft',
-            'message': 'Saved as a draft. The user must approve it on the Knowledge page before any model can read it.'}
+    msg = 'Saved as a draft. The user must approve it on the Knowledge page before any model can read it.'
+    if supersedes:
+        n = len(result.get('replaces') or [])
+        msg += (f' It is marked as replacing {n} existing item(s); the user can retire them when approving.' if n else
+                ' No existing item matched the supersedes names; Temple will look for replaced items after approval.')
+    return {'id': result['id'], 'status': 'draft', 'message': msg}
 
 
 @mcp.tool(annotations={'readOnlyHint': False, 'destructiveHint': False})

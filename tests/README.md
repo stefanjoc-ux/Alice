@@ -35,6 +35,7 @@ Run after every update, before relaunching. Exit code 0 means every check passed
 | providers | Plain-English provider errors and Check connections |
 | mcp_stdio | The connector exactly as Claude Desktop uses it |
 | quotes, desktop | Quote matching; hotkey and window-size parsing |
+| supersede | Retiring replaced knowledge, the proposer's `supersedes`, Temple's replacement suggestions, what models see, memory replacements |
 
 Not covered (needs a real Windows desktop or a person): the tray app, the hotkey and window resizing
 themselves, voice, and page layouts. Check those by hand after changing them.

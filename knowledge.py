@@ -17,7 +17,7 @@ from xml.etree import ElementTree
 import substrate_store as store
 
 KINDS = {'file': 'File', 'note': 'Note', 'meeting': 'Meeting extract'}
-STATUSES = ('active', 'draft', 'rejected', 'archived')
+STATUSES = ('active', 'draft', 'rejected', 'archived')   # 'replaced' is a view: archived with a link to the newer item
 LABELS = {
     'general': 'General: fine for any model.',
     'internal': 'Internal: only providers allowed for internal material (Rules → Provider allow-list).',
@@ -34,6 +34,16 @@ with store.db() as c:
         category_by TEXT NOT NULL DEFAULT '', category_confidence REAL, category_suggestion TEXT NOT NULL DEFAULT '',
         category_reason TEXT NOT NULL DEFAULT '', category_checked_at TEXT, review_by TEXT,
         created_at TEXT NOT NULL, reviewed_at TEXT)''')
+    # Replacement tracking (additive): an archived item may point at the newer item that replaced it.
+    _kcols = {r['name'] for r in c.execute('PRAGMA table_info(knowledge_meta)')}
+    for _col, _ddl in (('superseded_by', 'TEXT'), ('superseded_at', 'TEXT'), ('supersede_reason', "TEXT NOT NULL DEFAULT ''"),
+                       ('supersedes_hint', "TEXT NOT NULL DEFAULT ''"), ('supersede_checked_at', 'TEXT')):
+        if _col not in _kcols: c.execute(f'ALTER TABLE knowledge_meta ADD COLUMN {_col} {_ddl}')
+    # Suggested replacements: from the proposer ("this supersedes X") or from Temple. Nothing is retired until you accept.
+    c.execute('''CREATE TABLE IF NOT EXISTS knowledge_replacements (
+        id TEXT PRIMARY KEY, new_id TEXT NOT NULL, old_id TEXT NOT NULL, source TEXT NOT NULL,
+        verdict TEXT NOT NULL DEFAULT '', reason TEXT NOT NULL DEFAULT '', quote TEXT NOT NULL DEFAULT '', confidence REAL,
+        status TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL, resolved_at TEXT, UNIQUE(new_id, old_id))''')
 
 
 def _default(row):
@@ -42,7 +52,8 @@ def _default(row):
     return {'file_id': row['id'], 'kind': 'note' if note else 'file', 'title': row['name'], 'status': 'active',
             'label': 'general', 'source': 'Accepted from a Temple chat suggestion' if note else 'Uploaded',
             'added_by': 'you', 'meeting': {}, 'category': '', 'category_by': '', 'category_confidence': None,
-            'category_suggestion': '', 'category_reason': '', 'review_by': None, 'created_at': row['created_at']}
+            'category_suggestion': '', 'category_reason': '', 'review_by': None, 'created_at': row['created_at'],
+            'superseded_by': None, 'superseded_at': None, 'supersede_reason': '', 'supersedes_hint': '', 'supersede_checked_at': None}
 
 
 def meta(ids=None):
@@ -74,6 +85,8 @@ def model_block(file_id, provider=None, external=False, m=None):
     """Reason this item must not reach a model, or ''. provider: the model's provider when known."""
     m = m or meta([file_id]).get(file_id)
     if not m: return ''
+    if m['status'] == 'archived' and m.get('superseded_by'):
+        return _retired_note(m, provider, external)
     if m['status'] != 'active':
         return {'draft': 'This item is a draft awaiting approval.', 'rejected': 'This item was rejected.',
                 'archived': 'This item is archived.'}.get(m['status'], 'Not active.')
@@ -82,6 +95,21 @@ def model_block(file_id, provider=None, external=False, m=None):
     prov = 'claude' if external else provider
     if prov and prov in _labels_blocked().get(m['label'], []): return f'Withheld: {m["label"]} material is not sent to this provider.'
     return ''
+
+
+def _retired_note(m, provider=None, external=False):
+    """What a model is told about a replaced item: where the current version is, if it may read that one."""
+    when = (m.get('superseded_at') or '')[:10]
+    current, seen = m.get('superseded_by'), set()
+    while current and current not in seen and len(seen) < 10:      # follow the chain to the newest version
+        seen.add(current)
+        nm = meta([current]).get(current)
+        if not nm: current = None; break
+        if nm['status'] == 'archived' and nm.get('superseded_by'): current = nm['superseded_by']; continue
+        if nm['status'] == 'active' and not model_block(current, provider, external, m=nm):
+            return f'Retired{" on " + when if when else ""}: replaced by "{nm["title"]}" (file ID {current}). Read that instead.'
+        break
+    return f'Retired{" on " + when if when else ""}: replaced by a newer item that is not available to you.'
 
 
 def hidden_from_chat_library():
@@ -111,7 +139,7 @@ def _format(kind, title, content, source, meeting):
 
 
 def create(kind, title, content, source, added_by, status='active', label='general', category='', client='',
-           meeting=None, original=None, original_name=None, client_by='human'):
+           meeting=None, original=None, original_name=None, client_by='human', supersedes=()):
     import rules_engine, clients
     if kind not in KINDS or kind == 'file': raise ValueError('Use note or meeting.')
     if label not in LABELS: raise ValueError('Unknown label.')
@@ -136,10 +164,11 @@ def create(kind, title, content, source, added_by, status='active', label='gener
         fid = uuid.uuid4().hex
         c.execute('INSERT INTO files VALUES (?,?,?,?,?,?,?,?)',
                   (fid, original_name or _slug(title), digest, raw, text, f'{KINDS[kind]} · {source}'[:300], store.now(), len(raw)))
-        c.execute('INSERT INTO knowledge_meta(file_id,kind,title,status,label,source,added_by,meeting,category,category_by,created_at,reviewed_at) '
-                  'VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+        hint = '; '.join(' '.join(str(h).split())[:200] for h in (supersedes or ()) if str(h).strip())[:1000]
+        c.execute('INSERT INTO knowledge_meta(file_id,kind,title,status,label,source,added_by,meeting,category,category_by,created_at,reviewed_at,supersedes_hint) '
+                  'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
                   (fid, kind, title, status, label, source, added_by, json.dumps({k: v for k, v in meeting.items() if k != 'transcript'}),
-                   cat, ('human' if added_by == 'you' else 'model') if cat else '', store.now(), store.now() if status == 'active' else None))
+                   cat, ('human' if added_by == 'you' else 'model') if cat else '', store.now(), store.now() if status == 'active' else None, hint))
         store.audit(c, 'knowledge_' + ('added' if status == 'active' else 'proposed'), fid, 'approval_required' if status == 'draft' else 'human_review',
                     f'{KINDS[kind]} "{title}" by {added_by}')
     if client:
@@ -148,8 +177,13 @@ def create(kind, title, content, source, added_by, status='active', label='gener
             if label == 'general': update(fid, label='client', audit_it=False)
         except ValueError:
             pass     # unknown client names from models are ignored; Temple tagging will look at it
-    schedule_background()
-    return {'id': fid, 'status': status, 'duplicate': False}
+    replaces = []
+    for h in (supersedes or ()):
+        for old in resolve_target(h, exclude=fid):
+            if add_replacement(fid, old, 'proposer', reason=f'{added_by} said this supersedes “{" ".join(str(h).split())[:120]}”.'):
+                replaces.append(old)
+    schedule_background([fid] if status == 'active' else None)
+    return {'id': fid, 'status': status, 'duplicate': False, 'replaces': replaces}
 
 
 def register_upload(fid, chat_client=''):
@@ -161,7 +195,7 @@ def register_upload(fid, chat_client=''):
         c.execute("INSERT INTO knowledge_meta(file_id,kind,title,status,label,source,added_by,created_at,reviewed_at) VALUES (?,?,?,?,?,?,?,?,?)",
                   (fid, 'file', row['name'], 'active', 'client' if chat_client else 'general',
                    'Uploaded in a chat' + (f' for {chat_client}' if chat_client else ''), 'you', row['created_at'], row['created_at']))
-    schedule_background()
+    schedule_background([fid])
 
 
 def _ensure_row(c, fid):
@@ -189,6 +223,8 @@ def update(fid, title=None, category=None, label=None, review_by=None, status=No
     if status is not None:
         if status not in ('active', 'archived'): raise ValueError('Use review() for drafts.')
         fields.append('status=?'); args.append(status)
+        if status == 'active':      # restoring a replaced item breaks the link (the activity log keeps the history)
+            fields += ['superseded_by=NULL', 'superseded_at=NULL', "supersede_reason=''"]
     with store.db() as c:
         c.execute('BEGIN IMMEDIATE')
         if not _ensure_row(c, fid): raise ValueError('Knowledge item not found.')
@@ -201,7 +237,7 @@ def update(fid, title=None, category=None, label=None, review_by=None, status=No
             fields += ['category=?', 'category_by=?', "category_suggestion=''", "category_reason=''"]; args += [cat, 'human' if cat else '']
         if fields:
             c.execute(f"UPDATE knowledge_meta SET {','.join(fields)} WHERE file_id=?", args + [fid])
-            if audit_it: store.audit(c, 'knowledge_updated', fid, 'human_review', ', '.join(f.split('=')[0] for f in fields))
+            if audit_it: store.audit(c, 'knowledge_updated', fid, 'human_review', ', '.join(dict.fromkeys(f.split('=')[0] for f in fields)))
     return meta([fid])[fid]
 
 
@@ -213,11 +249,12 @@ def bulk_update(ids, **fields):
     return {'updated': done}
 
 
-def review(ids, decision):
-    """Drafts proposed by models: approve (security rules re-checked) or reject."""
+def review(ids, decision, retire_replaced=False):
+    """Drafts proposed by models: approve (security rules re-checked) or reject.
+    retire_replaced: when approving, also accept the proposer's "this supersedes X" links (your explicit choice)."""
     import rules_engine
     if decision not in ('approved', 'rejected'): raise ValueError('Invalid decision.')
-    changed, blocked = 0, []
+    changed, blocked, approved, retired = 0, [], [], 0
     for fid in list(dict.fromkeys(ids))[:500]:
         m = meta([fid]).get(fid)
         if not m or m['status'] != 'draft': continue
@@ -229,14 +266,139 @@ def review(ids, decision):
             c.execute('UPDATE knowledge_meta SET status=?,reviewed_at=? WHERE file_id=?',
                       ('active' if decision == 'approved' else 'rejected', store.now(), fid))
             store.audit(c, 'knowledge_' + decision, fid, 'human_review', m['title'])
+            if decision == 'rejected':
+                c.execute("UPDATE knowledge_replacements SET status='dismissed',resolved_at=? WHERE new_id=? AND status='pending'", (store.now(), fid))
         changed += 1
-    return {'changed': changed, 'blocked': len(blocked), 'block_reasons': sorted(set(blocked))[:5]}
+        if decision == 'approved':
+            approved.append(fid)
+            if retire_replaced:
+                with store.db() as c:
+                    sids = [r[0] for r in c.execute("SELECT id FROM knowledge_replacements WHERE new_id=? AND source='proposer' AND status='pending'", (fid,))]
+                if sids: retired += resolve_replacements(sids, 'accept')['done']
+    if approved: schedule_background(approved)
+    return {'changed': changed, 'blocked': len(blocked), 'block_reasons': sorted(set(blocked))[:5], 'retired': retired}
 
 
 def forget(fid):
     with store.db() as c:
         c.execute('DELETE FROM knowledge_meta WHERE file_id=?', (fid,))
         c.execute("DELETE FROM client_tags WHERE item_type='file' AND item_id=?", (fid,))
+        c.execute('DELETE FROM knowledge_replacements WHERE new_id=? OR old_id=?', (fid, fid))
+        # items it had replaced stay archived, but no longer point at a deleted file
+        c.execute('UPDATE knowledge_meta SET superseded_by=NULL WHERE superseded_by=?', (fid,))
+
+
+# ---------------- replacements: which item replaced which ----------------
+def _norm(text):
+    return ' '.join(re.sub(r'[^\w]+', ' ', (text or '').casefold()).split())
+
+
+def resolve_target(hint, exclude=None):
+    """Knowledge items a proposer's "supersedes" hint refers to: a file ID, an exact title, or a unique partial title.
+    Only live items (active, or archived without a replacement) can be named."""
+    hint = ' '.join(str(hint or '').split())
+    if not hint: return []
+    live = {fid: m for fid, m in meta().items() if fid != exclude and
+            (m['status'] == 'active' or (m['status'] == 'archived' and not m.get('superseded_by')))}
+    if re.fullmatch(r'[0-9a-f]{32}', hint): return [hint] if hint in live else []
+    h = _norm(hint)
+    if len(h) < 4: return []
+    exact = [fid for fid, m in live.items() if _norm(m['title']) == h]
+    if exact: return exact[:3]
+    partial = [fid for fid, m in live.items() if h in _norm(m['title']) or (len(_norm(m['title'])) >= 8 and _norm(m['title']) in h)]
+    return partial if len(partial) == 1 else []
+
+
+def add_replacement(new_id, old_id, source, verdict='', reason='', quote='', confidence=None):
+    """Record a suggested replacement (pending). Returns True when a new suggestion was added."""
+    if not new_id or not old_id or new_id == old_id: return False
+    with store.db() as c:
+        cur = c.execute('INSERT OR IGNORE INTO knowledge_replacements(id,new_id,old_id,source,verdict,reason,quote,confidence,created_at) '
+                        'VALUES (?,?,?,?,?,?,?,?,?)', (uuid.uuid4().hex, new_id, old_id, source, verdict, reason[:500], quote[:500],
+                                                       confidence, store.now()))
+        if cur.rowcount:
+            store.audit(c, 'temple_replacement_suggested' if source == 'temple' else 'knowledge_replacement_proposed', old_id,
+                        'advisory_only', f'May be replaced by {new_id}: {reason[:200]}')
+        return bool(cur.rowcount)
+
+
+def supersede(old_id, new_id, reason, by='you'):
+    """Your decision: retire old_id because new_id replaces it. The old item is archived with a link to the new one."""
+    reason = ' '.join((reason or '').split())[:500]
+    if not reason: raise ValueError('Give a reason.')
+    if old_id == new_id: raise ValueError('An item cannot replace itself.')
+    all_meta = meta([old_id, new_id])
+    old, new = all_meta.get(old_id), all_meta.get(new_id)
+    if not old or not new: raise ValueError('Knowledge item not found. Refresh the page.')
+    if new['status'] != 'active': raise ValueError(f'“{new["title"]}” must be active (approved) before it can replace anything.')
+    if old['status'] not in ('active', 'archived') or old.get('superseded_by'):
+        raise ValueError(f'“{old["title"]}” is not a live item (already replaced, a draft or rejected).')
+    with store.db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        if not _ensure_row(c, old_id): raise ValueError('Knowledge item not found.')
+        c.execute("UPDATE knowledge_meta SET status='archived',superseded_by=?,superseded_at=?,supersede_reason=? WHERE file_id=?",
+                  (new_id, store.now(), reason, old_id))
+        # anything that pointed at the old item now points at the new one, so chains stay short
+        c.execute("UPDATE knowledge_replacements SET status='accepted',resolved_at=? WHERE old_id=? AND new_id=? AND status='pending'",
+                  (store.now(), old_id, new_id))
+        c.execute("UPDATE knowledge_replacements SET status='superseded',resolved_at=? WHERE old_id=? AND status='pending'", (store.now(), old_id))
+        store.audit(c, 'knowledge_superseded', old_id, 'human_replacement', f'Replaced by “{new["title"]}” ({new_id}) by {by}: {reason}')
+        store.audit(c, 'knowledge_replaces', new_id, 'human_replacement', f'Replaces “{old["title"]}” ({old_id}): {reason}')
+    return {'status': 'archived', 'old_id': old_id, 'new_id': new_id}
+
+
+def replacements(status='pending', new_id='', old_id='', limit=200):
+    """Suggested replacements with titles. Pending ones only show once the newer item is active."""
+    with store.db() as c:
+        rows = [dict(r) for r in c.execute(
+            'SELECT * FROM knowledge_replacements WHERE (?=\'all\' OR status=?) AND (?=\'\' OR new_id=?) AND (?=\'\' OR old_id=?) '
+            'ORDER BY created_at DESC LIMIT ?', (status, status, new_id, new_id, old_id, old_id, limit))]
+    all_meta = meta({r['new_id'] for r in rows} | {r['old_id'] for r in rows})
+    out = []
+    for r in rows:
+        n, o = all_meta.get(r['new_id']), all_meta.get(r['old_id'])
+        if not n or not o: continue
+        if r['status'] == 'pending' and (o['status'] not in ('active', 'archived') or o.get('superseded_by')): continue
+        r.update(new_title=n['title'], new_status=n['status'], new_created=n['created_at'],
+                 old_title=o['title'], old_status=o['status'], old_created=o['created_at'])
+        out.append(r)
+    return out
+
+
+def resolve_replacements(ids, action, reason=''):
+    """accept: retire the older item (your decision). dismiss: keep both; the pair is not suggested again."""
+    if action not in ('accept', 'dismiss'): raise ValueError('Invalid action.')
+    done, errors = 0, []
+    for sid in list(dict.fromkeys(ids))[:200]:
+        with store.db() as c:
+            r = c.execute("SELECT * FROM knowledge_replacements WHERE id=? AND status='pending'", (sid,)).fetchone()
+        if not r: continue
+        if action == 'accept':
+            why = reason or (('Temple: ' if r['source'] == 'temple' else 'Proposer: ') + (r['reason'] or 'newer version'))
+            try: supersede(r['old_id'], r['new_id'], why); done += 1
+            except ValueError as e: errors.append(str(e))
+        else:
+            with store.db() as c:
+                c.execute("UPDATE knowledge_replacements SET status='dismissed',resolved_at=? WHERE id=?", (store.now(), sid))
+                store.audit(c, 'knowledge_replacement_dismissed', r['old_id'], 'human_review', f'Kept alongside {r["new_id"]}')
+            done += 1
+    return {'done': done, 'errors': sorted(set(errors))[:5]}
+
+
+def history(fid):
+    """Every version linked to this item by replacements, oldest first."""
+    all_meta = meta()
+    if fid not in all_meta: raise ValueError('Knowledge item not found.')
+    ids, pending = {fid}, [fid]
+    while pending:
+        cur = pending.pop()
+        linked = [all_meta[cur].get('superseded_by')] + [x for x, m in all_meta.items() if m.get('superseded_by') == cur]
+        for x in linked:
+            if x and x in all_meta and x not in ids: ids.add(x); pending.append(x)
+    items = [{'id': x, 'title': all_meta[x]['title'], 'status': all_meta[x]['status'], 'created_at': all_meta[x]['created_at'],
+              'superseded_by': all_meta[x].get('superseded_by'), 'superseded_at': all_meta[x].get('superseded_at'),
+              'reason': all_meta[x].get('supersede_reason', '')} for x in ids]
+    return sorted(items, key=lambda r: r['created_at'])
 
 
 # ---------------- listing ----------------
@@ -252,9 +414,22 @@ def listing(kind='', status='active', category='', client='', label='', query=''
         f = files[fid]
         rows.append({**m, 'id': fid, 'name': f['name'], 'size': f['size'], 'summary': f['summary'], 'client': owners.get(fid, '')})
     rows.sort(key=lambda r: r['created_at'], reverse=True)
+    titles = {r['id']: r['title'] for r in rows}
+    replaces = {}
+    for r in rows:
+        if r.get('superseded_by'): replaces.setdefault(r['superseded_by'], []).append({'id': r['id'], 'title': r['title']})
+    pending = {}
+    for p in replacements('pending'):
+        pending.setdefault(p['new_id'], []).append(p); pending.setdefault(p['old_id'], []).append(p)
+    for r in rows:
+        r['replaced_by'] = {'id': r['superseded_by'], 'title': titles.get(r['superseded_by'], '(deleted item)')} if r.get('superseded_by') else None
+        r['replaces'] = replaces.get(r['id'], [])
+        r['replacement_suggestions'] = pending.get(r['id'], [])
     counts = {'status': {}, 'kind': {}, 'label': {}, 'category': {}, 'client': {}, 'suggested': 0}
-    in_status = [r for r in rows if status == 'all' or r['status'] == status]
-    for r in rows: counts['status'][r['status']] = counts['status'].get(r['status'], 0) + 1
+    in_status = [r for r in rows if status == 'all' or r['status'] == status or (status == 'replaced' and r['status'] == 'archived' and r.get('superseded_by'))]
+    for r in rows:
+        counts['status'][r['status']] = counts['status'].get(r['status'], 0) + 1
+        if r['status'] == 'archived' and r.get('superseded_by'): counts['status']['replaced'] = counts['status'].get('replaced', 0) + 1
     for r in in_status:
         counts['kind'][r['kind']] = counts['kind'].get(r['kind'], 0) + 1
         counts['label'][r['label']] = counts['label'].get(r['label'], 0) + 1
@@ -330,13 +505,18 @@ def resolve_category_suggestions(ids, action):
     return {'done': done}
 
 
-def schedule_background():
+def schedule_background(new_ids=None):
+    """Categorising and client tagging; for newly active items, Temple also looks for older items they replace."""
     def work():
         try: categorise()
         except Exception: pass
         try:
             import clients; clients.run_tagging()
         except Exception: pass
+        if new_ids:
+            try:
+                import temple_supersede; temple_supersede.check(new_ids)
+            except Exception: pass
     threading.Thread(target=work, daemon=True).start()
 
 

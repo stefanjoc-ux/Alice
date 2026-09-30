@@ -25,7 +25,9 @@ Related memory IDs and titles, and Suggested question if clarification is needed
 Distinguish potential conflicts from definite contradictions. If the proposal mixes details belonging
 to different clients, or conflicts only with another client's memory, say so: client material must stay separate. Say when preferences may coexist.
 Only cite supplied IDs. State comparison coverage: this may be a selected subset, not all memories.
-Never claim to have checked original files or to have saved/approved anything. Use UK English.'''
+Never claim to have checked original files or to have saved/approved anything. Use UK English.
+If the proposal is a newer version of one approved memory and should replace it (same subject, the older one
+is now out of date), end the report with a line exactly "Replaces: <ID>" using that supplied ID. Otherwise omit the line.'''
 
 def settings():
     with store.db() as c: d=dict(c.execute("SELECT key,value FROM settings WHERE key LIKE 'temple_%'").fetchall())
@@ -144,6 +146,7 @@ def inbox(offset=0):
 # ---- Review queue: verdicts read from Temple's reports so reviews can be triaged at a glance.
 VERDICT = re.compile(r'recommendation[^a-z]{0,40}(approve|clarif\w*|reject)', re.I)
 ID_PATTERN = re.compile(r'\b[0-9a-f]{32}\b')
+REPLACES = re.compile(r'^\W*replaces\W*([0-9a-f]{32})\b', re.I | re.M)
 
 
 def verdict(review):
@@ -175,6 +178,8 @@ def queue(view='pending', verdict_filter='', query='', offset=0, limit=50):
             "SELECT r.*,coalesce(a.state,r.status) AS status,coalesce(m.category,'') AS category "
             "FROM records r LEFT JOIN memory_archive a ON a.record_id=r.id LEFT JOIN record_meta m ON m.record_id=r.id "
             "ORDER BY r.created_at DESC,r.id")]
+        active_ids = {x['id']: x['title'] for x in c.execute(
+            "SELECT id,title FROM records WHERE status='approved' AND NOT EXISTS (SELECT 1 FROM memory_archive WHERE record_id=records.id)")}
         reviews = {}
         for v in c.execute('SELECT * FROM temple_reviews ORDER BY created_at DESC,id'):
             reviews.setdefault(v['record_id'], []).append(dict(v))
@@ -198,7 +203,12 @@ def queue(view='pending', verdict_filter='', query='', offset=0, limit=50):
             for h in history: h['context'] = json.loads(h['context'] or '{}') if isinstance(h['context'], str) else h['context']
         reason = reason_line(latest['report']) if latest and latest['status'] == 'complete' else ''
         for m in related: reason = reason.replace(m['id'], '“' + m['title'] + '”')   # titles read better than IDs
-        items.append({**r, 'verdict': v, 'reason': reason,
+        replaces = None       # Temple's suggestion that this proposal replaces a memory (you decide on approval)
+        if latest and latest['status'] == 'complete' and r['status'] == 'proposed':
+            hit = REPLACES.search(latest['report'] or '')
+            if hit and hit.group(1) in active_ids:
+                replaces = {'id': hit.group(1), 'title': active_ids[hit.group(1)]}
+        items.append({**r, 'verdict': v, 'reason': reason, 'replaces': replaces,
                       'related': related, 'reviews': history})
     with store.db() as c:
         view_counts = {'pending': c.execute("SELECT count(*) FROM records r LEFT JOIN memory_archive a ON a.record_id=r.id WHERE coalesce(a.state,r.status)='proposed'").fetchone()[0],
