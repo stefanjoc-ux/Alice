@@ -30,8 +30,8 @@ knowledge note "AI Substrate: status summary" through the `alice` connector, or 
    that sends text to a model, stores a memory or knowledge item, or returns tool output must go through the
    existing checks in `rules_engine.py` (secrets, protective markings, personal identifiers, provider
    allow-lists, external scope, client separation, spending caps). If you add a path, add the check and a test.
-7. **Protectively marked material** (OFFICIAL-SENSITIVE, SECRET, TOP SECRET) must never reach an external
-   model. Stefan holds SC clearance and works with Scottish public-sector clients; treat this as absolute.
+7. **Protectively marked material** (government protective markings, Official-Sensitive and above) must never
+   reach an external model. Stefan holds SC clearance and works with Scottish public-sector clients; treat this as absolute.
 8. **Run the tests before declaring anything done.** Never mark work complete with failing tests.
 
 ## How Alice runs
