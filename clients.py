@@ -211,6 +211,11 @@ def allowed(item_client, context_client, cfg=None):
     return not cfg['strict']                                    # untagged chat: all, unless strict
 
 
+def _org_owner():
+    """Organisation name (lower case) -> client name, for organisations that are clients."""
+    return {n.lower(): n for n in names()}
+
+
 def filter_tool_output(name, args, output, context_client):
     """Web chat: remove other clients' material from MCP results before the model sees them."""
     cfg = settings()
@@ -239,6 +244,19 @@ def filter_tool_output(name, args, output, context_client):
             if not allowed(client_of('file', data['file_id']), context_client, cfg):
                 withheld += 1
                 data = {'error': 'Withheld by Client separation: this file belongs to a different client from this chat.'}
+        elif name in ('list_organisations', 'search_opportunities', 'get_organisation'):
+            owner = _org_owner()
+            if name == 'get_organisation':
+                if data.get('organisation') and not allowed(owner.get(data['organisation'].lower(), ''), context_client, cfg):
+                    withheld += 1
+                    data = {'error': 'Withheld by Client separation: this organisation is a different client from this chat.'}
+            else:
+                key, field = ('organisations', 'name') if name == 'list_organisations' else ('opportunities', 'organisation')
+                if isinstance(data.get(key), list):
+                    kept = [x for x in data[key] if allowed(owner.get(str(x.get(field, '')).lower(), ''), context_client, cfg)]
+                    gone = len(data[key]) - len(kept); withheld += gone; data[key] = kept
+                    if gone and isinstance(data.get('matched'), int): data['matched'] -= gone
+                    if name == 'search_opportunities' and gone: data.pop('counts', None)
         if withheld:
             data['withheld_by_client_separation'] = (f'{withheld} item(s) belong to another client and were withheld. '
                                                      'Tell the user if this matters for the answer.')

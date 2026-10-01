@@ -92,7 +92,7 @@ A browser refresh is not enough: the old server process keeps running the old co
 | `migrate_to_postgres.py` | One-off copy of SQLite into PostgreSQL with per-table verification |
 | `substrate_store.py` | Database, chats, memories, categories, archive, decisions, quote matching |
 | `rules_engine.py` | Rule sets, detectors, spending caps, retention, guidance compilation |
-| `mcp_server.py` | MCP tools for models (read tools + propose_record/decision/knowledge, save/append_conversation); `--external` runs the signed-in endpoint |
+| `mcp_server.py` | MCP tools for models (read tools, including get_organisation, list_organisations and search_opportunities; propose_record/decision/knowledge, save/append_conversation); `--external` runs the signed-in endpoint. Alice's web chat uses the tools in `app.ALLOWED_TOOLS`; organisation and opportunity results pass client separation (`clients.filter_tool_output`) and secret/marking checks; account managers are never returned |
 | `external_auth.py` | Entra ID sign-in for the external endpoint (Copilot): settings `ALICE_EXT_*`, token checks, caller label and provider |
 | `temple.py` | Temple memory reviews, queue, settings, `reviewer()` (effective provider) |
 | `temple_chat.py` | Temple's suggestions after chat answers |

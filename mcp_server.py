@@ -393,6 +393,127 @@ def get_organisation(name: Annotated[str, Field(min_length=1, max_length=60)],
             'sections': [k for k, _, _ in organisations.SECTIONS]}
 
 
+def _client_hidden(org_name, who):
+    """External apps in 'general' Client separation mode see no client organisations (as get_organisation)."""
+    if who is None: return False
+    import clients as _c
+    cfg = _c.settings()
+    return cfg['enabled'] and cfg['external'] == 'general' and org_name.lower() in organisations.client_names()
+
+
+def _passes(text, target):
+    """Secret detection and protective markings, as for anything else leaving Alice towards a model."""
+    try: rules_engine.check_outbound(text, target, packs=False); return True
+    except rules_engine.RuleViolation: return False
+
+
+def _words(q):
+    return [w for w in re.split(r'\s+', (q or '').lower().strip()) if w]
+
+
+OPEN_STATUSES = ('suggested', 'tracking', 'pursuing')
+
+
+@mcp.tool(annotations={'readOnlyHint': True, 'destructiveHint': False})
+def list_organisations(query: Annotated[str, Field(max_length=100)] = '',
+                       kind: Annotated[str, Field(max_length=20)] = '',
+                       clients_only: bool = False,
+                       with_open_opportunities: bool = False,
+                       limit: Annotated[int, Field(ge=1, le=100)] = 50) -> dict:
+    """The organisations in the user's Alice: name, type, whether it is a client, website, approved fact count,
+    facts awaiting approval or overdue for review, and open opportunity count. Use it to find an organisation's
+    exact name before get_organisation or search_opportunities, or to answer questions across organisations
+    (e.g. "which councils have open opportunities"). query: words matched against name, description and website.
+    kind: council, police, university, college, public body, health, company, charity or other."""
+    import opportunities
+    who = _who()
+    agent, run = _app('list_organisations')
+    L = organisations.listing()
+    with database() as c:
+        open_n = {}
+        for r in c.execute("SELECT lower(org) AS o, count(*) AS n FROM opportunities WHERE status IN ('suggested','tracking','pursuing') GROUP BY lower(org)"):
+            open_n[r['o']] = r['n']
+    words, out, hidden = _words(query), [], 0
+    for o in L['organisations']:
+        if _client_hidden(o['name'], who): hidden += 1; continue
+        if kind and o['kind'] != kind.strip().lower(): continue
+        if clients_only and not o['is_client']: continue
+        n = open_n.get(o['name'].lower(), 0)
+        if with_open_opportunities and not n: continue
+        hay = ' '.join([o['name'], o.get('description') or '', o.get('website') or '']).lower()
+        if any(w not in hay for w in words): continue
+        desc = o.get('description') or ''
+        if desc and not _passes(desc, 'organisation description ' + o['name']): desc = ''
+        out.append({'name': o['name'], 'kind': o['kind'], 'client': o['is_client'], 'description': desc,
+                    'website': o.get('website') or '', 'approved_facts': o['facts']['approved'],
+                    'facts_awaiting_approval': o['facts']['proposed'], 'facts_overdue': o['facts']['due'], 'open_opportunities': n})
+    agents.app_note(run, 'read', 'organisation', [o['name'] for o in out[:limit]], f'{len(out)} listed')
+    res = {'organisations': out[:limit], 'matched': len(out), 'total': len(L['organisations'])}
+    if len(out) > limit: res['note'] = f'Showing {limit} of {len(out)}; narrow the query or raise limit.'
+    if hidden: res['withheld'] = f'{hidden} client organisation(s) are not shared with external apps (Client separation).'
+    return res
+
+
+@mcp.tool(annotations={'readOnlyHint': True, 'destructiveHint': False})
+def search_opportunities(query: Annotated[str, Field(max_length=200)] = '',
+                         organisation: Annotated[str, Field(max_length=60)] = '',
+                         status: Annotated[str, Field(max_length=12)] = 'open',
+                         offering: Annotated[str, Field(max_length=80)] = '',
+                         account_manager: Annotated[str, Field(max_length=80)] = '',
+                         limit: Annotated[int, Field(ge=1, le=50)] = 20) -> dict:
+    """Client opportunities in the user's opportunity tracker: title, organisation, status, the offering it maps to,
+    size, confidence, why now, summary, next step, timing and the evidence URLs (news or pages it came from).
+    status: 'open' (default: suggested, tracking and pursuing), 'all', or one of suggested, tracking, pursuing,
+    won, lost, dismissed. 'suggested' means Temple found it from public news and the user has NOT reviewed it yet:
+    say so, and cite the evidence links. query: words matched against title, summary, why now, offering, next step
+    and organisation. organisation: an exact or partial name (list_organisations gives exact names). offering:
+    words from the offering. account_manager: only organisations that person manages (names are not returned).
+    Results are sorted by status, then confidence; 'counts' gives totals by status for the matches."""
+    who = _who()
+    agent, run = _app('search_opportunities')
+    status = (status or 'open').strip().lower()
+    import opportunities
+    if status not in ('open', 'all') and status not in opportunities.STATUSES:
+        raise ValueError("status must be 'open', 'all' or one of: " + ', '.join(opportunities.STATUSES) + '.')
+    rows = opportunities.tracker()['opportunities']
+    org_q, words, off_q = organisation.strip().lower(), _words(query), _words(offering)
+    mgr_q = account_manager.strip().lower()
+    if mgr_q:
+        with database() as c:
+            managed = {r['name'].lower() for r in c.execute('SELECT name, account_manager FROM organisations')
+                       if mgr_q in (r['account_manager'] or '').lower()}
+    if org_q and any(r['org'].lower() == org_q for r in rows): exact = True
+    else: exact = False
+    out, counts, hidden, blocked = [], {}, 0, 0
+    for r in rows:
+        if _client_hidden(r['org'], who): hidden += 1; continue
+        if org_q and (r['org'].lower() != org_q if exact else org_q not in r['org'].lower()): continue
+        if mgr_q and r['org'].lower() not in managed: continue
+        if off_q and any(w not in (r['offering'] or '').lower() for w in off_q): continue
+        hay = ' '.join([r['title'], r['summary'], r['why_now'], r['offering'], r['next_step'], r['org']]).lower()
+        if any(w not in hay for w in words): continue
+        counts[r['status']] = counts.get(r['status'], 0) + 1
+        if status == 'open' and r['status'] not in OPEN_STATUSES: continue
+        if status not in ('open', 'all') and r['status'] != status: continue
+        item = {'id': r['id'], 'title': r['title'], 'organisation': r['org'], 'status': r['status'], 'offering': r['offering'],
+                'size': r['size'], 'confidence': r['confidence'], 'why_now': r['why_now'], 'summary': r['summary'],
+                'next_step': r['next_step'], 'timing': r['timing'], 'evidence': r['evidence'], 'found': (r['created_at'] or '')[:10]}
+        if not _passes(' '.join(str(v) for v in item.values() if isinstance(v, str)), 'opportunity ' + r['id']):
+            blocked += 1; continue
+        if who is None and r.get('notes'):      # the user's own notes: Alice's web chat only
+            if _passes(r['notes'], 'opportunity notes ' + r['id']): item['notes'] = r['notes']
+            else: item['notes_withheld'] = 'Notes withheld by a rule (secret or protective marking).'
+        out.append(item)
+    agents.app_note(run, 'read', 'opportunity', [o['id'] for o in out[:limit]], f'{len(out)} found')
+    res = {'opportunities': out[:limit], 'matched': len(out), 'counts': counts,
+           'message': 'Opportunities are suggestions with evidence, not facts: check the links before relying on them.'}
+    if not out: res['message'] = 'No opportunities match. The user can scan an organisation on the Organisations page.'
+    if len(out) > limit: res['note'] = f'Showing {limit} of {len(out)}; narrow the search or raise limit.'
+    if hidden: res['withheld'] = f'{hidden} opportunit(ies) for client organisations are not shared with external apps (Client separation).'
+    if blocked: res['withheld_by_rules'] = f'{blocked} opportunit(ies) withheld: they contain a secret or a protective marking.'
+    return res
+
+
 @mcp.tool(annotations={'readOnlyHint': False, 'destructiveHint': False})
 def propose_org_fact(organisation: Annotated[str, Field(min_length=1, max_length=60)],
                      section: Annotated[str, Field(min_length=3, max_length=20)],

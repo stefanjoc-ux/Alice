@@ -24,7 +24,8 @@ FAIL_LIMIT = 3                  # consecutive failed runs before an agent pauses
 SKIP = {'off', 'busy', 'no_categories', 'no_clients', 'running', 'not_reviewed'}
 TRANSIENT = {'APIConnectionError', 'APITimeoutError', 'RateLimitError', 'InternalServerError', 'ServiceUnavailableError',
              'ConnectError', 'ConnectTimeout', 'ReadTimeout', 'TimeoutError', 'OperationalError'}
-TOOLS = ['list_files', 'read_file', 'search_files', 'search_records', 'get_organisation', 'propose_record',
+TOOLS = ['list_files', 'read_file', 'search_files', 'search_records', 'get_organisation', 'list_organisations',
+         'search_opportunities', 'propose_record',
          'propose_decision', 'propose_knowledge', 'propose_org_fact', 'save_conversation', 'append_conversation']
 WRITE_TOOLS = {'propose_record', 'propose_decision', 'propose_knowledge', 'propose_org_fact', 'save_conversation', 'append_conversation'}
 LABELS = ['general', 'internal', 'client']
