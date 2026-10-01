@@ -1549,8 +1549,14 @@ button.primary{background:var(--teal);border-color:var(--teal);color:#fff;font-w
 .brand{display:flex;align-items:center;gap:9px;font-weight:600;letter-spacing:.1em;font-size:13px;color:#e8f6ff;text-decoration:none;flex:none;width:224px}
 .brand img{width:28px;height:28px;border-radius:50%;box-shadow:0 0 12px #4de6ff55}
 #menu{display:none;background:none;border-color:#2a4459;color:#cfe3ef;padding:4px 9px}
-.title-wrap{display:flex;align-items:center;gap:2px;min-width:0;flex:0 1 auto}
-#chat-title{margin:0 6px 0 0;font-size:15px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:34vw}
+.topbar{position:relative}
+.title-wrap{position:absolute;left:calc(248px + (100% - 294px)/2);transform:translateX(-50%);top:0;height:52px;max-width:max(240px,calc(100% - 780px));display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0}
+.title-line{position:relative;display:flex;align-items:center;min-width:0;max-width:100%}
+#chat-title{margin:0;font-size:18px;line-height:24px;font-weight:700;letter-spacing:.01em;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:text;border-bottom:1px dashed transparent;padding:0 2px}
+#chat-title:hover{border-bottom-color:#7fb4cc}
+.title-tools{position:absolute;left:100%;top:50%;transform:translateY(-50%);display:flex;align-items:center;opacity:.55;transition:opacity .15s;margin-left:4px;white-space:nowrap}.title-wrap:hover .title-tools,.title-tools:focus-within{opacity:1}
+.subline{display:flex;align-items:center;gap:6px;font-size:12px;color:#8fb0c4;line-height:18px}
+.subline .pill{height:20px;padding:0 2px 0 8px;font-size:12px;border-color:#2a4459;background:transparent}.subline .pill select{font-size:12px;font-weight:600;padding:0 2px}
 .ghost{background:none;border:1px solid transparent;color:#9fb8ca;padding:3px 7px;font-size:14px;line-height:1}.ghost:hover:not(:disabled){background:#17304a;border-color:#2a4459;color:#fff}
 .pill{display:inline-flex;align-items:center;gap:6px;padding:0 4px 0 10px;height:30px;border:1px solid #33506a;border-radius:999px;font-size:13px;color:#9fb8ca;background:#11233a;flex:none}
 .pill select{background:transparent;border:0;color:#fff;font-weight:600;padding:4px 2px;max-width:170px;field-sizing:content;cursor:pointer;outline-offset:2px}.pill select option{color:#14324a}
@@ -1560,7 +1566,7 @@ button.primary{background:var(--teal);border-color:var(--teal);color:#fff;font-w
 #cc-link{position:relative;font-size:13px;color:#e6f6ff;text-decoration:none;padding:5px 12px;border-radius:8px;background:#163a52;border:1px solid #2f6a85;flex:none}#cc-link:hover{background:#1d4a66}
 .badge{position:absolute;top:-7px;right:-8px;background:var(--warn);color:#1b1203;border-radius:999px;font-size:11px;font-weight:700;padding:0 6px;line-height:17px}
 .chat-info{position:relative}.chat-info summary{list-style:none;cursor:pointer}.chat-info summary::-webkit-details-marker{display:none}
-.chat-info p{position:absolute;left:0;top:30px;width:min(360px,80vw);z-index:20;margin:0;padding:10px 12px;background:#fff;color:var(--ink);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px #0b162626;font-size:13px}
+.chat-info p{position:absolute;right:-20px;top:30px;width:min(360px,80vw);z-index:20;margin:0;padding:10px 12px;background:#fff;color:var(--ink);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px #0b162626;font-size:13px}
 /* shell */
 .shell{display:grid;grid-template-columns:248px minmax(0,1fr) 46px;min-height:0}
 .side{background:#fff;border-right:1px solid var(--line);display:flex;flex-direction:column;padding:12px 10px;gap:8px;min-height:0}
@@ -1596,7 +1602,7 @@ button.primary{background:var(--teal);border-color:var(--teal);color:#fff;font-w
 .md h3,.md h4,.md h5,.md h6{margin:16px 0 6px;font-size:15px}.md h3{font-size:16px}.md code{font:13px ui-monospace,Consolas,monospace;background:#e9eff3;border-radius:4px;padding:1px 5px}
 .md pre{background:#0f1d2c;color:#dbe7f0;border-radius:8px;padding:10px 12px;overflow:auto;margin:0 0 10px}.md pre code{background:none;padding:0;color:inherit}
 .md blockquote{margin:0 0 10px;border-left:3px solid var(--line);padding:2px 12px;color:var(--muted)}.md hr{border:0;border-top:1px solid var(--line);margin:14px 0}
-.table-wrap{overflow:auto;margin:0 0 10px}.md table{border-collapse:collapse;font-size:14px}.md th,.md td{border:1px solid var(--line);padding:5px 10px;text-align:left;vertical-align:top}.md th{background:#eef3f6}
+.table-wrap{overflow:auto;margin:0 0 10px}.md table{border-collapse:collapse;font-size:14px;overflow-wrap:normal;word-break:normal}.md th,.md td{border:1px solid var(--line);padding:5px 10px;text-align:left;vertical-align:top}.md th{background:#eef3f6}
 /* composer */
 .composer{padding:6px 0 14px;background:linear-gradient(#f4f7fa00,var(--bg) 30%)}
 .notices{max-width:800px;margin:0 auto 6px;padding:0 24px;display:flex;flex-direction:column;gap:6px}
@@ -1621,6 +1627,7 @@ button.primary{background:var(--teal);border-color:var(--teal);color:#fff;font-w
 .voice-opts .pop{position:absolute;bottom:40px;left:0;z-index:20;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px #0b162626;padding:10px 12px;display:grid;gap:8px;width:240px;font-size:13px;color:var(--ink)}
 .voice-opts select{width:100%;border:1px solid var(--line);border-radius:6px;padding:4px}
 .hint-text{margin-left:4px}
+.model-pick{display:inline-flex;align-items:center;gap:4px;margin-left:6px;font-size:12px;color:var(--muted)}.model-pick select{border:1px solid var(--line);border-radius:7px;padding:3px 6px;font-size:13px;font-weight:600;color:var(--ink);background:#fff;cursor:pointer}
 #send{margin-left:auto;padding:6px 18px;border-radius:9px}
 /* right rail and drawer */
 .rail{border-left:1px solid var(--line);background:#fff;display:flex;flex-direction:column;align-items:center;padding-top:12px;gap:12px}
@@ -1640,19 +1647,21 @@ button.primary{background:var(--teal);border-color:var(--teal);color:#fff;font-w
 .file details{color:var(--muted);margin:6px 0}.actions{display:flex;gap:8px;align-items:center;margin-top:6px}.actions button{font-size:12px;padding:2px 8px}
 #file-status{font-size:13px;color:var(--muted);white-space:pre-wrap}#selected{display:none}
 @media(max-width:900px){.shell{grid-template-columns:minmax(0,1fr) 46px}.side{position:fixed;top:52px;bottom:0;left:0;width:270px;z-index:16;box-shadow:10px 0 30px #0b16261a;transform:translateX(-105%);transition:transform .15s}
- body.menu-open .side{transform:none}#menu{display:inline-block}.brand{width:auto}.brand span{display:none}#spend{display:none}.pill select{max-width:110px}#chat-title{max-width:30vw}.hint-text{display:none}}
-@media(max-width:560px){.pill-label{display:none}.title-wrap .ghost,.chat-info{display:none}.col,.message,#chat-form,.notices,.temple-inline{padding:0 12px}}
+ body.menu-open .side{transform:none}#menu{display:inline-block}.brand{width:auto}.brand span{display:none}#spend{display:none}.pill select{max-width:110px}.title-wrap{position:static;transform:none;height:auto;max-width:none;flex:1;align-items:flex-start}.title-tools{position:static;transform:none}.sp{display:none}#chat-title{font-size:16px}.hint-text{display:none}}
+@media(max-width:1180px){.hint-text{display:none}}
+.cc-icon{display:none}@media(max-width:560px){.cc-text{display:none}.cc-icon{display:inline}#cc-link{padding:5px 10px}.brand img{display:none}}
+@media(max-width:560px){.pill-label{display:none}.title-tools{display:none}.subline .lbl{display:none}.col,.message,#chat-form,.notices,.temple-inline{padding:0 12px}}
 </style></head><body>
 <header class="topbar">
  <button id="menu" type="button" aria-label="Chats">☰</button>
  <a class="brand" href="/" title="Alice"><img src="/static/favicon.png" alt=""><span>ALICE</span></a>
- <div class="title-wrap"><h1 id="chat-title">New chat</h1>
-  <button id="rename-chat" type="button" class="ghost" title="Rename chat" aria-label="Rename chat">✎</button>
-  <button id="delete-chat" type="button" class="ghost" title="Delete chat" aria-label="Delete chat">🗑</button>
-  <details class="chat-info"><summary class="ghost" title="About this chat" aria-label="About this chat">ⓘ</summary><p>Chats and tool activity are saved locally. Models receive up to 10 recent completed exchanges (60,000 characters), not the full archive, so earlier details may need repeating. Switching models keeps this chat. A client-tagged chat also gets that client's organisation profile.</p></details>
+ <div class="title-wrap">
+  <div class="title-line"><h1 id="chat-title" title="Chat title: click to rename">New chat</h1>
+   <span class="title-tools"><button id="rename-chat" type="button" class="ghost" title="Rename chat" aria-label="Rename chat">✎</button>
+   <button id="delete-chat" type="button" class="ghost" title="Delete chat" aria-label="Delete chat">🗑</button>
+   <details class="chat-info"><summary class="ghost" title="About this chat" aria-label="About this chat">ⓘ</summary><p>Chats and tool activity are saved locally. Models receive up to 10 recent completed exchanges (60,000 characters), not the full archive, so earlier details may need repeating. Switching models keeps this chat. A client-tagged chat also gets that client's organisation profile.</p></details></span></div>
+  <div class="subline"><span class="lbl">Client</span><label class="pill" id="client-pill"><span class="dot"></span><select id="chat-client" aria-label="Client for this chat"><option value="">General</option></select></label></div>
  </div>
- <label class="pill" title="Model for the next message"><span class="pill-label">Model</span><select id="provider" aria-label="Model"><option value="auto">Auto</option><option value="openai">GPT-6 Luna</option><option value="claude">Haiku 4.5</option><option value="claude_sonnet">Sonnet 5.5</option><option value="claude_opus">Opus 5.5</option><option value="grok">Grok 4.7</option></select></label>
- <label class="pill" id="client-pill"><span class="dot"></span><select id="chat-client" aria-label="Client for this chat"><option value="">General</option></select></label>
  <div class="sp"></div>
  <a id="spend" href="/admin/usage" title="Estimated spend today">—</a>
  <a id="cc-link" href="/admin">Command centre</a>
@@ -1678,6 +1687,7 @@ button.primary{background:var(--teal);border-color:var(--teal);color:#fff;font-w
      <details class="voice-opts"><summary class="tool" title="Voice settings" aria-label="Voice settings" role="button" style="border:1px solid var(--line);cursor:pointer">🔊</summary><div class="pop"><label class="setting"><input id="speak-replies" type="checkbox"> Read replies aloud</label><label>Voice<select id="voice-select" aria-label="Voice"></select></label></div></details>
      <button id="stop-audio" type="button" class="tool" title="Stop audio" aria-label="Stop audio" hidden>■</button></span>
     <label class="toggle" title="Generate images (GPT-6 Luna or Grok)"><input id="images-toggle" type="checkbox" aria-label="Generate images">🖼</label>
+    <label class="model-pick" title="Model for your next message">Model <select id="provider" aria-label="Model"><option value="auto">Auto</option><option value="openai">GPT-6 Luna</option><option value="claude">Haiku 4.5</option><option value="claude_sonnet">Sonnet 5.5</option><option value="claude_opus">Opus 5.5</option><option value="grok">Grok 4.7</option></select></label>
     <span class="hint-text">Enter to send · Shift+Enter for a new line</span>
     <button id="send" class="primary">Send</button>
    </div></div></form>
@@ -1769,7 +1779,7 @@ function clientHint(e){hintFor=chatId;const box=byId('client-hint');box.replaceC
  if(e.mode==='set'){txt.textContent='This looks like '+e.client+' work. Tag this chat so other clients\' material stays out?';go.textContent='Set client: '+e.client;go.onclick=()=>whenIdle(go,()=>setClient(e.client,true))}
  else{txt.textContent='You mentioned '+e.client+', but this chat is for '+e.current+'. '+e.client+' material stays hidden here.';go.textContent='New chat for '+e.client;go.onclick=()=>whenIdle(go,async()=>{const n=await api('/chats',{method:'POST'});await api('/chats/'+n.id+'/client',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({client:e.client})});await loadChat(n.id)})}
  box.append(txt,go,no);box.hidden=false}
-async function refreshActions(){try{const a=await api('/actions-count');const l=byId('cc-link');l.replaceChildren(document.createTextNode('Command centre'));if(a.total){const b=document.createElement('span');b.className='badge';b.textContent=a.total;l.append(b)}l.title=a.total?a.total+' actions waiting for you':'Nothing waiting'}catch{}
+async function refreshActions(){try{const a=await api('/actions-count');const l=byId('cc-link');const tx=document.createElement('span');tx.className='cc-text';tx.textContent='Command centre';const ic=document.createElement('span');ic.className='cc-icon';ic.textContent='⚙';l.replaceChildren(tx,ic);if(a.total){const b=document.createElement('span');b.className='badge';b.textContent=a.total;l.append(b)}l.title=a.total?a.total+' actions waiting for you':'Nothing waiting'}catch{}
  try{const s=await api('/spend');const e=byId('spend');e.textContent='$'+s.today_usd.toFixed(2)+' today';e.className=s.level==='warning'||s.level==='blocked'?'warn':'';e.title='Estimated spend: $'+s.today_usd.toFixed(2)+' today of $'+s.daily_usd.toFixed(2)+', $'+s.month_usd.toFixed(2)+' this month of $'+s.monthly_usd.toFixed(2)}catch{}}
 let allChats=[];
 function chatGroup(d){const now=new Date(),day=new Date(now.getFullYear(),now.getMonth(),now.getDate());const t=new Date(d);if(t>=day)return 'Today';if(t>=new Date(day-6*864e5))return 'This week';if(t>=new Date(day-29*864e5))return 'This month';return 'Earlier';}
@@ -1786,6 +1796,7 @@ byId('provider').onchange=imageToggle;
 byId('chat-client').onchange=()=>guard(()=>setClient(byId('chat-client').value));
 byId('create-chat').onclick=()=>guard(createChat);
 byId('chat-search').oninput=renderChatList;
+byId('chat-title').onclick=()=>byId('rename-chat').click();
 byId('menu').onclick=()=>document.body.classList.toggle('menu-open');
 byId('prompt').addEventListener('input',sizePrompt);
 byId('prompt').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();byId('chat-form').requestSubmit();}});
