@@ -42,10 +42,10 @@ SECTIONS = {
 <p class="muted small">Temple looks things up with read-only tools and shows what it checked. It can't approve or change anything; it tells you where to do that. The conversation is kept on this page only.</p></section>''',
 'agents': r'''<div id="ag-list"><div id="ag-view" class="mem-tabs ag-view"></div>
 <section id="ag-map-wrap" hidden><div class="mem-head"><h2>System map</h2><span id="ag-map-note" class="muted small"></span></div><div id="ag-map"></div></section>
-<div id="ag-cards-wrap"><section><div class="mem-head"><h2>Alice automations</h2><span id="ag-summary" class="muted small"></span></div>
-<p class="muted small">Agents only propose; nothing they do is approved without you, and the rules apply on top of their limits. An agent pauses itself after 3 failed runs in a row or at its monthly budget.</p>
-<div id="ag-auto" class="ag-cards"></div></section>
-<section><div class="mem-head"><h2>Connected apps</h2><span class="muted small">Every tool call is checked against the app's permissions. New apps appear here when they first connect.</span></div><div id="ag-apps" class="ag-cards"></div></section></div></div>
+<div id="ag-cards-wrap"><div class="ag-tools"><input id="ag-search" type="search" placeholder="Find an agent by name or what it does" aria-label="Find an agent"><span id="ag-summary" class="muted small"></span></div>
+<p class="muted small">Agents only propose; nothing they do is approved without you, and the rules apply on top of their limits. An agent pauses itself after 3 failed runs in a row or at its monthly budget. Click a section heading to collapse it; ones needing attention are listed first.</p>
+<details class="ag-group" id="ag-g-auto" open><summary><h2>Alice automations</h2><span class="ag-count"></span><span class="ag-attn"></span></summary><div id="ag-auto" class="ag-cards"></div></details>
+<details class="ag-group" id="ag-g-apps" open><summary><h2>Connected apps</h2><span class="ag-count"></span><span class="ag-attn"></span></summary><p class="muted small">Every tool call is checked against the app's permissions. New apps appear here when they first connect.</p><div id="ag-apps" class="ag-cards"></div></details></div></div>
 <div id="ag-detail" hidden></div>''',
 'organisations': r'''<section><div class="mem-head"><h2>Organisations</h2><span id="o-summary" class="muted small"></span></div>
 <p class="muted small">Summaries, not documents: each fact is a sentence or two with its source and a review-by date. Facts you add here are approved; facts from models wait for your approval. Data minimisation applies: organisational information and roles, not people.</p>
@@ -182,6 +182,12 @@ nav{display:flex;gap:20px;flex-wrap:wrap}.sidebar nav{display:contents}
 .r-block{display:grid;grid-template-columns:130px 200px 1fr;gap:10px;padding:6px 0;border-top:1px solid #e3eaf0}#r-effective{white-space:pre-wrap}
 .k-panel{border:1px solid #c9d7e1;border-radius:10px;padding:14px 16px;margin-top:12px;background:#f8fbfd}.k-panel[hidden],#km-step1[hidden],#km-step2[hidden]{display:none}.k-panel h3{margin-top:0}.k-panel label{display:block;margin:8px 0}.k-panel textarea,.k-panel input:not([type=checkbox]){width:100%}
 .k-meta-row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}.k-meta-row label{flex:1 1 170px;margin:6px 0}.k-meta-row select,.k-meta-row input{width:100%}
+.ag-tools{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:6px}#ag-search{flex:1;min-width:220px;max-width:460px}
+.ag-group{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:0 18px;margin:12px 0}.ag-group[open]{padding-bottom:18px}
+.ag-group>summary{list-style:none;display:flex;align-items:center;gap:10px;cursor:pointer;padding:14px 0}.ag-group>summary::-webkit-details-marker{display:none}
+.ag-group>summary::before{content:'▸';color:var(--muted);transition:transform .15s}.ag-group[open]>summary::before{transform:rotate(90deg)}
+.ag-group>summary h2{margin:0;font-size:17px}.ag-count{background:var(--teal2);color:var(--teal);border-radius:999px;padding:0 9px;font-size:12px;font-weight:700;line-height:20px}
+.ag-attn{font-size:12px;color:#8a5a00;font-weight:600}.ag-empty{color:var(--muted);font-size:14px;padding:4px 0}
 .ag-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
 .ag-card{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:#fff;min-width:0}
 .ag-card:hover{border-color:#89b1bf;box-shadow:0 2px 10px #0b162612}.ag-card:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
@@ -830,7 +836,17 @@ if(PAGE==='agents'){
   $('ag-cards-wrap').hidden=st.view==='map';$('ag-map-wrap').hidden=st.view!=='map';if(st.view==='map'){drawMap();return}
   const L=st.L,internal=L.agents.filter(a=>a.kind!=='app'),apps=L.agents.filter(a=>a.kind==='app'),off=L.agents.filter(a=>a.status!=='active').length;
   $('ag-summary').textContent=internal.length+' automations · '+apps.length+' connected apps'+(off?' · '+off+' paused or stopped':'');
-  $('ag-auto').replaceChildren(...internal.map(card));$('ag-apps').replaceChildren(...apps.map(card))}
+  const q=($('ag-search').value||'').trim().toLowerCase();
+  const attn=a=>a.status!=='active'||a.review_overdue||a.waiting>0||(a.last_run&&a.last_run.status==='failed');
+  const match=a=>!q||(a.name+' '+a.purpose+' '+a.id).toLowerCase().includes(q);
+  const closed=(()=>{try{return JSON.parse(localStorage.getItem('alice-agents-closed')||'[]')}catch{return []}})();
+  for(const [gid,box,rows] of [['ag-g-auto','ag-auto',internal],['ag-g-apps','ag-apps',apps]]){const g=$(gid),shown=rows.filter(match).sort((a,b)=>attn(b)-attn(a)||a.name.localeCompare(b.name)),n=rows.filter(attn).length;
+   g.querySelector('.ag-count').textContent=q?shown.length+' of '+rows.length:String(rows.length);
+   g.querySelector('.ag-attn').textContent=n?'⚑ '+n+' need'+(n===1?'s':'')+' attention':'';
+   $(box).replaceChildren(...(shown.length?shown.map(card):[el('div',q?'No match.':'None yet.','ag-empty')]));
+   g.open=q?shown.length>0:!closed.includes(gid);
+   g.ontoggle=()=>{if(q)return;try{const c=new Set(JSON.parse(localStorage.getItem('alice-agents-closed')||'[]'));g.open?c.delete(gid):c.add(gid);localStorage.setItem('alice-agents-closed',JSON.stringify([...c]))}catch{}}}}
+ $('ag-search').oninput=()=>list();
  // ---- detail: header, tabs, one tab at a time
  function detail(a){const box=$('ag-detail');box.replaceChildren();
   const head=el('section','','ag-head');const back=el('button','← All agents','secondary');back.type='button';back.onclick=()=>go('');
