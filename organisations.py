@@ -117,7 +117,7 @@ def listing():
     with store.db() as c:
         orgs = {r['name'].lower(): dict(r) for r in c.execute('SELECT * FROM organisations')}
         counts = {}
-        for r in c.execute("SELECT lower(org) AS o,status,count(*) AS n,sum(review_by<?) AS due FROM org_facts GROUP BY lower(org),status", (today,)):
+        for r in c.execute("SELECT lower(org) AS o,status,count(*) AS n,sum(CASE WHEN review_by<? THEN 1 ELSE 0 END) AS due FROM org_facts GROUP BY lower(org),status", (today,)):
             d = counts.setdefault(r['o'], {'approved': 0, 'proposed': 0, 'retired': 0, 'rejected': 0, 'due': 0})
             d[r['status']] = r['n']
             if r['status'] == 'approved': d['due'] = r['due'] or 0

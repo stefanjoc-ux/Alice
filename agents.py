@@ -215,7 +215,7 @@ def listing():
     with store.db() as c:
         agents = [_row(r) for r in c.execute("SELECT * FROM agents ORDER BY kind='app', name")]
         stats = {r['agent_id']: dict(r) for r in c.execute(
-            "SELECT agent_id,count(*) AS runs,sum(status='failed') AS failed,sum(cost_usd) AS cost,sum(calls) AS calls "
+            "SELECT agent_id,count(*) AS runs,sum(CASE WHEN status='failed' THEN 1 ELSE 0 END) AS failed,sum(cost_usd) AS cost,sum(calls) AS calls "
             "FROM agent_runs WHERE started_at>=? GROUP BY agent_id", (month,))}
         last = {}
         for r in c.execute('SELECT * FROM agent_runs ORDER BY started_at'):

@@ -37,6 +37,7 @@ Run after every update, before relaunching. Exit code 0 means every check passed
 | quotes, desktop | Quote matching; hotkey and window-size parsing |
 | external_mcp | The signed-in external endpoint: settings, every Entra token check, 401s over HTTP, external rules for Copilot |
 | organisations | Organisation facts: sources, review dates, data minimisation, approval, the brief (labels, providers, external), removal by source |
+| dbcompat | PostgreSQL layer: SQL translation always; with a test server, rows, errors, rollback, read-only sessions, the write lock |
 | agents | Agent register, runs and data touched, cost attribution, automatic pause (failures, budget), versions, app permissions on every tool call |
 | supersede | Retiring replaced knowledge, the proposer's `supersedes`, Temple's replacement suggestions, what models see, memory replacements |
 
@@ -46,3 +47,13 @@ themselves, voice, and page layouts. Check those by hand after changing them.
 ## Adding a test
 Create `tests\test_<name>.py`, start it with `import _util` and `from _util import t` (before importing any
 Alice module), then record checks with `t('what should be true', condition)`.
+
+## Running against PostgreSQL
+Alice uses SQLite unless `ALICE_DATABASE_URL` is set (Azure). To prove a change works on both, run the
+same suites against a **test** PostgreSQL server; each suite gets its own throwaway schema, dropped afterwards:
+
+    set ALICE_TEST_DATABASE_URL=postgresql://user:pass@host/testdb
+    .venv\Scripts\python.exe tests\run_tests.py
+
+`ALICE_DATABASE_URL` itself is always ignored by the tests, so the real database is never touched.
+Needs the driver: `.venv\Scripts\python.exe -m pip install "psycopg[binary]" psycopg-pool`.

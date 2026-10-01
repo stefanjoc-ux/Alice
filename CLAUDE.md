@@ -88,6 +88,8 @@ A browser refresh is not enough: the old server process keeps running the old co
 | `app.py` | Web app: chat page (HTML/JS), chat pipeline and tool loop, all HTTP routes |
 | `admin_ui.py` | Command centre pages (HTML/JS per page in `SECTIONS` and `SCRIPT`) |
 | `ui_theme.py` | Shared look for chat and Command centre: colours, type, buttons, inputs, top bar (`SHARED_CSS`) |
+| `dbcompat.py` | PostgreSQL behind the SQLite-style calls (used when `ALICE_DATABASE_URL` is set) |
+| `migrate_to_postgres.py` | One-off copy of SQLite into PostgreSQL with per-table verification |
 | `substrate_store.py` | Database, chats, memories, categories, archive, decisions, quote matching |
 | `rules_engine.py` | Rule sets, detectors, spending caps, retention, guidance compilation |
 | `mcp_server.py` | MCP tools for models (read tools + propose_record/decision/knowledge, save/append_conversation); `--external` runs the signed-in endpoint |
@@ -111,6 +113,21 @@ A browser refresh is not enough: the old server process keeps running the old co
 
 Models: GPT-6 Luna (`gpt-6-luna`, Responses API), Claude Haiku 4.5, Sonnet 5.5, Opus 5.5 (manual only; Auto
 never selects it), Grok 4.7 (xAI). Temple's reviewer is Luna or Haiku.
+
+## Two databases: write SQL that works on both
+
+SQLite (`data\substrate.db`) is the default; when `ALICE_DATABASE_URL` is set (Azure), `store.db()` returns a
+PostgreSQL connection from `dbcompat.py` that accepts Alice's SQLite-style SQL and behaves like sqlite3 (rows by
+name, sqlite3 exception types, `with` commits/rolls back, savepoint per statement, BEGIN IMMEDIATE = advisory lock).
+It translates `?`, `instr`, `LIKE` (case-insensitive), `COLLATE NOCASE` (CITEXT), `INSERT OR IGNORE`,
+`PRAGMA table_info`, REAL/BLOB/AUTOINCREMENT. Avoid what it cannot translate:
+- `INSERT OR REPLACE` (use `INSERT … ON CONFLICT(key) DO UPDATE SET …`, valid in both).
+- `rowid`, except on `chat_turns` (which keeps an explicit `rowid` column on PostgreSQL).
+- Selecting columns that are neither grouped nor aggregated; ORDER BY expressions not in a GROUP BY.
+- Summing comparisons (`sum(x='y')`): use `sum(CASE WHEN x='y' THEN 1 ELSE 0 END)`.
+- Opening sqlite3 directly: always go through `store.db()` / `store.connect()`.
+Run the suites against a test PostgreSQL server too (`ALICE_TEST_DATABASE_URL`, see tests\README.md).
+`migrate_to_postgres.py` copies data\substrate.db into PostgreSQL and verifies every table (dry run by default).
 
 ## Lessons already learned (don't relearn them)
 

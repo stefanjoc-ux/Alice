@@ -80,7 +80,9 @@ def reserve(cid,tid,manual=False):
         if not c.execute("SELECT 1 FROM chat_turns WHERE id=? AND chat_id=? AND status='complete'",(tid,cid)).fetchone():return False
         existing=c.execute('SELECT status FROM temple_chat_jobs WHERE turn_id=?',(tid,)).fetchone()
         if existing and (existing['status']!='failed' or not manual):return False
-        c.execute('INSERT OR REPLACE INTO temple_chat_jobs(turn_id,chat_id,status,provider,created_at) VALUES (?,?,?,?,?)',
+        c.execute('INSERT INTO temple_chat_jobs(turn_id,chat_id,status,provider,created_at) VALUES (?,?,?,?,?) '
+                  "ON CONFLICT(turn_id) DO UPDATE SET chat_id=excluded.chat_id,status=excluded.status,provider=excluded.provider,"
+                  "created_at=excluded.created_at,error='',coverage=''",
                   (tid,cid,'running',provider,store.now()))
     return True
 

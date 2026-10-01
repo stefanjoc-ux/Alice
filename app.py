@@ -62,9 +62,8 @@ MAX_TEXT = 100000
 
 
 def connect_db():
-    connection = sqlite3.connect(DATABASE, timeout=15)
-    connection.row_factory = sqlite3.Row
-    return connection
+    """`with connect_db() as c:` commits and closes (SQLite file or PostgreSQL, via substrate_store)."""
+    return store.db()
 
 
 with connect_db() as connection:

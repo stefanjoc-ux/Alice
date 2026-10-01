@@ -109,12 +109,8 @@ mcp = FastMCP('Alice', instructions=BASE_INSTRUCTIONS)
 
 
 def database():
-    if not DATABASE.is_file():
-        raise ValueError('No substrate database found. Start the web app and save a file first.')
-    connection = sqlite3.connect(DATABASE.resolve().as_uri() + '?mode=ro', uri=True, timeout=10)
-    connection.row_factory = sqlite3.Row
-    connection.execute('PRAGMA query_only=ON')
-    return connection
+    """Read-only connection for MCP reads: SQLite opened read-only, or a PostgreSQL read-only session."""
+    return store.connect(readonly=True)
 
 
 @mcp.tool(annotations={'readOnlyHint': True, 'destructiveHint': False})

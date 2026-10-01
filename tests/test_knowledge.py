@@ -57,6 +57,8 @@ class FakeOpenAI:
     def __enter__(s_):return s_
     def __exit__(s_,*a):pass
 import openai;openai.OpenAI=FakeOpenAI
+import temple_categorise as TC, clients as _C
+TC.schedule=lambda ids: None; _C.schedule_tagging=lambda *a,**k: None; K.schedule_background=lambda *a,**k: None   # background runs would get the meeting reply above
 x=cl.post('/admin/api/knowledge/meeting/extract',json={'transcript':K.vtt_to_text(vtt)+'\nFife pilot discussion'},headers=H).json()
 t('meeting extracted with client matched', x['title']=='Fife migration pilot' and x['client']=='Fife Council' and x['actions'][0]['owner']=='Jo')
 r=cl.post('/admin/api/knowledge/meeting',json={'title':x['title'],'content':x['summary'],'source':'Teams meeting 30 Sep','date':x['date'],'attendees':x['attendees'],'decisions':x['decisions'],'actions':x['actions'],'transcript':'Jo Smith: I will send the list','client':'Fife Council','label':'client'},headers=H).json()
@@ -71,4 +73,5 @@ cl.put('/admin/api/knowledge',json={'ids':[itn],'status':'archived'},headers=H);
 # 7. categorising knowledge (Temple mocked)
 import temple_categorise as TC
 TC._ask=lambda p: json.dumps({'assignments':[{'id':m['id'],'category':'Work','confidence':0.9,'reason':'work'} for m in json.loads(p)['memories']]})
+import agents as _A, time as _time; _time.sleep(0.5); _A.set_status('temple-categorise','active')   # clear any pause caused by background runs already in flight
 print('   categorise:',K.categorise(manual=True))

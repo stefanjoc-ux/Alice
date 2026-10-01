@@ -22,6 +22,30 @@ if not DATA or os.path.abspath(DATA) == _real or not os.path.basename(DATA).star
     os.environ['AISUBSTRATE_DATA_DIR'] = DATA
     atexit.register(shutil.rmtree, DATA, True)
 
+# Database: SQLite in the throwaway folder by default. To run the same suites against PostgreSQL, set
+# ALICE_TEST_DATABASE_URL to a TEST server; each run gets its own throwaway schema, dropped afterwards.
+# ALICE_DATABASE_URL (the real database) is always ignored here.
+os.environ.pop('ALICE_DATABASE_URL', None)
+_TEST_PG = os.environ.get('ALICE_TEST_DATABASE_URL', '').strip()
+if _TEST_PG:
+    import uuid
+    import psycopg
+    from psycopg.conninfo import make_conninfo
+    _SCHEMA = 'alice_test_' + uuid.uuid4().hex[:12]
+    with psycopg.connect(_TEST_PG, autocommit=True) as _c:
+        _c.execute(f'CREATE SCHEMA {_SCHEMA}')
+        _c.execute('CREATE EXTENSION IF NOT EXISTS citext SCHEMA public')
+    os.environ['ALICE_DATABASE_URL'] = make_conninfo(_TEST_PG, options=f'-csearch_path={_SCHEMA},public')
+
+    def _drop_schema():
+        try:
+            import dbcompat; dbcompat.close_pools()
+        except Exception: pass
+        try:
+            with psycopg.connect(_TEST_PG, autocommit=True) as c: c.execute(f'DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE')
+        except Exception: pass
+    atexit.register(_drop_schema)
+
 for key in ('OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'XAI_API_KEY', 'ELEVENLABS_API_KEY'):
     os.environ[key] = 'test-key-not-real'
 os.environ['OPENAI_BASE_URL'] = 'http://127.0.0.1:9/v1'

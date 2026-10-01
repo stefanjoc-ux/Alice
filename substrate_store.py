@@ -12,11 +12,30 @@ load_dotenv(BASE / '.env')
 DB = Path(os.getenv('AISUBSTRATE_DATA_DIR', str(BASE / 'data'))) / 'substrate.db'
 IMAGE_DIR = DB.parent / 'images'
 
-@contextmanager
-def db():
+DATABASE_URL = os.getenv('ALICE_DATABASE_URL', '').strip()   # set: PostgreSQL (Azure); unset: SQLite file in data\\
+
+
+def connect(readonly=False):
+    """A connection that behaves like sqlite3 (rows by name, ? placeholders, `with` commits). Close it when done.
+    SQLite by default; PostgreSQL when ALICE_DATABASE_URL is set (see dbcompat.py)."""
+    if DATABASE_URL:
+        import dbcompat
+        return dbcompat.connect(DATABASE_URL, readonly)
     DB.parent.mkdir(parents=True, exist_ok=True)
+    if readonly:
+        if not DB.is_file(): raise ValueError('No substrate database found. Start the web app and save a file first.')
+        c = sqlite3.connect(DB.resolve().as_uri() + '?mode=ro', uri=True, timeout=10)
+        c.row_factory = sqlite3.Row
+        c.execute('PRAGMA query_only=ON')
+        return c
     c = sqlite3.connect(DB, timeout=15)
     c.row_factory = sqlite3.Row
+    return c
+
+
+@contextmanager
+def db(readonly=False):
+    c = connect(readonly)
     try:
         with c: yield c
     finally: c.close()
@@ -454,7 +473,7 @@ def organised_records(status='approved', query='', category='', sort='newest', o
         categories = [{'category': r[0], 'count': r[1]} for r in c.execute(
             "SELECT coalesce(m.category,''),count(*) FROM records r LEFT JOIN memory_archive a ON a.record_id=r.id "
             "LEFT JOIN record_meta m ON m.record_id=r.id WHERE (?='all' OR coalesce(a.state,r.status)=?) "
-            "GROUP BY 1 ORDER BY coalesce(nullif(m.category,''),'~')", (status, status))]
+            "GROUP BY 1 ORDER BY coalesce(m.category,'')='', 1", (status, status))]
         suggested = c.execute("SELECT count(*) FROM records r LEFT JOIN memory_archive a ON a.record_id=r.id "
                               "JOIN record_meta m ON m.record_id=r.id WHERE (?='all' OR coalesce(a.state,r.status)=?) "
                               "AND m.suggestion<>''", (status, status)).fetchone()[0]
