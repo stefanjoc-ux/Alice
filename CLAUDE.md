@@ -155,6 +155,10 @@ Run the suites against a test PostgreSQL server too (`ALICE_TEST_DATABASE_URL`, 
   reconfigure stdout to UTF-8 when printing non-ASCII; use `pathlib`/`os.path`, never hard-coded `/tmp`.
 - **Provider errors**: never show a generic "request failed". Use `provider_error()` in `app.py`, which gives
   the HTTP status and the provider's own message.
+- **Diagrams in chat**: ```mermaid and ```svg blocks are drawn by `diagram()` in the chat page and always shown as an
+  `<img>` (a blob URL), never inserted as live SVG, so model-written drawings cannot run script or fetch anything. Mermaid is
+  bundled in `Static/vendor/` (pinned version, served by `/static/vendor/{name}` from an allow-list); never load
+  libraries from a CDN. In inline JS, never end a statement with a `//` comment on a line that continues: it swallows the rest.
 - **Quotes from Temple** are verified against Stefan's own words with `store.quote_found()`, which forgives
   typography but not rewording. Never loosen it to accept paraphrase.
 
