@@ -1085,6 +1085,35 @@ class AgentStatus(BaseModel):
     status: Literal['active','paused','stopped']
     reason: str = Field(default='',max_length=300)
 
+class RulePackChange(BaseModel):
+    pack: str = Field(max_length=20)
+    rule: str = Field(default='', max_length=40)
+    enabled: bool | None = None
+    all_on: bool | None = None
+    reset: bool = False
+
+class RulePackTest(BaseModel):
+    pack: str = Field(max_length=20)
+    text: str = Field(max_length=5000)
+    provider: str = Field(default='tenant', max_length=20)
+
+@app.get('/admin/api/rule-packs')
+def admin_rule_packs():
+    import rule_packs; return rule_packs.public()
+
+@app.post('/admin/api/rule-packs/state')
+def admin_rule_packs_state(ch: RulePackChange):
+    import rule_packs
+    try: return {'state': rule_packs.set_rule(ch.pack, ch.rule or None, ch.enabled, ch.all_on, ch.reset)}
+    except ValueError as e: raise HTTPException(400, str(e)) from None
+
+@app.post('/admin/api/rule-packs/test')
+def admin_rule_packs_test(req: RulePackTest):
+    """Sandbox: shows what each safeguard would do. Never calls a model and never changes Alice's own rules."""
+    import rule_packs
+    try: return rule_packs.evaluate(req.pack, req.text, req.provider)
+    except ValueError as e: raise HTTPException(400, str(e)) from None
+
 @app.get('/admin/api/agents')
 def admin_agents():
     d=agents.listing();d['categories']=[c['name'] for c in store.list_categories()['categories']];return d

@@ -102,6 +102,7 @@ A browser refresh is not enough: the old server process keeps running the old co
 | `conversations.py` | Saved conversations, Claude export import (incl. manifest download), whole-chat reviews |
 | `knowledge.py` | Knowledge library: kinds, drafts, labels, meeting extracts, Word in/out, replacements (`supersede`, `history`) |
 | `agents.py` | Agents register: Temple automations (`@agents.tracked`) and connected apps (`app_call` in every MCP tool); runs, data touched, cost, pause/stop, versions |
+| `rule_packs.py` | Demo rule packs (HR team, council social care): switchable safeguards and a sandboxed test; never changes Alice's own rules, never calls a model |
 | `organisations.py` | Organisation profiles: short approved facts with source pointers and review dates, the compiled brief, removal by source |
 | `clients.py` | Clients, tagging, alias detection, separation enforcement |
 | `actions.py` | Everything awaiting a decision (Actions page) |

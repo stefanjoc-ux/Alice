@@ -13,11 +13,21 @@ PAGES = {
  'agents': ('Agents','Everything that acts on Alice without you typing it: Temple\'s automations and connected apps. What each does, what it touched, what it cost, and its limits. Pause or stop any of them here.'),
  'organisations': ('Organisations','How each organisation lives and breathes: short approved facts with a pointer to the source. Clients are included automatically; detail stays in the source system.'),
  'archive': ('Archived chats','Inactive Alice chats (30 days) and conversations saved from Claude apps. Ask Temple to review any of them for memories and knowledge.'),
+ 'rule-packs': ('Rule packs','Ready-made safeguards for teams adopting AI. Switch each one on or off and test a message against the pack. A sandbox: nothing here changes Alice\'s own rules, and no AI is called.'),
  'rules': ('Rules','Rule sets in precedence order. Enforced rules are checked in code; guidance rules are instructions to the model.'),
  'activity': ('Activity','Everything Alice and Temple did, and every decision you made: filter by type, date or words, and export for an audit trail.'),
 }
 
 SECTIONS = {
+'rule-packs': r'''<div id="rp-packs" class="t-tabs" role="tablist" aria-label="Rule packs"></div>
+<section id="rp-head"></section>
+<div class="rp-grid"><div id="rp-rules"></div>
+<aside class="rp-try"><section><div class="mem-head"><h2>Try it</h2><span class="muted small">No AI is called</span></div>
+<div id="rp-samples" class="mem-cats"></div>
+<label class="small" for="rp-text">Message</label><textarea id="rp-text" rows="4" maxlength="5000" placeholder="Type a request, or pick an example above"></textarea>
+<label class="small" for="rp-provider">Sent to</label><select id="rp-provider"></select>
+<div class="row" style="margin-top:10px"><button id="rp-run" type="button" class="primary">Run through the rules</button></div>
+<div id="rp-result" aria-live="polite"></div></section></aside></div>''',
 'actions': r'''<section><div class="mem-head"><h2 id="act-total">Actions</h2><button id="act-refresh" type="button" class="secondary">Refresh</button></div><p class="muted small">Approving here is the same decision as on the full page: security rules are re-checked, and nothing becomes a memory or knowledge without you.</p></section><div id="act-sections"></div>''' ,
 'usage': r'''<section><div class="usage-bar"><h2>Spend</h2><label>Period <select id="usage-period"><option value="7d">Last 7 days</option><option value="30d" selected>Last 30 days</option><option value="month">This month</option><option value="all">All time</option></select></label><button id="usage-refresh" type="button">Refresh</button></div><div id="usage-stats" class="stats usage-stats"></div><p id="usage-caveat" class="muted"></p></section>
 <section><div class="mem-head"><h2>Provider connections</h2><button id="prov-check" type="button" class="secondary">Check connections</button></div><p class="muted small">Sends one tiny request to each provider you have a key for (a fraction of a penny each) and reports key, credit and model-access problems in plain words.</p><div id="prov-results"></div></section>
@@ -233,6 +243,26 @@ nav{display:flex;gap:20px;flex-wrap:wrap}.sidebar nav{display:contents}
 .act-buttons{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.mini-act{margin:0!important;padding:6px 12px!important;font-size:12px!important}
 #al-custom[hidden]{display:none}#al-custom label{margin:0}.al-table td:nth-child(1){white-space:nowrap;width:1%}.al-table td:nth-child(2){white-space:nowrap;width:1%}.al-target{color:#314d62;overflow-wrap:anywhere}.al-table td:nth-child(4){overflow-wrap:anywhere;max-width:520px}
 #pane-ask[hidden]{display:none}.ask-log{max-height:520px;overflow:auto;margin:10px 0}.ask-msg{padding:10px 12px;border-radius:8px;margin:8px 0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55}.ask-user{background:#eaf5f8;border-left:3px solid #21758b;margin-left:60px}.ask-temple{background:#f3eff9;border-left:3px solid #786095;margin-right:30px}.ask-looked{margin-top:6px;color:#4b6376}.ask-looked summary{cursor:pointer;font-size:12px}.ask-form textarea{width:100%}
+/* Rule packs */
+.rp-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(320px,1fr);gap:16px;align-items:start}@media(max-width:1100px){.rp-grid{grid-template-columns:1fr}}
+.rp-try{position:sticky;top:0;max-height:calc(100vh - 84px);overflow:auto;border-radius:12px}.rp-try section{margin-top:0}.rp-try textarea,.rp-try select{width:100%;margin:4px 0 8px}.rp-try textarea{resize:vertical;min-height:96px}
+#rp-head .rp-meta{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin-top:8px}#rp-head .rp-basis{font-size:13px;color:var(--muted);margin:6px 0 0}
+.rp-stat{font-size:13px;color:var(--muted)}.rp-stat strong{color:var(--ink);font-size:15px}
+.rp-theme{margin:14px 0 8px;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.rp-rule{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 14px;background:#fff;border:1px solid var(--line);border-left:4px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:8px;transition:opacity .15s}
+.rp-rule.on{border-left-color:var(--teal)}.rp-rule:not(.on){opacity:.62;background:#f8fafb}
+.rp-rule.fired{box-shadow:0 0 0 2px #9fd3c3;border-left-color:#1e7a5a}.rp-rule.fired-block{box-shadow:0 0 0 2px #e0aaaa;border-left-color:#a33}.rp-rule.would{box-shadow:0 0 0 2px #e2bf85 inset;opacity:.9}
+.rp-rule .rp-top{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}.rp-rule h3{margin:0;font-size:15px}.rp-rule p{margin:2px 0 0;font-size:14px}.rp-rule .rp-why{font-size:12.5px;color:var(--muted)}
+.rp-kind{font-size:11.5px;padding:2px 8px;border-radius:999px;border:1px solid;white-space:nowrap}.rp-kind.enforced{background:#e3f1f6;color:#064b63;border-color:#89b1bf}.rp-kind.gate{background:#fdf3e1;color:#6b4406;border-color:#e2bf85}.rp-kind.guidance{background:#ede7f6;color:#4b2f73;border-color:#c7b8dd}.rp-kind.locked{background:#eef1f4;color:#4b5a66;border-color:#c1cbd3}
+.rp-act{font-size:12px;color:var(--muted)}.rp-hit{font-size:12px;font-weight:600;padding:2px 8px;border-radius:5px;background:#e6f4ea;color:#1e5b31}.rp-hit.blockish{background:#fbeaea;color:#7a1f1f}.rp-hit.would{background:#fdf3e1;color:#6b4406}
+.rp-switch{position:relative;display:inline-block;width:44px;height:24px;margin-top:2px;flex:none}.rp-switch input{opacity:0;width:0;height:0;position:absolute}
+.rp-switch span{position:absolute;inset:0;background:#c3cfd8;border-radius:999px;cursor:pointer;transition:background .15s}.rp-switch span::after{content:'';position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 2px #0003;transition:transform .15s}
+.rp-switch input:checked+span{background:var(--teal)}.rp-switch input:checked+span::after{transform:translateX(20px)}.rp-switch input:focus-visible+span{outline:2px solid var(--teal);outline-offset:2px}.rp-switch input:disabled+span{cursor:default;background:#7fa9b8}
+.rp-out{margin-top:14px;border-radius:10px;border:1px solid var(--line);overflow:hidden}.rp-banner{padding:12px 14px;font-weight:700;font-size:15px;display:flex;gap:10px;align-items:center}
+.rp-banner.escalated{background:#ede7f6;color:#3e2468}.rp-banner.blocked{background:#fbeaea;color:#7a1f1f}.rp-banner.held{background:#fdf3e1;color:#6b4406}.rp-banner.redacted{background:#e3f1f6;color:#064b63}.rp-banner.allowed{background:#e6f4ea;color:#1e5b31}
+.rp-body{padding:10px 14px 14px;background:#fff}.rp-body h4{margin:12px 0 4px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}.rp-body ul{margin:0;padding-left:18px}.rp-body li{margin:3px 0;font-size:14px}
+.rp-sent{white-space:pre-wrap;background:#f4f7fa;border:1px solid var(--line);border-radius:8px;padding:10px;font-size:13.5px;margin:0}.rp-sent mark{background:#ffe9a8;border-radius:3px;padding:0 2px}
+.rp-off li{color:#6b4406}
 '''
 
 SCRIPT = r'''
@@ -966,8 +996,53 @@ if(PAGE==='agents'){
 }
 """
 
+SCRIPT += r"""
+if(PAGE==='rule-packs'){
+ const st={P:null,pack:(()=>{try{return localStorage.getItem('alice-rp-pack')||'care'}catch{return 'care'}})(),res:null,ran:false};
+ const KIND={enforced:'Enforced in code',gate:'Human sign-off',guidance:'Guidance to the AI'};
+ const BLOCKISH=['block','escalate','review'];
+ async function load(){st.P=await api('/admin/api/rule-packs');$('rp-provider').replaceChildren(...st.P.providers.map(p=>{const o=el('option',p.name);o.value=p.id;return o}));render()}
+ const pack=()=>st.P.packs.find(p=>p.id===st.pack)||st.P.packs[0];
+ function render(){const P=pack(),on=st.P.state[P.id];
+  $('rp-packs').replaceChildren(...st.P.packs.map(p=>{const b=el('button',p.name,'chip'+(p.id===P.id?' on':''));b.type='button';b.setAttribute('role','tab');b.setAttribute('aria-selected',p.id===P.id);
+   b.onclick=()=>{st.pack=p.id;st.res=null;st.ran=false;$('rp-text').value='';try{localStorage.setItem('alice-rp-pack',p.id)}catch{};render()};return b}));
+  const n=P.rules.filter(r=>on[r.id]).length,enf=P.rules.filter(r=>on[r.id]&&r.kind!=='guidance').length;
+  const h=$('rp-head');h.replaceChildren();const top=el('div','','mem-head');top.append(el('h2',P.name+' pack'),el('span','Sandbox: Alice\'s own rules are not changed','muted small'));h.append(top,el('p',P.audience),el('p','Grounded in: '+P.basis,'rp-basis'));
+  const meta=el('div','','rp-meta');const stat=el('span','','rp-stat');stat.append(el('strong',n+' of '+P.rules.length),document.createTextNode(' safeguards on · '+enf+' enforced or sign-off'));
+  const b1=el('button','All on','secondary'),b2=el('button','All off','secondary'),b3=el('button','Recommended','secondary');[b1,b2,b3].forEach(b=>b.type='button');
+  b1.onclick=()=>change({all_on:true});b2.onclick=()=>change({all_on:false});b3.onclick=()=>change({reset:true});b3.title='Back to the recommended settings for this pack';meta.append(stat,b1,b2,b3);h.append(meta);
+  const fired={},would={};if(st.res){for(const f of st.res.fired)fired[f.rule]=f;for(const f of st.res.off)would[f.rule]=f}
+  const box=$('rp-rules');box.replaceChildren();let theme='';
+  for(const r of P.rules){if(r.theme!==theme){theme=r.theme;box.append(el('div',theme,'rp-theme'))}
+   const f=fired[r.id],w=would[r.id];const card=el('div','','rp-rule'+(on[r.id]?' on':'')+(f?(BLOCKISH.includes(r.action)?' fired-block':' fired'):'')+(w?' would':''));
+   const sw=el('label','','rp-switch');const cb=document.createElement('input');cb.type='checkbox';cb.setAttribute('role','switch');cb.checked=!!on[r.id];cb.disabled=r.locked;cb.setAttribute('aria-label',(on[r.id]?'Turn off ':'Turn on ')+r.name);
+   cb.onchange=()=>change({rule:r.id,enabled:cb.checked});sw.append(cb,el('span',''));
+   const main=el('div','');const t=el('div','','rp-top');t.append(el('h3',r.name),el('span',r.locked?'Always on':KIND[r.kind],'rp-kind '+(r.locked?'locked':r.kind)),el('span',r.action_label,'rp-act'));
+   if(f&&r.action!=='guide'&&r.action!=='log')t.append(el('span','Applied','rp-hit'+(BLOCKISH.includes(r.action)?' blockish':'')));
+   if(w)t.append(el('span','Off: would have applied','rp-hit would'));
+   main.append(t,el('p',r.what),el('p','Why: '+r.why,'rp-why'));if(f&&r.action!=='guide')main.append(el('p','→ '+f.message,'small'));if(w)main.append(el('p','→ '+w.message,'small'));
+   card.append(sw,main);box.append(card)}
+  $('rp-samples').replaceChildren(...P.samples.map(x=>{const b=el('button',x.label,'chip');b.type='button';b.onclick=()=>{$('rp-text').value=x.text;test()};return b}));
+  result()}
+ async function change(body){const r=await api('/admin/api/rule-packs/state','POST',{pack:st.pack,...body});st.P.state=r.state;if(st.ran)await test(true);else render()}
+ async function test(quiet){const text=$('rp-text').value.trim();if(!text){if(!quiet)$('notice').textContent='Type a message or pick an example.';return}
+  st.res=await api('/admin/api/rule-packs/test','POST',{pack:st.pack,text,provider:$('rp-provider').value});st.ran=true;render();if(!quiet)$('rp-result').scrollIntoView({block:'nearest',behavior:'smooth'})}
+ function result(){const out=$('rp-result');out.replaceChildren();const R=st.res;if(!R)return;
+  const w=el('div','','rp-out');const ICON={escalated:'⇢',blocked:'⛔',held:'⏸',redacted:'✂',allowed:'✓'};const bn=el('div','','rp-banner '+R.outcome);bn.append(el('span',ICON[R.outcome]||''),el('span',R.headline));w.append(bn);
+  const b=el('div','','rp-body');const acts=R.fired.filter(f=>!['guide','log'].includes(f.action));
+  if(acts.length){b.append(el('h4','What the safeguards did'));const u=el('ul','');for(const f of acts){const li=el('li','');li.append(el('strong',f.name+': '),document.createTextNode(f.message));u.append(li)}b.append(u)}
+  if(R.sent!==null&&R.sent!==undefined){b.append(el('h4','What the AI receives ('+R.provider+')'));const pre=el('pre','','rp-sent');
+   for(const part of R.sent.split(/(\[[^\]]+ removed\])/)){if(!part)continue;pre.append(/^\[[^\]]+ removed\]$/.test(part)?el('mark',part):document.createTextNode(part))}b.append(pre)}
+  if(R.instructions.length){b.append(el('h4','Instructions added for the AI'));const u=el('ul','');R.instructions.forEach(i=>u.append(el('li',i)));b.append(u)}
+  const offs=R.off.filter(f=>!['log'].includes(f.action));if(offs.length){b.append(el('h4','Switched off, so not applied'));const u=el('ul','','rp-off');offs.forEach(f=>{const li=el('li','');li.append(el('strong',f.name+': '),document.createTextNode(f.message));u.append(li)});b.append(u)}
+  b.append(el('p','Recorded in the audit trail.','muted small'));w.append(b);out.append(w)}
+ $('rp-run').onclick=()=>run(()=>test());$('rp-provider').onchange=()=>{if(st.ran)run(()=>test(true))};
+ run(load);
+}
+"""
+
 NAV_GROUPS = [('Work', ['actions', 'temple', 'memories', 'knowledge', 'organisations', 'clients', 'archive']),
-              ('Records and settings', ['agents', 'rules', 'activity', 'usage', 'overview'])]
+              ('Records and settings', ['agents', 'rules', 'rule-packs', 'activity', 'usage', 'overview'])]
 
 
 def render_admin(page, token):
@@ -984,7 +1059,7 @@ def render_admin(page, token):
             '<link rel="icon" href="/static/favicon.png" type="image/png">'
             '<title>' + escape(title) + ' · Alice</title><style>' + SHARED_CSS + CSS + '</style></head><body>'
             '<header class="topbar"><a class="brand" href="/" title="Back to chat"><img src="/static/favicon.png" alt=""><span>ALICE</span></a>'
-            '<h1 class="page-title">' + escape(title) + '</h1><div class="sp"></div><button id="demo-toggle" class="bar-link" type="button" title="Demo mode: only the Agents page, with item names replaced and costs hidden">Demo mode</button><a class="bar-link" href="/">← Chat</a></header>'
+            '<h1 class="page-title">' + escape(title) + '</h1><div class="sp"></div><button id="demo-toggle" class="bar-link" type="button" title="Demo mode: only the Agents and Rule packs pages, with item names replaced and costs hidden">Demo mode</button><a class="bar-link" href="/">← Chat</a></header>'
             '<div class="shell"><aside class="sidebar"><nav aria-label="Command centre">' + nav + '</nav></aside>'
             '<main class="content"><div class="inner"><p class="page-desc">' + escape(description) + '</p><div id="notice" role="status"></div>'
             + SECTIONS[page] + '</div></main></div><script>const PAGE=' + json.dumps(page) + ';'
@@ -993,16 +1068,17 @@ def render_admin(page, token):
 
 DEMO_PRELUDE = r"""
 const DEMO=(()=>{try{return localStorage.getItem('alice-demo')==='1'}catch{return false}})();
-if(DEMO&&PAGE!=='agents'){location.replace('/admin/agents');throw new Error('Demo mode: only the Agents page is shown')}
+const DEMO_PAGES=['agents','rule-packs'];
+if(DEMO&&!DEMO_PAGES.includes(PAGE)){location.replace('/admin/agents');throw new Error('Demo mode: only the Agents and Rule packs pages are shown')}
 """
 
 NAV_SCRIPT = r"""
 (()=>{const t=document.getElementById('demo-toggle');if(!t)return;t.textContent=DEMO?'Demo mode: on':'Demo mode';t.classList.toggle('demo-on',DEMO);
  t.onclick=()=>{try{localStorage.setItem('alice-demo',DEMO?'0':'1')}catch{}location.href=DEMO?location.href:'/admin/agents'};
  if(!DEMO)return;document.body.classList.add('demo');
- document.querySelectorAll('.sidebar a').forEach(a=>{if(a.dataset.page!=='agents')a.hidden=true});document.querySelectorAll('.sidebar .grp').forEach(g=>g.hidden=true);
+ document.querySelectorAll('.sidebar a').forEach(a=>{if(!DEMO_PAGES.includes(a.dataset.page))a.hidden=true});document.querySelectorAll('.sidebar .grp').forEach(g=>g.hidden=true);
  document.querySelectorAll('.bar-link[href="/"]').forEach(a=>a.hidden=true);
- if(PAGE!=='agents'){const inner=document.querySelector('.content .inner');inner.replaceChildren();const s=document.createElement('section');const h=document.createElement('h2');h.textContent='Demo mode is on';const p=document.createElement('p');p.textContent='Only the Agents page is shown, with item names replaced and costs hidden. Turn demo mode off in the top bar to see this page.';const a=document.createElement('a');a.href='/admin/agents';a.textContent='Go to Agents';s.append(h,p,a);inner.append(s)}})();
+ if(!DEMO_PAGES.includes(PAGE)){const inner=document.querySelector('.content .inner');inner.replaceChildren();const s=document.createElement('section');const h=document.createElement('h2');h.textContent='Demo mode is on';const p=document.createElement('p');p.textContent='Only the Agents page is shown, with item names replaced and costs hidden. Turn demo mode off in the top bar to see this page.';const a=document.createElement('a');a.href='/admin/agents';a.textContent='Go to Agents';s.append(h,p,a);inner.append(s)}})();
 (async()=>{try{const d=await api('/admin/api/actions');const n={};for(const s of d.sections)n[s.key]=s.count;
  if(DEMO)return;const counts={agents:n.agents||0,actions:d.total,memories:n.proposals||0,knowledge:(n.drafts||0)+(n.replacements||0),organisations:n.orgfacts||0,temple:n.suggestions||0,archive:n.chats||0,rules:n.rules||0};
  for(const [k,v] of Object.entries(counts)){if(!v)continue;const a=document.querySelector('.sidebar a[data-page="'+k+'"]');if(!a)continue;const c=document.createElement('span');c.className='nav-count';c.textContent=v;a.append(c)}}catch{}})();
