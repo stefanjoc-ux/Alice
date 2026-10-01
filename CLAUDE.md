@@ -83,6 +83,7 @@ A browser refresh is not enough: the old server process keeps running the old co
 |---|---|
 | `app.py` | Web app: chat page (HTML/JS), chat pipeline and tool loop, all HTTP routes |
 | `admin_ui.py` | Command centre pages (HTML/JS per page in `SECTIONS` and `SCRIPT`) |
+| `ui_theme.py` | Shared look for chat and Command centre: colours, type, buttons, inputs, top bar (`SHARED_CSS`) |
 | `substrate_store.py` | Database, chats, memories, categories, archive, decisions, quote matching |
 | `rules_engine.py` | Rule sets, detectors, spending caps, retention, guidance compilation |
 | `mcp_server.py` | MCP tools for models (read tools + propose_record/decision/knowledge, save/append_conversation); `--external` runs the signed-in endpoint |

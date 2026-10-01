@@ -17,7 +17,8 @@ import organisations
 import actions
 import activity_log
 import temple_ask
-from admin_ui import render_admin, PAGES, THEME_CSS, DECK_CSS, READABLE_CSS
+from admin_ui import render_admin, PAGES
+from ui_theme import SHARED_CSS
 import secrets
 import asyncio
 import time
@@ -1536,20 +1537,10 @@ def home():
 <link rel="icon" href="/static/favicon.png" type="image/png"><link rel="apple-touch-icon" href="/static/icon-192.png">
 <meta name="mobile-web-app-capable" content="yes">
 <style>
-/* Chat page: one slim bar, the conversation in the middle, the message box always in view. Self-contained styles. */
-:root{color-scheme:light;--ink:#14324a;--muted:#5d7385;--faint:#8aa0b0;--line:#d5e0e8;--bg:#f4f7fa;--panel:#fff;--teal:#075e79;--teal-d:#054a60;--teal2:#e3f1f6;--violet:#634394;--violet2:#f1ebf7;--bar:#0b1626;--warn:#e2a33b}
-*{box-sizing:border-box}[hidden]{display:none!important}
-html,body{height:100%}body{margin:0;font:15px/1.55 "Segoe UI",system-ui,-apple-system,sans-serif;color:var(--ink);background:var(--bg);display:grid;grid-template-rows:52px minmax(0,1fr);overflow:hidden}
-a{color:var(--teal)}button,select,textarea,input{font:inherit;color:inherit}
-button{cursor:pointer;border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 12px}button:hover:not(:disabled){border-color:#9db7c6;background:#f7fbfd}button:disabled{opacity:.55;cursor:default}
-button.primary{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:600}button.primary:hover:not(:disabled){background:var(--teal-d);border-color:var(--teal-d)}
-.muted{color:var(--muted)}.small{font-size:13px}
-/* top bar */
-.topbar{display:flex;align-items:center;gap:10px;padding:0 14px 0 12px;background:var(--bar);color:#dfeaf2;border-bottom:1px solid #1d3347;min-width:0}
-.brand{display:flex;align-items:center;gap:9px;font-weight:600;letter-spacing:.1em;font-size:13px;color:#e8f6ff;text-decoration:none;flex:none;width:224px}
-.brand img{width:28px;height:28px;border-radius:50%;box-shadow:0 0 12px #4de6ff55}
+__SHARED_CSS__
+/* Chat page: one slim bar, the conversation in the middle, the message box always in view. */
+body{display:grid;grid-template-rows:52px minmax(0,1fr);overflow:hidden}
 #menu{display:none;background:none;border-color:#2a4459;color:#cfe3ef;padding:4px 9px}
-.topbar{position:relative}
 .title-wrap{position:absolute;left:calc(248px + (100% - 294px)/2);transform:translateX(-50%);top:0;height:52px;max-width:max(240px,calc(100% - 780px));display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0}
 .title-line{position:relative;display:flex;align-items:center;min-width:0;max-width:100%}
 #chat-title{margin:0;font-size:18px;line-height:24px;font-weight:700;letter-spacing:.01em;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:text;border-bottom:1px dashed transparent;padding:0 2px}
@@ -1557,14 +1548,10 @@ button.primary{background:var(--teal);border-color:var(--teal);color:#fff;font-w
 .title-tools{position:absolute;left:100%;top:50%;transform:translateY(-50%);display:flex;align-items:center;opacity:.55;transition:opacity .15s;margin-left:4px;white-space:nowrap}.title-wrap:hover .title-tools,.title-tools:focus-within{opacity:1}
 .subline{display:flex;align-items:center;gap:6px;font-size:12px;color:#8fb0c4;line-height:18px}
 .subline .pill{height:20px;padding:0 2px 0 8px;font-size:12px;border-color:#2a4459;background:transparent}.subline .pill select{font-size:12px;font-weight:600;padding:0 2px}
-.ghost{background:none;border:1px solid transparent;color:#9fb8ca;padding:3px 7px;font-size:14px;line-height:1}.ghost:hover:not(:disabled){background:#17304a;border-color:#2a4459;color:#fff}
 .pill{display:inline-flex;align-items:center;gap:6px;padding:0 4px 0 10px;height:30px;border:1px solid #33506a;border-radius:999px;font-size:13px;color:#9fb8ca;background:#11233a;flex:none}
 .pill select{background:transparent;border:0;color:#fff;font-weight:600;padding:4px 2px;max-width:170px;field-sizing:content;cursor:pointer;outline-offset:2px}.pill select option{color:#14324a}
 .pill .dot{width:8px;height:8px;border-radius:50%;background:#55d0a0}.pill.client-on .dot{background:#c7a6ff}
-.sp{flex:1;min-width:8px}
 #spend{font-size:13px;color:#cfe3ef;text-decoration:none;padding:0 10px;height:30px;display:inline-flex;align-items:center;border:1px solid #33506a;border-radius:999px;flex:none}#spend.warn{border-color:var(--warn);color:#ffd99a}
-#cc-link{position:relative;font-size:13px;color:#e6f6ff;text-decoration:none;padding:5px 12px;border-radius:8px;background:#163a52;border:1px solid #2f6a85;flex:none}#cc-link:hover{background:#1d4a66}
-.badge{position:absolute;top:-7px;right:-8px;background:var(--warn);color:#1b1203;border-radius:999px;font-size:11px;font-weight:700;padding:0 6px;line-height:17px}
 .chat-info{position:relative}.chat-info summary{list-style:none;cursor:pointer}.chat-info summary::-webkit-details-marker{display:none}
 .chat-info p{position:absolute;right:-20px;top:30px;width:min(360px,80vw);z-index:20;margin:0;padding:10px 12px;background:#fff;color:var(--ink);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px #0b162626;font-size:13px}
 /* shell */
@@ -1664,7 +1651,7 @@ button.primary{background:var(--teal);border-color:var(--teal);color:#fff;font-w
  </div>
  <div class="sp"></div>
  <a id="spend" href="/admin/usage" title="Estimated spend today">—</a>
- <a id="cc-link" href="/admin">Command centre</a>
+ <a id="cc-link" class="bar-link" href="/admin">Command centre</a>
 </header>
 <div class="shell">
 <aside class="side" id="side">
@@ -1694,7 +1681,7 @@ button.primary{background:var(--teal);border-color:var(--teal);color:#fff;font-w
  </div>
 </main>
 <nav class="rail" aria-label="Panels">
- <button id="rail-temple" type="button" title="Temple: suggestions from this chat" aria-label="Temple" aria-expanded="false">T<span id="temple-badge" class="badge" hidden></span></button>
+ <button id="rail-temple" type="button" title="Temple: suggestions from this chat" aria-label="Temple" aria-expanded="false">T<span id="temple-badge" class="badge-count" hidden></span></button>
  <button id="rail-files" type="button" title="Files: this chat and your library" aria-label="Files" aria-expanded="false">📁</button>
 </nav>
 </div>
@@ -1779,7 +1766,7 @@ function clientHint(e){hintFor=chatId;const box=byId('client-hint');box.replaceC
  if(e.mode==='set'){txt.textContent='This looks like '+e.client+' work. Tag this chat so other clients\' material stays out?';go.textContent='Set client: '+e.client;go.onclick=()=>whenIdle(go,()=>setClient(e.client,true))}
  else{txt.textContent='You mentioned '+e.client+', but this chat is for '+e.current+'. '+e.client+' material stays hidden here.';go.textContent='New chat for '+e.client;go.onclick=()=>whenIdle(go,async()=>{const n=await api('/chats',{method:'POST'});await api('/chats/'+n.id+'/client',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({client:e.client})});await loadChat(n.id)})}
  box.append(txt,go,no);box.hidden=false}
-async function refreshActions(){try{const a=await api('/actions-count');const l=byId('cc-link');const tx=document.createElement('span');tx.className='cc-text';tx.textContent='Command centre';const ic=document.createElement('span');ic.className='cc-icon';ic.textContent='⚙';l.replaceChildren(tx,ic);if(a.total){const b=document.createElement('span');b.className='badge';b.textContent=a.total;l.append(b)}l.title=a.total?a.total+' actions waiting for you':'Nothing waiting'}catch{}
+async function refreshActions(){try{const a=await api('/actions-count');const l=byId('cc-link');const tx=document.createElement('span');tx.className='cc-text';tx.textContent='Command centre';const ic=document.createElement('span');ic.className='cc-icon';ic.textContent='⚙';l.replaceChildren(tx,ic);if(a.total){const b=document.createElement('span');b.className='badge-count';b.textContent=a.total;l.append(b)}l.title=a.total?a.total+' actions waiting for you':'Nothing waiting'}catch{}
  try{const s=await api('/spend');const e=byId('spend');e.textContent='$'+s.today_usd.toFixed(2)+' today';e.className=s.level==='warning'||s.level==='blocked'?'warn':'';e.title='Estimated spend: $'+s.today_usd.toFixed(2)+' today of $'+s.daily_usd.toFixed(2)+', $'+s.month_usd.toFixed(2)+' this month of $'+s.monthly_usd.toFixed(2)}catch{}}
 let allChats=[];
 function chatGroup(d){const now=new Date(),day=new Date(now.getFullYear(),now.getMonth(),now.getDate());const t=new Date(d);if(t>=day)return 'Today';if(t>=new Date(day-6*864e5))return 'This week';if(t>=new Date(day-29*864e5))return 'This month';return 'Earlier';}
@@ -1871,4 +1858,4 @@ byId('temple-analyse').onclick=()=>templeRun(async()=>{if(!chatId)return;const b
 if('serviceWorker' in navigator&&window.isSecureContext)navigator.serviceWorker.register('/sw.js').catch(()=>{});
 guard(async()=>{await setupVoice();await refreshFiles();const chats=await api('/chats');const requested=location.hash.slice(1);const current=chats.find(c=>c.id===requested)||chats[0];if(current)await loadChat(current.id);else await createChat()});
 
-</script></body></html>'''.replace('__CHAT_ADMIN_TOKEN__', ADMIN_TOKEN).replace('__BANNER_V__', str(int(BANNER.stat().st_mtime)) if BANNER.is_file() else '0')
+</script></body></html>'''.replace('__SHARED_CSS__', SHARED_CSS).replace('__CHAT_ADMIN_TOKEN__', ADMIN_TOKEN).replace('__BANNER_V__', str(int(BANNER.stat().st_mtime)) if BANNER.is_file() else '0')
