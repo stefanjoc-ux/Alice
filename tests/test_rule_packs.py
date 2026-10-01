@@ -44,7 +44,7 @@ t('everything off: a protection concern would reach the AI', ev('care', CARE['Di
 
 # 4. the page's API: state saved, locked rules, sandbox
 d = cl.get('/admin/api/rule-packs').json()
-t('both packs listed with samples and every rule on by default', {p['id'] for p in d['packs']} == {'hr', 'care'} and all(all(v for v in d['state'][p].values()) for p in d['state']))
+t('all three packs listed with samples and every rule on by default', {p['id'] for p in d['packs']} == {'hr', 'care', 'sec'} and all(all(v for v in d['state'][p].values()) for p in d['state']))
 cl.post('/admin/api/rule-packs/state', json={'pack': 'care', 'rule': 'sc_chi', 'enabled': False}, headers=H)
 t('switching a rule off is saved', cl.get('/admin/api/rule-packs').json()['state']['care']['sc_chi'] is False)
 res = cl.post('/admin/api/rule-packs/test', json={'pack': 'care', 'text': CARE['Case note summary'], 'provider': 'tenant'}, headers=H).json()
@@ -72,3 +72,19 @@ t('Parkinson\'s and wheelchair use count as health information outside the tenan
 fin = "Mr Paterson's daughter told us his new partner has been taking money from his bank account and he seems frightened of her. Should we reduce his care package?"
 r = ev('care', fin)
 t('financial abuse is a protection concern; reducing a package is a care decision', r['outcome'] == 'escalated' and {'sc_protection', 'sc_decisions'} <= {f['rule'] for f in r['fired']})
+
+# 6. security operations pack (Defender for Cloud, Entra ID sign-ins)
+SEC = dict(RP.PACKS['sec']['samples'])
+r = ev('sec', SEC['Risky sign-in triage'])
+t('risky sign-in: user pseudonymised, internal IP masked, attacker IP and correlation ID kept',
+  r['outcome'] == 'redacted' and '[user A]' in r['sent'] and '10.20.4.17' not in r['sent'] and '203.0.113.45' in r['sent'] and '6c1f0b9e' in r['sent'])
+r = ev('sec', SEC['Defender alert with a key'])
+t('storage key and subscription ID removed from the alert', 'AccountKey' not in r['sent'] and '3f2a9c1e' not in r['sent'] and set(r['removed']) == {'secret or key', 'subscription or tenant ID'})
+r = ev('sec', SEC['Contain it automatically'])
+t('containment of a Global Administrator: held for an analyst and two-person approval', r['outcome'] == 'held' and {'sec_contain', 'sec_privileged'} <= {f['rule'] for f in r['fired']})
+t('planted instructions in a log are flagged', any(f['rule'] == 'sec_injection' for f in ev('sec', SEC['Poisoned log entry'])['fired']))
+t('break-glass account cannot be disabled on AI advice', ev('sec', SEC['Break-glass sign-in'])['outcome'] == 'blocked')
+t('live incident to a public AI: blocked', any(f['rule'] == 'sec_incident' for f in ev('sec', SEC['Live incident'], 'public')['fired']))
+r = RP.redact('a@x.example then b@x.example then A@x.example', ['user name'])[0]
+t('the same user always gets the same pseudonym', r == '[user A] then [user B] then [user A]')
+t('security pack names its own services', any('Security Copilot' in p['name'] for p in [x for x in cl.get('/admin/api/rule-packs').json()['packs'] if x['id'] == 'sec'][0]['providers']))

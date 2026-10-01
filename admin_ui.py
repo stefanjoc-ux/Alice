@@ -1001,9 +1001,10 @@ if(PAGE==='rule-packs'){
  const st={P:null,pack:(()=>{try{return localStorage.getItem('alice-rp-pack')||'care'}catch{return 'care'}})(),res:null,ran:false};
  const KIND={enforced:'Enforced in code',gate:'Human sign-off',guidance:'Guidance to the AI'};
  const BLOCKISH=['block','escalate','review'];
- async function load(){st.P=await api('/admin/api/rule-packs');$('rp-provider').replaceChildren(...st.P.providers.map(p=>{const o=el('option',p.name);o.value=p.id;return o}));render()}
+ async function load(){st.P=await api('/admin/api/rule-packs');render()}
+ function providers(P){const sel=$('rp-provider'),cur=sel.value||'tenant';sel.replaceChildren(...P.providers.map(p=>{const o=el('option',p.name);o.value=p.id;return o}));sel.value=cur}
  const pack=()=>st.P.packs.find(p=>p.id===st.pack)||st.P.packs[0];
- function render(){const P=pack(),on=st.P.state[P.id];
+ function render(){const P=pack(),on=st.P.state[P.id];providers(P);
   $('rp-packs').replaceChildren(...st.P.packs.map(p=>{const b=el('button',p.name,'chip'+(p.id===P.id?' on':''));b.type='button';b.setAttribute('role','tab');b.setAttribute('aria-selected',p.id===P.id);
    b.onclick=()=>{st.pack=p.id;st.res=null;st.ran=false;$('rp-text').value='';try{localStorage.setItem('alice-rp-pack',p.id)}catch{};render()};return b}));
   const n=P.rules.filter(r=>on[r.id]).length,enf=P.rules.filter(r=>on[r.id]&&r.kind!=='guidance').length;
@@ -1032,7 +1033,7 @@ if(PAGE==='rule-packs'){
   const b=el('div','','rp-body');const acts=R.fired.filter(f=>!['guide','log'].includes(f.action));
   if(acts.length){b.append(el('h4','What the safeguards did'));const u=el('ul','');for(const f of acts){const li=el('li','');li.append(el('strong',f.name+': '),document.createTextNode(f.message));u.append(li)}b.append(u)}
   if(R.sent!==null&&R.sent!==undefined){b.append(el('h4','What the AI receives ('+R.provider+')'));const pre=el('pre','','rp-sent');
-   for(const part of R.sent.split(/(\[[^\]]+ removed\])/)){if(!part)continue;pre.append(/^\[[^\]]+ removed\]$/.test(part)?el('mark',part):document.createTextNode(part))}b.append(pre)}
+   for(const part of R.sent.split(/(\[[^\]]+ removed\]|\[user [A-Z]\])/)){if(!part)continue;pre.append(/^\[([^\]]+ removed|user [A-Z])\]$/.test(part)?el('mark',part):document.createTextNode(part))}b.append(pre)}
   if(R.instructions.length){b.append(el('h4','Instructions added for the AI'));const u=el('ul','');R.instructions.forEach(i=>u.append(el('li',i)));b.append(u)}
   const offs=R.off.filter(f=>!['log'].includes(f.action));if(offs.length){b.append(el('h4','Switched off, so not applied'));const u=el('ul','','rp-off');offs.forEach(f=>{const li=el('li','');li.append(el('strong',f.name+': '),document.createTextNode(f.message));u.append(li)});b.append(u)}
   b.append(el('p','Recorded in the audit trail.','muted small'));w.append(b);out.append(w)}
