@@ -9,9 +9,8 @@ PAGES = {
  'overview': ('Overview','A summary of your knowledge, memories and saved conversations.'),
  'knowledge': ('Knowledge','Files, notes and meeting extracts. Tag them like memories; security labels decide which models may read each item.'),
  'memories': ('Memories','Review proposed records and browse approved knowledge.'),
- 'clients': ('Clients','Who material belongs to. In a chat tagged with a client, other clients\' memories and files are kept out.'),
  'agents': ('Agents','Everything that acts on Alice without you typing it: Temple\'s automations and connected apps. What each does, what it touched, what it cost, and its limits. Pause or stop any of them here.'),
- 'organisations': ('Organisations','How each organisation lives and breathes: short approved facts with a pointer to the source. Clients are included automatically; detail stays in the source system.'),
+ 'organisations': ('Organisations','Clients and other organisations: short approved facts with a pointer to the source, opportunities, and for clients the names Alice recognises and the memories and files tagged to them. Detail stays in the source system.'),
  'archive': ('Archived chats','Inactive Alice chats (30 days) and conversations saved from Claude apps. Ask Temple to review any of them for memories and knowledge.'),
  'rule-packs': ('Rule packs','Ready-made safeguards for teams adopting AI. Switch each one on or off, test a message against the pack (a sandbox: no AI is called), and apply a pack to Alice\'s live rules when you want it enforced.'),
  'rules': ('Rules','Rule sets in precedence order. Enforced rules are checked in code; guidance rules are instructions to the model.'),
@@ -80,7 +79,7 @@ SECTIONS = {
   <div class="o-research-new"><h3>Research it online</h3><p class="muted small">Type a name, a website, or both. Temple searches the public web and proposes facts for each section, every one citing the page it came from. Nothing is approved until you approve it.</p>
   <div class="k-meta-row"><label>Name<input id="o-r-name" maxlength="60" placeholder="e.g. Perth and Kinross Council"></label><label>Website<input id="o-r-web" maxlength="300" placeholder="e.g. https://www.pkc.gov.uk"></label></div>
   <button id="o-r-go" type="button">Research online</button> <span id="o-r-status" class="muted small" role="status"></span></div>
-  <details><summary>Or add it without research</summary><div class="k-meta-row"><label>Name<input id="o-new-name" maxlength="60"></label><label>Type<select id="o-new-kind"></select></label><label>Description<input id="o-new-desc" maxlength="500"></label></div><button id="o-new-save" type="button">Add organisation</button></details></section>
+  <details><summary>Or add it without research</summary><div class="k-meta-row"><label>Name<input id="o-new-name" maxlength="60"></label><label>Type<select id="o-new-kind"></select></label><label>Description<input id="o-new-desc" maxlength="500"></label></div><label class="r-check"><input id="o-new-client" type="checkbox"> Client (keep its material apart from other clients)</label><button id="o-new-save" type="button">Add organisation</button></details></section>
  <section id="o-empty" class="o-empty"><h2>Organisations</h2><p class="muted">Summaries, not documents: each fact is a sentence or two with its source and a review-by date. Facts you add are approved; facts from models wait for your approval. Organisational information and roles only, not people.</p><p class="muted">Choose an organisation on the left, or add one.</p></section>
  <div id="o-detail" hidden>
   <section class="o-head"><div class="o-head-top"><div><h2 id="o-title"></h2><div id="o-meta" class="o-meta"></div></div>
@@ -89,11 +88,15 @@ SECTIONS = {
   <details class="o-sec" data-sec="details"><summary><span>Details</span><span id="o-sum-details" class="o-sum"></span></summary><div class="o-sec-body">
    <div class="k-meta-row"><label>Type<select id="o-kind"></select></label><label>Account manager<input id="o-mgr" list="o-mgr-list" maxlength="80" placeholder="e.g. Morven Hay"><datalist id="o-mgr-list"></datalist></label></div>
    <div class="k-meta-row"><label>Description<input id="o-desc" maxlength="500"></label><label>Website<input id="o-web" maxlength="300" placeholder="https://"></label></div>
+   <label class="r-check"><input id="o-client" type="checkbox"> Client: keep its memories, files and chats apart from other clients'</label>
+   <div id="o-aliases-wrap" class="k-meta-row"><label>Other names Alice should recognise (comma separated)<input id="o-aliases" maxlength="400" placeholder="e.g. SBC, Scottish Borders"></label></div>
+   <p id="o-client-help" class="muted small">Alice spots a client in chats and files by its name and its other names, so use names of the organisation, not of people.</p>
    <p class="muted small">The account manager is for your own tracking: it is never sent to a model. It is typed here for now and can be looked up from Entra ID once Alice runs in Azure.</p>
    <button id="o-save" type="button" class="secondary">Save details</button></div></details>
   <details class="o-sec" data-sec="facts" open><summary><span>Profile facts</span><span id="o-sum-facts" class="o-sum"></span></summary><div class="o-sec-body"><div id="o-status" class="mem-tabs"></div><div id="o-facts"></div></div></details>
   <details class="o-sec" data-sec="opps"><summary><span>Opportunities</span><span id="o-sum-opps" class="o-sum"></span></summary><div class="o-sec-body">
    <div class="arc-actions"><label class="small">Scan for opportunities <select id="o-opp-freq"><option value="weekly">weekly</option><option value="fortnightly">fortnightly</option><option value="monthly">monthly</option><option value="off">off</option></select></label></div><div id="o-opp-mini"></div></div></details>
+  <details class="o-sec" data-sec="tagged" id="o-tagged-sec"><summary><span>Tagged material</span><span id="o-sum-tagged" class="o-sum"></span></summary><div class="o-sec-body"><p id="o-tagged-text" class="small"></p><button id="o-tagged-show" type="button" class="secondary">Show and change tags</button></div></details>
   <details class="o-sec" data-sec="research"><summary><span>Research history</span><span id="o-sum-research" class="o-sum"></span></summary><div class="o-sec-body"><div id="o-research-box"></div></div></details>
   <details class="o-sec" data-sec="add"><summary><span>Add a fact</span></summary><div class="o-sec-body">
    <div class="k-meta-row"><label>Section<select id="f-section"></select></label><label>Security label<select id="f-label"></select></label></div><p id="f-hint" class="muted small"></p>
@@ -104,6 +107,13 @@ SECTIONS = {
  </div>
  <details class="o-sec o-erase" data-sec="erase"><summary><span>Remove facts from a source</span><span class="o-sum">Erasure requests and withdrawn sources</span></summary><div class="o-sec-body"><p class="muted small">Across all organisations: retires every approved fact and rejects every proposal whose source matches. History is kept as retired.</p>
  <div class="k-meta-row"><label>Source system<input id="r-system" maxlength="80"></label><label>Source reference (optional)<input id="r-ref" maxlength="500"></label><label>Reason<input id="r-reason" maxlength="500" placeholder="e.g. erasure request"></label></div><div class="arc-actions"><button id="r-check" type="button" class="secondary">Check what matches</button><button id="r-go" type="button" class="secondary">Remove</button><span id="r-result" class="small" role="status"></span></div></div></details>
+<details id="o-tagging" class="o-sec o-erase" data-sec="tagging"><summary><span>Tag memories and files</span><span id="c-summary" class="o-sum"></span></summary><div class="o-sec-body">
+<p class="muted small">Untagged material is <strong>General</strong> and visible in every chat. Tag a chat with a client (in the chat header) and uploads and memories from it inherit that client automatically. Separation settings (strict mode, external apps) are under <a href="/admin/rules">Rules → Client separation</a>.</p>
+<div class="arc-actions"><button id="c-run" type="button">Tag untagged with Temple</button></div><p class="muted small">Names and aliases are matched first at no cost; Temple reads the rest. Confident matches (75%+) are applied using the same Auto-assign / Suggest mode as categories; Temple never overrides your choice.</p><p id="c-run-result" class="small" role="status"></p>
+<div class="t-tabs"><button id="c-tab-memory" type="button" class="chip on">Memories</button><button id="c-tab-file" type="button" class="chip">Files</button></div>
+<div class="mem-tools"><input id="c-query" type="search" maxlength="200" placeholder="Search" aria-label="Search items"></div><div id="c-filters" class="mem-cats"></div>
+<div id="c-bulk" class="mem-bulk" hidden><strong id="c-selected"></strong><button id="c-accept" type="button" class="secondary">Accept suggestions</button><span class="bulk-cat"><select id="c-bulk-client" aria-label="Client for selected"></select><button id="c-set" type="button" class="secondary">Set client</button></span><button id="c-clear" type="button" class="secondary">Clear</button></div>
+<div class="table-wrap"><table id="c-table" class="mem-table"></table></div><p id="c-count" class="muted small"></p><button id="c-more" type="button" class="secondary" hidden>Load more</button></div></details>
 </div></div>''',
 'knowledge': r'''<section><div class="mem-head"><h2>Knowledge library</h2><span id="k-summary" class="muted small"></span></div>
 <div class="arc-actions"><button id="k-new-note" type="button">New note</button><button id="k-new-meeting" type="button" class="secondary">Add meeting extract</button><button id="k-categorise" type="button" class="secondary">Categorise with Temple</button><button id="k-find-replaced" type="button" class="secondary">Find replaced items</button><span id="k-cat-result" class="small" role="status"></span></div>
@@ -129,14 +139,6 @@ SECTIONS = {
 <div class="table-wrap"><table id="mem-table" class="mem-table"></table></div>
 <p id="mem-count" class="muted small"></p><button id="mem-more" type="button" class="secondary" hidden>Load more</button>
 <details><summary>Propose a memory manually</summary><form id="proposal"><label>Title<input id="title" type="text" maxlength="200" required></label><label>Content<textarea id="content" maxlength="8000" rows="4" required></textarea></label><label>Source description<textarea id="source" maxlength="2000" rows="2" placeholder="User statement, or filename and page/row" required></textarea></label><label>Category <select id="proposal-category"></select></label><button>Submit for review</button></form></details></section>''' ,
-'clients': r'''<section><div class="mem-head"><h2>Clients</h2><span id="c-summary" class="muted small"></span></div>
-<p class="muted small">Untagged material is <strong>General</strong> and visible everywhere. Tag a chat with a client (in the chat header) and uploads and memories from it inherit that client automatically. Separation settings (strict mode, Claude Desktop) are under <a href="/admin/rules">Rules → Client separation</a>.</p>
-<div id="c-rows"></div><form id="c-form" class="cat-form"><input id="c-name" maxlength="60" placeholder="Client name, e.g. Fife Council" aria-label="Client name" required><input id="c-aliases" maxlength="400" placeholder="Aliases, comma separated: Fife, FC" aria-label="Aliases"><button>Add client</button></form></section>
-<section><div class="mem-head"><h2>Tagging</h2><button id="c-run" type="button">Tag untagged with Temple</button></div><p class="muted small">Names and aliases are matched first at no cost; Temple reads the rest. Confident matches (75%+) are applied using the same Auto-assign / Suggest mode as categories; Temple never overrides your choice.</p><p id="c-run-result" class="small" role="status"></p>
-<div class="t-tabs"><button id="c-tab-memory" type="button" class="chip on">Memories</button><button id="c-tab-file" type="button" class="chip">Files</button></div>
-<div class="mem-tools"><input id="c-query" type="search" maxlength="200" placeholder="Search" aria-label="Search items"></div><div id="c-filters" class="mem-cats"></div>
-<div id="c-bulk" class="mem-bulk" hidden><strong id="c-selected"></strong><button id="c-accept" type="button" class="secondary">Accept suggestions</button><span class="bulk-cat"><select id="c-bulk-client" aria-label="Client for selected"></select><button id="c-set" type="button" class="secondary">Set client</button></span><button id="c-clear" type="button" class="secondary">Clear</button></div>
-<div class="table-wrap"><table id="c-table" class="mem-table"></table></div><p id="c-count" class="muted small"></p><button id="c-more" type="button" class="secondary" hidden>Load more</button></section>''' ,
 'archive': r'''<section><div class="mem-head"><h2>Import from Claude</h2><span class="muted small">Verbatim copies of your Claude conversations</span></div>
 <p class="muted small">In Claude: Settings → Privacy → Export data. You'll get an email with a zip, or for larger accounts a small manifest file. Choose the manifest and Alice downloads every batch (each link works once; copies are kept in data\\imports) and imports them. You can also select zips directly; several import one after another. Running it again later only adds new conversations and updates ones that have grown. Conversations containing credentials or protective markings are skipped and listed, never stored.</p>
 <div class="arc-actions"><input id="imp-file" type="file" accept=".zip,.json" multiple hidden><label class="r-param">Only conversations updated since (optional)<input id="imp-since" type="date"></label><button id="imp-go" type="button">Choose export files and import…</button></div><div id="imp-progress" class="imp-progress" hidden><div class="imp-bar"><span id="imp-fill"></span></div><div id="imp-label" class="small" aria-live="polite"></div></div><div id="imp-result" class="small" role="status"></div></section>
@@ -300,6 +302,7 @@ nav{display:flex;gap:20px;flex-wrap:wrap}.sidebar nav{display:contents}
 .o-fsec>summary{cursor:pointer;font-weight:700;margin:10px 0 4px;font-size:14.5px}.o-fsec>summary .o-sum{margin-left:8px}
 .o-demo-bar{background:#fdf3e1;border:1px solid #e2bf85;color:#6b4406;border-radius:10px;padding:9px 14px;margin-bottom:12px;font-size:14px}
 .o-mini{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--line);font-size:14px}
+#o-tagging[hidden],#o-tagged-sec[hidden],#o-aliases-wrap[hidden]{display:none}
 /* Opportunity tracker: slides out from the right */
 .opp-tab{position:fixed;right:0;top:132px;z-index:30;writing-mode:vertical-rl;transform:rotate(180deg);background:var(--teal)!important;color:#fff!important;border:none!important;border-radius:0 10px 10px 0!important;padding:14px 9px!important;font-weight:700;letter-spacing:.04em;box-shadow:-2px 2px 10px #0002}
 .opp-tab .badge-count{position:absolute;top:auto;bottom:-9px;right:auto;left:50%;margin-left:-11px;writing-mode:horizontal-tb;transform:rotate(180deg);min-width:22px;text-align:center}
@@ -623,41 +626,6 @@ if(PAGE==='actions'){
 }
 """
 SCRIPT += r"""
-if(PAGE==='clients'){
- const st={type:'memory',client:'__general__',query:'',offset:0,rows:[],picked:new Set()};let names=[],timer=null;
- const BY={human:'Set by you',chat:'Inherited from its chat',alias:'Name match',temple:'Set by Temple'};
- function fill(sel,value){sel.replaceChildren();const g=document.createElement('option');g.value='';g.textContent='General (no client)';sel.append(g);for(const n of names){const o=document.createElement('option');o.value=o.textContent=n;sel.append(o)}sel.value=names.includes(value)?value:''}
- function chip(text,active,onclick,cls=''){const b=el('button',text,'chip'+(active?' on':'')+(cls?' '+cls:''));b.type='button';b.onclick=onclick;return b}
- async function loadClients(){const d=await api('/admin/api/clients');names=d.clients.map(c=>c.name);
-  $('c-summary').textContent=d.clients.length+' clients · separation '+(d.settings.enabled?(d.settings.strict?'on, strict':'on'):'off')+' · Claude Desktop sees '+(d.settings.external==='general'?'General only':'all material');
-  const rows=$('c-rows');rows.replaceChildren();if(!d.clients.length)rows.append(el('p','No clients yet. Add the organisations you work for, with the names people use for them.','muted small'));
-  for(const c of d.clients){const row=el('div','','cat-row');const v=el('div','','cat-view');v.append(el('span',c.name,'tag k-knowledge'),el('span',c.aliases.length?'Also: '+c.aliases.join(', '):'No aliases','muted small cat-desc'),el('span',[[c.memories,'memory','memories'],[c.files,'file','files'],[c.chats,'chat','chats']].map(([n,a,b])=>n+' '+(n===1?a:b)).join(' · '),'small cat-count'));
-   const ed=el('button','Edit');ed.type='button';ed.className='secondary';const del=el('button','Delete');del.type='button';del.className='secondary';v.append(ed,del);row.append(v);
-   ed.onclick=()=>{const f=el('div','','cat-edit-form');const n=document.createElement('input');n.value=c.name;n.maxLength=60;n.setAttribute('aria-label','Client name');const a=document.createElement('input');a.value=c.aliases.join(', ');a.placeholder='Aliases, comma separated';a.setAttribute('aria-label','Aliases');const sv=el('button','Save');sv.type='button';sv.onclick=()=>run(async()=>{await api('/admin/api/clients/'+encodeURIComponent(c.name),'PUT',{name:n.value,aliases:a.value.split(',')});$('notice').textContent='Client saved.';await loadClients();await load()});const cn=el('button','Cancel');cn.type='button';cn.className='secondary';cn.onclick=()=>run(loadClients);f.append(n,a,sv,cn);row.replaceChildren(f)};
-   del.onclick=()=>run(async()=>{if(!confirm('Delete '+c.name+'? Its '+(c.memories+c.files)+' tagged items and '+c.chats+' chats become General (visible everywhere).'))return;const r=await api('/admin/api/clients/'+encodeURIComponent(c.name),'DELETE');$('notice').textContent=r.deleted+' deleted; '+r.items+' items and '+r.chats+' chats are now General.';await loadClients();await load()});rows.append(row)}
-  fill($('c-bulk-client'),$('c-bulk-client').value);return d}
- function render(){const t=$('c-table');t.replaceChildren();const h=document.createElement('thead'),hr=document.createElement('tr');const all=document.createElement('input');all.type='checkbox';all.setAttribute('aria-label','Select all shown');all.checked=st.rows.length>0&&st.rows.every(r=>st.picked.has(r.id));all.onchange=()=>{for(const r of st.rows)all.checked?st.picked.add(r.id):st.picked.delete(r.id);render()};const th0=document.createElement('th');th0.append(all);hr.append(th0);for(const x of [st.type==='memory'?'Memory':'File','Client','Change']){const th=el('th',x);th.scope='col';hr.append(th)}h.append(hr);t.append(h);
-  const b=document.createElement('tbody');if(!st.rows.length){const tr=document.createElement('tr'),td=el('td','Nothing here.','muted');td.colSpan=4;tr.append(td);b.append(tr)}
-  for(const r of st.rows){const tr=document.createElement('tr');tr.className='mem-row';const c0=document.createElement('td');const cb=document.createElement('input');cb.type='checkbox';cb.checked=st.picked.has(r.id);cb.setAttribute('aria-label','Select '+r.title);cb.onchange=()=>{cb.checked?st.picked.add(r.id):st.picked.delete(r.id);bulk()};c0.append(cb);
-   const c1=document.createElement('td');c1.append(el('strong',r.title),el('div',(r.preview||'').replace(/\s+/g,' ').slice(0,150),'mem-preview'));
-   const c2=document.createElement('td');if(r.client){c2.append(el('span',r.client,'tag k-knowledge'),el('div',(BY[r.assigned_by]||r.assigned_by)+(r.confidence!=null&&r.assigned_by==='temple'?' · '+Math.round(r.confidence*100)+'%':''),'muted small'))}else c2.append(el('span','General','muted'));
-   if(r.suggestion){const sg=el('div','','suggest');sg.append(el('span','Suggested: '+r.suggestion+(r.confidence!=null?' · '+Math.round(r.confidence*100)+'%':''),'small'));if(r.suggestion_reason)sg.title=r.suggestion_reason;for(const [lab,action] of [['✓','accept'],['✕','dismiss']]){const bt=el('button',lab,'mini');bt.type='button';bt.setAttribute('aria-label',(action==='accept'?'Accept ':'Dismiss ')+r.suggestion+' for '+r.title);bt.onclick=()=>run(async()=>{await api('/admin/api/clients/suggestions','POST',{items:[{type:st.type,id:r.id}],action});await loadClients();await load()});sg.append(bt)}c2.append(sg)}
-   const c3=document.createElement('td');const sel=document.createElement('select');fill(sel,r.client);sel.setAttribute('aria-label','Client for '+r.title);sel.onchange=()=>run(async()=>{await api('/admin/api/clients/tag','POST',{type:st.type,ids:[r.id],client:sel.value});$('notice').textContent=r.title+' → '+(sel.value||'General')+'.';await loadClients();await load()});c3.append(sel);
-   tr.append(c0,c1,c2,c3);b.append(tr)}t.append(b);bulk()}
- function bulk(){$('c-bulk').hidden=!st.picked.size;$('c-selected').textContent=st.picked.size+' selected';$('c-accept').hidden=!st.rows.some(r=>st.picked.has(r.id)&&r.suggestion)}
- async function load(more=false){const d=await api('/admin/api/clients/items?type='+st.type+'&client='+encodeURIComponent(st.client)+'&query='+encodeURIComponent(st.query)+'&offset='+(more?st.offset:0));st.rows=more?st.rows.concat(d.items):d.items;st.offset=d.next_offset;
-  const f=[chip('General · untagged ('+(d.counts.__general__||0)+')',st.client==='__general__',()=>{st.client='__general__';run(()=>load())})];if(d.counts.__suggested__)f.push(chip('✦ Temple suggestions ('+d.counts.__suggested__+')',st.client==='__suggested__',()=>{st.client='__suggested__';run(()=>load())},'attention'));
-  for(const n of names)f.push(chip(n+' ('+(d.counts[n]||0)+')',st.client===n,()=>{st.client=n;run(()=>load())}));f.push(chip('Everything',st.client==='',()=>{st.client='';run(()=>load())}));$('c-filters').replaceChildren(...f);
-  render();$('c-count').textContent='Showing '+st.rows.length+' of '+d.total;$('c-more').hidden=st.offset===null}
- for(const t of ['memory','file'])$('c-tab-'+t).onclick=()=>{st.type=t;st.picked.clear();for(const x of ['memory','file'])$('c-tab-'+x).classList.toggle('on',x===t);run(()=>load())};
- $('c-query').oninput=()=>{clearTimeout(timer);timer=setTimeout(()=>{st.query=$('c-query').value.trim();run(()=>load())},300)};
- $('c-more').onclick=()=>run(()=>load(true));$('c-clear').onclick=()=>{st.picked.clear();render()};
- $('c-set').onclick=()=>run(async()=>{const r=await api('/admin/api/clients/tag','POST',{type:st.type,ids:[...st.picked],client:$('c-bulk-client').value});$('notice').textContent=r.updated+' set to '+(r.client||'General')+'.';st.picked.clear();await loadClients();await load()});
- $('c-accept').onclick=()=>run(async()=>{const r=await api('/admin/api/clients/suggestions','POST',{items:[...st.picked].map(id=>({type:st.type,id})),action:'accept'});$('notice').textContent=r.done+' suggestions accepted.';st.picked.clear();await loadClients();await load()});
- $('c-form').onsubmit=e=>{e.preventDefault();run(async()=>{const r=await api('/admin/api/clients','POST',{name:$('c-name').value,aliases:$('c-aliases').value.split(',')});e.target.reset();$('notice').textContent='Added '+r.name+'. Run Temple tagging to tag existing material.';await loadClients();await load()})};
- $('c-run').onclick=()=>run(async()=>{const b=$('c-run');b.disabled=true;$('c-run-result').textContent='Matching names, then asking Temple about the rest…';try{const r=await api('/admin/api/clients/temple-run','POST',{});$('c-run-result').textContent=r.status==='no_clients'?'Add a client first.':r.status==='busy'?'Tagging is already running.':(r.status==='paused'?r.message+' ':'')+'Checked '+r.checked+': '+r.applied+' tagged ('+r.by_alias+' by name match), '+r.suggested+' suggested; the rest stay General.';await loadClients();await load()}catch(e){$('c-run-result').textContent=e.message}finally{b.disabled=false}});
- run(async()=>{await loadClients();await load()});
-}
 """
 SCRIPT += r"""
 if(PAGE==='archive'){
@@ -900,7 +868,7 @@ if(PAGE==='organisations'){
   b.append(sub);b.onclick=()=>{st.org=o.name;st.status='approved';history.replaceState(null,'','?org='+encodeURIComponent(o.name));run(load)};return b}
  function renderList(){renderFilters();const rows=st.L.organisations.filter(matches);const box=$('o-list');box.replaceChildren();
   $('o-summary').textContent=(rows.length===st.L.organisations.length?'':rows.length+' of ')+st.L.organisations.length+(st.L.organisations.length===1?' organisation':' organisations');
-  if(!st.L.organisations.length){box.append(el('p','No organisations yet. Use + Add, or add clients on the Clients page.','muted small'));return}
+  if(!st.L.organisations.length){box.append(el('p','No organisations yet. Use + Add.','muted small'));return}
   if(!rows.length){box.append(el('p','Nothing matches.','muted small'));return}
   const groups={};for(const o of rows)(groups[o.kind]=groups[o.kind]||[]).push(o);
   for(const k of [...st.L.kinds,...Object.keys(groups).filter(x=>!st.L.kinds.includes(x))]){const g=groups[k];if(!g)continue;
@@ -910,6 +878,34 @@ if(PAGE==='organisations'){
  $('o-search').oninput=()=>{st.q=$('o-search').value.trim().toLowerCase();renderList()};
  $('o-f-kind').onchange=()=>{st.kind=$('o-f-kind').value;renderList()};$('o-f-mgr').onchange=()=>{st.mgr=$('o-f-mgr').value;renderList()};
  document.querySelectorAll('.o-sec[data-sec]').forEach(d=>{const k=d.dataset.sec;if(k in st.secs)d.open=st.secs[k];d.addEventListener('toggle',()=>{st.secs[k]=d.open;store('alice-org-secs',st.secs)})});
+ function initTagging(){
+ const st={type:'memory',client:'__general__',query:'',offset:0,rows:[],picked:new Set()};let names=[],timer=null;
+ const BY={human:'Set by you',chat:'Inherited from its chat',alias:'Name match',temple:'Set by Temple'};
+ function fill(sel,value){sel.replaceChildren();const g=document.createElement('option');g.value='';g.textContent='General (no client)';sel.append(g);for(const n of names){const o=document.createElement('option');o.value=o.textContent=n;sel.append(o)}sel.value=names.includes(value)?value:''}
+ function chip(text,active,onclick,cls=''){const b=el('button',text,'chip'+(active?' on':'')+(cls?' '+cls:''));b.type='button';b.onclick=onclick;return b}
+ async function loadClients(){const d=await api('/admin/api/clients');names=d.clients.map(c=>c.name);
+  $('c-summary').textContent=d.clients.length+(d.clients.length===1?' client':' clients')+' · separation '+(d.settings.enabled?(d.settings.strict?'on, strict':'on'):'off')+' · external apps see '+(d.settings.external==='general'?'General only':'all material')+(d.untagged.memory+d.untagged.file?' · '+(d.untagged.memory+d.untagged.file)+' untagged':'')+((d.suggested.memory+d.suggested.file)?' · '+(d.suggested.memory+d.suggested.file)+' suggestions':'');
+  fill($('c-bulk-client'),$('c-bulk-client').value);return d}
+ function render(){const t=$('c-table');t.replaceChildren();const h=document.createElement('thead'),hr=document.createElement('tr');const all=document.createElement('input');all.type='checkbox';all.setAttribute('aria-label','Select all shown');all.checked=st.rows.length>0&&st.rows.every(r=>st.picked.has(r.id));all.onchange=()=>{for(const r of st.rows)all.checked?st.picked.add(r.id):st.picked.delete(r.id);render()};const th0=document.createElement('th');th0.append(all);hr.append(th0);for(const x of [st.type==='memory'?'Memory':'File','Client','Change']){const th=el('th',x);th.scope='col';hr.append(th)}h.append(hr);t.append(h);
+  const b=document.createElement('tbody');if(!st.rows.length){const tr=document.createElement('tr'),td=el('td','Nothing here.','muted');td.colSpan=4;tr.append(td);b.append(tr)}
+  for(const r of st.rows){const tr=document.createElement('tr');tr.className='mem-row';const c0=document.createElement('td');const cb=document.createElement('input');cb.type='checkbox';cb.checked=st.picked.has(r.id);cb.setAttribute('aria-label','Select '+r.title);cb.onchange=()=>{cb.checked?st.picked.add(r.id):st.picked.delete(r.id);bulk()};c0.append(cb);
+   const c1=document.createElement('td');c1.append(el('strong',r.title),el('div',(r.preview||'').replace(/\s+/g,' ').slice(0,150),'mem-preview'));
+   const c2=document.createElement('td');if(r.client){c2.append(el('span',r.client,'tag k-knowledge'),el('div',(BY[r.assigned_by]||r.assigned_by)+(r.confidence!=null&&r.assigned_by==='temple'?' · '+Math.round(r.confidence*100)+'%':''),'muted small'))}else c2.append(el('span','General','muted'));
+   if(r.suggestion){const sg=el('div','','suggest');sg.append(el('span','Suggested: '+r.suggestion+(r.confidence!=null?' · '+Math.round(r.confidence*100)+'%':''),'small'));if(r.suggestion_reason)sg.title=r.suggestion_reason;for(const [lab,action] of [['✓','accept'],['✕','dismiss']]){const bt=el('button',lab,'mini');bt.type='button';bt.setAttribute('aria-label',(action==='accept'?'Accept ':'Dismiss ')+r.suggestion+' for '+r.title);bt.onclick=()=>run(async()=>{await api('/admin/api/clients/suggestions','POST',{items:[{type:st.type,id:r.id}],action});await loadClients();await load()});sg.append(bt)}c2.append(sg)}
+   const c3=document.createElement('td');const sel=document.createElement('select');fill(sel,r.client);sel.setAttribute('aria-label','Client for '+r.title);sel.onchange=()=>run(async()=>{await api('/admin/api/clients/tag','POST',{type:st.type,ids:[r.id],client:sel.value});$('notice').textContent=r.title+' → '+(sel.value||'General')+'.';await loadClients();await load()});c3.append(sel);
+   tr.append(c0,c1,c2,c3);b.append(tr)}t.append(b);bulk()}
+ function bulk(){$('c-bulk').hidden=!st.picked.size;$('c-selected').textContent=st.picked.size+' selected';$('c-accept').hidden=!st.rows.some(r=>st.picked.has(r.id)&&r.suggestion)}
+ async function load(more=false){const d=await api('/admin/api/clients/items?type='+st.type+'&client='+encodeURIComponent(st.client)+'&query='+encodeURIComponent(st.query)+'&offset='+(more?st.offset:0));st.rows=more?st.rows.concat(d.items):d.items;st.offset=d.next_offset;
+  const f=[chip('General · untagged ('+(d.counts.__general__||0)+')',st.client==='__general__',()=>{st.client='__general__';run(()=>load())})];if(d.counts.__suggested__)f.push(chip('✦ Temple suggestions ('+d.counts.__suggested__+')',st.client==='__suggested__',()=>{st.client='__suggested__';run(()=>load())},'attention'));
+  for(const n of names)f.push(chip(n+' ('+(d.counts[n]||0)+')',st.client===n,()=>{st.client=n;run(()=>load())}));f.push(chip('Everything',st.client==='',()=>{st.client='';run(()=>load())}));$('c-filters').replaceChildren(...f);
+  render();$('c-count').textContent='Showing '+st.rows.length+' of '+d.total;$('c-more').hidden=st.offset===null}
+ for(const t of ['memory','file'])$('c-tab-'+t).onclick=()=>{st.type=t;st.picked.clear();for(const x of ['memory','file'])$('c-tab-'+x).classList.toggle('on',x===t);run(()=>load())};
+ $('c-query').oninput=()=>{clearTimeout(timer);timer=setTimeout(()=>{st.query=$('c-query').value.trim();run(()=>load())},300)};
+ $('c-more').onclick=()=>run(()=>load(true));$('c-clear').onclick=()=>{st.picked.clear();render()};
+ $('c-set').onclick=()=>run(async()=>{const r=await api('/admin/api/clients/tag','POST',{type:st.type,ids:[...st.picked],client:$('c-bulk-client').value});$('notice').textContent=r.updated+' set to '+(r.client||'General')+'.';st.picked.clear();await loadClients();await load()});
+ $('c-accept').onclick=()=>run(async()=>{const r=await api('/admin/api/clients/suggestions','POST',{items:[...st.picked].map(id=>({type:st.type,id})),action:'accept'});$('notice').textContent=r.done+' suggestions accepted.';st.picked.clear();await loadClients();await load()});
+ $('c-run').onclick=()=>run(async()=>{const b=$('c-run');b.disabled=true;$('c-run-result').textContent='Matching names, then asking Temple about the rest…';try{const r=await api('/admin/api/clients/temple-run','POST',{});$('c-run-result').textContent=r.status==='no_clients'?'Add a client first.':r.status==='busy'?'Tagging is already running.':(r.status==='paused'?r.message+' ':'')+'Checked '+r.checked+': '+r.applied+' tagged ('+r.by_alias+' by name match), '+r.suggested+' suggested; the rest stay General.';await loadClients();await load()}catch(e){$('c-run-result').textContent=e.message}finally{b.disabled=false}});
+ return {refresh:async()=>{await loadClients();await load()},show:async(name,type)=>{st.client=name;if(type){st.type=type;for(const x of ['memory','file'])$('c-tab-'+x).classList.toggle('on',x===type)}st.picked.clear();await loadClients();await load()}}}
  function showAdd(on){$('o-add').hidden=!on;if(on){$('o-add').scrollIntoView({block:'start',behavior:'smooth'});$('o-r-name').focus()}}
  $('o-add-toggle').onclick=()=>showAdd($('o-add').hidden);$('o-add-close').onclick=()=>showAdd(false);
  async function loadList(){const [L,O]=await Promise.all([api('/admin/api/organisations'),api('/admin/api/opportunities').catch(()=>({opportunities:[]}))]);st.L=L;st.opps=O.opportunities||[];
@@ -928,7 +924,9 @@ if(PAGE==='organisations'){
   $('o-title').textContent=o.name;const meta=$('o-meta');meta.replaceChildren();
   if(o.is_client)meta.append(el('span','Client','o-flag cl'));meta.append(el('span',o.kind));meta.append(el('span',o.account_manager?'Account manager: '+o.account_manager:'No account manager','muted'));
   if(o.website){const a=link(o.website,domain(o.website));meta.append(a)}
-  $('o-kind').value=o.kind;$('o-mgr').value=o.account_manager||'';$('o-desc').value=o.description||'';$('o-web').value=o.website||'';
+  $('o-kind').value=o.kind;$('o-mgr').value=o.account_manager||'';$('o-client').checked=o.is_client;$('o-aliases').value=(o.aliases||[]).join(', ');$('o-aliases-wrap').hidden=!o.is_client;
+  const tg=o.tagged;$('o-tagged-sec').hidden=!o.is_client||DEMO_ORG;if(tg){const parts=[[tg.memories,'memory','memories'],[tg.files,'file','files'],[tg.chats,'chat','chats']].map(([n,a,b])=>n+' '+(n===1?a:b));$('o-sum-tagged').textContent=parts.join(' · ');$('o-tagged-text').textContent=(tg.memories+tg.files+tg.chats)?'Tagged to '+o.name+': '+parts.join(', ')+'. In a chat for another client these are kept out.':'Nothing is tagged to '+o.name+' yet. Run Temple tagging, or tag a chat with this client.'}
+$('o-desc').value=o.description||'';$('o-web').value=o.website||'';
   $('o-sum-details').textContent=[o.kind,o.account_manager||'no account manager',domain(o.website)].filter(Boolean).join(' · ');miniOpps(o);
   const rs=await api('/admin/api/organisations/research?org='+encodeURIComponent(st.org)).then(x=>x.runs).catch(()=>[]);runs(rs);
   $('o-sum-research').textContent=rs.length?'last '+new Date(rs[0].created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'not researched yet';
@@ -967,8 +965,13 @@ if(PAGE==='organisations'){
  $('o-r-go').onclick=()=>{const n=$('o-r-name').value.trim(),w=$('o-r-web').value.trim();if(!n&&!w){$('o-r-status').textContent='Type a name or a website.';return}research(n,w,$('o-r-status'),$('o-r-go')).then(()=>{$('o-r-name').value=$('o-r-web').value=''})};
  $('o-research').onclick=()=>research(st.org,$('o-web').value.trim(),$('o-research-status'),$('o-research'));
  $('f-section').onchange=hint;$('f-statement').oninput=()=>{$('f-count').textContent=$('f-statement').value.length+' / 400'};
- $('o-new-save').onclick=()=>run(async()=>{const x=await api('/admin/api/organisations','POST',{name:$('o-new-name').value,kind:$('o-new-kind').value,description:$('o-new-desc').value});st.org=x.name;$('o-new-name').value=$('o-new-desc').value='';$('notice').textContent='Added '+x.name+'.';showAdd(false);await load()});
- $('o-save').onclick=()=>run(async()=>{await api('/admin/api/organisations','PUT',{name:st.org,kind:$('o-kind').value,description:$('o-desc').value,website:$('o-web').value.trim(),account_manager:$('o-mgr').value.trim()});$('notice').textContent='Saved.';await load()});
+ $('o-new-save').onclick=()=>run(async()=>{const x=await api('/admin/api/organisations','POST',{name:$('o-new-name').value,kind:$('o-new-kind').value,description:$('o-new-desc').value,client:$('o-new-client').checked});st.org=x.name;$('o-new-name').value=$('o-new-desc').value='';$('o-new-client').checked=false;if(TAG&&x.client)await TAG.refresh();$('notice').textContent='Added '+x.name+'.';showAdd(false);await load()});
+ $('o-client').onchange=()=>{$('o-aliases-wrap').hidden=!$('o-client').checked};
+ $('o-save').onclick=()=>run(async()=>{const o=st.L.organisations.find(x=>x.name===st.org);const cl=$('o-client').checked;
+  if(o&&o.is_client&&!cl){const tg=o.tagged||{memories:0,files:0,chats:0};if(!confirm('Stop treating '+o.name+' as a client? Its '+tg.memories+' memories, '+tg.files+' files and '+tg.chats+' chats become General, visible in every chat including other clients\' chats.'))return}
+  const x=await api('/admin/api/organisations','PUT',{name:st.org,kind:$('o-kind').value,description:$('o-desc').value,website:$('o-web').value.trim(),account_manager:$('o-mgr').value.trim(),client:cl,aliases:cl?$('o-aliases').value.split(','):null});
+  $('notice').textContent=x.no_longer_client?st.org+' is no longer a client; '+x.no_longer_client.items+' items and '+x.no_longer_client.chats+' chats are now General.':(o&&!o.is_client&&cl?st.org+' is now a client. Run Temple tagging below to tag existing material.':'Saved.');await load();if(TAG)await TAG.refresh()});
+ $('o-tagged-show').onclick=()=>run(async()=>{const t=$('o-tagging');t.open=true;await TAG.show(st.org);t.scrollIntoView({block:'start',behavior:'smooth'})});
  $('f-save').onclick=()=>run(async()=>{const x=await api('/admin/api/organisations/facts','POST',{org:st.org,section:$('f-section').value,statement:$('f-statement').value,source_system:$('f-system').value,source_ref:$('f-ref').value,as_of:$('f-asof').value,review_by:$('f-review').value,label:$('f-label').value});$('notice').textContent=x.duplicate?'That fact is already recorded.':'Fact added (review by '+x.review_by+').';$('f-statement').value='';$('f-count').textContent='';st.status='approved';await load()});
  $('b-show').onclick=()=>run(async()=>{const b=await api('/admin/api/organisations/brief?org='+encodeURIComponent(st.org)+'&provider='+$('b-provider').value+'&external='+$('b-external').checked);$('b-text').textContent=b.text?b.text+'\n\n('+b.facts+' facts · '+b.text.length+' characters · about '+Math.round(b.text.length/4)+' tokens)':(b.withheld||'Nothing would be sent: no approved facts this model may see.')});
  $('r-check').onclick=()=>run(async()=>{const x=await api('/admin/api/organisations/source?source_system='+encodeURIComponent($('r-system').value)+'&source_ref='+encodeURIComponent($('r-ref').value));$('r-result').textContent=x.facts.length+(x.facts.length===1?' fact matches':' facts match')+(x.facts.length?': '+x.facts.map(f=>f.org+' · '+f.statement.slice(0,60)).join(' | '):'')});
@@ -1013,7 +1016,9 @@ if(PAGE==='organisations'){
  $('o-opp-view').onclick=()=>{OT.org=st.org;OT.status='';drawer(true)};
  $('o-opp-freq').onchange=()=>run(async()=>{await api('/admin/api/opportunities/schedule','POST',{org:st.org,frequency:$('o-opp-freq').value});$('notice').textContent=st.org+': scan '+$('o-opp-freq').value+'.';await loadOpps()});
  const q=new URLSearchParams(location.search).get('org');if(q)st.org=q;
- run(async()=>{await loadOpps();await load()});
+ const qf=new URLSearchParams(location.search).get('filter');if(['all','clients','attention','opps'].includes(qf))st.filter=qf;
+ const TAG=DEMO_ORG?null:initTagging();$('o-tagging').hidden=DEMO_ORG;
+ run(async()=>{await loadOpps();await load();if(TAG)await TAG.refresh()});
  if(new URLSearchParams(location.search).get('tracker')){OT.status='suggested';drawer(true)}
 }
 """
@@ -1248,7 +1253,7 @@ if(PAGE==='rules'){
 }
 """
 
-NAV_GROUPS = [('Work', ['actions', 'temple', 'memories', 'knowledge', 'organisations', 'clients', 'archive']),
+NAV_GROUPS = [('Work', ['actions', 'temple', 'memories', 'knowledge', 'organisations', 'archive']),
               ('Records and settings', ['agents', 'rules', 'rule-packs', 'activity', 'usage', 'overview'])]
 
 

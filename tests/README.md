@@ -42,6 +42,7 @@ Run after every update, before relaunching. Exit code 0 means every check passed
 | opportunities | Opportunity scans: evidence checks, profile labels respected, contact details stripped, no duplicates, tracker statuses, schedule (due, first slot, off, paused agent), offerings, Actions |
 | org_demo | Demo data kept apart from live (organisations, facts, opportunities), research and scans refused in demo, reset, rebuild on schema change, account manager validation, page layout |
 | org_chat_tools | Chat and connector access to organisations and opportunities: filters, open/all statuses, evidence, notes only for Alice's web chat, account managers never returned, secrets and markings withheld, external and client separation |
+| org_clients | Clients merged into Organisations: Client switch, other names, tagged counts, unticking makes material General, no duplicates, demo isolation, /admin/clients redirect |
 | org_research | Web research for organisations: facts proposed not approved, invented sources and personal data dropped, unsafe URLs refused, agent runs, both providers' search results |
 | rule_packs_live | Packs applied to live rules: chat refused or identifiers removed before saving, Temple escalations, guidance, service classification, stacking, removal |
 | rule_packs | HR and council social care packs: CHI and identifier detection, outcomes per sample and service, switches, locked audit rule, sandbox |

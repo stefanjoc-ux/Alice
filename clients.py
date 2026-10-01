@@ -61,7 +61,7 @@ def canonical(name):
     if not name: return ''
     with store.db() as c:
         row = c.execute('SELECT name FROM clients WHERE name=?', (name,)).fetchone()
-    if not row: raise ValueError(f'No client called "{name}". Add it on the Clients page first.')
+    if not row: raise ValueError(f'No client called "{name}". Mark it as a client on the Organisations page first.')
     return row[0]
 
 
@@ -425,7 +425,7 @@ def schedule_tagging():
     threading.Thread(target=work, daemon=True).start()
 
 
-# ---------------- listing for the Clients page ----------------
+# ---------------- listing for client tagging (Organisations page) ----------------
 def items(item_type='memory', client='', query='', offset=0, limit=50):
     """client: '' any, '__general__' untagged, '__suggested__' Temple suggestion pending, or a client name."""
     q = (query or '').lower()

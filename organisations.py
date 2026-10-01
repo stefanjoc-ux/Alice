@@ -6,7 +6,7 @@ in the source; models get a compact brief and follow the pointer only when they 
 
 Governance is the same as memories: models propose, you approve (rules re-checked), facts carry a review-by date,
 and you retire them. Data minimisation applies: organisational information and roles, not people.
-Client organisations are the names on the Clients page; other organisations (e.g. your own businesses) are added here.
+Every organisation lives here; ticking Client makes it a client (clients.py: aliases, tagging and client separation).
 """
 import hashlib
 import re
@@ -91,18 +91,33 @@ def canonical(name):
     raise ValueError(f'No organisation called "{name}". Add it on the Organisations page (clients are included automatically).')
 
 
-def create(name, kind='other', description=''):
+def create(name, kind='other', description='', client=False, aliases=()):
+    import clients
     name, description = _clean(name, 60), _clean(description, 500)
     if not name: raise ValueError('Enter a name.')
     if kind not in KINDS: raise ValueError('Choose a type: ' + ', '.join(KINDS) + '.')
     with store.db() as c:
-        if c.execute('SELECT 1 FROM organisations WHERE name=?', (name,)).fetchone(): raise ValueError(f'"{name}" already exists.')
+        if c.execute('SELECT 1 FROM organisations WHERE name=?', (name,)).fetchone() or \
+                c.execute('SELECT 1 FROM clients WHERE name=?', (name,)).fetchone(): raise ValueError(f'"{name}" already exists.')
         c.execute('INSERT INTO organisations(name,kind,description,created_at) VALUES (?,?,?,?)', (name, kind, description, store.now()))
         store.audit(c, 'org_created', name, 'human_review', f'{kind}: {description[:200]}')
+    if client: clients.create_client(name, aliases)      # after the insert: clients opens its own write transaction
+    return {'name': name, 'client': bool(client)}
+
+
+def set_client(name, on, aliases=None):
+    """Make an organisation a client (client separation applies to it) or stop treating it as one.
+    Stopping makes its tagged memories, files and chats General (visible in every chat)."""
+    import clients
+    name = canonical(name)
+    is_client = name.lower() in client_names()
+    if on and not is_client: clients.create_client(name, aliases or [])
+    elif on and aliases is not None: clients.update_client(name, name, aliases)
+    elif not on and is_client: return clients.delete_client(name)
     return {'name': name}
 
 
-def update(name, kind=None, description=None, website=None, account_manager=None):
+def update(name, kind=None, description=None, website=None, account_manager=None, client=None, aliases=None):
     name = canonical(name)
     if account_manager is not None:
         account_manager = _clean(account_manager, 80)
@@ -121,7 +136,13 @@ def update(name, kind=None, description=None, website=None, account_manager=None
         if website is not None: c.execute('UPDATE organisations SET website=? WHERE name=?', (website, name))
         if account_manager is not None: c.execute('UPDATE organisations SET account_manager=? WHERE name=?', (account_manager, name))
         store.audit(c, 'org_updated', name, 'human_review', 'details changed')
-    return {'name': name}
+    out = {'name': name}
+    if client is not None or aliases is not None:      # outside the transaction above: clients opens its own
+        on = client if client is not None else name.lower() in client_names()
+        if on or client is False:
+            r = set_client(name, on, aliases)
+            if 'deleted' in r: out['no_longer_client'] = r
+    return out
 
 
 def listing():
@@ -137,7 +158,10 @@ def listing():
     for n in clients.names():
         orgs.setdefault(n.lower(), {'name': n, 'kind': 'other', 'description': '', 'created_at': '', 'website': '', 'account_manager': ''})
     cl = client_names()
-    out = [{**o, 'is_client': k in cl, 'facts': counts.get(k, {'approved': 0, 'proposed': 0, 'retired': 0, 'rejected': 0, 'due': 0})}
+    tagged = {r['name'].lower(): r for r in clients.list_clients()}
+    out = [{**o, 'is_client': k in cl, 'facts': counts.get(k, {'approved': 0, 'proposed': 0, 'retired': 0, 'rejected': 0, 'due': 0}),
+            'aliases': tagged[k]['aliases'] if k in tagged else [],
+            'tagged': {x: tagged[k][x] for x in ('memories', 'files', 'chats')} if k in tagged else None}
            for k, o in orgs.items()]
     managers = sorted({o.get('account_manager') or '' for o in out} - {''}, key=str.lower)
     return {'organisations': sorted(out, key=lambda o: o['name'].lower()), 'sections': [{'key': k, 'name': n, 'hint': h} for k, n, h in SECTIONS],

@@ -86,7 +86,7 @@ def summary():
                  + [{'type': 'client', 'item_type': 'file', 'id': i['id'], 'title': i['title'], 'detail': 'Client: ' + i['suggestion']} for i in cf['items']])
     out.append(_section('tags', 'Category and client suggestions', len(mem_cat) + kn['total'] + cm['total'] + cf['total'],
                         '/admin/memories', tag_items,
-                        'Knowledge suggestions are on the Knowledge page, client suggestions on Clients.' if (kn['total'] or cm['total'] or cf['total']) else ''))
+                        'Knowledge suggestions are on the Knowledge page, client suggestions under Organisations → Tag memories and files.' if (kn['total'] or cm['total'] or cf['total']) else ''))
 
     # 5. Past their review-by date (memories, decisions to revisit, knowledge)
     due_mem = store.organised_records('approved', category='__expired__', limit=TOP)

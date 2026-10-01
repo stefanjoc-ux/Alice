@@ -38,12 +38,12 @@ import uuid
 import zipfile
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 import anthropic
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Query
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from openai import AsyncOpenAI, APIError
 from fastmcp import Client
@@ -1223,6 +1223,8 @@ class OrgIn(BaseModel):
     name: str = Field(min_length=1,max_length=60)
     kind: str = Field(default='other',max_length=20)
     description: str = Field(default='',max_length=500)
+    client: bool = False
+    aliases: list[Annotated[str, Field(max_length=60)]] = Field(default_factory=list,max_length=20)
 
 class OrgChange(BaseModel):
     name: str = Field(min_length=1,max_length=60)
@@ -1230,6 +1232,8 @@ class OrgChange(BaseModel):
     description: str|None = Field(default=None,max_length=500)
     website: str|None = Field(default=None,max_length=300)
     account_manager: str|None = Field(default=None,max_length=80)
+    client: bool|None = None
+    aliases: list[Annotated[str, Field(max_length=60)]]|None = Field(default=None,max_length=20)
 
 class OrgResearch(BaseModel):
     name: str = Field(default='',max_length=60)
@@ -1266,12 +1270,12 @@ def admin_organisations(): return organisations.listing()
 
 @app.post('/admin/api/organisations')
 def admin_organisation_create(o: OrgIn):
-    try: return organisations.create(o.name,o.kind,o.description)
+    try: return organisations.create(o.name,o.kind,o.description,o.client,o.aliases)
     except ValueError as e: raise HTTPException(400,str(e)) from None
 
 @app.put('/admin/api/organisations')
 def admin_organisation_update(o: OrgChange):
-    try: return organisations.update(o.name,o.kind,o.description,o.website,o.account_manager)
+    try: return organisations.update(o.name,o.kind,o.description,o.website,o.account_manager,o.client,o.aliases)
     except ValueError as e: raise HTTPException(400,str(e)) from None
 
 @app.post('/admin/api/organisations/research')
@@ -1727,6 +1731,10 @@ def admin_actions(): return actions.summary()
 
 @app.get('/actions-count')
 def actions_count(): return {'total':actions.count()}
+
+@app.get('/admin/clients')
+def admin_clients_moved():      # clients are organisations marked Client now
+    return RedirectResponse('/admin/organisations?filter=clients',status_code=307)
 
 @app.get('/admin/{page}',response_class=HTMLResponse)
 def admin_section(page: str):
