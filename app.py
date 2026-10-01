@@ -115,7 +115,7 @@ class Message(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    provider: Literal["openai", "claude", "grok", "claude_sonnet", "claude_opus"] = "openai"
+    provider: Literal["openai", "claude", "grok", "claude_sonnet", "claude_opus", "openai_astra"] = "openai"
     cache_key: str = "substrate-chat-v1"
     messages: list[Message] = Field(min_length=1, max_length=40)
     file_ids: list[str] = Field(default_factory=list, max_length=4)
@@ -360,9 +360,13 @@ IMAGE_NOTE = "[An image was generated and shown to the user in the chat.]"
 async def chat_events(request):
     """Run bounded tool rounds; file content reaches models only through MCP."""
     selection = request.provider
-    provider = "claude" if selection in ("claude_sonnet", "claude_opus") else selection
+    provider = "claude" if selection in ("claude_sonnet", "claude_opus") else "openai" if selection == "openai_astra" else selection
     large_claude = selection in ("claude_sonnet", "claude_opus")
+    astra = selection == "openai_astra"      # GPT-6 Astra: premium OpenAI model, chosen by hand only (Auto never selects it)
     image_mode = request.images
+    if image_mode and astra:
+        yield {"type": "error", "message": "Image generation is not set up for GPT-6 Astra. Switch to GPT-6 Luna or Grok, or untick Generate images."}
+        return
     if image_mode and provider == "claude":
         yield {"type": "error", "message": "Claude models cannot generate images. Switch to GPT-6 Luna or Grok, or untick Generate images."}
         return
@@ -402,6 +406,8 @@ async def chat_events(request):
         model = "claude-sonnet-5-5"
     elif selection == "claude_opus":
         model = "claude-opus-5-5"
+    elif astra:
+        model = "gpt-6-astra"
     stage = "mcp"
     try:
         async with asyncio.timeout(240):
@@ -429,7 +435,8 @@ async def chat_events(request):
                             round_tools = active_tools + ([IMAGE_TOOL] if image_mode and round_number < 6 else [])
                             started = time.perf_counter()
                             response = await client.responses.create(model=model, instructions=instructions,
-                                input=messages, tools=round_tools, max_output_tokens=2400, prompt_cache_key=request.cache_key, reasoning={"effort":"low" if provider == "grok" else "none"}, store=False)
+                                input=messages, tools=round_tools, max_output_tokens=8000 if astra else 2400, prompt_cache_key=request.cache_key,
+                                reasoning={"effort":"medium" if astra else "low" if provider == "grok" else "none"}, store=False)
                             usage_meter.log(response,provider,model,"chat · auto" if request.routed else "chat",time.perf_counter()-started)
                             calls = [block for block in response.output if block.type == "function_call"]
                             reply = response.output_text
@@ -554,7 +561,7 @@ class SavedChatRequest(BaseModel):
     chat_id: str = Field(min_length=1,max_length=64)
     request_id: str = Field(min_length=1,max_length=64)
     text: str = Field(min_length=1,max_length=12000)
-    provider: Literal['auto','openai','claude','grok','claude_sonnet','claude_opus'] = 'auto'
+    provider: Literal['auto','openai','claude','grok','claude_sonnet','claude_opus','openai_astra'] = 'auto'
     file_ids: list[str] = Field(default_factory=list,max_length=4)
     images: bool = False
 
@@ -1834,7 +1841,7 @@ body{display:grid;grid-template-rows:52px minmax(0,1fr);overflow:hidden}
      <details class="voice-opts"><summary class="tool" title="Voice settings" aria-label="Voice settings" role="button" style="border:1px solid var(--line);cursor:pointer">🔊</summary><div class="pop"><label class="setting"><input id="speak-replies" type="checkbox"> Read replies aloud</label><label>Voice<select id="voice-select" aria-label="Voice"></select></label></div></details>
      <button id="stop-audio" type="button" class="tool" title="Stop audio" aria-label="Stop audio" hidden>■</button></span>
     <label class="toggle" title="Generate images (GPT-6 Luna or Grok)"><input id="images-toggle" type="checkbox" aria-label="Generate images">🖼</label>
-    <label class="model-pick" title="Model for your next message">Model <select id="provider" aria-label="Model"><option value="auto">Auto</option><option value="openai">GPT-6 Luna</option><option value="claude">Haiku 4.5</option><option value="claude_sonnet">Sonnet 5.5</option><option value="claude_opus">Opus 5.5</option><option value="grok">Grok 4.7</option></select></label>
+    <label class="model-pick" title="Model for your next message">Model <select id="provider" aria-label="Model"><option value="auto">Auto</option><option value="openai">GPT-6 Luna</option><option value="claude">Haiku 4.5</option><option value="claude_sonnet">Sonnet 5.5</option><option value="claude_opus">Opus 5.5</option><option value="openai_astra" title="Premium: about 100 times the price of GPT-6 Luna. Never chosen by Auto.">GPT-6 Astra</option><option value="grok">Grok 4.7</option></select></label>
     <span class="hint-text">Enter to send · Shift+Enter for a new line</span>
     <button id="send" class="primary">Send</button>
    </div></div></form>
@@ -1866,9 +1873,9 @@ let history=[],savedFiles=[],chatFiles=[],busy=false,uploading=false,chatId=null
 const selected=new Set();
 const byId=id=>document.getElementById(id);
 function controls(){for(const id of ['create-chat','rename-chat','delete-chat'])byId(id).disabled=busy||uploading;document.querySelectorAll('#chat-list button').forEach(e=>e.disabled=busy||uploading);byId('send').disabled=busy||uploading;byId('provider').disabled=busy;imageToggle();byId('prompt').disabled=busy;byId('upload-button').disabled=busy||uploading;document.querySelectorAll('#files input,#files button,#chat-files input,#chat-files button').forEach(e=>e.disabled=busy||uploading);byId('mic').disabled=busy||uploading;const cc=byId('chat-client');cc.disabled=busy||uploading||cc.options.length<2;}
-function imageToggle(){const t=byId('images-toggle'),claude=byId('provider').value.startsWith('claude');if(claude)t.checked=false;t.disabled=busy||claude;t.parentElement.title=claude?'Claude models cannot generate images':'Adds image-generation cost when used';}
+function imageToggle(){const t=byId('images-toggle'),claude=byId('provider').value.startsWith('claude')||byId('provider').value==='openai_astra';if(claude)t.checked=false;t.disabled=busy||claude;t.parentElement.title=claude?'Claude models cannot generate images':'Adds image-generation cost when used';}
 function resetChat(){history=[];byId('messages').replaceChildren();byId('status').textContent='';byId('activity').textContent='';byId('activity-panel').hidden=true;}
-const MODEL_NAMES={'gpt-6-luna':'GPT-6 Luna','claude-haiku-4-5-20251001':'Haiku 4.5','claude-sonnet-5-5':'Sonnet 5.5','claude-opus-5-5':'Opus 5.5','grok-4.7':'Grok 4.7'};
+const MODEL_NAMES={'gpt-6-astra':'GPT-6 Astra','gpt-6-luna':'GPT-6 Luna','claude-haiku-4-5-20251001':'Haiku 4.5','claude-sonnet-5-5':'Sonnet 5.5','claude-opus-5-5':'Opus 5.5','grok-4.7':'Grok 4.7'};
 function modelName(m){m=m||'';const [id,...rest]=m.split(' · ');return (MODEL_NAMES[id]||id)+(rest.length?' · '+rest.join(' · '):'');}
 function sizePrompt(){const p=byId('prompt'),m=byId('messages');const atEnd=m.scrollHeight-m.scrollTop-m.clientHeight<40;p.style.height='auto';p.style.height=Math.min(p.scrollHeight+2,window.innerHeight*0.4)+'px';if(atEnd)m.scrollTop=m.scrollHeight;}
 function selectedLabel(){byId('selected').textContent=selected.size?'Focus: '+savedFiles.filter(f=>selected.has(f.id)).map(f=>f.name).join(', '):'';}

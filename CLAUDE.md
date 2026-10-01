@@ -114,8 +114,9 @@ A browser refresh is not enough: the old server process keeps running the old co
 | `images.py`, `voice.py` | Generated images; ElevenLabs speech |
 | `desktop.py`, `connect_claude.py` | Tray launcher; Claude Desktop connector setup |
 
-Models: GPT-6 Luna (`gpt-6-luna`, Responses API), Claude Haiku 4.5, Sonnet 5.5, Opus 5.5 (manual only; Auto
-never selects it), Grok 4.7 (xAI). Temple's reviewer is Luna or Haiku.
+Models: GPT-6 Luna (`gpt-6-luna`, Responses API), GPT-6 Astra (`gpt-6-astra`, selection `openai_astra`; premium,
+reasoning effort low..max with no `none`, no image generation set up; manual only), Claude Haiku 4.5, Sonnet 5.5,
+Opus 5.5 (manual only; Auto never selects it), Grok 4.7 (xAI). Temple's reviewer is Luna or Haiku.
 
 ## Two databases: write SQL that works on both
 

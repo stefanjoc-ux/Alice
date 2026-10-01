@@ -698,7 +698,7 @@ def summary():
 
 def _live_provider(provider):
     sv = services()
-    key = {'claude_sonnet': 'claude', 'claude_opus': 'claude'}.get(provider, provider)
+    key = {'claude_sonnet': 'claude', 'claude_opus': 'claude', 'openai_astra': 'openai'}.get(provider, provider)
     if key in sv:
         inside, name = sv[key], SERVICE_NAMES[key]
     else:                                   # Auto routing or unknown: only "inside" if every service is

@@ -9,8 +9,8 @@ import usage_meter
 
 LIGHT, HEAVY = 0, 1
 TIER_SELECTION = {LIGHT: 'openai', HEAVY: 'claude_sonnet'}
-LABEL = {'openai': 'GPT-6 Luna', 'claude_sonnet': 'Sonnet 5.5', 'claude_opus': 'Opus 5.5', 'claude': 'Haiku 4.5', 'grok': 'Grok 4.7'}
-KEYS = {'openai': 'OPENAI_API_KEY', 'claude_sonnet': 'ANTHROPIC_API_KEY', 'claude_opus': 'ANTHROPIC_API_KEY', 'claude': 'ANTHROPIC_API_KEY', 'grok': 'XAI_API_KEY'}
+LABEL = {'openai_astra': 'GPT-6 Astra', 'openai': 'GPT-6 Luna', 'claude_sonnet': 'Sonnet 5.5', 'claude_opus': 'Opus 5.5', 'claude': 'Haiku 4.5', 'grok': 'Grok 4.7'}
+KEYS = {'openai_astra': 'OPENAI_API_KEY', 'openai': 'OPENAI_API_KEY', 'claude_sonnet': 'ANTHROPIC_API_KEY', 'claude_opus': 'ANTHROPIC_API_KEY', 'claude': 'ANTHROPIC_API_KEY', 'grok': 'XAI_API_KEY'}
 FALLBACK_ORDER = ('openai', 'claude_sonnet', 'claude', 'grok')
 CALM_TURNS = 3          # consecutive light asks before stepping back down
 LONG_MESSAGE = 1500     # characters; long asks are treated as heavy

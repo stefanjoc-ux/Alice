@@ -19,11 +19,12 @@ def log(response,provider,model,workload,duration=None):
     reads=raw.get('cache_read_input_tokens',details.get('cached_tokens',0)) or 0
     writes=raw.get('cache_creation_input_tokens',details.get('cache_write_tokens',0)) or 0
     if isinstance(i,int) and isinstance(o,int):
-        if model=='gpt-6-luna':
+        if model in ('gpt-6-luna','gpt-6-astra'):
             # Missing write detail: conservatively price all non-read input as writes.
             w=details.get('cache_write_tokens')
             w=max(0,i-reads) if w is None else w
-            estimate=((max(0,i-reads-w)*.10+reads*.01+w*.125)*(2 if i>272000 else 1)+o*.50*(1.5 if i>272000 else 1))/1000000
+            ri,rr,rw,ro=RATES[model]
+            estimate=((max(0,i-reads-w)*ri+reads*rr+w*rw)*(2 if i>272000 else 1)+o*ro*(1.5 if i>272000 else 1))/1000000
         elif model=='grok-4.7':
             estimate=(max(0,i-reads)*2+reads*.50+o*6)*(2 if i>=200000 else 1)/1000000
         elif model in ('claude-opus-5-5','claude-sonnet-5-5','claude-haiku-4-5-20251001'):
@@ -44,6 +45,7 @@ def log(response,provider,model,workload,duration=None):
 # USD per million tokens: input, cache read, cache write, output. Standard rates checked 2026-09-29.
 RATES = {
     'gpt-6-luna': (0.10, 0.01, 0.125, 0.50),
+    'gpt-6-astra': (10.00, 1.00, 12.50, 50.00),     # checked 2026-10-01 (openai.com/index/gpt-6-astra)
     'grok-4.7': (2.00, 0.50, 2.00, 6.00),
     'claude-opus-5-5': (4.00, 0.40, 5.00, 20.00),
     'claude-sonnet-5-5': (2.00, 0.20, 2.50, 10.00),
