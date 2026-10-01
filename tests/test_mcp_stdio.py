@@ -13,8 +13,8 @@ async def main():
                                env=dict(os.environ), cwd=_util.ROOT)
     async with Client(transport) as c:
         names = sorted(x.name for x in await c.list_tools())
-        t('all nine tools offered', names == ['append_conversation', 'list_files', 'propose_decision', 'propose_knowledge', 'propose_record',
-                                               'read_file', 'save_conversation', 'search_files', 'search_records'])
+        t('all eleven tools offered', names == ['append_conversation', 'get_organisation', 'list_files', 'propose_decision', 'propose_knowledge',
+                                                 'propose_org_fact', 'propose_record', 'read_file', 'save_conversation', 'search_files', 'search_records'])
         call = lambda n, a: c.call_tool(n, a)
         await call('propose_knowledge', {'title': 'Accounts briefing', 'content': 'One-page client briefing on the accounts review for the council.', 'source': 'Claude Desktop conversation'})
         r = json.loads((await call('save_conversation', {'title': 'Accounts review', 'summary': 'Reviewed the accounts and drafted a client briefing for the council finance team.',

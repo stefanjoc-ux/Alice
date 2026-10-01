@@ -13,6 +13,7 @@ import rules_engine
 import clients
 import knowledge
 import conversations
+import organisations
 import actions
 import activity_log
 import temple_ask
@@ -389,6 +390,12 @@ async def chat_events(request):
         "you may search all saved files. Only claim to have searched/read files if tools succeeded "
         "in this turn. Focus IDs: " + json.dumps(request.file_ids)
     ) + image_rule + (f" This chat is for the client {chat_owner}: tools return only {chat_owner} material and General material. Do not bring in details about other clients." if chat_owner else "")
+    if chat_owner:      # the client's approved profile: a compact brief, rebuilt only when its facts change
+        try:
+            profile = organisations.brief(chat_owner, provider)
+            if profile['text']: instructions += "\n\n" + profile['text']
+        except Exception:
+            pass
     model = {"openai":"gpt-6-luna","claude":"claude-haiku-4-5-20251001","grok":"grok-4.7"}[provider]
     if selection == "claude_sonnet":
         model = "claude-sonnet-5-5"
@@ -1060,6 +1067,92 @@ def admin_knowledge_update(ch: KnowledgeChange):
         try: knowledge.update(ch.ids[0],**fields);return {'updated':1}
         except ValueError as e: raise HTTPException(400,str(e)) from None
     return knowledge.bulk_update(ch.ids,**fields)
+
+class OrgIn(BaseModel):
+    name: str = Field(min_length=1,max_length=60)
+    kind: str = Field(default='other',max_length=20)
+    description: str = Field(default='',max_length=500)
+
+class OrgChange(BaseModel):
+    name: str = Field(min_length=1,max_length=60)
+    kind: str|None = Field(default=None,max_length=20)
+    description: str|None = Field(default=None,max_length=500)
+
+class OrgFactIn(BaseModel):
+    org: str = Field(min_length=1,max_length=60)
+    section: str = Field(min_length=1,max_length=20)
+    statement: str = Field(min_length=1,max_length=400)
+    source_system: str = Field(min_length=1,max_length=80)
+    source_ref: str = Field(default='',max_length=500)
+    as_of: str = Field(default='',max_length=10)
+    review_by: str = Field(default='',max_length=10)
+    label: Literal['general','internal','client','local'] = 'general'
+
+class OrgFactReview(BulkIds):
+    decision: Literal['approved','rejected']
+
+class OrgFactChange(BaseModel):
+    review_by: str|None = Field(default=None,max_length=10)
+    label: Literal['general','internal','client','local']|None = None
+
+class OrgFactRetire(BaseModel):
+    reason: str = Field(min_length=1,max_length=500)
+    replaced_by: str|None = Field(default=None,max_length=32)
+
+class OrgSourceRemoval(BaseModel):
+    source_system: str = Field(min_length=1,max_length=80)
+    source_ref: str = Field(default='',max_length=500)
+    reason: str = Field(min_length=1,max_length=500)
+
+@app.get('/admin/api/organisations')
+def admin_organisations(): return organisations.listing()
+
+@app.post('/admin/api/organisations')
+def admin_organisation_create(o: OrgIn):
+    try: return organisations.create(o.name,o.kind,o.description)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+@app.put('/admin/api/organisations')
+def admin_organisation_update(o: OrgChange):
+    try: return organisations.update(o.name,o.kind,o.description)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+@app.get('/admin/api/organisations/facts')
+def admin_org_facts(org: str=Query(min_length=1,max_length=60), status: Literal['approved','proposed','retired','rejected','all']='all'):
+    try: return {'facts':organisations.facts(org,status)}
+    except ValueError as e: raise HTTPException(404,str(e)) from None
+
+@app.post('/admin/api/organisations/facts')
+def admin_org_fact_add(f: OrgFactIn):
+    try: return organisations.propose_fact(f.org,f.section,f.statement,f.source_system,f.source_ref,f.as_of,f.review_by,f.label,'you')
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+@app.post('/admin/api/organisations/facts/review')
+def admin_org_fact_review(r: OrgFactReview): return organisations.review_facts(r.ids,r.decision)
+
+@app.put('/admin/api/organisations/facts/{fid}')
+def admin_org_fact_change(fid: str, ch: OrgFactChange):
+    try: return organisations.update_fact(fid,ch.review_by,ch.label)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+@app.post('/admin/api/organisations/facts/{fid}/retire')
+def admin_org_fact_retire(fid: str, r: OrgFactRetire):
+    try: return organisations.retire_fact(fid,r.reason,r.replaced_by)
+    except ValueError as e: raise HTTPException(409,str(e)) from None
+
+@app.get('/admin/api/organisations/brief')
+def admin_org_brief(org: str=Query(min_length=1,max_length=60), provider: Literal['openai','claude','grok','copilot']='claude', external: bool=False):
+    try: return organisations.brief(org,provider,external)
+    except ValueError as e: raise HTTPException(404,str(e)) from None
+
+@app.get('/admin/api/organisations/source')
+def admin_org_source(source_system: str=Query(min_length=1,max_length=80), source_ref: str=Query('',max_length=500)):
+    return {'facts':organisations.by_source(source_system,source_ref)}
+
+@app.post('/admin/api/organisations/remove-source')
+def admin_org_remove_source(r: OrgSourceRemoval):
+    try: return organisations.remove_by_source(r.source_system,r.source_ref,r.reason)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
 
 @app.post('/admin/api/knowledge/review')
 def admin_knowledge_review(r: KnowledgeReview): return knowledge.review(r.ids,r.decision,r.retire_replaced)

@@ -45,6 +45,14 @@ def summary():
                          for p in reps],
                         'Retiring archives the older item with a link to its replacement; models are pointed to the new one. Restore undoes it.'))
 
+    # 2c. Organisation facts proposed by models
+    import organisations
+    of = organisations.pending()
+    out.append(_section('orgfacts', 'Organisation facts awaiting approval', len(of), '/admin/organisations',
+                        [{'type': 'orgfact', 'id': f['id'], 'title': f"{f['org']} · {organisations.SECTION_NAMES.get(f['section'], f['section'])}",
+                          'detail': f"{f['statement']} · source: {f['source_system']}" + (f" ({f['source_ref'][:80]})" if f['source_ref'] else '')
+                                    + f" · {f['proposed_by']}"} for f in of]))
+
     # 3. Temple's chat suggestions
     s = temple.chat_suggestions('pending')
     out.append(_section('suggestions', "Temple's suggestions from chats", s['counts']['pending'], '/admin/temple?tab=suggestions',

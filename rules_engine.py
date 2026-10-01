@@ -39,6 +39,11 @@ BUILTIN = [
     ('pii', 'security', 'Personal identifiers', 'enforced',
      'Blocks payment card numbers, National Insurance numbers, UK sort code with account number, and IBANs '
      'from memories and knowledge notes.', True, {}, '', False),
+    ('data_minimisation', 'security', 'Data minimisation', 'enforced',
+     'Organisation facts hold organisational information and roles, not people: email addresses and phone numbers '
+     'are refused (keep contact details in the source system), as is anything about a named person\'s health, '
+     'beliefs, ethnicity, sexuality, union membership or criminal matters. Every organisation fact needs a source '
+     'and a review-by date (default below, at most 24 months).', True, {'review_months': 12}, '', False),
     ('client_separation', 'organisation', 'Client separation', 'enforced',
      'In a chat tagged with a client, memory and file tools return only that client\'s material plus General '
      '(untagged) material. Strict mode also keeps client material out of untagged chats.', True,
@@ -193,6 +198,10 @@ def _clean_params(rid, p):
     if rid == 'client_separation':
         ext = p.get('external', 'all')
         return {'strict': bool(p.get('strict', False)), 'external': ext if ext in ('all', 'general') else 'all'}
+    if rid == 'data_minimisation':
+        try: months = int(p.get('review_months', 12))
+        except (TypeError, ValueError): months = 12
+        return {'review_months': max(1, min(24, months))}
     if rid == 'external_scope':
         return {'allowed_categories': [str(x).strip() for x in p.get('allowed_categories', []) if str(x).strip()][:50]}
     return {}
@@ -292,6 +301,39 @@ def find_pii(text):
         found.add('Sort code and account number')
     if re.search(r'\bGB\d{2}\s?[A-Z]{4}(?:\s?\d{4}){3}\s?\d{2}\b', text): found.add('IBAN')
     return sorted(found)
+
+
+EMAIL = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b')
+PHONE = re.compile(r'(?<![\w.])(?:\+44\s?\(?0?\)?\s?|\(?0)(?:\d[\s-]?){9,10}\b')
+SPECIAL = re.compile(r'\b(diagnos\w*|illness|ill health|sick(?:ness)? leave|medical|medication|disab\w*|pregnan\w*|maternity|'
+                     r'mental health|religio\w*|faith|ethnic\w*|race|sexual\w*|gay|lesbian|bisexual|transgender|'
+                     r'trade union member\w*|union member\w*|criminal|convict\w*|arrest\w*|offen[cs]e\w*|political (?:views|beliefs))\b', re.I)
+PERSON = re.compile(r'\b(?:Mr|Mrs|Ms|Miss|Mx|Dr|Prof|Cllr|Councillor|Sir|Dame)\.?\s+[A-Z][a-z]+|\b(?:he|she|his|her|him|hers)\b', re.I)
+
+
+def find_personal(text):
+    """Data minimisation: contact details, or special-category detail about a person (in the same sentence).
+    Organisational wording ("mental health services", "disability access") is not flagged."""
+    text = text or ''
+    found = []
+    if EMAIL.search(text): found.append('an email address')
+    if PHONE.search(text): found.append('a phone number')
+    for sentence in re.split(r'(?<=[.!?;])\s+|\n+', text):
+        if SPECIAL.search(sentence) and PERSON.search(sentence):
+            found.append('personal details about someone (special category data)'); break
+    return found
+
+
+def check_org_fact(org, statement, source):
+    """Organisation facts: secrets, markings, personal identifiers and data minimisation."""
+    blob = f'{org}\n{statement}\n{source}'
+    check_knowledge(org, f'{statement}\n{source}')
+    if on('data_minimisation'):
+        p = find_personal(blob)
+        if p:
+            log_block('data_minimisation', org, 'organisation fact blocked: ' + ', '.join(p))
+            raise RuleViolation(f'Blocked by Data minimisation: this appears to contain {p[0]}. Organisation facts hold '
+                                'organisational information and roles; keep personal details in the source system.')
 
 
 # ---------------- enforcement points ----------------

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 import substrate_store as store
 
 TYPES = [
-    ('memories', 'Memories and decisions'), ('knowledge', 'Knowledge'), ('temple', 'Temple'),
+    ('memories', 'Memories and decisions'), ('knowledge', 'Knowledge'), ('organisations', 'Organisations'), ('temple', 'Temple'),
     ('blocks', 'Security blocks'), ('rules', 'Rules and settings'), ('clients', 'Clients'),
     ('chats', 'Chats and imports'), ('routing', 'Model routing'), ('tools', 'Tool use'), ('other', 'Other'),
 ]
@@ -23,6 +23,11 @@ LABELS = {
     'knowledge_added': ('knowledge', 'Knowledge added'), 'knowledge_proposed': ('knowledge', 'Knowledge draft proposed'),
     'knowledge_approved': ('knowledge', 'Knowledge draft approved'), 'knowledge_rejected': ('knowledge', 'Knowledge draft rejected'),
     'knowledge_updated': ('knowledge', 'Knowledge details changed'),
+    'org_created': ('organisations', 'Organisation added'), 'org_updated': ('organisations', 'Organisation details changed'),
+    'org_fact_added': ('organisations', 'Organisation fact added by you'), 'org_fact_proposed': ('organisations', 'Organisation fact proposed'),
+    'org_fact_approved': ('organisations', 'Organisation fact approved'), 'org_fact_rejected': ('organisations', 'Organisation fact rejected'),
+    'org_fact_retired': ('organisations', 'Organisation fact retired'), 'org_fact_updated': ('organisations', 'Organisation fact details changed'),
+    'org_source_removed': ('organisations', 'Facts from a source removed'),
     'knowledge_superseded': ('knowledge', 'Knowledge retired: replaced by a newer item'),
     'knowledge_replaces': ('knowledge', 'Knowledge now replaces an older item'),
     'knowledge_replacement_proposed': ('knowledge', 'Replacement named by the proposer'),
@@ -99,7 +104,8 @@ def _names(targets):
                             (f'SELECT id,title FROM chats WHERE id IN ({marks})', 'Chat'),
                             (f'SELECT id,name AS title FROM files WHERE id IN ({marks})', 'Knowledge'),
                             (f'SELECT file_id AS id,title FROM knowledge_meta WHERE file_id IN ({marks})', 'Knowledge'),
-                            (f'SELECT id,title FROM temple_suggestions WHERE id IN ({marks})', 'Suggestion')):
+                            (f'SELECT id,title FROM temple_suggestions WHERE id IN ({marks})', 'Suggestion'),
+                            (f"SELECT id,org || ' · ' || substr(statement,1,60) AS title FROM org_facts WHERE id IN ({marks})", 'Organisation fact')):
             try:
                 for r in c.execute(sql, ids): names[r['id']] = f'{prefix}: {r["title"]}'
             except Exception:

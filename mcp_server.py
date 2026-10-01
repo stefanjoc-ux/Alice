@@ -21,6 +21,7 @@ import clients
 import knowledge
 import conversations
 import external_auth
+import organisations
 
 BASE = Path(__file__).resolve().parent
 load_dotenv(BASE / '.env')
@@ -348,6 +349,46 @@ def propose_knowledge(title: Annotated[str, Field(min_length=1, max_length=200)]
         msg += (f' It is marked as replacing {n} existing item(s); the user can retire them when approving.' if n else
                 ' No existing item matched the supersedes names; Temple will look for replaced items after approval.')
     return {'id': result['id'], 'status': 'draft', 'message': msg}
+
+
+@mcp.tool(annotations={'readOnlyHint': True, 'destructiveHint': False})
+def get_organisation(name: Annotated[str, Field(min_length=1, max_length=60)],
+                     section: Annotated[str, Field(max_length=20)] = '') -> dict:
+    """The user's approved profile of an organisation (a client, or one of their own businesses): identity, purpose
+    and strategy, values and culture, structure and roles, security and compliance, technology, commercial,
+    relationship, vocabulary. Short summaries with source pointers, not documents: follow the source for detail.
+    Use it before advising on or drafting for that organisation. section: one of the keys above to narrow it."""
+    who = _who()
+    try: b = organisations.brief(name, who.provider if who else None, external=who is not None, section=section)
+    except ValueError as e: raise ValueError(str(e)) from None
+    if not b['text']:
+        return {'organisation': b['org'], 'profile': '', 'message': b.get('withheld') or 'No approved facts for this organisation yet.'}
+    return {'organisation': b['org'], 'profile': b['text'], 'facts_shown': b['facts'], 'facts_total': b.get('total', b['facts']),
+            'sections': [k for k, _, _ in organisations.SECTIONS]}
+
+
+@mcp.tool(annotations={'readOnlyHint': False, 'destructiveHint': False})
+def propose_org_fact(organisation: Annotated[str, Field(min_length=1, max_length=60)],
+                     section: Annotated[str, Field(min_length=3, max_length=20)],
+                     statement: Annotated[str, Field(min_length=12, max_length=400)],
+                     source_system: Annotated[str, Field(min_length=1, max_length=80)],
+                     source_ref: Annotated[str, Field(max_length=500)] = '',
+                     as_of: Annotated[str, Field(max_length=10)] = '',
+                     review_by: Annotated[str, Field(max_length=10)] = '') -> dict:
+    """Propose ONE short fact for an organisation's profile, for the user's approval. A summary in your own words
+    (400 characters max), never pasted documents. section: identity, purpose, values, structure, security,
+    technology, commercial, relationship or vocabulary. source_system: where it came from (e.g. "Council Plan
+    2024-28 (public website)", "SharePoint", "Dataverse"); source_ref: URL, record ID or document name.
+    Organisational facts and roles only: no contact details and nothing personal about individuals.
+    Nothing is approved automatically; tell the user it awaits approval on the Organisations page."""
+    who = _who()
+    by = f'model via {who.label}' if who else 'model via web chat'
+    try:
+        r = organisations.propose_fact(organisation, section, statement, source_system, source_ref, as_of, review_by, 'general', by)
+    except ValueError as e:
+        raise ValueError(str(e) + ' Tell the user why the fact was not proposed.') from None
+    if r.get('duplicate'): return {'id': r['id'], 'status': r['status'], 'message': 'This fact is already recorded.'}
+    return {'id': r['id'], 'status': 'proposed', 'message': f"Proposed for {r['org']}; the user approves it on the Organisations page."}
 
 
 @mcp.tool(annotations={'readOnlyHint': False, 'destructiveHint': False})

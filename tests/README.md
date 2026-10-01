@@ -36,6 +36,7 @@ Run after every update, before relaunching. Exit code 0 means every check passed
 | mcp_stdio | The connector exactly as Claude Desktop uses it |
 | quotes, desktop | Quote matching; hotkey and window-size parsing |
 | external_mcp | The signed-in external endpoint: settings, every Entra token check, 401s over HTTP, external rules for Copilot |
+| organisations | Organisation facts: sources, review dates, data minimisation, approval, the brief (labels, providers, external), removal by source |
 | supersede | Retiring replaced knowledge, the proposer's `supersedes`, Temple's replacement suggestions, what models see, memory replacements |
 
 Not covered (needs a real Windows desktop or a person): the tray app, the hotkey and window resizing

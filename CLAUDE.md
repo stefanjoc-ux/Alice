@@ -94,6 +94,7 @@ A browser refresh is not enough: the old server process keeps running the old co
 | `temple_supersede.py` | Temple finds older knowledge a newer item replaces (wording first, then a quoted model check); suggestions only |
 | `conversations.py` | Saved conversations, Claude export import (incl. manifest download), whole-chat reviews |
 | `knowledge.py` | Knowledge library: kinds, drafts, labels, meeting extracts, Word in/out, replacements (`supersede`, `history`) |
+| `organisations.py` | Organisation profiles: short approved facts with source pointers and review dates, the compiled brief, removal by source |
 | `clients.py` | Clients, tagging, alias detection, separation enforcement |
 | `actions.py` | Everything awaiting a decision (Actions page) |
 | `activity_log.py` | Activity log labels, types, filters, CSV |
