@@ -31,6 +31,7 @@ r = ev('hr', HR['Shortlisting'])
 t('shortlisting: automated decision and protected characteristics both refused', r['outcome'] == 'blocked' and {'hr_automated', 'hr_equality'} <= {f['rule'] for f in r['fired']})
 t('sickness absence: allowed in the tenant with identifiers removed, blocked on a public service',
   ev('hr', HR['Sickness absence summary'])['outcome'] == 'redacted' and ev('hr', HR['Sickness absence summary'], 'public')['outcome'] == 'blocked')
+t('"which one should we promote" is an automated decision', any(f['rule'] == 'hr_automated' for f in ev('hr', 'Two people applied for the team leader role. Which one should we promote?')['fired']))
 t('disciplinary letter held for HR sign-off', ev('hr', HR['Disciplinary outcome'])['outcome'] == 'held')
 t('an ordinary job advert goes through with guidance', ev('hr', HR['Job advert'])['outcome'] == 'allowed')
 

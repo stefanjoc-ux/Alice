@@ -104,7 +104,7 @@ def _near(a, b, text, gap=80):
     return bool(re.search(rf'(?:{a})[\s\S]{{0,{gap}}}(?:{b})|(?:{b})[\s\S]{{0,{gap}}}(?:{a})', t, re.I))
 
 
-PEOPLE_DECISION = r'\b(?:decide|decision|choose|pick|select|rank|score|shortlist|recommend which|which ones? to|who to|who should)\b'
+PEOPLE_DECISION = r'\b(?:decide|decision|choose|pick|select|rank|score|shortlist|recommend which|which ones? to|which (?:one|of them|person|candidate|applicant)s? (?:should|to)|who to|who should)\b'
 HR_OUTCOME = r'\b(?:dismiss\w*|redundan\w*|hire|hiring|reject\w*|promot\w*|disciplin\w*|sack\w*|terminat\w*|appoint\w*|applicants?|candidates?)\b'
 HIRING = r'\b(?:candidates?|applicants?|hire|hiring|recruit\w*|shortlist\w*|job advert|vacancy|role|interview\w*)\b'
 BIASED = (r"\b(?:under|over)\s+\d{2}\b|\b(?:young|younger|older|recent graduates?|digital natives?|energetic|mature|"
