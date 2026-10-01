@@ -36,8 +36,13 @@ def claims_of(token):
 
 
 def az(*args):
+    """The Azure CLI with its own sign-in cache for this check, and the Windows account broker off: the broker
+    can hold the same work account twice and then refuses to choose ("Found multiple accounts"). Browser
+    sign-in avoids that, and your normal az setup is left untouched."""
     exe = shutil.which('az') or shutil.which('az.cmd')
-    return subprocess.run([exe, *args], capture_output=True, text=True, timeout=180)
+    env = dict(os.environ, AZURE_CORE_ENABLE_BROKER_ON_WINDOWS='false', AZURE_CORE_LOGIN_EXPERIENCE_V2='off',
+               AZURE_CONFIG_DIR=str(Path.home() / '.azure-alice-check'))
+    return subprocess.run([exe, *args], capture_output=True, text=True, timeout=300, env=env)
 
 
 def get_token(cfg):
@@ -45,7 +50,7 @@ def get_token(cfg):
     args = ('account', 'get-access-token', '--scope', scope, '--tenant', cfg.tenant_id, '--query', 'accessToken', '-o', 'tsv')
     r = az(*args)
     if r.returncode != 0:
-        print('Signing you in to the Tuduma tenant (a browser window opens)...')
+        print('Signing you in to the Tuduma tenant: a browser window opens; pick your Tuduma work account...')
         login = az('login', '--tenant', cfg.tenant_id, '--allow-no-subscriptions', '--scope', scope, '--output', 'none')
         if login.returncode != 0:
             print(login.stderr.strip()[-1500:])
