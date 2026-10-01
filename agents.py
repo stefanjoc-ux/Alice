@@ -60,6 +60,10 @@ BUILTIN = [
     ('temple-meeting', 'Temple: meeting extracts', 'internal',
      'Drafts a meeting record (summary, decisions, actions) from a transcript for you to check before saving.',
      'When you ask', ['Temple meeting extract'], 'The transcript you supply', 'A draft you edit and save', True),
+    ('temple-org-research', 'Temple: organisation research', 'internal',
+     'Searches the public web for an organisation and proposes profile facts, each citing the page it came from.',
+     'When you ask (Research on the Organisations page)', ['Temple organisation research'],
+     'Public web pages found by the search', 'Organisation facts awaiting your approval', True),
     ('claude-desktop', 'Claude Desktop', 'app', 'Claude Desktop connected through the alice connector (stdio).',
      'When you use Claude Desktop', [], 'Files, memories and organisation profiles allowed to external apps',
      'Proposals, knowledge drafts, saved conversations', True),
@@ -69,7 +73,8 @@ BUILTIN = [
 ]
 # The parts of each agent, for its anatomy diagram and the system map. model 'temple' = Temple's reviewer setting.
 DATA_SOURCES = {'memories': 'Memories and decisions', 'knowledge': 'Knowledge', 'organisations': 'Organisation profiles',
-                'chats': 'Chats and saved conversations', 'activity': 'Activity and usage', 'input': 'What you supply'}
+                'chats': 'Chats and saved conversations', 'activity': 'Activity and usage', 'input': 'What you supply',
+                'web': 'The public web'}
 _APP_ANATOMY = {'model': 'Its own model (the app decides)', 'instructions': 'Alice connector instructions plus your response guidance',
                 'tools': TOOLS, 'data': ['memories', 'knowledge', 'organisations', 'chats'],
                 'guardrails': ['external_scope', 'client_separation', 'provider_allow', 'protective_marking', 'secret_detection', 'pii',
@@ -107,6 +112,11 @@ ANATOMY = {
     'temple-meeting': {'model': 'temple', 'instructions': 'Turn a transcript into a title, date, attendees, summary, decisions and actions. Only what was said.',
                        'tools': ['None'], 'data': ['input'], 'guardrails': ['secret_detection', 'protective_marking', 'spend_cap'],
                        'outputs': ['Draft meeting record'], 'gate': 'You edit it, then save it'},
+    'temple-org-research': {'model': 'temple', 'instructions': 'Find current public information about the organisation; one or two sentences per fact, '
+                                                            'each with the exact page that supports it; roles, not people.',
+                            'tools': ['Web search (provider built-in)'], 'data': ['web', 'organisations'],
+                            'guardrails': ['secret_detection', 'protective_marking', 'data_minimisation', 'pii', 'spend_cap'],
+                            'outputs': ['Proposed organisation facts with sources'], 'gate': 'You approve each fact on the Organisations page'},
     'claude-desktop': dict(_APP_ANATOMY, model='Claude (your Claude Desktop model)', identity='Caller name on this computer (stdio)'),
     'microsoft-copilot': dict(_APP_ANATOMY, model='Microsoft 365 Copilot', identity='Entra ID token from the Tuduma tenant'),
 }

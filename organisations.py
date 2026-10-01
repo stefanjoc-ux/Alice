@@ -93,20 +93,24 @@ def create(name, kind='other', description=''):
     if kind not in KINDS: raise ValueError('Choose a type: ' + ', '.join(KINDS) + '.')
     with store.db() as c:
         if c.execute('SELECT 1 FROM organisations WHERE name=?', (name,)).fetchone(): raise ValueError(f'"{name}" already exists.')
-        c.execute('INSERT INTO organisations VALUES (?,?,?,?)', (name, kind, description, store.now()))
+        c.execute('INSERT INTO organisations(name,kind,description,created_at) VALUES (?,?,?,?)', (name, kind, description, store.now()))
         store.audit(c, 'org_created', name, 'human_review', f'{kind}: {description[:200]}')
     return {'name': name}
 
 
-def update(name, kind=None, description=None):
+def update(name, kind=None, description=None, website=None):
     name = canonical(name)
+    if website is not None:
+        import org_research
+        website = org_research._clean_url(website)
     with store.db() as c:
         if not c.execute('SELECT 1 FROM organisations WHERE name=?', (name,)).fetchone():   # a client without a row yet
-            c.execute('INSERT INTO organisations VALUES (?,?,?,?)', (name, 'other', '', store.now()))
+            c.execute('INSERT INTO organisations(name,kind,description,created_at) VALUES (?,?,?,?)', (name, 'other', '', store.now()))
         if kind is not None:
             if kind not in KINDS: raise ValueError('Unknown type.')
             c.execute('UPDATE organisations SET kind=? WHERE name=?', (kind, name))
         if description is not None: c.execute('UPDATE organisations SET description=? WHERE name=?', (_clean(description, 500), name))
+        if website is not None: c.execute('UPDATE organisations SET website=? WHERE name=?', (website, name))
         store.audit(c, 'org_updated', name, 'human_review', 'details changed')
     return {'name': name}
 
@@ -162,7 +166,7 @@ def propose_fact(org, section, statement, source_system, source_ref='', as_of=''
                   'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', (fid, org, section, statement, source_system, source_ref, as_of, review_by, label,
                                                        status, by, store.now(), store.now() if status == 'approved' else None))
         if not c.execute('SELECT 1 FROM organisations WHERE name=?', (org,)).fetchone():
-            c.execute('INSERT INTO organisations VALUES (?,?,?,?)', (org, 'other', '', store.now()))
+            c.execute('INSERT INTO organisations(name,kind,description,created_at) VALUES (?,?,?,?)', (org, 'other', '', store.now()))
         store.audit(c, 'org_fact_added' if status == 'approved' else 'org_fact_proposed', fid,
                     'human_review' if status == 'approved' else 'approval_required', f'{org} · {SECTION_NAMES[section]} · by {by}')
     return {'id': fid, 'status': status, 'duplicate': False, 'org': org, 'review_by': review_by}

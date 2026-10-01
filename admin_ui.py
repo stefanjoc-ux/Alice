@@ -60,9 +60,13 @@ SECTIONS = {
 'organisations': r'''<section><div class="mem-head"><h2>Organisations</h2><span id="o-summary" class="muted small"></span></div>
 <p class="muted small">Summaries, not documents: each fact is a sentence or two with its source and a review-by date. Facts you add here are approved; facts from models wait for your approval. Data minimisation applies: organisational information and roles, not people.</p>
 <div id="o-list" class="mem-cats"></div>
-<details><summary>Add an organisation</summary><div class="k-meta-row"><label>Name<input id="o-new-name" maxlength="60"></label><label>Type<select id="o-new-kind"></select></label><label>Description<input id="o-new-desc" maxlength="500"></label></div><button id="o-new-save" type="button">Add organisation</button></details></section>
+<div class="o-research-new"><h3>Add and research an organisation</h3><p class="muted small">Type a name, a website, or both. Temple searches the public web and proposes facts for each section, every one citing the page it came from. Nothing is approved until you approve it.</p>
+<div class="k-meta-row"><label>Name<input id="o-r-name" maxlength="60" placeholder="e.g. Perth and Kinross Council"></label><label>Website<input id="o-r-web" maxlength="300" placeholder="e.g. https://www.pkc.gov.uk"></label></div>
+<button id="o-r-go" type="button">Research online</button> <span id="o-r-status" class="muted small" role="status"></span></div>
+<details><summary>Add an organisation without research</summary><div class="k-meta-row"><label>Name<input id="o-new-name" maxlength="60"></label><label>Type<select id="o-new-kind"></select></label><label>Description<input id="o-new-desc" maxlength="500"></label></div><button id="o-new-save" type="button">Add organisation</button></details></section>
 <section id="o-detail" hidden><div class="mem-head"><h2 id="o-title"></h2><span id="o-meta" class="muted small"></span></div>
-<div class="k-meta-row"><label>Type<select id="o-kind"></select></label><label>Description<input id="o-desc" maxlength="500"></label></div><button id="o-save" type="button" class="secondary">Save details</button>
+<div class="k-meta-row"><label>Type<select id="o-kind"></select></label><label>Description<input id="o-desc" maxlength="500"></label><label>Website<input id="o-web" maxlength="300" placeholder="https://"></label></div><div class="arc-actions"><button id="o-save" type="button" class="secondary">Save details</button><button id="o-research" type="button">Research online</button><span id="o-research-status" class="muted small" role="status"></span></div>
+<div id="o-research-box"></div>
 <div id="o-status" class="mem-tabs"></div><div id="o-facts"></div>
 <h3>Add a fact</h3><div class="k-meta-row"><label>Section<select id="f-section"></select></label><label>Security label<select id="f-label"></select></label></div><p id="f-hint" class="muted small"></p>
 <label>Fact: a summary in a sentence or two<textarea id="f-statement" rows="3" maxlength="400"></textarea></label><span id="f-count" class="muted small"></span>
@@ -243,6 +247,11 @@ nav{display:flex;gap:20px;flex-wrap:wrap}.sidebar nav{display:contents}
 .act-buttons{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.mini-act{margin:0!important;padding:6px 12px!important;font-size:12px!important}
 #al-custom[hidden]{display:none}#al-custom label{margin:0}.al-table td:nth-child(1){white-space:nowrap;width:1%}.al-table td:nth-child(2){white-space:nowrap;width:1%}.al-target{color:#314d62;overflow-wrap:anywhere}.al-table td:nth-child(4){overflow-wrap:anywhere;max-width:520px}
 #pane-ask[hidden]{display:none}.ask-log{max-height:520px;overflow:auto;margin:10px 0}.ask-msg{padding:10px 12px;border-radius:8px;margin:8px 0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55}.ask-user{background:#eaf5f8;border-left:3px solid #21758b;margin-left:60px}.ask-temple{background:#f3eff9;border-left:3px solid #786095;margin-right:30px}.ask-looked{margin-top:6px;color:#4b6376}.ask-looked summary{cursor:pointer;font-size:12px}.ask-form textarea{width:100%}
+/* Organisation research */
+.o-research-new{background:#f4f9fb;border:1px solid #cfe2ea;border-radius:10px;padding:12px 14px;margin:12px 0}.o-research-new h3{margin:0 0 4px;font-size:15px}
+.o-run{border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:12px 0;background:#fff}.o-run summary{cursor:pointer;font-weight:600}
+.o-run ol{margin:6px 0 0;padding-left:20px}.o-run li{margin:3px 0;font-size:14px;overflow-wrap:anywhere}.o-run .uncited{color:var(--muted)}
+.src-link{overflow-wrap:anywhere}.o-busy::before{content:'';display:inline-block;width:12px;height:12px;margin-right:6px;border:2px solid #9db7c6;border-top-color:var(--teal);border-radius:50%;animation:ospin .8s linear infinite;vertical-align:-2px}@keyframes ospin{to{transform:rotate(360deg)}}
 /* Rule packs */
 .rp-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(320px,1fr);gap:16px;align-items:start}@media(max-width:1100px){.rp-grid{grid-template-columns:1fr}}
 .rp-try{position:sticky;top:0;max-height:calc(100vh - 84px);overflow:auto;border-radius:12px}.rp-try section{margin-top:0}.rp-try textarea,.rp-try select{width:100%;margin:4px 0 8px}.rp-try textarea{resize:vertical;min-height:96px}
@@ -806,14 +815,19 @@ if(PAGE==='organisations'){
   opts($('f-section'),L.sections.map(s=>[s.key,s.name]),$('f-section').value||'identity');opts($('f-label'),Object.entries(KL),$('f-label').value||'general');
   opts($('b-provider'),[['claude','Claude'],['openai','GPT-6 Luna'],['grok','Grok'],['copilot','Microsoft Copilot']],$('b-provider').value||'claude');hint()}
  async function load(){await loadList();const o=st.L.organisations.find(x=>x.name===st.org);$('o-detail').hidden=!o;if(!o)return;
-  $('o-title').textContent=o.name;$('o-meta').textContent=(o.is_client?'Client · ':'')+o.kind;$('o-kind').value=o.kind;$('o-desc').value=o.description||'';
+  $('o-title').textContent=o.name;$('o-meta').textContent=(o.is_client?'Client · ':'')+o.kind+(o.website?' · '+o.website:'');$('o-kind').value=o.kind;$('o-desc').value=o.description||'';$('o-web').value=o.website||'';
+  runs(await api('/admin/api/organisations/research?org='+encodeURIComponent(st.org)).then(x=>x.runs).catch(()=>[]));
   const d=await api('/admin/api/organisations/facts?org='+encodeURIComponent(st.org)+'&status=all');const counts={};for(const f of d.facts)counts[f.status]=(counts[f.status]||0)+1;
   $('o-status').replaceChildren(...[['approved','Approved'],['proposed','Awaiting approval'],['retired','Retired'],['rejected','Rejected']].map(([k,l])=>{const b=el('button',l+' ('+(counts[k]||0)+')','chip'+(st.status===k?' on':'')+(k==='proposed'&&counts[k]&&st.status!==k?' attention':''));b.type='button';b.onclick=()=>{st.status=k;run(load)};return b}));
   const names=Object.fromEntries(st.L.sections.map(s=>[s.key,s.name]));const box=$('o-facts');box.replaceChildren();let cur=null;const rows=d.facts.filter(f=>f.status===st.status);
-  if(!rows.length)box.append(el('p',st.status==='approved'?'No approved facts yet. Add one below.':'None.','muted'));
+  if(!rows.length)box.append(el('p',st.status==='approved'?'No approved facts yet. Research online above, or add one below.':'None.','muted'));
+  if(st.status==='proposed'&&rows.length>1){const bar=el('div','','arc-actions');const all=el('button','Approve all '+rows.length,'mini-act');all.type='button';all.title='Approve every fact shown. The rules are checked again for each.';
+   all.onclick=()=>run(async()=>{if(!confirm('Approve all '+rows.length+' proposed facts? Check the sources first.'))return;const x=await api('/admin/api/organisations/facts/review','POST',{ids:rows.map(f=>f.id),decision:'approved'});$('notice').textContent=x.changed+' approved'+(x.blocked?'; '+x.blocked+' blocked: '+x.block_reasons.join(' '):'.');await load()});
+   const rej=el('button','Reject all','secondary mini-act');rej.type='button';rej.onclick=()=>run(async()=>{if(!confirm('Reject all '+rows.length+' proposed facts?'))return;await api('/admin/api/organisations/facts/review','POST',{ids:rows.map(f=>f.id),decision:'rejected'});$('notice').textContent='Rejected.';await load()});bar.append(all,rej);box.append(bar)}
   for(const f of rows){if(f.section!==cur){cur=f.section;box.append(el('h3',names[cur]||cur))}
    const row=el('div','','act-row');const txt=el('div','','act-text');txt.append(el('div',f.statement));
-   txt.append(el('div','Source: '+f.source_system+(f.source_ref?' · '+f.source_ref:'')+' · as of '+f.as_of+' · review by '+f.review_by+' · '+KL[f.label]+' · '+f.proposed_by,'small muted'));
+   const meta=el('div','Source: '+f.source_system+' · ','small muted');if(f.source_ref&&/^https?:\/\//i.test(f.source_ref))meta.append(link(f.source_ref,f.source_ref.replace(/^https?:\/\/(www\.)?/i,'').slice(0,80)),document.createTextNode(' · '));else if(f.source_ref)meta.append(document.createTextNode(f.source_ref+' · '));
+   meta.append(document.createTextNode('as of '+f.as_of+' · review by '+f.review_by+' · '+KL[f.label]+' · '+f.proposed_by));txt.append(meta);
    if(f.overdue)txt.append(el('span','⚑ Review overdue','flag'));if(f.retired_reason)txt.append(el('div','Retired: '+f.retired_reason,'small'));
    const act=el('div','','act-buttons');
    if(f.status==='proposed')for(const [l,dec] of [['Approve','approved'],['Reject','rejected']]){const b=el('button',l,dec==='rejected'?'secondary mini-act':'mini-act');b.type='button';b.onclick=()=>run(async()=>{const x=await api('/admin/api/organisations/facts/review','POST',{ids:[f.id],decision:dec});$('notice').textContent=x.blocked?x.block_reasons.join(' '):(dec==='approved'?'Approved.':'Rejected.');await load()});act.append(b)}
@@ -821,9 +835,23 @@ if(PAGE==='organisations'){
     const rt=el('button','Retire','secondary mini-act');rt.type='button';rt.onclick=()=>run(async()=>{const reason=prompt('Why is this fact no longer right?');if(!reason||!reason.trim())return;await api('/admin/api/organisations/facts/'+f.id+'/retire','POST',{reason});$('notice').textContent='Retired.';await load()});act.append(rb,sv,rt)}
    row.append(txt,act);box.append(row)}
   $('b-text').textContent=''}
+ function link(href,text){const a=el('a',text,'src-link');a.href=href;a.target='_blank';a.rel='noopener noreferrer';return a}
+ function runs(list){const box=$('o-research-box');box.replaceChildren();if(!list.length)return;const r=list[0];
+  const d=el('details','','o-run');const sm=el('summary','Last researched '+new Date(r.created_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+': '+(r.status==='complete'?r.summary:'failed ('+r.error+')'));d.append(sm);
+  const cited=r.sources.filter(x=>x.cited),other=r.sources.filter(x=>!x.cited);
+  if(cited.length){d.append(el('div','Sources cited by the proposed facts','small'));const ol=el('ol','');cited.forEach(x=>{const li=el('li','');li.append(link(x.url,x.title||x.url),el('span',' · '+x.url.replace(/^https?:\/\/(www\.)?/i,'').split('/')[0],'muted small'));ol.append(li)});d.append(ol)}
+  if(other.length){const o=el('details','');o.append(el('summary','Also consulted ('+other.length+')','small'));const ol=el('ol','uncited');other.forEach(x=>{const li=el('li','');li.append(link(x.url,x.title||x.url));ol.append(li)});o.append(ol);d.append(o)}
+  if(r.dropped.length){const o=el('details','');o.append(el('summary','Dropped ('+r.dropped.length+')','small'));const ul=el('ul','');r.dropped.forEach(x=>ul.append(el('li',x.statement+' — '+x.reason)));o.append(ul);d.append(o)}
+  box.append(d)}
+ async function research(name,website,statusEl,btn){btn.disabled=true;statusEl.className='muted small o-busy';statusEl.textContent='Temple is searching the web. This usually takes under a minute…';
+  try{const x=await api('/admin/api/organisations/research','POST',{name,website});st.org=x.org;st.status='proposed';statusEl.className='muted small';statusEl.textContent='';
+   $('notice').textContent=x.org+': '+x.summary+'. Check the sources, then approve the facts you want to keep.';await load();$('o-detail').scrollIntoView({block:'start',behavior:'smooth'})}
+  catch(e){statusEl.className='muted small';statusEl.textContent=e.message}finally{btn.disabled=false}}
+ $('o-r-go').onclick=()=>{const n=$('o-r-name').value.trim(),w=$('o-r-web').value.trim();if(!n&&!w){$('o-r-status').textContent='Type a name or a website.';return}research(n,w,$('o-r-status'),$('o-r-go')).then(()=>{$('o-r-name').value=$('o-r-web').value=''})};
+ $('o-research').onclick=()=>research(st.org,$('o-web').value.trim(),$('o-research-status'),$('o-research'));
  $('f-section').onchange=hint;$('f-statement').oninput=()=>{$('f-count').textContent=$('f-statement').value.length+' / 400'};
  $('o-new-save').onclick=()=>run(async()=>{const x=await api('/admin/api/organisations','POST',{name:$('o-new-name').value,kind:$('o-new-kind').value,description:$('o-new-desc').value});st.org=x.name;$('o-new-name').value=$('o-new-desc').value='';$('notice').textContent='Added '+x.name+'.';await load()});
- $('o-save').onclick=()=>run(async()=>{await api('/admin/api/organisations','PUT',{name:st.org,kind:$('o-kind').value,description:$('o-desc').value});$('notice').textContent='Saved.';await load()});
+ $('o-save').onclick=()=>run(async()=>{await api('/admin/api/organisations','PUT',{name:st.org,kind:$('o-kind').value,description:$('o-desc').value,website:$('o-web').value.trim()});$('notice').textContent='Saved.';await load()});
  $('f-save').onclick=()=>run(async()=>{const x=await api('/admin/api/organisations/facts','POST',{org:st.org,section:$('f-section').value,statement:$('f-statement').value,source_system:$('f-system').value,source_ref:$('f-ref').value,as_of:$('f-asof').value,review_by:$('f-review').value,label:$('f-label').value});$('notice').textContent=x.duplicate?'That fact is already recorded.':'Fact added (review by '+x.review_by+').';$('f-statement').value='';$('f-count').textContent='';st.status='approved';await load()});
  $('b-show').onclick=()=>run(async()=>{const b=await api('/admin/api/organisations/brief?org='+encodeURIComponent(st.org)+'&provider='+$('b-provider').value+'&external='+$('b-external').checked);$('b-text').textContent=b.text?b.text+'\n\n('+b.facts+' facts · '+b.text.length+' characters · about '+Math.round(b.text.length/4)+' tokens)':(b.withheld||'Nothing would be sent: no approved facts this model may see.')});
  $('r-check').onclick=()=>run(async()=>{const x=await api('/admin/api/organisations/source?source_system='+encodeURIComponent($('r-system').value)+'&source_ref='+encodeURIComponent($('r-ref').value));$('r-result').textContent=x.facts.length+(x.facts.length===1?' fact matches':' facts match')+(x.facts.length?': '+x.facts.map(f=>f.org+' · '+f.statement.slice(0,60)).join(' | '):'')});

@@ -1151,6 +1151,11 @@ class OrgChange(BaseModel):
     name: str = Field(min_length=1,max_length=60)
     kind: str|None = Field(default=None,max_length=20)
     description: str|None = Field(default=None,max_length=500)
+    website: str|None = Field(default=None,max_length=300)
+
+class OrgResearch(BaseModel):
+    name: str = Field(default='',max_length=60)
+    website: str = Field(default='',max_length=300)
 
 class OrgFactIn(BaseModel):
     org: str = Field(min_length=1,max_length=60)
@@ -1188,8 +1193,21 @@ def admin_organisation_create(o: OrgIn):
 
 @app.put('/admin/api/organisations')
 def admin_organisation_update(o: OrgChange):
-    try: return organisations.update(o.name,o.kind,o.description)
+    try: return organisations.update(o.name,o.kind,o.description,o.website)
     except ValueError as e: raise HTTPException(400,str(e)) from None
+
+@app.post('/admin/api/organisations/research')
+async def admin_org_research(r: OrgResearch):
+    """Temple searches the public web and proposes facts with their sources (a minute or so). Nothing is approved."""
+    import org_research
+    try: return await asyncio.to_thread(org_research.research, r.name, r.website)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+@app.get('/admin/api/organisations/research')
+def admin_org_research_history(org: str=Query(min_length=1,max_length=60)):
+    import org_research
+    try: return {'runs':org_research.history(org)}
+    except ValueError as e: raise HTTPException(404,str(e)) from None
 
 @app.get('/admin/api/organisations/facts')
 def admin_org_facts(org: str=Query(min_length=1,max_length=60), status: Literal['approved','proposed','retired','rejected','all']='all'):
