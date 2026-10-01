@@ -34,6 +34,10 @@ knowledge note "AI Substrate: status summary" through the `alice` connector, or 
    reach an external model. Stefan holds SC clearance and works with Scottish public-sector clients; treat this as absolute.
 8. **Run the tests before declaring anything done.** Never mark work complete with failing tests.
 
+9. **The internal MCP endpoint (port 8001) trusts its caller and must never be exposed beyond 127.0.0.1.** Anything
+   reached from outside goes through `mcp_server.py --external` (port 8002, Entra token on every request), and every
+   tool decides what to return with `_who()`: external callers get the external rules and their own provider.
+
 ## How Alice runs
 
 - **Desktop app** (`desktop.py`): tray icon; starts the servers without console windows; opens the chat in
@@ -81,7 +85,8 @@ A browser refresh is not enough: the old server process keeps running the old co
 | `admin_ui.py` | Command centre pages (HTML/JS per page in `SECTIONS` and `SCRIPT`) |
 | `substrate_store.py` | Database, chats, memories, categories, archive, decisions, quote matching |
 | `rules_engine.py` | Rule sets, detectors, spending caps, retention, guidance compilation |
-| `mcp_server.py` | MCP tools for models (read tools + propose_record/decision/knowledge, save/append_conversation) |
+| `mcp_server.py` | MCP tools for models (read tools + propose_record/decision/knowledge, save/append_conversation); `--external` runs the signed-in endpoint |
+| `external_auth.py` | Entra ID sign-in for the external endpoint (Copilot): settings `ALICE_EXT_*`, token checks, caller label and provider |
 | `temple.py` | Temple memory reviews, queue, settings, `reviewer()` (effective provider) |
 | `temple_chat.py` | Temple's suggestions after chat answers |
 | `temple_categorise.py` | Temple category assignment |

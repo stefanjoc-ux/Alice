@@ -228,7 +228,7 @@ if(PAGE==='memories'){
 }
 if(PAGE==='rules'){
  let data=null,dirty=false;
- const PROV={openai:'GPT-6 Luna',claude:'Claude (all)',grok:'Grok'};
+ const PROV={openai:'GPT-6 Luna',claude:'Claude (all)',grok:'Grok',copilot:'Microsoft Copilot'};
  const fmtD=v=>'$'+Number(v).toFixed(2);
  function num(label,value,min,max,step){const l=el('label',label,'r-param');const i=document.createElement('input');i.type='number';i.value=value;i.min=min;i.max=max;i.step=step;l.append(i);return [l,i]}
  function saveBtn(fn,label='Save'){const b=el('button',label);b.type='button';b.className='secondary';b.onclick=()=>run(fn);return b}

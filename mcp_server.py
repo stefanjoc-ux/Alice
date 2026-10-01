@@ -20,12 +20,31 @@ import rules_engine
 import clients
 import knowledge
 import conversations
+import external_auth
 
 BASE = Path(__file__).resolve().parent
 load_dotenv(BASE / '.env')
 DATABASE = Path(os.environ.get('AISUBSTRATE_DATA_DIR', str(BASE / 'data'))) / 'substrate.db'
 URL = 'http://127.0.0.1:8001/mcp'
 CLIENT = ''   # set by --client for external apps; recorded on every proposal they make
+EXTERNAL = None   # the EntraVerifier when running as the signed-in external endpoint (--external)
+
+
+def _who():
+    """Who is calling. None = Alice's own web chat on the internal port (trusted, filtered in app.py).
+    Otherwise an external app, which gets the external rules (External client scope, no client-confidential
+    or Local only material, its provider in the Provider allow-list) and is named on everything it proposes."""
+    if EXTERNAL is not None:
+        from fastmcp.server.dependencies import get_access_token
+        token = get_access_token()
+        if token is None: raise ValueError('Not signed in.')        # the auth layer should already have refused
+        return EXTERNAL.caller(token.claims)
+    if CLIENT: return external_auth.Caller(CLIENT, 'claude')
+    return None
+
+
+def _blocked(file_id, who, m=None):
+    return knowledge.model_block(file_id, who.provider if who else None, external=who is not None, m=m)
 # Links what Claude proposes to the conversation it saves (either order, within a short window), so the Archive
 # can show that a saved conversation produced memories, decisions or knowledge.
 import time as _time
@@ -93,14 +112,15 @@ def list_files(offset: Annotated[int, Field(ge=0)] = 0,
             'SELECT id,name,size,summary,created_at,text FROM files ORDER BY created_at DESC,id LIMIT ? OFFSET ?',
             (limit, offset)).fetchall()
         files = []
+        who = _who()
         metas = knowledge.meta([row['id'] for row in rows])
         for row in rows:
             m = metas.get(row['id'])
-            if m and knowledge.model_block(row['id'], external=bool(CLIENT), m=m): continue
+            if m and _blocked(row['id'], who, m): continue
             item = {k: row[k] for k in ('id', 'name', 'size', 'summary', 'created_at')}
             if m: item.update({'title': m['title'], 'type': knowledge.KINDS[m['kind']], 'label': m['label'], 'category': m['category']})
             reason = rules_engine.file_blocked(row['text'])
-            if not reason and CLIENT and clients.external_file_blocked(row['id']): reason = 'Client material is not shared with external apps.'
+            if not reason and who and clients.external_file_blocked(row['id']): reason = 'Client material is not shared with external apps.'
             if reason: item['withheld'] = reason
             files.append(item)
         return {'files': files, 'total': total,
@@ -127,11 +147,12 @@ def read_file(file_id: str,
         connection.close()
     if row is None:
         raise ValueError('File not found. Call list_files to obtain a current ID.')
-    retired = knowledge.model_block(file_id, external=bool(CLIENT))
+    who = _who()
+    retired = _blocked(file_id, who)
     if retired.startswith('Retired'):      # a replaced item: point to the current version rather than a security block
         raise ValueError(retired)
     reason = retired or rules_engine.file_blocked(row['text'])
-    if not reason and CLIENT and clients.external_file_blocked(file_id): reason = 'Withheld by Client separation: client material is not shared with external apps.'
+    if not reason and who and clients.external_file_blocked(file_id): reason = 'Withheld by Client separation: client material is not shared with external apps.'
     if reason:
         rules_engine.log_block('client_separation' if 'Client' in reason else 'protective_marking' if 'marking' in reason else 'secret_detection', row['name'], 'read_file withheld')
         raise ValueError(reason + ' Tell the user this file cannot be shared with models.')
@@ -179,14 +200,15 @@ def search_files(query: Annotated[str, Field(min_length=1, max_length=200)],
             rows = connection.execute('SELECT id,name,text FROM files ORDER BY created_at DESC,id')
         found_file = False
         withheld = retired = 0
+        who = _who()
         for row in rows:
             found_file = True
-            kb = knowledge.model_block(row['id'], external=bool(CLIENT))
+            kb = _blocked(row['id'], who)
             if kb.startswith('Retired'):
                 retired += 1
                 continue
             if (kb or rules_engine.file_blocked(row['text'])
-                    or (CLIENT and clients.external_file_blocked(row['id']))):
+                    or (who and clients.external_file_blocked(row['id']))):
                 withheld += 1
                 continue
             for number, line in enumerate(row['text'].splitlines(), 1):
@@ -225,7 +247,10 @@ def search_records(query: Annotated[str, Field(max_length=200)] = '',
         k = kinds.get(r['id']) or {}
         if k.get('kind') == 'decision':
             r['type'] = 'decision'; r['decision_detail'] = k.get('decision')
-    if CLIENT:   # Claude Desktop / Claude Code: only the categories allowed by External client scope
+    who = _who()
+    if who:   # external apps: their provider's allow-list, then the categories allowed by External client scope
+        result['records'], blocked = rules_engine.filter_records_for_provider(result['records'], who.provider)
+        if blocked: result['withheld_by_provider_rule'] = f'{blocked} memories are not sent to {who.label} (Provider allow-list).'
         result['records'], withheld = rules_engine.filter_records_for_external(result['records'])
         if withheld: result['withheld_by_rule'] = f'{withheld} memories are outside this client\'s allowed categories.'
         result['records'], n = clients.external_filter_records(result['records'])
@@ -245,13 +270,14 @@ def propose_record(title: Annotated[str, Field(min_length=1, max_length=200)],
     names are ignored and Temple assigns a category instead. The admin can always change it.
     This NEVER creates an approved memory. Tell the user to review it in Admin.
     """
-    if CLIENT:
-        source = (source.strip() + f' [via {CLIENT}]')[:2000]
+    who = _who()
+    if who:
+        source = (source.strip() + f' [via {who.label}]')[:2000]
     try:
         result = store.propose(title, content, source, category)
     except rules_engine.RuleViolation as e:
         raise ValueError(str(e) + ' Tell the user why the memory was not proposed.') from None
-    if CLIENT and not result.get('duplicate'): _captured('memory', result.get('id'))
+    if who and not result.get('duplicate'): _captured('memory', result.get('id'))
     return result
 
 
@@ -270,12 +296,13 @@ def propose_decision(title: Annotated[str, Field(min_length=1, max_length=200)],
     revisit_when: the conditions that would reopen it; revisit_date (YYYY-MM-DD) if a date was set.
     source: the user's words or the meeting/document it came from. Use existing category names only.
     """
-    if CLIENT: source = (source.strip() + f' [via {CLIENT}]')[:2000]
+    who = _who()
+    if who: source = (source.strip() + f' [via {who.label}]')[:2000]
     try:
         r = store.propose_decision(title, decision, source, rationale, options_considered, revisit_when, revisit_date, decided_on, category)
     except ValueError as e:
         raise ValueError(str(e) + ' Tell the user why the decision was not proposed.') from None
-    if CLIENT and not r.get('duplicate'): _captured('decision', r.get('id'))
+    if who and not r.get('duplicate'): _captured('decision', r.get('id'))
     return r | {'message': 'Decision proposed. The user approves it on the Memories page (filter: Decisions).'}
 
 
@@ -305,13 +332,14 @@ def propose_knowledge(title: Annotated[str, Field(min_length=1, max_length=200)]
     if kind == 'meeting':
         meeting = {'date': meeting_date, 'attendees': attendees, 'summary': content, 'decisions': decisions,
                    'actions': [{'action': a} for a in actions]}
-    by = f'model via {CLIENT}' if CLIENT else 'model via web chat'
+    who = _who()
+    by = f'model via {who.label}' if who else 'model via web chat'
     try:
-        result = knowledge.create(kind, title, content, source + (f' [via {CLIENT}]' if CLIENT else ''), by, status='draft',
+        result = knowledge.create(kind, title, content, source + (f' [via {who.label}]' if who else ''), by, status='draft',
                                   category=category, client=client, meeting=meeting, client_by='model', supersedes=supersedes)
     except rules_engine.RuleViolation as e:
         raise ValueError(str(e) + ' Tell the user why it was not saved.') from None
-    if CLIENT: _captured('knowledge', result.get('id'))
+    if who: _captured('knowledge', result.get('id'))
     if result.get('duplicate'):
         return {'id': result['id'], 'status': result['status'], 'message': 'Identical content already exists in the knowledge library.'}
     msg = 'Saved as a draft. The user must approve it on the Knowledge page before any model can read it.'
@@ -343,7 +371,8 @@ def save_conversation(title: Annotated[str, Field(min_length=1, max_length=120)]
     the first part here with transcript_complete=false, then the rest with append_conversation.
     Do not save trivial exchanges. Nothing is approved automatically; tell the user it is saved and where to review it.
     """
-    app_name = CLIENT or 'Claude'
+    who = _who()
+    app_name = who.label if who else 'Claude'
     try:
         r = conversations.save_external(app_name, title, summary, key_points, decisions, remember, user_quotes, client,
                                         transcript, transcript_complete)
@@ -372,11 +401,25 @@ def append_conversation(conversation_id: Annotated[str, Field(min_length=32, max
     transcript: [{"role":"user"|"assistant","text":"..."}] continuing in order. Set final=false if more parts follow.
     Replace credentials or personal identifiers with [REDACTED]."""
     try:
-        r = conversations.append_external(conversation_id, CLIENT or 'Claude', transcript, final)
+        who = _who()
+        r = conversations.append_external(conversation_id, who.label if who else 'Claude', transcript, final)
     except ValueError as e:
         raise ValueError(str(e) + ' Tell the user if this part could not be saved.') from None
     tail = ' Temple will review it.' if final else ' Send the next part.'
     return {'id': r['id'], 'message': f"Added {r['added']} turns ({r['total']} in total)." + tail}
+
+
+def enable_external(verifier):
+    """Turn this process into the signed-in external endpoint: every request needs a valid Entra token."""
+    global EXTERNAL
+    if CLIENT: raise ValueError('The external endpoint cannot run in --stdio mode.')
+    EXTERNAL = verifier
+    mcp.auth = external_auth.auth_provider(verifier)
+    text = build_instructions(external=True)
+    try: mcp.instructions = text
+    except Exception:
+        try: mcp._mcp_server.instructions = text
+        except Exception: pass
 
 
 async def check():
@@ -395,6 +438,8 @@ if __name__ == '__main__':
     parser.add_argument('--check', action='store_true', help='Test the running local MCP server')
     parser.add_argument('--stdio', action='store_true', help='Run for Claude Desktop / Claude Code (launched by the app)')
     parser.add_argument('--client', default='', help='Label recorded on proposals, e.g. "Claude Desktop"')
+    parser.add_argument('--external', action='store_true',
+                        help='Run the signed-in external endpoint (Entra ID; settings ALICE_EXT_* in .env)')
     args = parser.parse_args()
     if args.check:
         try:
@@ -411,5 +456,14 @@ if __name__ == '__main__':
             except Exception: pass
         try: mcp.run(transport='stdio', show_banner=False)
         except TypeError: mcp.run(transport='stdio')   # older FastMCP versions have no banner option
+    elif args.external:
+        try: cfg = external_auth.load_config(os.environ)
+        except ValueError as e:
+            print('External endpoint not started:', e)
+            raise SystemExit(2)
+        enable_external(external_auth.EntraVerifier(cfg))
+        print(f'Alice external endpoint on http://{cfg.host}:{cfg.port}/mcp for {cfg.base_url}; '
+              f'{len(cfg.allowed_users)} user(s), callers: ' + ', '.join(c.label for c in cfg.callers.values()))
+        mcp.run(transport='http', host=cfg.host, port=cfg.port, allowed_hosts=list(cfg.allowed_hosts), show_banner=False)
     else:
         mcp.run(transport='http', host='127.0.0.1', port=8001)

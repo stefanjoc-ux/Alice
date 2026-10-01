@@ -92,7 +92,7 @@ def model_block(file_id, provider=None, external=False, m=None):
                 'archived': 'This item is archived.'}.get(m['status'], 'Not active.')
     if m['label'] == 'local': return 'Withheld: labelled Local only (never sent to any model).'
     if external and m['label'] == 'client': return 'Withheld: client-confidential material is not shared with external apps.'
-    prov = 'claude' if external else provider
+    prov = (provider or 'claude') if external else provider
     if prov and prov in _labels_blocked().get(m['label'], []): return f'Withheld: {m["label"]} material is not sent to this provider.'
     return ''
 

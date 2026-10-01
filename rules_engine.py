@@ -19,7 +19,7 @@ SETS = [
     ('personal', 'Personal', 'How you want answers written.'),
 ]
 RANK = {k: i for i, (k, _, _) in enumerate(SETS)}
-PROVIDERS = ['openai', 'claude', 'grok']
+PROVIDERS = ['openai', 'claude', 'grok', 'copilot']   # copilot: Microsoft 365 Copilot via the external endpoint
 
 # id, set, name, kind, description, default enabled, default params, guidance text, locked
 BUILTIN = [
