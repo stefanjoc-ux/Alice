@@ -171,6 +171,33 @@ class Suggestions(BaseModel):
     suggestions: list[Suggestion] = Field(max_length=8)
 
 
+def parse_suggestions(raw):
+    """Read the model's reply tolerantly: find the JSON object even with text or code fences around it, accept
+    null or missing optional fields and a single option given as text, and drop only the suggestions that are
+    still malformed. Raises ValueError (a short reason, never the content) when there is no usable reply."""
+    import json as _j
+    text = (raw or '').strip()
+    a, b = text.find('{'), text.rfind('}')
+    if a < 0 or b <= a: raise ValueError('no JSON in the reply' if text else 'empty reply')
+    try: data = _j.loads(text[a:b + 1])
+    except ValueError: raise ValueError('reply was not valid JSON, possibly cut off') from None
+    items = data.get('suggestions') if isinstance(data, dict) else None
+    if not isinstance(items, list): raise ValueError('no suggestions list in the reply')
+    good, bad = [], 0
+    for it in items:
+        if not isinstance(it, dict): bad += 1; continue
+        it = dict(it)
+        for k in ('rationale', 'revisit'):
+            if it.get(k) is None: it[k] = ''
+        o = it.get('options')
+        it['options'] = [] if o is None else [o] if isinstance(o, str) else [str(x) for x in o if str(x).strip()][:12] if isinstance(o, list) else o
+        if isinstance(it.get('kind'), str): it['kind'] = it['kind'].strip().lower()
+        if isinstance(it.get('title'), str) and len(it['title']) > 160: it['title'] = it['title'][:157].rstrip() + '...'
+        try: good.append(Suggestion.model_validate(it))
+        except Exception: bad += 1
+    return Suggestions(suggestions=good[:8]), bad + max(0, len(good) - 8)
+
+
 PROMPT = '''You are Temple, the user's advisory memory steward, reviewing a WHOLE conversation after it
 ended. Find what is worth keeping. Return JSON only:
 {"suggestions":[{"kind":"memory|decision|knowledge|guidance|rule_request","title":"...","content":"...",
@@ -273,10 +300,16 @@ def review_chat(cid, manual=False):
         payload = text + '\n\nEXISTING_MEMORIES: ' + json.dumps(memories, ensure_ascii=False)[:8000]
         try:
             raw, provider = _ask(payload)
-            parsed = Suggestions.model_validate_json(raw.strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip())
         except Exception as e:
-            msg = str(e) if isinstance(e, ValueError) and 'Missing' in str(e) else 'Temple could not produce a validated review. Try again.'
+            import logging; logging.warning('Temple chat review: provider call failed (%s)', type(e).__name__)
+            msg = str(e) if isinstance(e, ValueError) and 'Missing' in str(e) else 'Temple could not reach the model. Check API credits, key and connectivity, then try again.'
             _finish(cid, 'failed', error=msg); return {'status': 'failed', 'message': msg}
+        try:
+            parsed, invalid = parse_suggestions(raw)
+        except ValueError as e:
+            import logging; logging.warning('Temple chat review: unusable reply (%s; %d characters)', e, len(raw or ''))
+            msg = f'Temple replied but not in the expected format ({e}). Try again.'
+            _finish(cid, 'failed', error=msg, provider=provider); return {'status': 'failed', 'message': msg}
         saved = skipped = 0
         norm = lambda s: ' '.join(s.split()).lower()
         haystack = [norm(t) for t in user_texts]
@@ -296,8 +329,10 @@ def review_chat(cid, manual=False):
                                if chat['source'] not in ('alice', EXPORT_SOURCE) else ''),
                            '[]', store.now()))
                 saved += 1
-        _finish(cid, 'complete', saved, f'{skipped} suggestions dropped: quotes not found in your words.' if skipped else '', provider)
-        return {'status': 'complete', 'suggestions': saved, 'dropped': skipped}
+        notes = ([f'{skipped} suggestions dropped: quotes not found in your words.'] if skipped else []) + \
+                ([f'{invalid} malformed suggestions dropped.'] if invalid else [])
+        _finish(cid, 'complete', saved, ' '.join(notes), provider)
+        return {'status': 'complete', 'suggestions': saved, 'dropped': skipped + invalid}
     finally:
         with _lock: _running.discard(cid)
 

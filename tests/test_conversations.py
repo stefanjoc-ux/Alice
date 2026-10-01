@@ -60,3 +60,16 @@ res=V.review_chat(mc,manual=True);t('marked chat blocked, Temple never called', 
 # 5. bulk review of flagged archived chats
 with s.db() as c: c.execute("UPDATE chats SET updated_at='2026-01-01T00:00:00+00:00' WHERE id IN (?,?)",(ac,mc))
 x=cl.post('/admin/api/archive/temple-review-flagged',headers=H).json();print('   bulk started:',x)
+# 6. tolerant reading of Temple's reply: prose and fences around the JSON, nulls, one bad item doesn't sink the rest
+good = {'kind': 'Memory', 'title': 'Office days', 'content': 'Works from the Blairgowrie office on Fridays', 'quote': 'x', 'reason': 'fact',
+        'rationale': None, 'options': None, 'revisit': None}
+p, bad = V.parse_suggestions('Here is the review:\n```json\n' + json.dumps({'suggestions': [good, {'kind': 'memory', 'title': ''}, 'junk']}) + '\n```')
+t('reply with prose, fences and nulls is read; malformed items dropped', len(p.suggestions) == 1 and bad == 2 and p.suggestions[0].kind == 'memory')
+p, bad = V.parse_suggestions(json.dumps({'suggestions': [dict(good, kind='decision', options='Azure VM')]}))
+t('a single option given as text is accepted', p.suggestions[0].options == ['Azure VM'])
+for r_, why in [('', 'empty'), ('Sorry, I cannot help.', 'no JSON'), ('{"suggestions":[{"kind":"memory"', 'no JSON'), ('{"suggestions": {"a": 1}}', 'no suggestions list')]:
+    try: V.parse_suggestions(r_); t(f'unusable reply refused ({why})', False)
+    except ValueError as e: t(f'unusable reply refused ({why})', why.split()[0] in str(e) or 'JSON' in str(e))
+V._ask = lambda p: ('I could not find anything.', 'claude')
+res = V.review_chat(ac, manual=True)
+t('unusable reply: failure says why', res['status'] == 'failed' and 'expected format' in res['message'] and 'no JSON' in res['message'])
