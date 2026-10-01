@@ -558,6 +558,9 @@ class SavedChatRequest(BaseModel):
 class ChatTitle(BaseModel):
     title: str = Field(min_length=1,max_length=100)
 
+@app.get('/spend')
+def spend(): return rules_engine.spend_status()
+
 @app.get('/chats')
 def chats(): return store.active_chats()   # inactive chats live on the Archive screen
 
@@ -1528,52 +1531,189 @@ def admin_section(page: str):
 def home():
     return r'''<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>AI Substrate</title>
-<link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#02030a">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Alice</title>
+<link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#0b1626">
 <link rel="icon" href="/static/favicon.png" type="image/png"><link rel="apple-touch-icon" href="/static/icon-192.png">
 <meta name="mobile-web-app-capable" content="yes">
 <style>
-*{box-sizing:border-box}body{background:#101827;color:#e5e7eb;font-family:system-ui,sans-serif;max-width:1200px;margin:30px auto;padding:20px}
-h1{color:#67e8f9;margin-bottom:6px}h2{font-size:19px}.muted{color:#a5b4c8;font-size:14px;line-height:1.6}
-.layout{display:grid;grid-template-columns:340px 1fr;gap:24px}.panel{background:#172234;padding:20px;border:1px solid #334155;border-radius:14px}
-button,select,textarea{font:inherit;border-radius:8px;padding:10px}button{background:#67e8f9;color:#101827;border:0;cursor:pointer;font-weight:600}button:disabled{opacity:.5;cursor:wait}
-.secondary{background:#334155;color:#e5e7eb}select,textarea{background:#1e293b;color:white;border:1px solid #64748b}textarea{width:100%;resize:vertical;margin:10px 0}
-.file{padding:12px 0;border-bottom:1px solid #334155;overflow-wrap:anywhere}.file label{display:flex;gap:8px;align-items:flex-start}.file input{margin-top:5px}
-.file details{font-size:12px;color:#a5b4c8;margin:8px 0;line-height:1.5}.actions{display:flex;gap:10px;align-items:center;margin-top:8px}.actions button{font-size:12px;padding:5px 8px}a{color:#67e8f9}
-.message{background:#1e293b;padding:16px;border-radius:10px;margin-bottom:12px;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.6}.user{border-left:3px solid #67e8f9}
-#messages{margin:20px 0;max-height:55vh;overflow:auto}#file-status,#status{white-space:pre-wrap;color:#a5b4c8;line-height:1.5}.top{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
-@media(max-width:800px){.layout{grid-template-columns:1fr}body{margin:10px auto;padding:12px}}
-
-__SUBSTRATE_THEME__
-body{max-width:1440px;margin:0 auto;padding:32px}.masthead{display:flex;align-items:center;justify-content:space-between;gap:24px;padding:16px 0 30px;margin-bottom:14px;border-bottom:1px solid #2a425e}.masthead h1{font-size:clamp(25px,3vw,40px);letter-spacing:.1em;margin:8px 0}.masthead p{margin:8px 0 0}.admin-link{padding:12px 18px;border:1px solid #41627e;border-radius:9px;background:#142a40;text-decoration:none;white-space:nowrap}.layout{grid-template-columns:310px minmax(0,1fr);gap:22px}.panel{min-width:0;padding:24px}aside.panel h2{font-size:12px;text-transform:uppercase;letter-spacing:.17em;color:#a9bad0;margin:24px 0 14px}aside.panel h2:first-child{margin-top:0}#chat-list button{font-size:13px;padding:12px;margin-top:8px;border:1px solid #304961}#chat-title{font-size:24px;font-weight:550}.top{padding-bottom:18px;border-bottom:1px solid #2a425e}#messages{max-height:58vh;min-height:180px;padding:4px}.message{background:linear-gradient(120deg,#19253c,#152038);border:1px solid #354366;border-left:3px solid #ad9aff;border-radius:4px 13px 13px 13px;margin:16px 0;padding:18px;white-space:normal}.message.user{background:linear-gradient(120deg,#142e3e,#142335);border-color:#315567;border-left-color:#71e8f5;margin-left:28px}.message-label{display:inline-block;max-width:100%;overflow-wrap:anywhere;font:11px ui-monospace,Consolas,monospace;letter-spacing:.08em;color:#c4b6ff;background:#ad9aff12;border:1px solid #ad9aff40;padding:4px 8px;border-radius:5px;margin-bottom:10px}.user .message-label{color:#9ceef6;border-color:#71e8f540;background:#71e8f510}.message-body{white-space:pre-wrap;line-height:1.75}#messages>details,#activity-panel{border:1px solid #2a425e;border-radius:8px;padding:4px 12px;background:#0a1526}#messages>details{margin:0 0 18px}#chat-form{border-top:1px solid #2a425e;padding-top:18px;margin-top:20px}#chat-form>label{color:#b9cde2;font-size:13px}#send{padding:12px 24px}#activity-panel{margin-top:20px}#activity{color:#a9c8dd}#delete-chat{color:#f3b8c7}#messages:empty:before{content:'Start a conversation. Your files and approved memories are available to every model.';display:block;color:#a4b5cc;padding:46px 24px;text-align:center;font-size:15px;line-height:1.8}#status:empty{display:none}.chat-head{display:flex;align-items:center;gap:6px;margin:0 0 10px;position:relative}.chat-head h2{margin:0!important;flex:1;min-width:0;font-size:19px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.icon-btn{margin:0!important;padding:5px 10px!important;min-width:0!important;font-size:15px!important;line-height:1.1!important;text-transform:none!important;letter-spacing:0!important}.chat-info summary{list-style:none;cursor:pointer;padding:4px 9px;border:1px solid #9fb3c4;border-radius:6px;font-size:15px;line-height:1.1;user-select:none}.chat-info summary::-webkit-details-marker{display:none}.chat-info[open] p{position:absolute;right:0;top:36px;width:min(360px,80vw);z-index:6;margin:0;padding:10px 12px;background:#fff;color:#1b3347;border:1px solid #9fb3c4;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.12);font-size:13px;line-height:1.5}.top{margin-bottom:8px!important}.focus-line{margin:4px 0 8px;font-size:13px}.focus-line:empty{display:none}.client-hint{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0;padding:10px 12px;border-radius:8px;background:#fdf3e1;border:1px solid #e2bf85;color:#4a3004;font-size:14px}.client-hint[hidden]{display:none}.client-hint button{margin:0}.client-chip{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;background:#e3f1f6;color:#064b63;border:1px solid #89b1bf;margin-left:6px;vertical-align:middle}.archive-link{display:block;font-size:13px;margin:10px 2px 0}.banner-head{position:relative;background:#02030a;border:1px solid #23306a;border-radius:12px;overflow:hidden;margin:0 0 18px}.banner-head img{display:block;width:100%;height:auto;max-height:150px;object-fit:cover;object-position:50% 60%}.banner-nav{display:flex;gap:8px;flex-wrap:wrap;padding:10px 12px;background:#02030a}@media(min-width:1200px){.banner-nav{position:absolute;left:56%;bottom:10px;transform:translateX(-50%);padding:0;background:none}}.banner-link{color:#dbe7ff!important;background:#0b1236d9;border:1px solid #3b4d94;border-radius:8px;padding:7px 12px;text-decoration:none;font-size:13px}.banner-link:hover{background:#18215a}.small{font-size:13px}#library{margin-top:22px;border-top:1px solid #2a425e;padding-top:14px}#library>summary{cursor:pointer;font-weight:600}.composer-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}.composer-row #send{margin-left:auto}#voice-controls{display:inline-flex;flex-wrap:wrap;align-items:center;gap:10px}#voice-controls[hidden]{display:none}#mic[aria-pressed=true]{background:#b3261e!important;color:#fff!important;border-color:#b3261e!important}.listen{font-size:12px;padding:5px 10px;margin-top:10px}.message-images{display:grid;gap:12px;margin-top:14px}.message-images figure{margin:0}.message-images img{display:block;max-width:100%;max-height:640px;border-radius:8px;border:1px solid #354366}.message-images figcaption{font-size:12px;margin-top:6px}.image-toggle{display:inline-flex;gap:8px;align-items:center;margin-right:14px;font-size:14px}
-@media(max-width:800px){body{padding:16px}.layout{grid-template-columns:1fr}.masthead{flex-wrap:wrap;gap:16px}.panel{padding:20px}.message.user{margin-left:12px}.top{gap:8px}select{max-width:100%}}
-__DECK_THEME__
-body{max-width:1800px}.layout{grid-template-columns:250px minmax(0,1fr) 330px;align-items:start}.temple-panel{border-color:#6e5794!important}.temple-panel h2{color:#c7b1ff;font-size:22px}.temple-panel:before{background:#b69aff!important}.temple-panel p,.temple-panel label{font-size:13px;line-height:1.7}.temple-panel label{display:block;margin:14px 0}.temple-card{border-top:1px solid #493b60;margin-top:20px;padding-top:16px;overflow-wrap:anywhere}.temple-card h3{font-size:15px;margin:10px 0}.temple-card blockquote{margin:12px 0;border-left:2px solid #9175bd;padding:8px 12px;background:#151226;color:#c6d3e9;font-size:13px;white-space:pre-wrap}.temple-card textarea{font-size:13px;width:100%;min-height:120px}.temple-card button{font-size:10px;margin:4px 4px 4px 0;padding:9px}.temple-tag{font:10px ui-monospace,Consolas,monospace;color:#d3bfff;text-transform:uppercase;letter-spacing:.08em}.temple-card pre{white-space:pre-wrap;overflow-wrap:anywhere}#temple-list{max-height:75vh;overflow:auto}#temple-message{color:#e1ccff;white-space:pre-wrap}.temple-panel summary{font-size:12px}
-@media(max-width:1250px){.layout{grid-template-columns:240px minmax(0,1fr)}.temple-panel{grid-column:1/-1}#temple-list{max-height:none}}@media(max-width:800px){.layout{grid-template-columns:1fr}.temple-panel{grid-column:auto}}
-__READABLE_THEME__
+/* Chat page: one slim bar, the conversation in the middle, the message box always in view. Self-contained styles. */
+:root{color-scheme:light;--ink:#14324a;--muted:#5d7385;--faint:#8aa0b0;--line:#d5e0e8;--bg:#f4f7fa;--panel:#fff;--teal:#075e79;--teal-d:#054a60;--teal2:#e3f1f6;--violet:#634394;--violet2:#f1ebf7;--bar:#0b1626;--warn:#e2a33b}
+*{box-sizing:border-box}[hidden]{display:none!important}
+html,body{height:100%}body{margin:0;font:15px/1.55 "Segoe UI",system-ui,-apple-system,sans-serif;color:var(--ink);background:var(--bg);display:grid;grid-template-rows:52px minmax(0,1fr);overflow:hidden}
+a{color:var(--teal)}button,select,textarea,input{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 12px}button:hover:not(:disabled){border-color:#9db7c6;background:#f7fbfd}button:disabled{opacity:.55;cursor:default}
+button.primary{background:var(--teal);border-color:var(--teal);color:#fff;font-weight:600}button.primary:hover:not(:disabled){background:var(--teal-d);border-color:var(--teal-d)}
+.muted{color:var(--muted)}.small{font-size:13px}
+/* top bar */
+.topbar{display:flex;align-items:center;gap:10px;padding:0 14px 0 12px;background:var(--bar);color:#dfeaf2;border-bottom:1px solid #1d3347;min-width:0}
+.brand{display:flex;align-items:center;gap:9px;font-weight:600;letter-spacing:.1em;font-size:13px;color:#e8f6ff;text-decoration:none;flex:none;width:224px}
+.brand img{width:28px;height:28px;border-radius:50%;box-shadow:0 0 12px #4de6ff55}
+#menu{display:none;background:none;border-color:#2a4459;color:#cfe3ef;padding:4px 9px}
+.title-wrap{display:flex;align-items:center;gap:2px;min-width:0;flex:0 1 auto}
+#chat-title{margin:0 6px 0 0;font-size:15px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:34vw}
+.ghost{background:none;border:1px solid transparent;color:#9fb8ca;padding:3px 7px;font-size:14px;line-height:1}.ghost:hover:not(:disabled){background:#17304a;border-color:#2a4459;color:#fff}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:0 4px 0 10px;height:30px;border:1px solid #33506a;border-radius:999px;font-size:13px;color:#9fb8ca;background:#11233a;flex:none}
+.pill select{background:transparent;border:0;color:#fff;font-weight:600;padding:4px 2px;max-width:170px;field-sizing:content;cursor:pointer;outline-offset:2px}.pill select option{color:#14324a}
+.pill .dot{width:8px;height:8px;border-radius:50%;background:#55d0a0}.pill.client-on .dot{background:#c7a6ff}
+.sp{flex:1;min-width:8px}
+#spend{font-size:13px;color:#cfe3ef;text-decoration:none;padding:0 10px;height:30px;display:inline-flex;align-items:center;border:1px solid #33506a;border-radius:999px;flex:none}#spend.warn{border-color:var(--warn);color:#ffd99a}
+#cc-link{position:relative;font-size:13px;color:#e6f6ff;text-decoration:none;padding:5px 12px;border-radius:8px;background:#163a52;border:1px solid #2f6a85;flex:none}#cc-link:hover{background:#1d4a66}
+.badge{position:absolute;top:-7px;right:-8px;background:var(--warn);color:#1b1203;border-radius:999px;font-size:11px;font-weight:700;padding:0 6px;line-height:17px}
+.chat-info{position:relative}.chat-info summary{list-style:none;cursor:pointer}.chat-info summary::-webkit-details-marker{display:none}
+.chat-info p{position:absolute;left:0;top:30px;width:min(360px,80vw);z-index:20;margin:0;padding:10px 12px;background:#fff;color:var(--ink);border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px #0b162626;font-size:13px}
+/* shell */
+.shell{display:grid;grid-template-columns:248px minmax(0,1fr) 46px;min-height:0}
+.side{background:#fff;border-right:1px solid var(--line);display:flex;flex-direction:column;padding:12px 10px;gap:8px;min-height:0}
+#create-chat{padding:9px 12px;border-radius:9px}
+#chat-search{border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13px;background:#fbfdfe}
+#chat-list{flex:1;overflow:auto;margin:0 -4px;padding:0 4px}
+.grp{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:12px 8px 3px}
+.chat-row{display:flex;width:100%;align-items:center;gap:6px;text-align:left;border:0;background:none;padding:7px 10px;border-radius:7px;font-size:14px}
+.chat-row:hover:not(:disabled){background:#f1f6f9}.chat-row.on{background:var(--teal2);font-weight:600}
+.chat-row .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.client-chip{flex:none;font-size:11px;padding:0 6px;border-radius:4px;background:#ede7f6;color:#4b2f73;border:1px solid #c7b8dd;font-weight:500}
+.side-foot{border-top:1px solid var(--line);padding:8px 4px 0;display:flex;justify-content:space-between;gap:8px;font-size:13px}.side-foot a{color:var(--muted);text-decoration:none}.side-foot a:hover{color:var(--teal)}
+/* conversation */
+.conv{display:flex;flex-direction:column;min-height:0;min-width:0}
+#messages{flex:1;overflow:auto;padding:26px 0 18px}
+.col{max-width:800px;margin:0 auto;padding:0 24px}
+#messages:empty:before{content:'';display:block;max-width:760px;height:96px;margin:8vh auto 18px;border-radius:12px;background:#02030a url(/static/substrate-banner-slim.webp?v=__BANNER_V__) center/contain no-repeat}
+#messages:empty:after{content:'Ask anything. Your approved memories, knowledge and organisation profiles are available to every model.';display:block;text-align:center;color:var(--muted);font-size:15px;padding:0 24px}
+.message{max-width:800px;margin:0 auto;padding:0 24px}
+.message.user{display:flex;justify-content:flex-end;margin-top:6px;margin-bottom:20px}
+.message.user .message-body{background:var(--teal2);border:1px solid #c3dfe9;border-radius:14px 14px 4px 14px;padding:9px 14px;max-width:78%;white-space:pre-wrap;overflow-wrap:anywhere}
+.message.assistant{margin-bottom:26px}.message.assistant .message-body{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.65}
+.message.status .message-body{color:var(--muted);font-style:italic}
+.meta{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;font-size:12px;color:var(--muted);margin-top:8px}
+.meta button{font-size:12px;padding:1px 8px;border-radius:6px;color:var(--muted)}
+.meta details{font-size:12px;flex:none;order:9}.meta summary{cursor:pointer;border:1px solid var(--line);border-radius:6px;padding:1px 8px;background:#fff;list-style:none}.meta summary::-webkit-details-marker{display:none}
+.meta details[open]{flex-basis:100%}.meta details pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin:6px 0 0;font-size:12px;max-height:240px;overflow:auto}
+.message-images{display:grid;gap:12px;margin-top:12px}.message-images figure{margin:0}.message-images img{display:block;max-width:100%;max-height:560px;border-radius:8px;border:1px solid var(--line)}.message-images figcaption{font-size:12px;margin-top:4px}
+.temple-inline{max-width:800px;margin:-12px auto 22px;padding:0 24px}
+.temple-inline div{display:flex;align-items:center;gap:10px;border-left:3px solid var(--violet);background:var(--violet2);border-radius:6px;padding:7px 12px;font-size:13px;color:#453454}
+.temple-inline b{color:var(--violet)}.temple-inline button{margin-left:auto;font-size:12px;padding:2px 10px;border-color:#c7b8dd}
+.message-body.rich{white-space:normal}.md>*:first-child{margin-top:0}.md>*:last-child{margin-bottom:0}.md p{margin:0 0 10px}.md ul,.md ol{margin:0 0 10px;padding-left:22px}.md li{margin:2px 0}
+.md h3,.md h4,.md h5,.md h6{margin:16px 0 6px;font-size:15px}.md h3{font-size:16px}.md code{font:13px ui-monospace,Consolas,monospace;background:#e9eff3;border-radius:4px;padding:1px 5px}
+.md pre{background:#0f1d2c;color:#dbe7f0;border-radius:8px;padding:10px 12px;overflow:auto;margin:0 0 10px}.md pre code{background:none;padding:0;color:inherit}
+.md blockquote{margin:0 0 10px;border-left:3px solid var(--line);padding:2px 12px;color:var(--muted)}.md hr{border:0;border-top:1px solid var(--line);margin:14px 0}
+.table-wrap{overflow:auto;margin:0 0 10px}.md table{border-collapse:collapse;font-size:14px}.md th,.md td{border:1px solid var(--line);padding:5px 10px;text-align:left;vertical-align:top}.md th{background:#eef3f6}
+/* composer */
+.composer{padding:6px 0 14px;background:linear-gradient(#f4f7fa00,var(--bg) 30%)}
+.notices{max-width:800px;margin:0 auto 6px;padding:0 24px;display:flex;flex-direction:column;gap:6px}
+#status{margin:0;font-size:13px;color:var(--muted);white-space:pre-wrap}#status:empty{display:none}
+#activity-panel{font-size:12px;color:var(--muted)}#activity-panel summary{cursor:pointer}#activity{margin:4px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;max-height:120px;overflow:auto}
+.client-hint{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:8px 12px;border-radius:8px;background:#fdf3e1;border:1px solid #e2bf85;color:#4a3004;font-size:13px}.client-hint button{font-size:13px;padding:3px 10px}
+#chat-form{max-width:800px;margin:0 auto;padding:0 24px}
+.box{border:1px solid #b9cbd8;border-radius:14px;background:#fff;box-shadow:0 2px 12px #0b16260f;padding:8px 10px 8px 12px}
+.box:focus-within{border-color:var(--teal);box-shadow:0 0 0 3px #075e7922}
+#chat-files{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 4px}#chat-files:empty{display:none}
+.fchip{display:inline-flex;align-items:center;gap:4px;font-size:12px;border:1px solid var(--line);border-radius:6px;padding:1px 3px 1px 8px;background:#f7fafc;max-width:260px}
+.fchip span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}.fchip.focus{background:var(--teal2);border-color:#89b1bf;font-weight:600}
+.fchip button{border:0;background:none;padding:0 5px;font-size:12px;color:var(--muted)}
+#prompt{display:block;width:100%;border:0;outline:0;resize:none;padding:6px 2px;min-height:44px;max-height:40vh;background:transparent;line-height:1.5}
+.composer-row{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:12px}
+.tool{width:32px;height:32px;padding:0;display:inline-grid;place-items:center;border-radius:8px;font-size:15px;flex:none}
+.toggle{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border:1px solid var(--line);border-radius:8px;cursor:pointer;font-size:15px;flex:none;position:relative}
+.toggle input{position:absolute;opacity:0;pointer-events:none}.toggle:has(input:checked){background:var(--teal2);border-color:var(--teal)}.toggle:has(input:disabled){opacity:.45;cursor:default}
+#voice-controls{display:inline-flex;align-items:center;gap:6px}
+#mic[aria-pressed=true]{background:#b3261e;color:#fff;border-color:#b3261e;width:auto;padding:0 10px;font-size:13px}
+.voice-opts{position:relative}.voice-opts summary{list-style:none}.voice-opts summary::-webkit-details-marker{display:none}
+.voice-opts .pop{position:absolute;bottom:40px;left:0;z-index:20;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px #0b162626;padding:10px 12px;display:grid;gap:8px;width:240px;font-size:13px;color:var(--ink)}
+.voice-opts select{width:100%;border:1px solid var(--line);border-radius:6px;padding:4px}
+.hint-text{margin-left:4px}
+#send{margin-left:auto;padding:6px 18px;border-radius:9px}
+/* right rail and drawer */
+.rail{border-left:1px solid var(--line);background:#fff;display:flex;flex-direction:column;align-items:center;padding-top:12px;gap:12px}
+.rail button{position:relative;width:32px;height:32px;padding:0;border-radius:8px;font-weight:700;font-size:14px}
+.rail button[aria-expanded=true]{background:var(--violet2);border-color:var(--violet);color:var(--violet)}
+#rail-temple{color:var(--violet);border-color:#c7b8dd}
+.drawer{position:fixed;top:52px;right:46px;bottom:0;width:380px;max-width:calc(100vw - 46px);background:#fff;border-left:1px solid var(--line);box-shadow:-10px 0 30px #0b16261a;overflow:auto;padding:16px 18px;z-index:15}
+.drawer h2{font-size:15px;margin:0 0 4px;display:flex;align-items:center;gap:8px}.drawer h2 button{margin-left:auto;font-size:12px;padding:2px 8px}
+.drawer .row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:10px 0}
+#temple-panel h2{color:var(--violet)}#temple-message{font-size:13px;color:#5c377d;white-space:pre-wrap;margin:6px 0}
+.temple-card{border-top:1px solid var(--line);margin-top:14px;padding-top:12px;overflow-wrap:anywhere;font-size:14px}.temple-card h3{font-size:14px;margin:6px 0}
+.temple-card blockquote{margin:8px 0;border-left:2px solid #9175bd;padding:6px 10px;background:var(--violet2);font-size:13px;white-space:pre-wrap}
+.temple-card textarea{width:100%;min-height:110px;font-size:13px;border:1px solid var(--line);border-radius:6px;padding:6px}.temple-card button{font-size:12px;margin:4px 4px 0 0;padding:3px 10px}
+.temple-card pre{white-space:pre-wrap;font-size:12px}.temple-tag{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--violet)}
+.setting{font-size:13px;color:var(--muted);display:flex;gap:6px;align-items:center;margin:4px 0}
+.file{padding:10px 0;border-bottom:1px solid var(--line);font-size:13px;overflow-wrap:anywhere}.file label{display:flex;gap:8px;align-items:flex-start}.file input{margin-top:3px}
+.file details{color:var(--muted);margin:6px 0}.actions{display:flex;gap:8px;align-items:center;margin-top:6px}.actions button{font-size:12px;padding:2px 8px}
+#file-status{font-size:13px;color:var(--muted);white-space:pre-wrap}#selected{display:none}
+@media(max-width:900px){.shell{grid-template-columns:minmax(0,1fr) 46px}.side{position:fixed;top:52px;bottom:0;left:0;width:270px;z-index:16;box-shadow:10px 0 30px #0b16261a;transform:translateX(-105%);transition:transform .15s}
+ body.menu-open .side{transform:none}#menu{display:inline-block}.brand{width:auto}.brand span{display:none}#spend{display:none}.pill select{max-width:110px}#chat-title{max-width:30vw}.hint-text{display:none}}
+@media(max-width:560px){.pill-label{display:none}.title-wrap .ghost,.chat-info{display:none}.col,.message,#chat-form,.notices,.temple-inline{padding:0 12px}}
 </style></head><body>
-<header class="banner-head"><img src="/static/substrate-banner-slim.webp?v=__BANNER_V__" width="2816" height="352" alt="AI Substrate banner: Alice, sophisticated AI assistant"><nav class="banner-nav" aria-label="Admin"><a id="cc-link" class="banner-link" href="/admin">Command centre ↗</a><a class="banner-link" href="/admin/usage">Usage &amp; costs</a></nav></header>
-<div class="layout"><aside class="panel"><h2>Chats</h2><button id="create-chat">New chat</button><div id="chat-list" style="max-height:300px;overflow:auto"></div><a id="archive-link" class="archive-link" href="/admin/archive" hidden></a><h2>Files in this chat</h2>
-<input id="upload" type="file" accept=".xlsx,.csv,.pdf,.txt,.md,.docx,.vtt" multiple hidden>
-<button id="upload-button">Upload to this chat</button>
-<p class="muted small">Excel, CSV, PDF, TXT, Markdown, Word or Teams .vtt, up to 10 MB. Ticked files are a focus hint for the model.</p>
-<p id="file-status" role="status"></p><div id="chat-files"></div>
-<details id="library"><summary>All saved files (<span id="library-count">0</span>)</summary>
-<p class="muted small">Every model can still search all saved files through MCP, whichever chat you are in. Tick a file to add it to this chat.</p>
-<div id="files"></div>
-<details class="muted"><summary>Limits and storage</summary><p>Excel: 12 sheets, 5,000 rows/80 columns per sheet, 10,000 rows across sheets. PDF: 100 pages. Maximum 100,000 extracted characters per file. Oversize files are rejected, never silently shortened.</p><p>Scanned PDFs need OCR first. Excel formulas use saved results; recalculate and save in Excel before uploading. Charts and images inside files are not read.</p><p>Original files and extracted content are stored in data/substrate.db beside app.py. Back up the data folder while the app is stopped. Removing a file from a chat does not delete it.</p></details>
-</details>
-</aside><main class="panel"><div class="chat-head"><h2 id="chat-title">New chat</h2><button id="rename-chat" type="button" class="secondary icon-btn" title="Rename chat" aria-label="Rename chat">✎</button><button id="delete-chat" type="button" class="secondary icon-btn" title="Delete chat" aria-label="Delete chat">🗑</button><details class="chat-info"><summary title="About this chat" aria-label="About this chat">ⓘ</summary><p>Chats and tool activity are saved locally. Models receive up to 10 recent completed exchanges (60,000 characters), not the full archive, so earlier details may need repeating. Switching models keeps this chat.</p></details></div><div class="top"><label for="provider">Model</label><select id="provider"><option value="auto">Auto · routes each message</option><option value="openai">OpenAI · GPT-6 Luna</option><option value="claude">Claude · Haiku 4.5</option><option value="claude_sonnet">Claude · Sonnet 5.5</option><option value="claude_opus">Claude · Opus 5.5</option><option value="grok">Grok · 4.7</option></select><label for="chat-client">Client</label><select id="chat-client"><option value="">None · General</option></select><button id="new-chat" class="secondary">New chat</button></div><div id="client-hint" class="client-hint" hidden></div>
-<p id="selected" class="muted focus-line"></p><div id="messages" aria-live="polite"></div>
-<form id="chat-form"><label for="prompt">Your message</label><textarea id="prompt" rows="3" maxlength="12000" placeholder="Ask about your saved files…" required></textarea><div class="composer-row"><label class="image-toggle"><input id="images-toggle" type="checkbox"> Generate images</label><span id="voice-controls" hidden><button id="mic" type="button" class="secondary" aria-pressed="false">🎙 Speak</button><label class="image-toggle"><input id="speak-replies" type="checkbox"> Read replies aloud</label><label class="image-toggle">Voice <select id="voice-select" aria-label="Voice"></select></label><button id="stop-audio" type="button" class="secondary" hidden>■ Stop audio</button></span><button id="send">Send message</button></div></form>
-<details id="activity-panel"><summary>Tool activity · latest question</summary><pre id="activity" style="white-space:pre-wrap;overflow-wrap:anywhere" aria-live="polite"></pre></details><p id="status" role="status"></p></main><aside class="panel temple-panel"><div class="console-label">Conversation steward</div><h2>TEMPLE</h2><p class="muted">Suggestions are saved with this chat. Capturing knowledge or changing guidance requires your decision.</p><label><input id="temple-chat-enabled" type="checkbox"> Suggest after each answer (all chats)</label><p class="muted">Adds an API call using your Temple reviewer. Analyses up to four recent exchanges and a limited memory sample.</p><button id="temple-analyse" class="secondary" type="button">Analyse latest</button><button id="temple-refresh-chat" class="secondary" type="button">Refresh</button><p id="temple-message" role="status"></p><div id="temple-list"></div><p><a href="/admin/temple">Temple review inbox ↗</a></p></aside></div>
+<header class="topbar">
+ <button id="menu" type="button" aria-label="Chats">☰</button>
+ <a class="brand" href="/" title="Alice"><img src="/static/favicon.png" alt=""><span>ALICE</span></a>
+ <div class="title-wrap"><h1 id="chat-title">New chat</h1>
+  <button id="rename-chat" type="button" class="ghost" title="Rename chat" aria-label="Rename chat">✎</button>
+  <button id="delete-chat" type="button" class="ghost" title="Delete chat" aria-label="Delete chat">🗑</button>
+  <details class="chat-info"><summary class="ghost" title="About this chat" aria-label="About this chat">ⓘ</summary><p>Chats and tool activity are saved locally. Models receive up to 10 recent completed exchanges (60,000 characters), not the full archive, so earlier details may need repeating. Switching models keeps this chat. A client-tagged chat also gets that client's organisation profile.</p></details>
+ </div>
+ <label class="pill" title="Model for the next message"><span class="pill-label">Model</span><select id="provider" aria-label="Model"><option value="auto">Auto</option><option value="openai">GPT-6 Luna</option><option value="claude">Haiku 4.5</option><option value="claude_sonnet">Sonnet 5.5</option><option value="claude_opus">Opus 5.5</option><option value="grok">Grok 4.7</option></select></label>
+ <label class="pill" id="client-pill"><span class="dot"></span><select id="chat-client" aria-label="Client for this chat"><option value="">General</option></select></label>
+ <div class="sp"></div>
+ <a id="spend" href="/admin/usage" title="Estimated spend today">—</a>
+ <a id="cc-link" href="/admin">Command centre</a>
+</header>
+<div class="shell">
+<aside class="side" id="side">
+ <button id="create-chat" class="primary" type="button">+ New chat</button>
+ <input id="chat-search" type="search" placeholder="Search chats…" aria-label="Search chats">
+ <div id="chat-list"></div>
+ <div class="side-foot"><a id="archive-link" href="/admin/archive" hidden></a><a href="/admin/knowledge">Knowledge ↗</a></div>
+</aside>
+<main class="conv">
+ <div id="messages" aria-live="polite"></div>
+ <div class="composer">
+  <div class="notices"><div id="client-hint" class="client-hint" hidden></div><details id="activity-panel" hidden><summary>Tool activity</summary><pre id="activity" aria-live="polite"></pre></details><p id="status" role="status"></p></div>
+  <form id="chat-form"><div class="box">
+   <div id="chat-files"></div>
+   <textarea id="prompt" rows="2" maxlength="12000" placeholder="Message Alice…" aria-label="Your message" required></textarea>
+   <div class="composer-row">
+    <input id="upload" type="file" accept=".xlsx,.csv,.pdf,.txt,.md,.docx,.vtt" multiple hidden>
+    <button id="upload-button" type="button" class="tool" title="Attach files to this chat (Excel, CSV, PDF, TXT, Markdown, Word, Teams .vtt; up to 10 MB). Click a chip to make it a focus file." aria-label="Attach files">📎</button>
+    <span id="voice-controls" hidden><button id="mic" type="button" class="tool" aria-pressed="false" title="Speak (2-minute limit)" aria-label="Speak">🎙</button>
+     <details class="voice-opts"><summary class="tool" title="Voice settings" aria-label="Voice settings" role="button" style="border:1px solid var(--line);cursor:pointer">🔊</summary><div class="pop"><label class="setting"><input id="speak-replies" type="checkbox"> Read replies aloud</label><label>Voice<select id="voice-select" aria-label="Voice"></select></label></div></details>
+     <button id="stop-audio" type="button" class="tool" title="Stop audio" aria-label="Stop audio" hidden>■</button></span>
+    <label class="toggle" title="Generate images (GPT-6 Luna or Grok)"><input id="images-toggle" type="checkbox" aria-label="Generate images">🖼</label>
+    <span class="hint-text">Enter to send · Shift+Enter for a new line</span>
+    <button id="send" class="primary">Send</button>
+   </div></div></form>
+ </div>
+</main>
+<nav class="rail" aria-label="Panels">
+ <button id="rail-temple" type="button" title="Temple: suggestions from this chat" aria-label="Temple" aria-expanded="false">T<span id="temple-badge" class="badge" hidden></span></button>
+ <button id="rail-files" type="button" title="Files: this chat and your library" aria-label="Files" aria-expanded="false">📁</button>
+</nav>
+</div>
+<aside id="temple-panel" class="drawer" hidden>
+ <h2>Temple <button type="button" id="temple-close" aria-label="Close">Close</button></h2>
+ <p class="muted small">Suggestions from this chat. Nothing is saved without your decision.</p>
+ <div class="row"><button id="temple-analyse" type="button">Analyse latest</button><button id="temple-refresh-chat" type="button">Refresh</button></div>
+ <label class="setting"><input id="temple-chat-enabled" type="checkbox"> Suggest after each answer (all chats; one extra API call each)</label>
+ <p id="temple-message" role="status"></p><div id="temple-list"></div>
+ <p class="small"><a href="/admin/temple">Temple review inbox ↗</a></p>
+</aside>
+<aside id="files-panel" class="drawer" hidden>
+ <h2>Files <button type="button" id="files-close" aria-label="Close">Close</button></h2>
+ <p class="muted small">Files attached to this chat appear as chips above your message; click a chip to make it a focus file (up to four). Every model can search all saved files whichever chat you are in.</p>
+ <p id="file-status" role="status"></p><p id="selected"></p>
+ <details id="library" open><summary>All saved files (<span id="library-count">0</span>)</summary><p class="muted small">Tick a file to add it to this chat.</p><div id="files"></div>
+ <details class="muted small"><summary>Limits and storage</summary><p>Excel: 12 sheets, 5,000 rows/80 columns per sheet, 10,000 rows across sheets. PDF: 100 pages. Maximum 100,000 extracted characters per file. Oversize files are rejected, never silently shortened.</p><p>Scanned PDFs need OCR first. Excel formulas use saved results; recalculate and save in Excel before uploading. Charts and images inside files are not read.</p><p>Original files and extracted content are stored in data/substrate.db beside app.py. Back up the data folder while the app is stopped. Removing a file from a chat does not delete it.</p></details>
+ </details>
+</aside>
 <script>
 let history=[],savedFiles=[],chatFiles=[],busy=false,uploading=false,chatId=null,voiceEnabled=false,recorder=null,micTimer=null,audio=null,spokenTurn=false;
 const selected=new Set();
 const byId=id=>document.getElementById(id);
-function controls(){for(const id of ['create-chat','rename-chat','delete-chat'])byId(id).disabled=busy||uploading;document.querySelectorAll('#chat-list button').forEach(e=>e.disabled=busy||uploading);byId('send').disabled=busy||uploading;byId('provider').disabled=busy;imageToggle();byId('prompt').disabled=busy;byId('new-chat').disabled=busy;byId('upload-button').disabled=busy||uploading;document.querySelectorAll('#files input,#files button,#chat-files input,#chat-files button').forEach(e=>e.disabled=busy||uploading);byId('mic').disabled=busy||uploading;const cc=byId('chat-client');cc.disabled=busy||uploading||cc.options.length<2;}
+function controls(){for(const id of ['create-chat','rename-chat','delete-chat'])byId(id).disabled=busy||uploading;document.querySelectorAll('#chat-list button').forEach(e=>e.disabled=busy||uploading);byId('send').disabled=busy||uploading;byId('provider').disabled=busy;imageToggle();byId('prompt').disabled=busy;byId('upload-button').disabled=busy||uploading;document.querySelectorAll('#files input,#files button,#chat-files input,#chat-files button').forEach(e=>e.disabled=busy||uploading);byId('mic').disabled=busy||uploading;const cc=byId('chat-client');cc.disabled=busy||uploading||cc.options.length<2;}
 function imageToggle(){const t=byId('images-toggle'),claude=byId('provider').value.startsWith('claude');if(claude)t.checked=false;t.disabled=busy||claude;t.parentElement.title=claude?'Claude models cannot generate images':'Adds image-generation cost when used';}
-function resetChat(){history=[];byId('messages').replaceChildren();byId('status').textContent='';byId('activity').textContent='';}
+function resetChat(){history=[];byId('messages').replaceChildren();byId('status').textContent='';byId('activity').textContent='';byId('activity-panel').hidden=true;}
+const MODEL_NAMES={'gpt-6-luna':'GPT-6 Luna','claude-haiku-4-5-20251001':'Haiku 4.5','claude-sonnet-5-5':'Sonnet 5.5','claude-opus-5-5':'Opus 5.5','grok-4.7':'Grok 4.7'};
+function modelName(m){m=m||'';const [id,...rest]=m.split(' · ');return (MODEL_NAMES[id]||id)+(rest.length?' · '+rest.join(' · '):'');}
+function sizePrompt(){const p=byId('prompt'),m=byId('messages');const atEnd=m.scrollHeight-m.scrollTop-m.clientHeight<40;p.style.height='auto';p.style.height=Math.min(p.scrollHeight+2,window.innerHeight*0.4)+'px';if(atEnd)m.scrollTop=m.scrollHeight;}
 function selectedLabel(){byId('selected').textContent=selected.size?'Focus: '+savedFiles.filter(f=>selected.has(f.id)).map(f=>f.name).join(', '):'';}
 async function api(url,options){const response=await fetch(url,options);const data=await response.json();if(!response.ok){let error=data.detail;if(Array.isArray(error))error=error.map(e=>e.msg).join('; ');throw new Error(typeof error==='string'?error:'Request failed.');}return data;}
 function toggleFocus(file,check){if(check.checked&&selected.size>=4){check.checked=false;byId('file-status').textContent='Choose up to four focus files.';return false;}if(check.checked)selected.add(file.id);else selected.delete(file.id);selectedLabel();return true;}
@@ -1581,13 +1721,41 @@ function fileCard(file,library){const card=document.createElement('div');card.cl
  if(library){const remove=document.createElement('button');remove.className='secondary';remove.textContent='Delete';remove.onclick=async()=>{if(!confirm('Delete '+file.name+' from saved files? This cannot be undone. Saved chat messages will remain.'))return;busy=true;controls();try{await api('/files/'+file.id,{method:'DELETE'});selected.delete(file.id);await refreshFiles();}catch(e){byId('file-status').textContent=e.message;}finally{busy=false;controls();}};actions.append(remove);}
  else{const unlink=document.createElement('button');unlink.className='secondary';unlink.textContent='Remove from chat';unlink.onclick=async()=>{busy=true;controls();try{await api('/chats/'+chatId+'/files/'+file.id,{method:'DELETE'});selected.delete(file.id);await refreshFiles();}catch(e){byId('file-status').textContent=e.message;}finally{busy=false;controls();}};actions.append(unlink);}
  card.append(label,details,actions);return card;}
-function renderFiles(){const mine=byId('chat-files');mine.replaceChildren();if(!chatFiles.length){const p=document.createElement('p');p.className='muted small';p.textContent='No files in this chat yet.';mine.append(p);}for(const f of chatFiles)mine.append(fileCard(f,false));const lib=byId('files');lib.replaceChildren();if(!savedFiles.length)lib.textContent='No saved files yet.';for(const f of savedFiles)lib.append(fileCard(f,true));byId('library-count').textContent=savedFiles.length;selectedLabel();controls();}
+function fileChip(file){const chip=document.createElement('span');chip.className='fchip'+(selected.has(file.id)?' focus':'');const name=document.createElement('span');name.textContent='📎 '+file.name;name.title=(selected.has(file.id)?'Focus file (click to unset)':'Click to make this a focus file')+'\n'+(file.summary||'');name.onclick=()=>{if(busy||uploading)return;const box={checked:!selected.has(file.id)};if(toggleFocus(file,box))renderFiles();};const x=document.createElement('button');x.type='button';x.textContent='✕';x.title='Remove from this chat (the file stays saved)';x.setAttribute('aria-label','Remove '+file.name+' from this chat');x.onclick=async()=>{busy=true;controls();try{await api('/chats/'+chatId+'/files/'+file.id,{method:'DELETE'});selected.delete(file.id);await refreshFiles();}catch(e){byId('status').textContent=e.message;}finally{busy=false;controls();}};chip.append(name,x);return chip;}
+function renderFiles(){const mine=byId('chat-files');mine.replaceChildren();for(const f of chatFiles)mine.append(fileChip(f));byId('rail-files').title='Files: '+chatFiles.length+' in this chat, '+savedFiles.length+' saved';const lib=byId('files');lib.replaceChildren();if(!savedFiles.length)lib.textContent='No saved files yet.';for(const f of savedFiles)lib.append(fileCard(f,true));byId('library-count').textContent=savedFiles.length;selectedLabel();controls();}
 async function refreshFiles(){savedFiles=await api('/files');chatFiles=chatId?await api('/chats/'+chatId+'/files'):[];const ids=new Set(savedFiles.map(f=>f.id));for(const id of selected)if(!ids.has(id))selected.delete(id);renderFiles();}
 byId('upload-button').onclick=()=>byId('upload').click();
-byId('upload').onchange=async()=>{const files=[...byId('upload').files];if(!files.length)return;uploading=true;controls();const results=[];for(const file of files){try{if(file.size>10*1024*1024)throw new Error('Exceeds 10 MB.');byId('file-status').textContent='Saving '+file.name+'…';const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=()=>reject(new Error('Could not read file.'));reader.readAsDataURL(file);});const result=await api('/files',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:file.name,data,chat_id:chatId||''})});if(selected.size<4)selected.add(result.id);results.push(file.name+(result.duplicate?': already saved.':': saved.'));}catch(e){results.push(file.name+': '+e.message);}}try{await refreshFiles();}catch(e){results.push(e.message);}byId('file-status').textContent=results.join('\n');byId('upload').value='';uploading=false;controls();};
-function show(role,text,model,pictures){const message=document.createElement('div');message.className='message '+role;const label=document.createElement('div');label.className='message-label';label.textContent=role==='user'?'YOU':model;const body=document.createElement('div');body.className='message-body';body.textContent=text;message.append(label,body);if(role==='assistant'&&voiceEnabled&&model!=='Status'){const b=document.createElement('button');b.type='button';b.className='secondary listen';b.textContent='🔊 Listen';b.onclick=()=>speak(text).catch(e=>byId('status').textContent=e.message);message.append(b);}if(pictures&&pictures.length){const grid=document.createElement('div');grid.className='message-images';for(const p of pictures){const fig=document.createElement('figure');const img=document.createElement('img');img.src='/images/'+p.path;img.alt=p.prompt||'Generated image';img.loading='lazy';const cap=document.createElement('figcaption');const link=document.createElement('a');link.href=img.src;link.download='';link.textContent='Download image';cap.append(link);fig.append(img,cap);grid.append(fig);}message.append(grid);}byId('messages').append(message);byId('messages').scrollTop=byId('messages').scrollHeight;}
+byId('upload').onchange=async()=>{const files=[...byId('upload').files];if(!files.length)return;uploading=true;controls();const results=[];for(const file of files){try{if(file.size>10*1024*1024)throw new Error('Exceeds 10 MB.');byId('status').textContent='Saving '+file.name+'…';const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=()=>reject(new Error('Could not read file.'));reader.readAsDataURL(file);});const result=await api('/files',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:file.name,data,chat_id:chatId||''})});if(selected.size<4)selected.add(result.id);results.push(file.name+(result.duplicate?': already saved.':': saved.'));}catch(e){results.push(file.name+': '+e.message);}}try{await refreshFiles();}catch(e){results.push(e.message);}byId('status').textContent=results.join('\n');byId('upload').value='';uploading=false;controls();};
+// Safe Markdown for answers: builds DOM nodes (never innerHTML), so model text cannot inject markup.
+function mdInline(text,parent){const re=/(`[^`]+`)|(\*\*[^*]+\*\*)|(__[^_]+__)|(\*[^*\s][^*]*\*)|(\[[^\]]+\]\((https?:\/\/[^\s)]+)\))/g;let last=0,m;
+ while((m=re.exec(text))){if(m.index>last)parent.append(document.createTextNode(text.slice(last,m.index)));const t=m[0];let el;
+  if(m[1]){el=document.createElement('code');el.textContent=t.slice(1,-1)}else if(m[2]||m[3]){el=document.createElement('strong');mdInline(t.slice(2,-2),el)}
+  else if(m[4]){el=document.createElement('em');mdInline(t.slice(1,-1),el)}else{el=document.createElement('a');el.href=m[6];el.target='_blank';el.rel='noopener noreferrer';el.textContent=t.slice(1,t.indexOf(']('))}
+  parent.append(el);last=m.index+t.length}
+ if(last<text.length)parent.append(document.createTextNode(text.slice(last)));}
+function renderMarkdown(src){const root=document.createElement('div');root.className='md';const lines=(src||'').replace(/\r\n/g,'\n').split('\n');let i=0,para=[];
+ const flush=()=>{if(para.length){const p=document.createElement('p');mdInline(para.join(' '),p);root.append(p);para=[]}};
+ const cells=l=>l.trim().replace(/^\||\|$/g,'').split('|').map(c=>c.trim());
+ while(i<lines.length){const line=lines[i];
+  if(/^\s*```/.test(line)){flush();const code=[];i++;while(i<lines.length&&!/^\s*```/.test(lines[i]))code.push(lines[i++]);i++;const pre=document.createElement('pre');const c=document.createElement('code');c.textContent=code.join('\n');pre.append(c);root.append(pre);continue}
+  const h=line.match(/^(#{1,4})\s+(.*)$/);if(h){flush();const e=document.createElement('h'+Math.min(h[1].length+2,6));mdInline(h[2],e);root.append(e);i++;continue}
+  if(/^\s*\|.*\|\s*$/.test(line)&&i+1<lines.length&&/^\s*\|?\s*:?-{3,}/.test(lines[i+1])){flush();const t=document.createElement('table');const head=document.createElement('tr');for(const c of cells(line)){const th=document.createElement('th');mdInline(c,th);head.append(th)}t.append(head);i+=2;
+   while(i<lines.length&&/^\s*\|.*\|\s*$/.test(lines[i])){const tr=document.createElement('tr');for(const c of cells(lines[i])){const td=document.createElement('td');mdInline(c,td);tr.append(td)}t.append(tr);i++}const w=document.createElement('div');w.className='table-wrap';w.append(t);root.append(w);continue}
+  const li=line.match(/^\s*([-*•]|\d+[.)])\s+(.*)$/);if(li){flush();const ordered=/\d/.test(li[1]);const list=document.createElement(ordered?'ol':'ul');
+   while(i<lines.length){const m=lines[i].match(/^\s*([-*•]|\d+[.)])\s+(.*)$/);if(!m||/\d/.test(m[1])!==ordered)break;const item=document.createElement('li');mdInline(m[2],item);list.append(item);i++}root.append(list);continue}
+  if(/^\s*(-{3,}|\*{3,})\s*$/.test(line)){flush();root.append(document.createElement('hr'));i++;continue}
+  if(/^\s*>\s?/.test(line)){flush();const q=document.createElement('blockquote');const buf=[];while(i<lines.length&&/^\s*>\s?/.test(lines[i]))buf.push(lines[i++].replace(/^\s*>\s?/,''));mdInline(buf.join(' '),q);root.append(q);continue}
+  if(!line.trim()){flush();i++;continue}
+  para.push(line.trim());i++}
+ flush();return root;}
+function show(role,text,model,pictures,events){const message=document.createElement('div');const status=role==='assistant'&&model==='Status';message.className='message '+(status?'assistant status':role);const body=document.createElement('div');body.className='message-body';if(role==='assistant'&&!status){body.classList.add('rich');body.append(renderMarkdown(text))}else body.textContent=text;message.append(body);
+ if(role==='assistant'){const meta=document.createElement('div');meta.className='meta';if(!status){const m=document.createElement('span');m.textContent=modelName(model);m.title=model||'';meta.append(m);}
+  if(events&&events.length){const d=document.createElement('details');const s=document.createElement('summary');const n=events.length;s.textContent='▸ '+n+(n===1?' tool step':' tool steps');s.title='What the model looked up for this answer';const pre=document.createElement('pre');pre.textContent=events.map(e=>e.message+(e.arguments?' '+JSON.stringify(e.arguments):'')).join('\n');d.append(s,pre);meta.append(d);}
+  if(!status){if(voiceEnabled){const b=document.createElement('button');b.type='button';b.textContent='🔊 Listen';b.onclick=()=>speak(text).catch(e=>byId('status').textContent=e.message);meta.append(b);}
+   const cp=document.createElement('button');cp.type='button';cp.textContent='Copy';cp.onclick=async()=>{try{await navigator.clipboard.writeText(text);cp.textContent='Copied';setTimeout(()=>cp.textContent='Copy',1500)}catch{byId('status').textContent='Copy failed: select the text instead.'}};meta.append(cp);}
+  if(meta.childElementCount)message.append(meta);}if(pictures&&pictures.length){const grid=document.createElement('div');grid.className='message-images';for(const p of pictures){const fig=document.createElement('figure');const img=document.createElement('img');img.src='/images/'+p.path;img.alt=p.prompt||'Generated image';img.loading='lazy';const cap=document.createElement('figcaption');const link=document.createElement('a');link.href=img.src;link.download='';link.textContent='Download image';cap.append(link);fig.append(img,cap);grid.append(fig);}message.append(grid);}byId('messages').append(message);byId('messages').scrollTop=byId('messages').scrollHeight;}
 let chatClient='',hintFor=null;
-async function fillClients(){const sel=byId('chat-client');let list=[];try{list=await api('/clients-list')}catch{}sel.replaceChildren();const g=document.createElement('option');g.value='';g.textContent='None · General';sel.append(g);for(const n of list){const o=document.createElement('option');o.value=o.textContent=n;sel.append(o)}sel.value=list.includes(chatClient)?chatClient:'';sel.disabled=busy||uploading||!list.length;sel.title=list.length?'Client for this chat: tools return only this client\'s material plus General material':'Add clients in Command centre → Clients';}
+async function fillClients(){const sel=byId('chat-client');let list=[];try{list=await api('/clients-list')}catch{}byId('client-pill').classList.toggle('client-on',!!chatClient);sel.replaceChildren();const g=document.createElement('option');g.value='';g.textContent='General';sel.append(g);for(const n of list){const o=document.createElement('option');o.value=o.textContent=n;sel.append(o)}sel.value=list.includes(chatClient)?chatClient:'';sel.disabled=busy||uploading||!list.length;sel.title=list.length?'Client for this chat: tools return only this client\'s material plus General material':'Add clients in Command centre → Clients';}
 async function setClient(name,force=false){const r=await api('/chats/'+chatId+'/client',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({client:name,force})});
  if(r.needs_new_chat){if(confirm(r.message+'\n\nOK: start a new chat for '+(name||'General')+'.\nCancel: keep this chat as it is.')){const n=await api('/chats',{method:'POST'});await api('/chats/'+n.id+'/client',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({client:name})});await loadChat(n.id)}else byId('chat-client').value=chatClient;return}
  chatClient=r.client;byId('chat-client').value=chatClient;byId('client-hint').hidden=true;byId('status').textContent=chatClient?'This chat is now for '+chatClient+'. Other clients\' material is kept out.':'This chat is now General.';await refreshChats()}
@@ -1601,15 +1769,30 @@ function clientHint(e){hintFor=chatId;const box=byId('client-hint');box.replaceC
  if(e.mode==='set'){txt.textContent='This looks like '+e.client+' work. Tag this chat so other clients\' material stays out?';go.textContent='Set client: '+e.client;go.onclick=()=>whenIdle(go,()=>setClient(e.client,true))}
  else{txt.textContent='You mentioned '+e.client+', but this chat is for '+e.current+'. '+e.client+' material stays hidden here.';go.textContent='New chat for '+e.client;go.onclick=()=>whenIdle(go,async()=>{const n=await api('/chats',{method:'POST'});await api('/chats/'+n.id+'/client',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({client:e.client})});await loadChat(n.id)})}
  box.append(txt,go,no);box.hidden=false}
-async function refreshActions(){try{const a=await api('/actions-count');const l=byId('cc-link');l.textContent='Command centre'+(a.total?' ('+a.total+')':'')+' ↗';l.title=a.total?a.total+' actions waiting for you':'Nothing waiting'}catch{}}
-async function refreshChats(){refreshActions();const chats=await api('/chats');api('/chats-archive-count').then(a=>{const l=byId('archive-link');l.hidden=!a.archived;l.textContent='Archived chats ('+a.archived+') ↗';l.title='Chats with no activity for '+a.days+' days'}).catch(()=>{});byId('chat-list').replaceChildren();for(const c of chats){const row=document.createElement('div');const b=document.createElement('button');b.className='secondary';b.style.width='100%';b.style.textAlign='left';b.textContent=(c.id===chatId?'● ':'')+c.title+' · '+new Date(c.updated_at).toLocaleDateString();if(c.client){const t=document.createElement('span');t.className='client-chip';t.textContent=c.client;b.append(t)}b.onclick=()=>guard(()=>loadChat(c.id));row.append(b);byId('chat-list').append(row);}controls();}
-function savedActivity(events){if(!events.length)return;const d=document.createElement('details');const summary=document.createElement('summary');summary.textContent='Tool activity';const pre=document.createElement('pre');pre.style.whiteSpace='pre-wrap';pre.textContent=events.map(e=>e.message+(e.arguments?' '+JSON.stringify(e.arguments):'')).join('\n');d.append(summary,pre);byId('messages').append(d);}
-async function loadChat(id){const c=await api('/chats/'+id);chatId=id;location.hash=id;resetChat();byId('chat-title').textContent=c.title;byId('provider').value=c.turns.length?c.provider:'auto';chatClient=c.client||'';await fillClients();if(hintFor!==id)byId('client-hint').hidden=true;selected.clear();for(const fid of c.file_ids)if(savedFiles.some(f=>f.id===fid))selected.add(fid);await refreshFiles();for(const t of c.turns){show('user',t.user_text);savedActivity(t.activity);if(t.status==='complete')show('assistant',t.reply,t.model+(t.route?' · '+t.route:''),t.images);else show('assistant',t.error||'Answer running. Reopen this chat shortly to check its status.','Status');}await refreshChats();await refreshTemple(true);}
+async function refreshActions(){try{const a=await api('/actions-count');const l=byId('cc-link');l.replaceChildren(document.createTextNode('Command centre'));if(a.total){const b=document.createElement('span');b.className='badge';b.textContent=a.total;l.append(b)}l.title=a.total?a.total+' actions waiting for you':'Nothing waiting'}catch{}
+ try{const s=await api('/spend');const e=byId('spend');e.textContent='$'+s.today_usd.toFixed(2)+' today';e.className=s.level==='warning'||s.level==='blocked'?'warn':'';e.title='Estimated spend: $'+s.today_usd.toFixed(2)+' today of $'+s.daily_usd.toFixed(2)+', $'+s.month_usd.toFixed(2)+' this month of $'+s.monthly_usd.toFixed(2)}catch{}}
+let allChats=[];
+function chatGroup(d){const now=new Date(),day=new Date(now.getFullYear(),now.getMonth(),now.getDate());const t=new Date(d);if(t>=day)return 'Today';if(t>=new Date(day-6*864e5))return 'This week';if(t>=new Date(day-29*864e5))return 'This month';return 'Earlier';}
+function renderChatList(){const q=byId('chat-search').value.trim().toLowerCase();const list=byId('chat-list');list.replaceChildren();let group=null;
+ for(const c of allChats){if(q&&!(c.title+' '+(c.client||'')).toLowerCase().includes(q))continue;const g=chatGroup(c.updated_at);if(g!==group){group=g;const h=document.createElement('div');h.className='grp';h.textContent=g;list.append(h)}
+  const b=document.createElement('button');b.type='button';b.className='chat-row'+(c.id===chatId?' on':'');if(c.id===chatId)b.setAttribute('aria-current','true');const t=document.createElement('span');t.className='t';t.textContent=c.title;b.title=c.title+' · '+new Date(c.updated_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});b.append(t);
+  if(c.client){const ch=document.createElement('span');ch.className='client-chip';ch.textContent=c.client;b.append(ch)}b.onclick=()=>guard(()=>loadChat(c.id));list.append(b);}
+ if(!list.childElementCount){const p=document.createElement('p');p.className='muted small';p.style.padding='8px';p.textContent=q?'No chats match.':'No chats yet.';list.append(p)}controls();}
+async function refreshChats(){refreshActions();allChats=await api('/chats');api('/chats-archive-count').then(a=>{const l=byId('archive-link');l.hidden=!a.archived;l.textContent='Archived ('+a.archived+')';l.title='Chats with no activity for '+a.days+' days'}).catch(()=>{});renderChatList();}
+async function loadChat(id){const c=await api('/chats/'+id);chatId=id;location.hash=id;resetChat();document.body.classList.remove('menu-open');byId('chat-title').textContent=c.title;document.title=c.title+' · Alice';byId('provider').value=c.turns.length?c.provider:'auto';chatClient=c.client||'';await fillClients();if(hintFor!==id)byId('client-hint').hidden=true;selected.clear();for(const fid of c.file_ids)if(savedFiles.some(f=>f.id===fid))selected.add(fid);await refreshFiles();for(const t of c.turns){show('user',t.user_text);if(t.status==='complete')show('assistant',t.reply,t.model+(t.route?' · '+t.route:''),t.images,t.activity);else show('assistant',t.error||'Answer running. Reopen this chat shortly to check its status.','Status',null,t.activity);}byId('messages').scrollTop=byId('messages').scrollHeight;await refreshChats();await refreshTemple(true);byId('messages').scrollTop=byId('messages').scrollHeight;}
 async function guard(fn){if(busy||uploading)return;busy=true;controls();try{await fn()}catch(e){byId('status').textContent=e.message}finally{busy=false;controls()}}
 async function createChat(){const c=await api('/chats',{method:'POST'});byId('prompt').value='';await loadChat(c.id);}
 byId('provider').onchange=imageToggle;
 byId('chat-client').onchange=()=>guard(()=>setClient(byId('chat-client').value));
-byId('new-chat').onclick=byId('create-chat').onclick=()=>guard(createChat);
+byId('create-chat').onclick=()=>guard(createChat);
+byId('chat-search').oninput=renderChatList;
+byId('menu').onclick=()=>document.body.classList.toggle('menu-open');
+byId('prompt').addEventListener('input',sizePrompt);
+byId('prompt').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing){e.preventDefault();byId('chat-form').requestSubmit();}});
+function drawer(which){for(const [p,b] of [['temple-panel','rail-temple'],['files-panel','rail-files']]){const open=p===which&&byId(p).hidden;byId(p).hidden=!open;byId(b).setAttribute('aria-expanded',open?'true':'false');}}
+byId('rail-temple').onclick=()=>drawer('temple-panel');byId('rail-files').onclick=()=>drawer('files-panel');
+byId('temple-close').onclick=byId('files-close').onclick=()=>drawer(null);
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){drawer(null);document.body.classList.remove('menu-open')}});
 byId('rename-chat').onclick=()=>guard(async()=>{if(!chatId)return;const title=prompt('Chat title',byId('chat-title').textContent);if(!title||!title.trim())return;await api('/chats/'+chatId,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:title.trim()})});await loadChat(chatId)});
 byId('delete-chat').onclick=()=>guard(async()=>{if(!chatId||!confirm('Delete this chat and its saved messages and tool activity? Approved memories and files will remain.'))return;await api('/chats/'+chatId,{method:'DELETE'});chatId=null;location.hash='';const chats=await api('/chats');if(chats.length)await loadChat(chats[0].id);else await createChat()});
 async function streamChat(payload){
@@ -1620,16 +1803,16 @@ async function streamChat(payload){
   if(event.type==='error')throw new Error(event.message);
   if(event.type==='answer')answer=event;
   if(event.type==='client_hint')clientHint(event);
-  if(event.type==='activity'){byId('activity-panel').open=true;byId('status').textContent=event.message;
+  if(event.type==='activity'){byId('activity-panel').hidden=false;byId('status').textContent=event.message;
    byId('activity').textContent+=event.message+(event.arguments?' '+JSON.stringify(event.arguments):'')+'\n';}}
  try{while(true){const {value,done}=await reader.read();buffer+=decoder.decode(value||new Uint8Array(),{stream:!done});let index;while((index=buffer.indexOf('\n'))>=0){consume(buffer.slice(0,index));buffer=buffer.slice(index+1);}if(done)break;}consume(buffer);}
  finally{await reader.cancel();reader.releaseLock();}
  if(!answer)throw new Error('Connection ended before an answer arrived. Please retry.');return answer;
 }
-byId('chat-form').onsubmit=async event=>{event.preventDefault();const text=byId('prompt').value.trim();if(!text||busy||uploading)return;busy=true;controls();byId('status').textContent='Thinking…';byId('activity').textContent='';let error='';const spoken=spokenTurn;spokenTurn=false;let reply=null;try{reply=await streamChat({chat_id:chatId,request_id:crypto.randomUUID(),text,provider:byId('provider').value,file_ids:[...selected],images:byId('images-toggle').checked});byId('prompt').value='';}catch(e){error=e.message;}finally{try{await loadChat(chatId)}catch(e){error=error||e.message}byId('status').textContent=error;busy=false;controls();byId('prompt').focus();}if(reply&&voiceEnabled&&(spoken||byId('speak-replies').checked))speak(reply.reply).catch(e=>byId('status').textContent=e.message);};
+byId('chat-form').onsubmit=async event=>{event.preventDefault();const text=byId('prompt').value.trim();if(!text||busy||uploading)return;busy=true;controls();show('user',text);byId('status').textContent='Thinking…';byId('activity').textContent='';let error='';const spoken=spokenTurn;spokenTurn=false;let reply=null;try{reply=await streamChat({chat_id:chatId,request_id:crypto.randomUUID(),text,provider:byId('provider').value,file_ids:[...selected],images:byId('images-toggle').checked});byId('prompt').value='';sizePrompt();}catch(e){error=e.message;}finally{try{await loadChat(chatId)}catch(e){error=error||e.message}byId('status').textContent=error;busy=false;controls();byId('prompt').focus();}if(reply&&voiceEnabled&&(spoken||byId('speak-replies').checked))speak(reply.reply).catch(e=>byId('status').textContent=e.message);};
 function stopAudio(){if(audio){audio.pause();URL.revokeObjectURL(audio.src);audio=null;}byId('stop-audio').hidden=true;}
 async function speak(text){stopAudio();const voiceId=byId('voice-select').value;if(!voiceId)throw new Error('Choose a voice first.');byId('status').textContent='Preparing audio…';const r=await fetch('/voice/speak',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,voice_id:voiceId})});if(!r.ok){let m='Could not read aloud.';try{m=(await r.json()).detail||m}catch{}throw new Error(m);}const url=URL.createObjectURL(await r.blob());audio=new Audio(url);audio.onended=stopAudio;byId('stop-audio').hidden=false;byId('status').textContent='';try{await audio.play();}catch(e){stopAudio();throw new Error('Audio could not play. Check your speakers or browser autoplay settings.');}}
-function micState(on){const m=byId('mic');m.setAttribute('aria-pressed',on?'true':'false');m.textContent=on?'■ Stop and send':'🎙 Speak';}
+function micState(on){const m=byId('mic');m.setAttribute('aria-pressed',on?'true':'false');m.textContent=on?'■ Stop and send':'🎙';}
 function blobBase64(blob){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.onerror=()=>reject(new Error('Could not read the recording.'));reader.readAsDataURL(blob);});}
 async function toggleMic(){if(recorder){recorder.stop();return;}if(busy||uploading)return;stopAudio();let stream;try{stream=await navigator.mediaDevices.getUserMedia({audio:true});}catch(e){byId('status').textContent='Microphone blocked. Allow microphone access for this page in your browser.';return;}
  const type=['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg'].find(t=>window.MediaRecorder&&MediaRecorder.isTypeSupported(t))||'';const chunks=[];const rec=new MediaRecorder(stream,type?{mimeType:type}:{});recorder=rec;
@@ -1664,6 +1847,10 @@ async function refreshTemple(force=false){
  byId('temple-list').append(card);
  }
  if(!data.suggestions.length)byId('temple-list').textContent='No suggestions for this chat yet.';
+ const waiting=data.suggestions.filter(s=>s.status==='pending');const badge=byId('temple-badge');badge.hidden=!waiting.length;badge.textContent=waiting.length;
+ byId('rail-temple').title=running?'Temple is analysing…':waiting.length?'Temple: '+waiting.length+' suggestion'+(waiting.length===1?'':'s')+' waiting':'Temple: no suggestions waiting';
+ document.querySelectorAll('.temple-inline').forEach(e=>e.remove());
+ if(waiting.length){const strip=document.createElement('div');strip.className='temple-inline';const row=document.createElement('div');const b=document.createElement('b');b.textContent='Temple';const t=document.createElement('span');t.textContent=(waiting.length>1?waiting.length+' suggestions · ':'')+labels[waiting[0].kind]+': '+waiting[0].title;const go=document.createElement('button');go.type='button';go.textContent='Review';go.onclick=()=>{if(byId('temple-panel').hidden)drawer('temple-panel')};row.append(b,t,go);strip.append(row);const m=byId('messages');const atEnd=m.scrollHeight-m.scrollTop-m.clientHeight<160;m.append(strip);if(atEnd)requestAnimationFrame(()=>m.scrollTop=m.scrollHeight);}
  if(running)templeTimer=setTimeout(()=>templeRun(()=>refreshTemple()),3000);
 }
 byId('temple-refresh-chat').onclick=()=>templeRun(()=>refreshTemple(true));
@@ -1673,4 +1860,4 @@ byId('temple-analyse').onclick=()=>templeRun(async()=>{if(!chatId)return;const b
 if('serviceWorker' in navigator&&window.isSecureContext)navigator.serviceWorker.register('/sw.js').catch(()=>{});
 guard(async()=>{await setupVoice();await refreshFiles();const chats=await api('/chats');const requested=location.hash.slice(1);const current=chats.find(c=>c.id===requested)||chats[0];if(current)await loadChat(current.id);else await createChat()});
 
-</script></body></html>'''.replace('__SUBSTRATE_THEME__', THEME_CSS).replace('__DECK_THEME__', DECK_CSS).replace('__CHAT_ADMIN_TOKEN__', ADMIN_TOKEN).replace('__READABLE_THEME__', READABLE_CSS).replace('__BANNER_V__', str(int(BANNER.stat().st_mtime)) if BANNER.is_file() else '0')
+</script></body></html>'''.replace('__CHAT_ADMIN_TOKEN__', ADMIN_TOKEN).replace('__BANNER_V__', str(int(BANNER.stat().st_mtime)) if BANNER.is_file() else '0')
