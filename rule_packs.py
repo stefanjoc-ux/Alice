@@ -559,6 +559,11 @@ def set_rule(pack, rule=None, enabled=None, all_on=None, reset=False):
         if r['locked'] and not enabled: raise ValueError(f'"{r["name"]}" is always on.')
         s[pack][rule] = bool(enabled)
     _save(s)
+    if pack in applied():         # these switches are live for an applied pack: record every change
+        what = 'reset to recommended' if reset else ('all on' if all_on else 'all off') if all_on is not None else \
+            f'"{next(x["name"] for x in PACKS[pack]["rules"] if x["id"] == rule)}" {"on" if enabled else "off"}'
+        with store.db() as c:
+            store.audit(c, 'rule_pack_changed', PACKS[pack]['name'], 'human_review', 'Live rule pack: ' + what)
     return s
 
 
@@ -571,17 +576,22 @@ def public():
             'providers': [{'id': k, 'name': (p.get('providers') or {}).get(k, v['name'])} for k, v in PROVIDERS.items()],
             'rules': [{k: r[k] for k in ('id', 'theme', 'name', 'kind', 'action', 'what', 'why', 'locked', 'default')}
                       | {'action_label': ACTIONS[r['action']][0]} for r in p['rules']]})
-    return {'packs': out, 'state': state(), 'providers': [{'id': k, 'name': v['name']} for k, v in PROVIDERS.items()]}
+    return {'packs': out, 'state': state(), 'providers': [{'id': k, 'name': v['name']} for k, v in PROVIDERS.items()],
+            'applied': list(applied())}
 
 
 # ---------------- the test ----------------
-def evaluate(pack, text, provider='tenant', enabled=None):
+def evaluate(pack, text, provider='tenant', enabled=None, prov=None):
+    """Sandbox test (prov=None), or a live check with Alice's own service classification (prov given)."""
     if pack not in PACKS: raise ValueError('Unknown rule pack.')
     text = (text or '').strip()
     if not text: raise ValueError('Type or choose a message to test.')
-    if len(text) > 5000: raise ValueError('Keep the test message under 5,000 characters.')
-    p = dict(PROVIDERS.get(provider) or PROVIDERS['tenant'])
-    p['name'] = (PACKS[pack].get('providers') or {}).get(provider, p['name'])
+    if prov is None and len(text) > 5000: raise ValueError('Keep the test message under 5,000 characters.')
+    if prov is not None:
+        p = prov
+    else:
+        p = dict(PROVIDERS.get(provider) or PROVIDERS['tenant'])
+        p['name'] = (PACKS[pack].get('providers') or {}).get(provider, p['name'])
     on = enabled if enabled is not None else state()[pack]
     fired, off, guidance = [], [], []
     redact_labels = []
@@ -618,3 +628,123 @@ def evaluate(pack, text, provider='tenant', enabled=None):
     }[outcome]
     return {'outcome': outcome, 'headline': headline, 'provider': p['name'], 'fired': fired, 'off': off,
             'sent': sent, 'removed': removed, 'instructions': guidance if sent is not None else []}
+
+
+
+# ---------------- live: packs applied to Alice's own rules ----------------
+APPLIED_KEY, SERVICES_KEY = 'rule_packs_applied', 'rule_pack_services'
+SERVICE_NAMES = {'openai': 'OpenAI (GPT-6 Luna)', 'claude': 'Anthropic (Claude)', 'grok': 'xAI (Grok)', 'copilot': 'Microsoft 365 Copilot (Tuduma)'}
+SERVICE_DEFAULTS = {'openai': False, 'claude': False, 'grok': False, 'copilot': True}   # inside your tenant / UK?
+SCOPE = ('Applied packs are checked on chat messages before they are saved or sent (identifiers removed, requests '
+         'blocked or sent to a person) and on requests Temple sends to a model (blocks and escalations). Their guidance '
+         'is added to every model\'s instructions. Alice\'s own rules always stay in force underneath.')
+
+
+def _setting(key, default):
+    with store.db() as c:
+        row = c.execute('SELECT value FROM settings WHERE key=?', (key,)).fetchone()
+    try: return json.loads(row[0]) if row else default
+    except ValueError: return default
+
+
+def _put(key, value):
+    with store.db() as c:
+        c.execute('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', (key, json.dumps(value)))
+
+
+def applied():
+    a = _setting(APPLIED_KEY, {})
+    return {k: v for k, v in a.items() if k in PACKS}
+
+
+def services():
+    s = dict(SERVICE_DEFAULTS); s.update({k: bool(v) for k, v in _setting(SERVICES_KEY, {}).items() if k in SERVICE_DEFAULTS})
+    return s
+
+
+def set_service(provider, inside):
+    if provider not in SERVICE_DEFAULTS: raise ValueError('Unknown AI service.')
+    s = services(); s[provider] = bool(inside); _put(SERVICES_KEY, s)
+    with store.db() as c:
+        store.audit(c, 'rule_pack_service', provider, 'human_review',
+                    f'{SERVICE_NAMES[provider]} marked {"inside your tenant (UK)" if inside else "outside your tenant"} for rule packs')
+    return s
+
+
+def apply(pack, on=True):
+    if pack not in PACKS: raise ValueError('Unknown rule pack.')
+    a = applied()
+    if on: a[pack] = {'applied_at': store.now()}
+    else: a.pop(pack, None)
+    _put(APPLIED_KEY, a)
+    st = state()[pack]
+    with store.db() as c:
+        store.audit(c, 'rule_pack_applied' if on else 'rule_pack_removed', PACKS[pack]['name'], 'human_review',
+                    (f'Applied to live rules with {sum(st.values())} of {len(st)} safeguards on' if on else 'Removed from live rules'))
+    return summary()
+
+
+def summary():
+    a, st, sv = applied(), state(), services()
+    packs = []
+    for pid, info in a.items():
+        p = PACKS[pid]
+        on = [r for r in p['rules'] if st[pid].get(r['id'])]
+        packs.append({'id': pid, 'name': p['name'], 'applied_at': info.get('applied_at', ''), 'on': len(on), 'total': len(p['rules']),
+                      'enforced': sum(1 for r in on if r['kind'] != 'guidance'), 'guidance': sum(1 for r in on if r['kind'] == 'guidance'),
+                      'rules': [{'name': r['name'], 'kind': r['kind'], 'action_label': ACTIONS[r['action']][0]} for r in on]})
+    return {'applied': packs, 'services': [{'id': k, 'name': SERVICE_NAMES[k], 'inside': v} for k, v in sv.items()], 'scope': SCOPE}
+
+
+def _live_provider(provider):
+    sv = services()
+    key = {'claude_sonnet': 'claude', 'claude_opus': 'claude'}.get(provider, provider)
+    if key in sv:
+        inside, name = sv[key], SERVICE_NAMES[key]
+    else:                                   # Auto routing or unknown: only "inside" if every service is
+        inside, name = all(sv[k] for k in ('openai', 'claude', 'grok')), 'Auto (any of OpenAI, Claude, Grok)'
+    return {'name': name + (' (marked inside your tenant)' if inside else ' (outside your tenant)'), 'in_tenant': inside, 'uk': inside}
+
+
+def live_check(text, provider, target='chat message', redact_text=True):
+    """Run every applied pack. Raises RuleViolation for blocks and escalations; otherwise returns the text the model
+    may receive (identifiers removed when redact_text) and notes for the activity panel."""
+    a = applied()
+    if not a or not (text or '').strip(): return {'text': text, 'notes': [], 'removed': []}
+    import rules_engine
+    prov, st = _live_provider(provider), state()
+    labels, notes, results = [], [], []
+    for pid in a:
+        r = evaluate(pid, text, prov=prov, enabled=st[pid])
+        results.append((pid, r))
+    for pid, r in results:                   # strongest outcome first, across packs
+        for f in r['fired']:
+            if f['action'] in ('escalate', 'block'):
+                name = PACKS[pid]['name']
+                rules_engine.log_block('rule_pack:' + f['rule'], target, f'{name} pack · {f["name"]}: {f["message"]}')
+                if f['action'] == 'escalate':
+                    raise rules_engine.RuleViolation(f'Not sent ({name} rule pack, "{f["name"]}"): {f["message"]} '
+                                                     f'This goes to {ESCALATE_TO[pid]}, not to an AI.')
+                raise rules_engine.RuleViolation(f'Not sent ({name} rule pack, "{f["name"]}"): {f["message"]}')
+    for pid, r in results:
+        for f in r['fired']:
+            if f['action'] == 'redact':
+                labels += [l for l in next(x for x in PACKS[pid]['rules'] if x['id'] == f['rule'])['detect']]
+            elif f['action'] in ('review', 'flag', 'note'):
+                notes.append(f'{PACKS[pid]["name"]} pack · {f["name"]}: {f["message"]}')
+    out, removed = (redact(text, labels) if redact_text and labels else (text, []))
+    if removed: notes.insert(0, 'Rule packs removed before sending: ' + ', '.join(removed) + '.')
+    if notes:
+        with store.db() as c:
+            store.audit(c, 'rule_pack_applied_to', target[:200], 'rule_pack', ' | '.join(notes)[:500])
+    return {'text': out, 'notes': notes, 'removed': removed}
+
+
+def live_guidance():
+    a, st = applied(), state()
+    lines = []
+    for pid in a:
+        for r in PACKS[pid]['rules']:
+            if r['kind'] == 'guidance' and st[pid].get(r['id']) and r['guidance']:
+                lines.append(f'- [{PACKS[pid]["name"]} pack] {r["guidance"]}')
+    return lines

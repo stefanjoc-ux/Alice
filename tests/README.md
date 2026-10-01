@@ -38,6 +38,7 @@ Run after every update, before relaunching. Exit code 0 means every check passed
 | external_mcp | The signed-in external endpoint: settings, every Entra token check, 401s over HTTP, external rules for Copilot |
 | organisations | Organisation facts: sources, review dates, data minimisation, approval, the brief (labels, providers, external), removal by source |
 | org_research | Web research for organisations: facts proposed not approved, invented sources and personal data dropped, unsafe URLs refused, agent runs, both providers' search results |
+| rule_packs_live | Packs applied to live rules: chat refused or identifiers removed before saving, Temple escalations, guidance, service classification, stacking, removal |
 | rule_packs | HR and council social care packs: CHI and identifier detection, outcomes per sample and service, switches, locked audit rule, sandbox |
 | dbcompat | PostgreSQL layer: SQL translation always; with a test server, rows, errors, rollback, read-only sessions, the write lock |
 | agents | Agent register, runs and data touched, cost attribution, automatic pause (failures, budget), versions, app permissions on every tool call |

@@ -705,7 +705,10 @@ def generated_image(cid: str, name: str):
 async def chat(request: SavedChatRequest):
     if not request.text.strip(): raise HTTPException(400,'Enter a message.')
     try:
-        rules_engine.check_outbound(request.text,'chat message')   # before it is saved, routed or sent
+        rules_engine.check_outbound(request.text,'chat message',packs=False)   # before it is saved, routed or sent
+        import rule_packs
+        packed=rule_packs.live_check(request.text,request.provider,'chat message')   # applied rule packs
+        request.text=packed['text']                                              # identifiers removed before saving
         spend=rules_engine.check_spend('chat')
     except rules_engine.RuleViolation as e: raise HTTPException(400,str(e)) from None
     try:
@@ -737,6 +740,10 @@ async def chat(request: SavedChatRequest):
                 yield json.dumps({'type':'client_hint','mode':'set','client':mentioned[0]},ensure_ascii=False)+'\n'
             elif owner and any(m!=owner for m in mentioned):
                 yield json.dumps({'type':'client_hint','mode':'mismatch','client':next(m for m in mentioned if m!=owner),'current':owner},ensure_ascii=False)+'\n'
+            for note in packed['notes']:
+                pn={'type':'activity','message':note}
+                store.turn_event(request.request_id,pn)
+                yield json.dumps(pn,ensure_ascii=False)+'\n'
             if spend['level']=='warning':
                 w={'type':'activity','message':f"Spending at {max(spend['today_usd']/spend['daily_usd'],spend['month_usd']/spend['monthly_usd'])*100:.0f}% of a cap: Temple automations are paused until the next day or month, or until you raise the cap in Rules."}
                 store.turn_event(request.request_id,w)
@@ -1097,6 +1104,30 @@ class RulePackTest(BaseModel):
     text: str = Field(max_length=5000)
     provider: str = Field(default='tenant', max_length=20)
 
+class RulePackApply(BaseModel):
+    pack: str = Field(max_length=20)
+    apply: bool
+
+class RulePackService(BaseModel):
+    provider: str = Field(max_length=20)
+    inside: bool
+
+@app.get('/admin/api/rule-packs/applied')
+def admin_rule_packs_applied():
+    import rule_packs; return rule_packs.summary()
+
+@app.post('/admin/api/rule-packs/apply')
+def admin_rule_packs_apply(a: RulePackApply):
+    import rule_packs
+    try: return rule_packs.apply(a.pack, a.apply)
+    except ValueError as e: raise HTTPException(400, str(e)) from None
+
+@app.post('/admin/api/rule-packs/services')
+def admin_rule_packs_services(sv: RulePackService):
+    import rule_packs
+    try: rule_packs.set_service(sv.provider, sv.inside); return rule_packs.summary()
+    except ValueError as e: raise HTTPException(400, str(e)) from None
+
 @app.get('/admin/api/rule-packs')
 def admin_rule_packs():
     import rule_packs; return rule_packs.public()
@@ -1411,7 +1442,7 @@ def temple_suggestion_action(sid: str, update: TempleSuggestionAction):
         try:
             if row and row['kind'] in ('memory','knowledge'):
                 rules_engine.check_record(row['title'],update.content,'Your words in chat: '+row['quote'],stage=row['kind'])
-            elif row: rules_engine.check_outbound(update.content,'guidance')
+            elif row: rules_engine.check_outbound(update.content,'guidance',packs=False)
         except rules_engine.RuleViolation as e: raise HTTPException(400,str(e)) from None
     if update.action=='accept':
         with store.db() as c:

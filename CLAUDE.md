@@ -102,7 +102,7 @@ A browser refresh is not enough: the old server process keeps running the old co
 | `conversations.py` | Saved conversations, Claude export import (incl. manifest download), whole-chat reviews |
 | `knowledge.py` | Knowledge library: kinds, drafts, labels, meeting extracts, Word in/out, replacements (`supersede`, `history`) |
 | `agents.py` | Agents register: Temple automations (`@agents.tracked`) and connected apps (`app_call` in every MCP tool); runs, data touched, cost, pause/stop, versions |
-| `rule_packs.py` | Demo rule packs (HR team, council social care, security operations, personal data): switchable safeguards and a sandboxed test; never changes Alice's own rules, never calls a model |
+| `rule_packs.py` | Demo rule packs (HR team, council social care, security operations, personal data): switchable safeguards and a sandboxed test (never calls a model); a pack can be applied to live rules (`live_check` on chat before saving, blocks/escalations on Temple's requests via `check_outbound`, guidance via `effective_guidance`) with per-service inside/outside-tenant classification |
 | `org_research.py` | Temple researches an organisation on the public web (provider web search) and proposes facts, each citing a page the search returned; agent `temple-org-research` |
 | `organisations.py` | Organisation profiles: short approved facts with source pointers and review dates, the compiled brief, removal by source |
 | `clients.py` | Clients, tagging, alias detection, separation enforcement |

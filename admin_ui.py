@@ -13,7 +13,7 @@ PAGES = {
  'agents': ('Agents','Everything that acts on Alice without you typing it: Temple\'s automations and connected apps. What each does, what it touched, what it cost, and its limits. Pause or stop any of them here.'),
  'organisations': ('Organisations','How each organisation lives and breathes: short approved facts with a pointer to the source. Clients are included automatically; detail stays in the source system.'),
  'archive': ('Archived chats','Inactive Alice chats (30 days) and conversations saved from Claude apps. Ask Temple to review any of them for memories and knowledge.'),
- 'rule-packs': ('Rule packs','Ready-made safeguards for teams adopting AI. Switch each one on or off and test a message against the pack. A sandbox: nothing here changes Alice\'s own rules, and no AI is called.'),
+ 'rule-packs': ('Rule packs','Ready-made safeguards for teams adopting AI. Switch each one on or off, test a message against the pack (a sandbox: no AI is called), and apply a pack to Alice\'s live rules when you want it enforced.'),
  'rules': ('Rules','Rule sets in precedence order. Enforced rules are checked in code; guidance rules are instructions to the model.'),
  'activity': ('Activity','Everything Alice and Temple did, and every decision you made: filter by type, date or words, and export for an audit trail.'),
 }
@@ -117,6 +117,9 @@ SECTIONS = {
 'rules': r'''<section><div class="mem-head"><h2>Rule sets</h2><span id="r-counts" class="muted small"></span></div>
 <p class="muted small">Higher sets win: Security, then Organisation, Memory governance, Cost and Personal. <strong>Enforced</strong> rules run in code at the points where data moves, so no model can get round them. <strong>Guidance</strong> rules are sent to models as instructions; they shape answers but are advisory, especially in Claude Desktop.</p>
 <div id="r-spend" class="spend"></div></section>
+<section id="r-packs"><div class="mem-head"><h2>Applied rule packs</h2><a href="/admin/rule-packs" class="small">Rule packs ↗</a></div>
+<p id="r-packs-scope" class="muted small"></p><div id="r-packs-list"></div>
+<details class="r-svc"><summary>AI services: inside or outside your tenant</summary><p class="muted small">Packs block sensitive material going to services outside your tenant or the UK. Mark which of Alice's services count as inside. Auto routing counts as inside only if all three chat services are.</p><div id="r-packs-svc"></div></details></section>
 <div id="r-sets"></div>
 <section id="r-requests-box" hidden><h2>Rule requests from Temple</h2><p class="muted small">Behaviour you asked for in chat. Turn one into a guidance rule, or keep it as a note for a future enforced rule.</p><div id="r-requests"></div></section>
 <section><h2>Additional guidance</h2><form id="rule-form"><label><input id="allow" type="checkbox"> Allow new memory proposals</label><label>Free-text guidance, added after the rule sets<textarea id="guidance" maxlength="8000" rows="4"></textarea></label><button>Save</button></form>
@@ -253,6 +256,9 @@ nav{display:flex;gap:20px;flex-wrap:wrap}.sidebar nav{display:contents}
 .o-run ol{margin:6px 0 0;padding-left:20px}.o-run li{margin:3px 0;font-size:14px;overflow-wrap:anywhere}.o-run .uncited{color:var(--muted)}
 .src-link{overflow-wrap:anywhere}.o-busy::before{content:'';display:inline-block;width:12px;height:12px;margin-right:6px;border:2px solid #9db7c6;border-top-color:var(--teal);border-radius:50%;animation:ospin .8s linear infinite;vertical-align:-2px}@keyframes ospin{to{transform:rotate(360deg)}}
 /* Rule packs */
+.rp-live{font-size:12px;font-weight:700;color:#1e5b31;background:#e6f4ea;border:1px solid #9fcfaf;border-radius:999px;padding:2px 10px}.rp-live-note{margin:10px 0 0;padding:8px 12px;border-radius:8px;background:#e6f4ea;color:#1e5b31;font-size:13.5px}
+.rpa{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;border:1px solid var(--line);border-left:4px solid #1e7a5a;border-radius:10px;padding:10px 14px;margin:8px 0;background:#fff}
+.rpa .rpa-rules{flex-basis:100%;font-size:13px;color:var(--muted)}.r-svc{margin-top:10px}.r-svc summary{cursor:pointer;font-weight:600}.r-svc-row{display:flex;gap:12px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}.r-svc-row span{flex:1}
 .rp-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(320px,1fr);gap:16px;align-items:start}@media(max-width:1100px){.rp-grid{grid-template-columns:1fr}}
 .rp-try{position:sticky;top:0;max-height:calc(100vh - 84px);overflow:auto;border-radius:12px}.rp-try section{margin-top:0}.rp-try textarea,.rp-try select{width:100%;margin:4px 0 8px}.rp-try textarea{resize:vertical;min-height:96px}
 #rp-head .rp-meta{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin-top:8px}#rp-head .rp-basis{font-size:13px;color:var(--muted);margin:6px 0 0}
@@ -1026,20 +1032,26 @@ if(PAGE==='agents'){
 
 SCRIPT += r"""
 if(PAGE==='rule-packs'){
- const st={P:null,pack:(()=>{try{return localStorage.getItem('alice-rp-pack')||'care'}catch{return 'care'}})(),res:null,ran:false};
+ const st={P:null,pack:new URLSearchParams(location.search).get('pack')||(()=>{try{return localStorage.getItem('alice-rp-pack')||'care'}catch{return 'care'}})(),res:null,ran:false};
  const KIND={enforced:'Enforced in code',gate:'Human sign-off',guidance:'Guidance to the AI'};
  const BLOCKISH=['block','escalate','review'];
  async function load(){st.P=await api('/admin/api/rule-packs');render()}
  function providers(P){const sel=$('rp-provider'),cur=sel.value||'tenant';sel.replaceChildren(...P.providers.map(p=>{const o=el('option',p.name);o.value=p.id;return o}));sel.value=cur}
  const pack=()=>st.P.packs.find(p=>p.id===st.pack)||st.P.packs[0];
  function render(){const P=pack(),on=st.P.state[P.id];providers(P);
-  $('rp-packs').replaceChildren(...st.P.packs.map(p=>{const b=el('button',p.name,'chip'+(p.id===P.id?' on':''));b.type='button';b.setAttribute('role','tab');b.setAttribute('aria-selected',p.id===P.id);
+  $('rp-packs').replaceChildren(...st.P.packs.map(p=>{const b=el('button',p.name+((st.P.applied||[]).includes(p.id)?' ●':''),'chip'+(p.id===P.id?' on':''));if((st.P.applied||[]).includes(p.id))b.title='Applied to live rules';b.type='button';b.setAttribute('role','tab');b.setAttribute('aria-selected',p.id===P.id);
    b.onclick=()=>{st.pack=p.id;st.res=null;st.ran=false;$('rp-text').value='';try{localStorage.setItem('alice-rp-pack',p.id)}catch{};render()};return b}));
   const n=P.rules.filter(r=>on[r.id]).length,enf=P.rules.filter(r=>on[r.id]&&r.kind!=='guidance').length;
-  const h=$('rp-head');h.replaceChildren();const top=el('div','','mem-head');top.append(el('h2',P.name+' pack'),el('span','Sandbox: Alice\'s own rules are not changed','muted small'));h.append(top,el('p',P.audience),el('p','Grounded in: '+P.basis,'rp-basis'));
+  const h=$('rp-head');h.replaceChildren();const top=el('div','','mem-head');top.append(el('h2',P.name+' pack'),el('span',(st.P.applied||[]).includes(P.id)?'':'Sandbox until applied: Alice\'s own rules are not changed','muted small'));h.append(top,el('p',P.audience),el('p','Grounded in: '+P.basis,'rp-basis'));
   const meta=el('div','','rp-meta');const stat=el('span','','rp-stat');stat.append(el('strong',n+' of '+P.rules.length),document.createTextNode(' safeguards on · '+enf+' enforced or sign-off'));
+  const live=(st.P.applied||[]).includes(P.id);
+  const ap=el('button',live?'Remove from live rules':'Apply to live rules',live?'secondary':'primary');ap.type='button';
+  ap.onclick=()=>run(async()=>{if(live?!confirm('Remove the '+P.name+' pack from Alice\'s live rules?'):!confirm('Apply the '+P.name+' pack to Alice\'s live rules?\n\nIts switched-on safeguards will check your chat messages and Temple\'s requests: identifiers removed, sensitive requests blocked or sent to a person, guidance added to every model. Alice\'s own rules stay in force. You can remove it at any time on this page or the Rules page.'))return;
+   const r=await api('/admin/api/rule-packs/apply','POST',{pack:P.id,apply:!live});st.P.applied=r.applied.map(x=>x.id);$('notice').textContent=live?P.name+' pack removed from live rules.':P.name+' pack applied to live rules. Switches on this page now change live rules.';render()});
+  if(live)top.append(el('span','● Live in Alice','rp-live'));
   const b1=el('button','All on','secondary'),b2=el('button','All off','secondary'),b3=el('button','Recommended','secondary');[b1,b2,b3].forEach(b=>b.type='button');
-  b1.onclick=()=>change({all_on:true});b2.onclick=()=>change({all_on:false});b3.onclick=()=>change({reset:true});b3.title='Back to the recommended settings for this pack';meta.append(stat,b1,b2,b3);h.append(meta);
+  b1.onclick=()=>change({all_on:true});b2.onclick=()=>change({all_on:false});b3.onclick=()=>change({reset:true});b3.title='Back to the recommended settings for this pack';meta.append(stat,b1,b2,b3,ap);h.append(meta);
+  if(live)h.append(el('p','Applied to live rules: switching a safeguard here changes what Alice enforces, and is recorded in Activity. The test box below is still a sandbox.','rp-live-note'));
   const fired={},would={};if(st.res){for(const f of st.res.fired)fired[f.rule]=f;for(const f of st.res.off)would[f.rule]=f}
   const box=$('rp-rules');box.replaceChildren();let theme='';
   for(const r of P.rules){if(r.theme!==theme){theme=r.theme;box.append(el('div',theme,'rp-theme'))}
@@ -1067,6 +1079,21 @@ if(PAGE==='rule-packs'){
   b.append(el('p','Recorded in the audit trail.','muted small'));w.append(b);out.append(w)}
  $('rp-run').onclick=()=>run(()=>test());$('rp-provider').onchange=()=>{if(st.ran)run(()=>test(true))};
  run(load);
+}
+"""
+
+SCRIPT += r"""
+if(PAGE==='rules'){
+ async function packs(){const d=await api('/admin/api/rule-packs/applied');$('r-packs-scope').textContent=d.scope;const box=$('r-packs-list');box.replaceChildren();
+  if(!d.applied.length)box.append(el('p','No rule packs applied. Alice is running on her own rules below. Open Rule packs to apply one.','muted'));
+  for(const p of d.applied){const row=el('div','','rpa');const left=el('div','');left.append(el('strong',p.name+' pack'),el('div','Applied '+new Date(p.applied_at).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})+' · '+p.on+' of '+p.total+' safeguards on ('+p.enforced+' enforced or sign-off, '+p.guidance+' guidance)','small muted'));
+   const right=el('div','','arc-actions');const ed=el('a','Change safeguards');ed.href='/admin/rule-packs?pack='+p.id;ed.className='button-link';const rm=el('button','Remove','secondary mini-act');rm.type='button';
+   rm.onclick=()=>run(async()=>{if(!confirm('Remove the '+p.name+' pack from live rules?'))return;await api('/admin/api/rule-packs/apply','POST',{pack:p.id,apply:false});$('notice').textContent=p.name+' pack removed from live rules.';await packs()});
+   right.append(ed,rm);const rules=el('div',p.rules.map(r=>r.name).join(' · '),'rpa-rules');row.append(left,right,rules);box.append(row)}
+  const sv=$('r-packs-svc');sv.replaceChildren();for(const x of d.services){const r=el('label','','r-svc-row');const cb=document.createElement('input');cb.type='checkbox';cb.checked=x.inside;
+   cb.onchange=()=>run(async()=>{await api('/admin/api/rule-packs/services','POST',{provider:x.id,inside:cb.checked});$('notice').textContent=x.name+(cb.checked?' counts as inside your tenant.':' counts as outside your tenant.');await packs()});
+   r.append(cb,el('span',x.name),el('span',x.inside?'Inside your tenant (UK)':'Outside your tenant','small muted'));sv.append(r)}}
+ run(packs);
 }
 """
 

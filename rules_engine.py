@@ -236,6 +236,11 @@ def effective_guidance(free_text):
     for r in all_rules():
         if r['kind'] == 'guidance' and r['enabled'] and r['text']:
             parts.append(f"- [{dict((k, n) for k, n, _ in SETS)[r['set_key']]}] {r['text']}")
+    try:
+        import rule_packs
+        parts += rule_packs.live_guidance()
+    except Exception:
+        pass
     if free_text.strip(): parts.append(free_text.strip())
     return '\n'.join(parts)
 
@@ -337,8 +342,9 @@ def check_org_fact(org, statement, source):
 
 
 # ---------------- enforcement points ----------------
-def check_outbound(text, target='chat message'):
-    """Before text goes to any external model."""
+def check_outbound(text, target='chat message', provider=None, packs=True):
+    """Before text goes to any external model. Applied rule packs add their blocks and escalations (packs=False for
+    paths that check packs separately, such as chat, or that do not send anything yet, such as uploads)."""
     if on('secret_detection'):
         s = find_secrets(text)
         if s:
@@ -352,10 +358,18 @@ def check_outbound(text, target='chat message'):
             log_block('protective_marking', target, 'Blocked marking: ' + ', '.join(m))
             raise RuleViolation(f'Not sent: this contains a {m[0]} protective marking. Marked material is never sent '
                                 'to external models.')
+    if packs:
+        import rule_packs
+        if rule_packs.applied():
+            if provider is None:
+                with store.db() as c:
+                    row = c.execute("SELECT value FROM settings WHERE key='temple_provider'").fetchone()
+                provider = row[0] if row else 'openai'
+            rule_packs.live_check(text, provider, target, redact_text=False)
 
 
 def check_file(text, name):
-    check_outbound(text, 'upload ' + name)
+    check_outbound(text, 'upload ' + name, packs=False)
 
 
 def _norm(s):
