@@ -40,10 +40,12 @@ SECTIONS = {
 <div id="ask-starters" class="mem-cats"></div><div id="ask-log" class="ask-log" aria-live="polite"></div>
 <form id="ask-form" class="ask-form"><textarea id="ask-q" rows="2" maxlength="4000" placeholder="e.g. What did the rules block this week?" aria-label="Question for Temple"></textarea><div class="arc-actions"><button id="ask-go">Ask</button><button id="ask-clear" type="button" class="secondary">Clear conversation</button></div></form>
 <p class="muted small">Temple looks things up with read-only tools and shows what it checked. It can't approve or change anything; it tells you where to do that. The conversation is kept on this page only.</p></section>''',
-'agents': r'''<div id="ag-list"><section><div class="mem-head"><h2>Alice automations</h2><span id="ag-summary" class="muted small"></span></div>
+'agents': r'''<div id="ag-list"><div id="ag-view" class="mem-tabs ag-view"></div>
+<section id="ag-map-wrap" hidden><div class="mem-head"><h2>System map</h2><span id="ag-map-note" class="muted small"></span></div><div id="ag-map"></div></section>
+<div id="ag-cards-wrap"><section><div class="mem-head"><h2>Alice automations</h2><span id="ag-summary" class="muted small"></span></div>
 <p class="muted small">Agents only propose; nothing they do is approved without you, and the rules apply on top of their limits. An agent pauses itself after 3 failed runs in a row or at its monthly budget.</p>
 <div id="ag-auto" class="ag-cards"></div></section>
-<section><div class="mem-head"><h2>Connected apps</h2><span class="muted small">Every tool call is checked against the app's permissions. New apps appear here when they first connect.</span></div><div id="ag-apps" class="ag-cards"></div></section></div>
+<section><div class="mem-head"><h2>Connected apps</h2><span class="muted small">Every tool call is checked against the app's permissions. New apps appear here when they first connect.</span></div><div id="ag-apps" class="ag-cards"></div></section></div></div>
 <div id="ag-detail" hidden></div>''',
 'organisations': r'''<section><div class="mem-head"><h2>Organisations</h2><span id="o-summary" class="muted small"></span></div>
 <p class="muted small">Summaries, not documents: each fact is a sentence or two with its source and a review-by date. Facts you add here are approved; facts from models wait for your approval. Data minimisation applies: organisational information and roles, not people.</p>
@@ -123,6 +125,7 @@ body{display:grid;grid-template-rows:52px minmax(0,1fr);height:100vh;overflow:hi
 .sidebar .grp{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:12px 10px 4px}.sidebar .grp:first-child{margin-top:2px}
 .sidebar a{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;text-decoration:none;color:var(--ink);font-size:14px}
 .sidebar a:hover{background:#f1f6f9}.sidebar a[aria-current=page]{background:var(--teal2);font-weight:600}
+#demo-toggle{font:inherit;font-size:13px;cursor:pointer}#demo-toggle.demo-on{background:#e2a33b;border-color:#e2a33b;color:#1b1203;font-weight:600}
 .nav-count{margin-left:auto;font-size:11px;font-weight:700;line-height:17px;background:#fdf3e1;color:#6b4406;border:1px solid #e2bf85;border-radius:999px;padding:0 7px}
 .content{overflow:auto;padding:20px 32px 48px;min-width:0}.content>.inner{max-width:1180px;margin:0 auto}
 .page-desc{margin:0 0 14px;color:var(--muted);font-size:14px;line-height:1.5}
@@ -191,6 +194,25 @@ nav{display:flex;gap:20px;flex-wrap:wrap}.sidebar nav{display:contents}
 .ag-tabs{margin:14px 0 0}.ag-purpose{font-size:15px;margin:0 0 14px}.ag-stats{grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:16px}
 .ag-facts{display:grid;grid-template-columns:160px 1fr;gap:6px 14px;margin:0 0 16px;font-size:14px}.ag-facts dt{color:var(--muted)}.ag-facts dd{margin:0}
 .ag-mini{display:grid;grid-template-columns:120px 90px 130px 1fr;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}.ag-mini-sum{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ag-view{margin:0 0 12px}
+.anat{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:22px;margin:4px 0 18px}
+.anat-stage{position:relative;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#fff;font-size:13px;line-height:1.45;min-width:0}
+.anat-stage:not(:last-child):after{content:'→';position:absolute;right:-19px;top:50%;transform:translateY(-50%);color:#7e95a6;font-size:16px}
+.anat-title{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.anat-stage ul{margin:0;padding-left:16px}.anat-stage li{margin:1px 0}.anat-sub{font-size:11px;color:var(--muted);margin:6px 0 2px}.anat-sub:first-of-type{margin-top:0}
+.anat-model{font-weight:600;color:var(--teal);margin:2px 0}.anat-instr{color:var(--muted);font-style:italic;margin:4px 0}.anat-small{font-size:12px;color:var(--muted);margin-top:6px}.anat-empty{color:var(--faint)}
+.t-agent{border-color:#89b1bf;background:var(--teal2)}.t-guard{border-color:#c7b8dd;background:var(--violet2)}.t-you{border-color:#9fcfaf;background:#eef8f1}
+.anat-guards{list-style:none;padding-left:0!important}.anat-guards li.off{color:var(--faint);text-decoration:line-through}
+.ag-map-svg{width:100%;height:auto;display:block}.m-head{font-size:13px;font-weight:600;fill:#5d7385;letter-spacing:.06em;text-transform:uppercase}
+.m-rules{fill:#f1ebf7;stroke:#9d86c0;stroke-width:1.5;stroke-dasharray:6 5}.m-rules-label{font-size:12px;fill:#634394;font-weight:600}
+.m-store{fill:#fff;stroke:#89b1bf}.m-store-t{font-size:13px;fill:#14324a;font-weight:600}
+.m-link{fill:none;stroke:#075e79;stroke-opacity:.35;stroke-width:1.5}.m-link.app{stroke:#634394}.m-link.off{stroke:#b9c6cf;stroke-dasharray:3 4}
+.m-node{cursor:pointer}.m-node rect{fill:#fff;stroke:#89b1bf}.m-node.app rect{stroke:#c7b8dd}.m-node:hover rect,.m-node:focus rect{stroke:#075e79;stroke-width:2}.m-node.off rect{fill:#f4f6f8;stroke:#c1cbd3}
+.m-name{font-size:13px;font-weight:600;fill:#14324a}.m-node.off .m-name{fill:#8aa0b0}.m-sub{font-size:11px;fill:#5d7385}
+.m-dot.active{fill:#55b987}.m-dot.paused{fill:#e2a33b}.m-dot.stopped{fill:#b3261e}
+.m-gate{stroke:#7e95a6;stroke-width:1.5}.m-you{fill:#eef8f1;stroke:#9fcfaf}.m-you-t{font-size:13px;font-weight:600;fill:#1e5b31}.m-small{font-size:11px;fill:#5d7385}
+.ag-anat-edit{border-top:1px solid var(--line);margin-top:16px;padding-top:4px}.ag-anat-edit input,.ag-anat-edit textarea{width:100%}
+@media(max-width:1100px){.anat{grid-template-columns:repeat(3,minmax(0,1fr))}.anat-stage:nth-child(3):after{display:none}}
 .ag-perms{display:grid;gap:10px;margin:6px 0 10px}.ag-perm strong{margin-right:6px}
 .ag-events{max-height:320px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:6px;padding:8px 10px;line-height:1.7}
 @media(max-width:900px){.ag-stats{grid-template-columns:1fr 1fr}.ag-facts{grid-template-columns:1fr}.ag-mini{grid-template-columns:1fr 1fr}}
@@ -773,12 +795,13 @@ if(PAGE==='organisations'){
 
 SCRIPT += r"""
 if(PAGE==='agents'){
- const st={L:null,sel:'',tab:'overview'};
+ const st={L:null,sel:'',tab:'overview',view:(()=>{try{return localStorage.getItem('alice-agents-view')||'cards'}catch{return 'cards'}})()};
  const STATUS={active:['Active','approved'],paused:['Paused','proposed'],stopped:['Stopped','rejected']};
  const RUNST={complete:'v-ok',failed:'v-bad',running:'v-run',skipped:'v-none',blocked:'v-warn',interrupted:'v-warn','failed (cleared)':'v-none'};
  const TABS=[['overview','Overview'],['runs','Runs'],['data','Data touched'],['settings','Settings'],['history','History']];
  const when=d=>d?new Date(d).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'—';
- const usd=v=>'$'+(v||0).toFixed(v>=1?2:4);
+ const usd=v=>DEMO?'':'$'+(v||0).toFixed(v>=1?2:4);
+ const dq=DEMO?'demo=1':'';
  const plural=(ty,n)=>n+' '+(n===1?ty:({memory:'memories'}[ty]||ty+'s'));
  const badge=(t,c)=>el('span',t,'badge '+c);
  const pill=a=>{const [l,c]=STATUS[a.status]||[a.status,''];return el('span',l,c)};
@@ -795,11 +818,13 @@ if(PAGE==='agents'){
   const foot=el('div','','ag-card-foot');const lr=a.last_run;
   foot.append(el('span',lr?('Last run '+when(lr.started_at)):(a.kind==='app'?'No calls yet':'Not run yet')));
   if(lr)foot.append(badge(a.kind==='app'&&lr.status==='running'?'today':lr.status,RUNST[lr.status]||'v-none'));
-  foot.append(el('span',a.kind==='app'?a.calls_month+' calls this month':a.runs_month+' runs · '+usd(a.cost_month),'ag-card-stat'));
+  foot.append(el('span',a.kind==='app'?plural('call',a.calls_month)+' this month':plural('run',a.runs_month)+(DEMO?'':' · '+usd(a.cost_month)),'ag-card-stat'));
   c.append(foot);
   const flags=el('div','','ag-card-flags');if(a.status_reason&&a.status!=='active')flags.append(el('span',a.status_reason,'small'));if(a.external_content)flags.append(el('span','Reads outside content','tag'));if(a.review_overdue)flags.append(el('span','⚑ Review overdue','flag'));if(a.waiting)flags.append(el('span',a.waiting+' waiting for you','flag'));if(flags.childElementCount)c.append(flags);
   return c}
- function list(){const L=st.L,internal=L.agents.filter(a=>a.kind!=='app'),apps=L.agents.filter(a=>a.kind==='app'),off=L.agents.filter(a=>a.status!=='active').length;
+ function list(){$('ag-view').replaceChildren(...[['cards','Cards'],['map','System map']].map(([k,l])=>{const b=el('button',l,'chip'+(st.view===k?' on':''));b.type='button';b.onclick=()=>{st.view=k;try{localStorage.setItem('alice-agents-view',k)}catch{}list()};return b}));
+  $('ag-cards-wrap').hidden=st.view==='map';$('ag-map-wrap').hidden=st.view!=='map';if(st.view==='map'){drawMap();return}
+  const L=st.L,internal=L.agents.filter(a=>a.kind!=='app'),apps=L.agents.filter(a=>a.kind==='app'),off=L.agents.filter(a=>a.status!=='active').length;
   $('ag-summary').textContent=internal.length+' automations · '+apps.length+' connected apps'+(off?' · '+off+' paused or stopped':'');
   $('ag-auto').replaceChildren(...internal.map(card));$('ag-apps').replaceChildren(...apps.map(card))}
  // ---- detail: header, tabs, one tab at a time
@@ -816,29 +841,29 @@ if(PAGE==='agents'){
   box.append(head);const body=el('section','');box.append(body);
   ({overview,runs:runsTab,data:dataTab,settings,history:historyTab}[st.tab]||overview)(a,body)}
  function overview(a,body){
-  body.append(el('p',a.purpose,'ag-purpose'));
+  body.append(el('p',a.purpose,'ag-purpose'),anatomy(a));
   const tiles=el('div','','stats ag-stats');const tile=(n,l)=>{const t=el('div','','stat');t.append(el('strong',n),el('span',l));return t};
   if(a.kind==='app')tiles.append(tile(String(a.calls_month),'tool calls this month'),tile(String(a.waiting),'proposals waiting'));
-  else tiles.append(tile(String(a.runs_month),'runs this month'),tile(String(a.failed_month),'failed'),tile(usd(a.cost_month),a.budget_usd!=null?'of $'+a.budget_usd.toFixed(2)+' budget':'cost (no agent budget)'));
+  else{tiles.append(tile(String(a.runs_month),'runs this month'),tile(String(a.failed_month),'failed'));if(!DEMO)tiles.append(tile(usd(a.cost_month),a.budget_usd!=null?'of $'+a.budget_usd.toFixed(2)+' budget':'cost (no agent budget)'))}
   body.append(tiles);
   const facts=el('dl','','ag-facts');for(const [k,v] of [['Starts',a.trigger],['Reads',a.reads],['Writes',a.writes],['Owner',a.owner],['Review access by',a.review_by||'—'],['Settings version',String(a.version)]]){facts.append(el('dt',k),el('dd',v||'—'))}
   if(a.external_content){facts.append(el('dt','Outside content'),el('dd','Reads content from outside Alice. Keep it to proposing only.'))}
   body.append(facts);
   const recent=el('div','');body.append(el('h3','Latest '+(a.kind==='app'?'days':'runs')),recent);
-  api('/admin/api/agents/'+a.id+'/runs').then(r=>{if(!r.runs.length){recent.append(el('p','Nothing yet.','muted small'));return}for(const x of r.runs.slice(0,5)){const row=el('div','','ag-mini');row.append(el('span',when(x.started_at),'small'),badge(a.kind==='app'&&x.status==='running'?'today':x.status,RUNST[x.status]||'v-none'),el('span',(x.cost_usd?usd(x.cost_usd)+' · ':'')+x.calls+' calls','small muted'),el('span',x.error||x.summary||'','small muted ag-mini-sum'));recent.append(row)}
+  api('/admin/api/agents/'+a.id+'/runs').then(r=>{if(!r.runs.length){recent.append(el('p','Nothing yet.','muted small'));return}for(const x of r.runs.slice(0,5)){const row=el('div','','ag-mini');row.append(el('span',when(x.started_at),'small'),badge(a.kind==='app'&&x.status==='running'?'today':x.status,RUNST[x.status]||'v-none'),el('span',(x.cost_usd&&!DEMO?usd(x.cost_usd)+' · ':'')+x.calls+' calls','small muted'),el('span',DEMO?'':(x.error||x.summary||''),'small muted ag-mini-sum'));recent.append(row)}
    const all=el('button','All runs →','secondary');all.type='button';all.onclick=()=>go(a.id,'runs',false);recent.append(all)}).catch(e=>recent.append(el('p',e.message,'small')))}
  async function runsTab(a,body){const r=await api('/admin/api/agents/'+a.id+'/runs');
   if(!r.runs.length){body.append(el('p',a.kind==='app'?'No tool calls yet.':'No runs yet. Runs that had nothing to do are not kept.','muted'));return}
   const t=el('table','','mem-table');const h=document.createElement('tr');for(const x of ['Started','Trigger','Outcome','Cost / calls','Summary'])h.append(el('th',x));t.append(h);
   for(const x of r.runs){const tr=document.createElement('tr');const b=el('button',when(x.started_at),'mem-title');b.type='button';const c1=document.createElement('td');c1.append(b);const c3=document.createElement('td');c3.append(badge(a.kind==='app'&&x.status==='running'?'today':x.status,RUNST[x.status]||'v-none'));
-   tr.append(c1,el('td',x.trigger,'small'),c3,el('td',(x.cost_usd?usd(x.cost_usd)+' · ':'')+x.calls+' calls','small'),el('td',x.error||x.summary||'','small'));t.append(tr);
+   tr.append(c1,el('td',x.trigger,'small'),c3,el('td',(x.cost_usd&&!DEMO?usd(x.cost_usd)+' · ':'')+x.calls+' calls','small'),el('td',DEMO?'':(x.error||x.summary||''),'small'));t.append(tr);
    const dr=document.createElement('tr');dr.hidden=true;const dtd=document.createElement('td');dtd.colSpan=5;dr.append(dtd);t.append(dr);
-   b.onclick=()=>run(async()=>{if(!dr.hidden){dr.hidden=true;return}const d=await api('/admin/api/agent-runs/'+x.id);dtd.replaceChildren();
+   b.onclick=()=>run(async()=>{if(!dr.hidden){dr.hidden=true;return}const d=await api('/admin/api/agent-runs/'+x.id+(dq?'?'+dq:''));dtd.replaceChildren();
     const tch=Object.entries(d.touched).map(([k,v])=>(k==='read'?'Read ':'Wrote ')+Object.entries(v).map(([ty,n])=>plural(ty,n)).join(', ')).join(' · ');if(tch)dtd.append(el('p',tch,'small'));
     const l=el('div','','ag-events');for(const e of d.events.slice(-200)){const row=el('div','','small');row.append(el('span',new Date(e.at).toLocaleTimeString('en-GB')+'  ','muted'),el('strong',e.kind+' '),document.createTextNode((e.target_name||[e.target_type,e.target_id].filter(Boolean).join(' '))+(e.detail?' · '+e.detail:'')));l.append(row)}
     if(!d.events.length)l.append(el('p','No details recorded for this run.','muted small'));dtd.append(l);dr.hidden=false})}
   body.append(t)}
- async function dataTab(a,body){const d=await api('/admin/api/agents/'+a.id+'/touched');body.append(el('p','Everything '+a.name+' read or wrote in the last 30 days, newest first.','muted small'));
+ async function dataTab(a,body){const d=await api('/admin/api/agents/'+a.id+'/touched'+(dq?'?'+dq:''));body.append(el('p','Everything '+a.name+' read or wrote in the last 30 days, newest first.','muted small'));
   if(!d.items.length){body.append(el('p','Nothing recorded.','muted'));return}
   const t=el('table','','mem-table');const h=document.createElement('tr');for(const x of ['Item','Type','Read / wrote','Times','Last'])h.append(el('th',x));t.append(h);
   for(const i of d.items){const tr=document.createElement('tr');tr.append(el('td',i.target_name||i.target_id),el('td',i.target_type,'small'),el('td',i.kind,'small'),el('td',String(i.times),'num'),el('td',when(i.last),'small'));t.append(tr)}body.append(t)}
@@ -855,7 +880,16 @@ if(PAGE==='agents'){
    const perm=el('div','','ag-perms');const group=(title,all,chosen,hint)=>{const g=el('div','','ag-perm');g.append(el('strong',title),el('span',hint,'muted small'));const set=new Set(chosen||[]);const wrap=el('div','','r-checks');for(const v of all){const l=el('label','','r-check');const i=document.createElement('input');i.type='checkbox';i.checked=set.has(v);i.onchange=()=>i.checked?set.add(v):set.delete(v);l.append(i,document.createTextNode(' '+v));wrap.append(l)}g.append(wrap);perm.append(g);return set};
    extra.tools=group('Tools',st.L.tools,p.tools,' none ticked = all tools');extra.categories=group('Memory categories',st.L.categories,p.categories,' none ticked = everything the external rules allow');extra.labels=group('Knowledge labels',st.L.labels,p.labels,' none ticked = everything the external rules allow');
    extra.mode=mode;extra.calls=calls;body.append(el('h3','Permissions'),el('p','These only narrow what the rules already allow external apps; they can never widen it.','muted small'),perm)}
+  const an=a.anatomy||{};const ae=el('div','','ag-anat-edit');ae.append(el('h3','How it is described'),el('p','Shown in the anatomy diagram and the system map. Describe what it really does.','muted small'));
+  const inp=(label,val,rows)=>{const l=el('label',label);const i=document.createElement(rows?'textarea':'input');if(rows)i.rows=rows;i.value=val||'';l.append(i);ae.append(l);return i};
+  const fModel=inp('Model',an.model==='temple'?'temple (Temple\'s reviewer setting)':an.model),fId=a.kind==='app'?inp('Identity',an.identity):null,fIns=inp('Instructions, in a line or two',an.instructions,2);
+  const fTools=a.kind==='app'?null:inp('Tools (one per line)',(an.tools||[]).join('\n'),3),fOut=inp('Produces (one per line)',(an.outputs||[]).join('\n'),2),fGate=inp('Your decision',an.gate);
+  const checks=(title,all,chosen)=>{const g=el('div','','ag-perm');g.append(el('strong',title));const set=new Set(chosen||[]);const w=el('div','','r-checks');for(const [v,t2] of all){const l=el('label','','r-check');const i=document.createElement('input');i.type='checkbox';i.checked=set.has(v);i.onchange=()=>i.checked?set.add(v):set.delete(v);l.append(i,document.createTextNode(' '+t2));w.append(l)}g.append(w);ae.append(g);return set};
+  const fData=checks('Data it reaches',Object.entries(st.L.data_sources),an.data),fGuard=checks('Guardrails that apply',st.L.rules.map(r=>[r.id,r.name+(r.enabled?'':' (off)')]),an.guardrails);
+  body.append(ae);
+  const lines=v=>v.split('\n').map(x=>x.trim()).filter(Boolean);
   body.append(btn('Save settings',async()=>{const b={purpose:pu.value,review_by:rb.value,note:''};
+   b.anatomy={model:fModel.value.startsWith('temple')?'temple':fModel.value,instructions:fIns.value,outputs:lines(fOut.value),gate:fGate.value,data:[...fData],guardrails:[...fGuard]};if(fId)b.anatomy.identity=fId.value;if(fTools)b.anatomy.tools=lines(fTools.value);
    if(a.kind!=='app'){if(bud.value==='')b.clear_budget=true;else b.budget_usd=+bud.value}
    else b.permissions={mode:extra.mode.value,max_calls_per_day:extra.calls.value===''?null:+extra.calls.value,tools:[...extra.tools],categories:[...extra.categories],labels:[...extra.labels]};
    const n=prompt('What changed and why? (kept in the history; optional)');if(n===null)return;b.note=n;
@@ -863,6 +897,51 @@ if(PAGE==='agents'){
  async function historyTab(a,body){const d=await api('/admin/api/agents/'+a.id+'/versions');
   for(const v of d.versions){const p=el('div','','card');p.append(el('strong','Version '+v.version+' · '+when(v.changed_at)+' · '+v.changed_by));if(v.note)p.append(el('div',v.note,'small'));const det=document.createElement('details');det.append(el('summary','Settings'),el('pre',JSON.stringify(v.config,null,1)));p.append(det);body.append(p)}
   body.append(el('p','Pauses, resumes and stops are in the Activity log (type: Agents).','muted small'))}
+
+ // ---- anatomy: the parts of one agent, left to right
+ function anatomy(a){const an=a.anatomy_live||{};const wrap=el('div','','anat');
+  const stage=(title,cls,fill)=>{const c=el('div','','anat-stage '+cls);c.append(el('div',title,'anat-title'));fill(c);wrap.append(c);return c};
+  const items=(c,list,empty)=>{if(!list||!list.length){c.append(el('div',empty||'—','anat-empty'));return}const u=el('ul','');for(const x of list)u.append(el('li',x));c.append(u)};
+  stage('Trigger','t-trigger',c=>c.append(el('div',a.trigger,'anat-text')));
+  stage('Agent','t-agent',c=>{c.append(el('strong',a.name),el('div',an.model||'','anat-model'));if(an.identity)c.append(el('div','Identity: '+an.identity,'anat-small'));if(an.instructions)c.append(el('div','“'+an.instructions+'”','anat-instr'));
+   c.append(el('div',a.kind==='app'?plural('tool call',a.calls_month)+' this month':plural('run',a.runs_month)+' this month'+(DEMO?'':' · '+usd(a.cost_month)),'anat-small'))});
+  stage('Reaches','t-reach',c=>{c.append(el('div','Data','anat-sub'));items(c,(an.data||[]).map(d=>d.name));c.append(el('div','Tools','anat-sub'));items(c,an.tools)});
+  stage('Guardrails','t-guard',c=>{const u=el('ul','','anat-guards');for(const g of an.guardrails||[]){const li=el('li',(g.on?'✓ ':'○ ')+g.name);if(!g.on){li.className='off';li.title='This rule is switched off'}u.append(li)}c.append(u);
+   c.append(el('div',a.kind==='app'?'Plus this app\'s own limits (Settings)':(a.budget_usd!=null?'Plus a monthly budget':'Pauses itself after 3 failures'),'anat-small'))});
+  stage('Produces','t-out',c=>items(c,an.outputs));
+  stage('You decide','t-you',c=>c.append(el('div',an.gate||'You approve','anat-text')));
+  return wrap}
+ // ---- system map: agents around Alice's data, inside the rules, with you at the gate
+ const SVGNS='http://www.w3.org/2000/svg';
+ function S(tag,attrs,text){const e=document.createElementNS(SVGNS,tag);for(const [k,v] of Object.entries(attrs||{}))e.setAttribute(k,v);if(text!=null)e.textContent=text;return e}
+ function drawMap(){const L=st.L,box=$('ag-map');box.replaceChildren();
+  const left=L.agents.filter(a=>a.kind!=='app'),right=L.agents.filter(a=>a.kind==='app');
+  const STORES=[['memories','Memories and decisions'],['knowledge','Knowledge'],['organisations','Organisation profiles'],['chats','Chats and conversations'],['activity','Activity and usage']];
+  const rowH=58,top=70,W=1120,rows=Math.max(left.length,right.length,STORES.length+1),H=top+rows*rowH+120;
+  const svg=S('svg',{viewBox:'0 0 '+W+' '+H,class:'ag-map-svg',role:'img','aria-label':'System map of Alice agents'});
+  const defs=S('defs');const mk=S('marker',{id:'arw',viewBox:'0 0 10 10',refX:'9',refY:'5',markerWidth:'7',markerHeight:'7',orient:'auto-start-reverse'});mk.append(S('path',{d:'M0,0 L10,5 L0,10 z',fill:'#7e95a6'}));defs.append(mk);svg.append(defs);
+  svg.append(S('text',{x:150,y:34,'text-anchor':'middle',class:'m-head'},'Alice automations'),S('text',{x:W-150,y:34,'text-anchor':'middle',class:'m-head'},'Connected apps'));
+  // the rules boundary and the core
+  const cx=W/2,coreW=300,coreY=top-10,coreH=STORES.length*rowH+20;
+  svg.append(S('rect',{x:cx-coreW/2-40,y:coreY-34,width:coreW+80,height:coreH+68,rx:22,class:'m-rules'}));
+  svg.append(S('text',{x:cx,y:coreY-14,'text-anchor':'middle',class:'m-rules-label'},'Rules, enforced at the boundary'));
+  const links=S('g',{class:'m-links'});svg.append(links);
+  const ys={};STORES.forEach(([k,label],i)=>{const y=coreY+10+i*rowH;ys[k]=y+20;svg.append(S('rect',{x:cx-coreW/2,y,width:coreW,height:40,rx:9,class:'m-store'}),S('text',{x:cx,y:y+25,'text-anchor':'middle',class:'m-store-t'},label))});
+  // you, at the gate
+  const youY=coreY+coreH+70;svg.append(S('line',{x1:cx,y1:coreY+coreH+34,x2:cx,y2:youY-4,class:'m-gate','marker-end':'url(#arw)'}));
+  svg.append(S('text',{x:cx+10,y:coreY+coreH+56,class:'m-small'},'proposals wait for you'));
+  svg.append(S('rect',{x:cx-110,y:youY,width:220,height:40,rx:20,class:'m-you'}),S('text',{x:cx,y:youY+25,'text-anchor':'middle',class:'m-you-t'},'You: approve, retire, pause'));
+  const node=(a,x,y,side)=>{const g=S('g',{class:'m-node'+(a.status!=='active'?' off':'')+(a.kind==='app'?' app':''),tabindex:'0',role:'link'});g.append(S('title',{},a.name+' · '+a.status));
+   g.append(S('rect',{x:x-120,y,width:240,height:44,rx:10}));const nm=a.name.replace(/^Temple: /,'');g.append(S('text',{x:x-104,y:y+19,class:'m-name'},nm.length>26?nm.slice(0,25)+'…':nm));
+   g.append(S('text',{x:x-104,y:y+35,class:'m-sub'},a.status!=='active'?a.status:(a.kind==='app'?plural('call',a.calls_month)+' this month':plural('run',a.runs_month)+' this month')));
+   g.append(S('circle',{cx:x+104,cy:y+22,r:5,class:'m-dot '+a.status}));
+   g.onclick=()=>go(a.id);g.onkeydown=e=>{if(e.key==='Enter')go(a.id)};
+   for(const d of (a.anatomy_live?.data||[])){if(!ys[d.key])continue;const x1=side<0?x+120:x-120,x2=side<0?cx-coreW/2-2:cx+coreW/2+2;
+    links.append(S('path',{d:`M${x1},${y+22} C${(x1+x2)/2},${y+22} ${(x1+x2)/2},${ys[d.key]} ${x2},${ys[d.key]}`,class:'m-link'+(a.kind==='app'?' app':'')+(a.status!=='active'?' off':'')}))}
+   svg.append(g)};
+  left.forEach((a,i)=>node(a,150,top+i*rowH,-1));right.forEach((a,i)=>node(a,W-150,top+i*rowH,1));
+  box.append(svg);
+  $('ag-map-note').textContent='Lines show which data each agent reaches; every line passes through the rules. Greyed agents are paused or stopped. Click one to open it.'}
  readUrl();run(load);
 }
 """
@@ -885,15 +964,26 @@ def render_admin(page, token):
             '<link rel="icon" href="/static/favicon.png" type="image/png">'
             '<title>' + escape(title) + ' · Alice</title><style>' + SHARED_CSS + CSS + '</style></head><body>'
             '<header class="topbar"><a class="brand" href="/" title="Back to chat"><img src="/static/favicon.png" alt=""><span>ALICE</span></a>'
-            '<h1 class="page-title">' + escape(title) + '</h1><div class="sp"></div><a class="bar-link" href="/">← Chat</a></header>'
+            '<h1 class="page-title">' + escape(title) + '</h1><div class="sp"></div><button id="demo-toggle" class="bar-link" type="button" title="Demo mode: only the Agents page, with item names replaced and costs hidden">Demo mode</button><a class="bar-link" href="/">← Chat</a></header>'
             '<div class="shell"><aside class="sidebar"><nav aria-label="Command centre">' + nav + '</nav></aside>'
             '<main class="content"><div class="inner"><p class="page-desc">' + escape(description) + '</p><div id="notice" role="status"></div>'
             + SECTIONS[page] + '</div></main></div><script>const PAGE=' + json.dumps(page) + ';'
-            + SCRIPT.replace('__TOKEN__', token) + NAV_SCRIPT + '</script></body></html>')
+            + DEMO_PRELUDE + SCRIPT.replace('__TOKEN__', token) + NAV_SCRIPT + '</script></body></html>')
 
+
+DEMO_PRELUDE = r"""
+const DEMO=(()=>{try{return localStorage.getItem('alice-demo')==='1'}catch{return false}})();
+if(DEMO&&PAGE!=='agents'){location.replace('/admin/agents');throw new Error('Demo mode: only the Agents page is shown')}
+"""
 
 NAV_SCRIPT = r"""
+(()=>{const t=document.getElementById('demo-toggle');if(!t)return;t.textContent=DEMO?'Demo mode: on':'Demo mode';t.classList.toggle('demo-on',DEMO);
+ t.onclick=()=>{try{localStorage.setItem('alice-demo',DEMO?'0':'1')}catch{}location.href=DEMO?location.href:'/admin/agents'};
+ if(!DEMO)return;document.body.classList.add('demo');
+ document.querySelectorAll('.sidebar a').forEach(a=>{if(a.dataset.page!=='agents')a.hidden=true});document.querySelectorAll('.sidebar .grp').forEach(g=>g.hidden=true);
+ document.querySelectorAll('.bar-link[href="/"]').forEach(a=>a.hidden=true);
+ if(PAGE!=='agents'){const inner=document.querySelector('.content .inner');inner.replaceChildren();const s=document.createElement('section');const h=document.createElement('h2');h.textContent='Demo mode is on';const p=document.createElement('p');p.textContent='Only the Agents page is shown, with item names replaced and costs hidden. Turn demo mode off in the top bar to see this page.';const a=document.createElement('a');a.href='/admin/agents';a.textContent='Go to Agents';s.append(h,p,a);inner.append(s)}})();
 (async()=>{try{const d=await api('/admin/api/actions');const n={};for(const s of d.sections)n[s.key]=s.count;
- const counts={agents:n.agents||0,actions:d.total,memories:n.proposals||0,knowledge:(n.drafts||0)+(n.replacements||0),organisations:n.orgfacts||0,temple:n.suggestions||0,archive:n.chats||0,rules:n.rules||0};
+ if(DEMO)return;const counts={agents:n.agents||0,actions:d.total,memories:n.proposals||0,knowledge:(n.drafts||0)+(n.replacements||0),organisations:n.orgfacts||0,temple:n.suggestions||0,archive:n.chats||0,rules:n.rules||0};
  for(const [k,v] of Object.entries(counts)){if(!v)continue;const a=document.querySelector('.sidebar a[data-page="'+k+'"]');if(!a)continue;const c=document.createElement('span');c.className='nav-count';c.textContent=v;a.append(c)}}catch{}})();
 """

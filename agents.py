@@ -67,6 +67,50 @@ BUILTIN = [
      'When you use Copilot', [], 'Files, memories and organisation profiles allowed to external apps',
      'Proposals, knowledge drafts, saved conversations', True),
 ]
+# The parts of each agent, for its anatomy diagram and the system map. model 'temple' = Temple's reviewer setting.
+DATA_SOURCES = {'memories': 'Memories and decisions', 'knowledge': 'Knowledge', 'organisations': 'Organisation profiles',
+                'chats': 'Chats and saved conversations', 'activity': 'Activity and usage', 'input': 'What you supply'}
+_APP_ANATOMY = {'model': 'Its own model (the app decides)', 'instructions': 'Alice connector instructions plus your response guidance',
+                'tools': TOOLS, 'data': ['memories', 'knowledge', 'organisations', 'chats'],
+                'guardrails': ['external_scope', 'client_separation', 'provider_allow', 'protective_marking', 'secret_detection', 'pii',
+                               'data_minimisation', 'approval_required'],
+                'outputs': ['Memory, decision, knowledge and organisation-fact proposals', 'Saved conversations'],
+                'gate': 'Everything it proposes waits for you on Actions', 'identity': 'Caller name on this computer'}
+ANATOMY = {
+    'temple-review': {'model': 'temple', 'instructions': 'Compare a proposed memory with up to 20 approved ones; report duplicates, contradictions and weak sources, and recommend approve, clarify or reject. Never approves.',
+                      'tools': ['None: compares what it is given'], 'data': ['memories'],
+                      'guardrails': ['spend_cap', 'approval_required', 'client_separation', 'secret_detection'],
+                      'outputs': ['Review report with a recommendation', 'Suggested replacement of an older memory'],
+                      'gate': 'You approve, reject or approve as a replacement'},
+    'temple-chat': {'model': 'temple', 'instructions': 'Read the latest exchanges and suggest memories, decisions, knowledge or guidance, each quoting your own words.',
+                    'tools': ['None: reads the chat it is given'], 'data': ['chats', 'memories'],
+                    'guardrails': ['spend_cap', 'secret_detection', 'protective_marking', 'pii', 'client_separation'],
+                    'outputs': ['Suggestions in the chat and on Actions'], 'gate': 'You accept, edit or dismiss each suggestion'},
+    'temple-chat-review': {'model': 'temple', 'instructions': 'Review a whole saved conversation for things worth keeping; every suggestion must quote you.',
+                           'tools': ['Quote check against your own words'], 'data': ['chats', 'memories'],
+                           'guardrails': ['spend_cap', 'secret_detection', 'protective_marking', 'pii', 'client_separation'],
+                           'outputs': ['Suggestions on Temple and Actions'], 'gate': 'You accept, edit or dismiss each suggestion'},
+    'temple-categorise': {'model': 'temple', 'instructions': 'Choose the best of your categories for each uncategorised item, with a confidence.',
+                          'tools': ['None'], 'data': ['memories', 'knowledge'], 'guardrails': ['spend_cap'],
+                          'outputs': ['Category when 75%+ confident, otherwise a suggestion'], 'gate': 'Your category always wins; suggestions wait for you'},
+    'temple-tagging': {'model': 'temple', 'instructions': 'Match each untagged item to one of your clients, or none.',
+                       'tools': ['Name and alias matching (free, no model)'], 'data': ['memories', 'knowledge'],
+                       'guardrails': ['spend_cap', 'client_separation'], 'outputs': ['Client tag when confident, otherwise a suggestion'],
+                       'gate': 'Your tag always wins; suggestions wait for you'},
+    'temple-replacements': {'model': 'temple', 'instructions': 'Decide whether a newer knowledge item replaces an older one; must quote the newer item.',
+                            'tools': ['Wording and title matching (free, no model)', 'Quote check'], 'data': ['knowledge'],
+                            'guardrails': ['spend_cap', 'provider_allow', 'protective_marking', 'secret_detection', 'client_separation'],
+                            'outputs': ['Suggestion to retire the older item, with a quote'], 'gate': 'You retire it or keep both'},
+    'temple-ask': {'model': 'temple', 'instructions': 'Answer questions about what happened, using read-only tools and showing what it checked.',
+                   'tools': ['Activity log search', 'Outstanding actions', 'Usage and costs'], 'data': ['activity'],
+                   'guardrails': ['spend_cap', 'secret_detection'], 'outputs': ['An answer with what it checked'], 'gate': 'Nothing to approve: read-only'},
+    'temple-meeting': {'model': 'temple', 'instructions': 'Turn a transcript into a title, date, attendees, summary, decisions and actions. Only what was said.',
+                       'tools': ['None'], 'data': ['input'], 'guardrails': ['secret_detection', 'protective_marking', 'spend_cap'],
+                       'outputs': ['Draft meeting record'], 'gate': 'You edit it, then save it'},
+    'claude-desktop': dict(_APP_ANATOMY, model='Claude (your Claude Desktop model)', identity='Caller name on this computer (stdio)'),
+    'microsoft-copilot': dict(_APP_ANATOMY, model='Microsoft 365 Copilot', identity='Entra ID token from the Tuduma tenant'),
+}
+_ANATOMY_KEYS = ('model', 'identity', 'instructions', 'tools', 'data', 'guardrails', 'outputs', 'gate')
 _current = contextvars.ContextVar('alice_agent_run', default=None)
 
 
@@ -98,6 +142,8 @@ with store.db() as c:
     c.execute('''CREATE TABLE IF NOT EXISTS agent_events (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, at TEXT NOT NULL,
         kind TEXT NOT NULL, target_type TEXT NOT NULL DEFAULT '', target_id TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '')''')
     c.execute('CREATE INDEX IF NOT EXISTS agent_events_run ON agent_events(run_id)')
+    if 'anatomy' not in {r['name'] for r in c.execute('PRAGMA table_info(agents)')}:
+        c.execute("ALTER TABLE agents ADD COLUMN anatomy TEXT NOT NULL DEFAULT '{}'")
     for _aid, _name, _kind, _purpose, _trigger, _workloads, _reads, _writes, _ext in BUILTIN:
         if not c.execute('SELECT 1 FROM agents WHERE id=?', (_aid,)).fetchone():
             _perms = json.dumps(_default_perms(_kind))
@@ -113,7 +159,31 @@ def _row(r):
     d['workloads'] = json.loads(d['workloads'] or '[]')
     perms = _default_perms(d['kind']); perms.update(json.loads(d['permissions'] or '{}')); d['permissions'] = perms
     d['external_content'] = bool(d['external_content'])
+    base = dict(ANATOMY.get(d['id']) or (_APP_ANATOMY if d['kind'] == 'app' else {}))
+    base.update({k: v for k, v in json.loads(d.get('anatomy') or '{}').items() if k in _ANATOMY_KEYS})
+    d['anatomy'] = base
     return d
+
+
+def live_anatomy(a):
+    """The anatomy with today's facts filled in: Temple's current model, and each guardrail's name and whether it is on."""
+    an = dict(a['anatomy'])
+    if an.get('model') == 'temple':
+        try:
+            import temple
+            an['model'] = 'Temple reviewer: ' + ('GPT-6 Luna' if temple.reviewer() == 'openai' else 'Claude Haiku 4.5')
+        except Exception:
+            an['model'] = 'Temple reviewer'
+    try:
+        import rules_engine
+        rules = {r['id']: r for r in rules_engine.all_rules()}
+    except Exception:
+        rules = {}
+    an['guardrails'] = [{'id': g, 'name': rules[g]['name'] if g in rules else g, 'on': bool(rules.get(g, {}).get('enabled', True))}
+                        for g in an.get('guardrails', [])]
+    an['data'] = [{'key': k, 'name': DATA_SOURCES.get(k, k)} for k in an.get('data', [])]
+    if a['kind'] == 'app' and a['permissions'].get('tools'): an['tools'] = a['permissions']['tools']
+    return an
 
 
 def get(aid):
@@ -159,7 +229,13 @@ def listing():
         a.update(runs_month=s.get('runs') or 0, failed_month=s.get('failed') or 0, cost_month=round(s.get('cost') or 0, 4),
                  calls_month=s.get('calls') or 0, last_run=last.get(a['id']), waiting=proposals.get(a['id'], 0),
                  review_overdue=bool(a['review_by'] and a['review_by'] < today))
-    return {'agents': agents, 'tools': TOOLS, 'write_tools': sorted(WRITE_TOOLS), 'labels': LABELS}
+    for a in agents: a['anatomy_live'] = live_anatomy(a)
+    try:
+        import rules_engine
+        rule_list = [{'id': r['id'], 'name': r['name'], 'enabled': r['enabled']} for r in rules_engine.all_rules() if r['kind'] == 'enforced']
+    except Exception:
+        rule_list = []
+    return {'agents': agents, 'tools': TOOLS, 'write_tools': sorted(WRITE_TOOLS), 'labels': LABELS, 'data_sources': DATA_SOURCES, 'rules': rule_list}
 
 
 def runs(aid, limit=50, offset=0):
@@ -171,7 +247,20 @@ def runs(aid, limit=50, offset=0):
     return {'runs': rows, 'total': total, 'next_offset': offset + len(rows) if offset + len(rows) < total else None}
 
 
-def run_detail(run_id):
+def _mask(rows, key='target_name'):
+    """Demo mode: item names become neutral labels (Memory 1, Organisation A...), so nothing real shows on screen."""
+    seen = {}
+    for r in rows:
+        t = r.get('target_type') or 'item'
+        if not r.get('target_id'): continue
+        n = seen.setdefault(t, {}).setdefault(r['target_id'], len(seen.get(t, {})) + 1)
+        label = t.replace('_', ' ').capitalize() + ' ' + (chr(64 + n) if t == 'organisation' and n <= 26 else str(n))
+        r[key] = label; r['target_id'] = ''
+        if r.get('detail') and t in ('organisation',): r['detail'] = ''
+    return rows
+
+
+def run_detail(run_id, demo=False):
     with store.db() as c:
         r = c.execute('SELECT * FROM agent_runs WHERE id=?', (run_id,)).fetchone()
         if not r: raise ValueError('Run not found.')
@@ -183,6 +272,10 @@ def run_detail(run_id):
     except Exception:
         pass
     for e in ev: e['target_name'] = names.get(e['target_id'], '')
+    if demo:
+        _mask(ev)
+        for e in ev:
+            if e['detail'].startswith('search: '): e['detail'] = 'search'
     touched = {}
     for e in ev:
         if e['kind'] in ('read', 'wrote') and e['target_id']:
@@ -191,7 +284,7 @@ def run_detail(run_id):
             'touched': {k: {t: len(v) for t, v in d.items()} for k, d in touched.items()}}
 
 
-def touched_items(aid, days=30):
+def touched_items(aid, days=30, demo=False):
     """Lineage: which items this agent read or wrote in the period, newest first."""
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     with store.db() as c:
@@ -205,7 +298,7 @@ def touched_items(aid, days=30):
     except Exception:
         names = {}
     for r in rows: r['target_name'] = names.get(r['target_id'], '')
-    return rows
+    return _mask(rows) if demo else rows
 
 
 def versions(aid):
@@ -229,9 +322,34 @@ def set_status(aid, status, reason='', by='you'):
     return get(aid)
 
 
-def update(aid, purpose=None, permissions=None, budget_usd=None, review_by=None, note='', clear_budget=False):
+def _clean_anatomy(an, a):
+    out = {}
+    clean = lambda v, n: ' '.join(str(v or '').split())[:n]
+    for k in ('model', 'identity', 'instructions', 'gate'):
+        if k in an: out[k] = clean(an[k], 400 if k == 'instructions' else 160)
+    for k in ('tools', 'outputs'):
+        if k in an: out[k] = [clean(x, 100) for x in (an[k] or []) if str(x).strip()][:20]
+    if 'data' in an:
+        bad = [x for x in an['data'] if x not in DATA_SOURCES]
+        if bad: raise ValueError('Unknown data sources: ' + ', '.join(bad))
+        out['data'] = list(dict.fromkeys(an['data']))
+    if 'guardrails' in an:
+        import rules_engine
+        known = {r['id'] for r in rules_engine.all_rules()}
+        bad = [x for x in an['guardrails'] if x not in known]
+        if bad: raise ValueError('Unknown rules: ' + ', '.join(bad))
+        out['guardrails'] = list(dict.fromkeys(an['guardrails']))
+    return out
+
+
+def update(aid, purpose=None, permissions=None, budget_usd=None, review_by=None, note='', clear_budget=False, anatomy=None):
     a = get(aid)
     fields, args = [], []
+    if anatomy is not None:
+        with store.db() as c:      # keep only your overrides, so built-in defaults can still improve later
+            stored = json.loads(c.execute('SELECT anatomy FROM agents WHERE id=?', (aid,)).fetchone()[0] or '{}')
+        stored.update(_clean_anatomy(anatomy, a))
+        fields.append('anatomy=?'); args.append(json.dumps(stored))
     if purpose is not None:
         fields.append('purpose=?'); args.append(' '.join(purpose.split())[:1000])
     if permissions is not None:
@@ -268,7 +386,8 @@ def update(aid, purpose=None, permissions=None, budget_usd=None, review_by=None,
         version = c.execute('SELECT version FROM agents WHERE id=?', (aid,)).fetchone()[0] + 1
         c.execute(f"UPDATE agents SET {','.join(fields)},version=?,updated_at=? WHERE id=?", args + [version, _now(), aid])
         row = _row(c.execute('SELECT * FROM agents WHERE id=?', (aid,)).fetchone())
-        config = {'purpose': row['purpose'], 'permissions': row['permissions'], 'budget_usd': row['budget_usd'], 'review_by': row['review_by']}
+        config = {'purpose': row['purpose'], 'permissions': row['permissions'], 'budget_usd': row['budget_usd'], 'review_by': row['review_by'],
+                  'anatomy': row['anatomy']}
         c.execute('INSERT INTO agent_versions VALUES (?,?,?,?,?,?)', (aid, version, json.dumps(config), _now(), 'you', ' '.join(note.split())[:300]))
         store.audit(c, 'agent_updated', aid, 'human_review', f'{row["name"]}: version {version}' + (f' ({note})' if note else ''))
     return get(aid)

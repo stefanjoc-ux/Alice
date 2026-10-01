@@ -49,7 +49,7 @@ for i, txt in enumerate(['Kayak trip round Mull next June.', 'Four colonies over
     p = s.propose(f'Fact {i}', txt, 'Stefan said')['id']
     temple.review_record(p)
 a = A.get('temple-review')
-t('paused itself after 3 failed runs, with the reason', a['status'] == 'paused' and '3 failed runs' in a['status_reason'] and 'last error' in a['status_reason'])
+t('paused itself after 3 failed runs, with the reason', a['status'] == 'paused' and '3 failed runs' in a['status_reason'] and 'Provider request failed' in a['status_reason'])
 sec = {x['key']: x for x in actions.summary()['sections']}
 t('Actions shows the paused agent', sec['agents']['count'] >= 1 and any('paused itself' in i['title'] for i in sec['agents']['items']))
 try: temple.review_record(p); t('paused agent refuses to run', False)
@@ -119,6 +119,33 @@ t('Alice web chat is not an agent (no gating)', M._app('list_files') == (None, N
 
 # 8. the page and activity
 page = cl.get('/admin/agents').text
-t('Agents page renders (cards and detail view)', 'id="ag-auto"' in page and 'id="ag-detail"' in page)
+t('Agents page renders with cards, system map and demo switch', all(f'id="{i}"' in page for i in ('ag-auto', 'ag-map', 'demo-toggle')))
 with s.db() as c: acts = {r[0] for r in c.execute('SELECT DISTINCT action FROM activity')}
 t('pauses, stops and changes are in the activity log', {'agent_paused', 'agent_stopped', 'agent_updated', 'agent_registered'} <= acts)
+
+# 9. anatomy (for demos): built-in defaults, live model and rules, your edits versioned and validated
+lst = cl.get('/admin/api/agents', headers=H).json()
+rv = {a['id']: a for a in lst['agents']}['temple-review']
+an = rv['anatomy_live']
+t('anatomy lists trigger stages: data, guardrails and outputs', an['data'] and an['guardrails'] and an['outputs'] and an['gate'])
+t('Temple model resolved to the live reviewer', an['model'].startswith('Temple reviewer: '))
+t('guardrails carry the rule name and on/off', all({'id', 'name', 'on'} <= set(g) for g in an['guardrails']))
+t('listing carries the enforced rules and data sources', lst['rules'] and 'memories' in lst['data_sources'])
+r = cl.put('/admin/api/agents/temple-review', json={'anatomy': {'identity': 'Demo identity', 'data': ['memories']}, 'note': 'anatomy edit'}, headers=H)
+a = A.get('temple-review')
+t('anatomy edit saved; other defaults kept', r.status_code == 200 and a['anatomy']['identity'] == 'Demo identity' and a['anatomy']['data'] == ['memories'] and a['anatomy']['outputs'])
+t('anatomy edit is versioned', A.versions('temple-review')[0]['config']['anatomy']['identity'] == 'Demo identity')
+with s.db() as c: raw = json.loads(c.execute("SELECT anatomy FROM agents WHERE id='temple-review'").fetchone()[0])
+t('only your overrides are stored', set(raw) == {'identity', 'data'})
+t('unknown data source refused', cl.put('/admin/api/agents/temple-review', json={'anatomy': {'data': ['payroll']}}, headers=H).status_code == 400)
+t('unknown rule refused', cl.put('/admin/api/agents/temple-review', json={'anatomy': {'guardrails': ['no_such_rule']}}, headers=H).status_code == 400)
+
+# 10. demo mode: item names masked server-side
+real = A.touched_items('temple-review')
+masked = cl.get('/admin/api/agents/temple-review/touched?demo=1', headers=H).json()
+mitems = masked['items'] if isinstance(masked, dict) else masked
+t('demo: data touched shows neutral labels, no ids', mitems and all(i['target_id'] == '' and i['target_name'].startswith('Memory ') for i in mitems if i['target_type'] == 'memory'))
+t('demo: no real names leak', not any('Carport' in json.dumps(i) for i in mitems) and any('Carport' in i['target_name'] for i in real))
+rid0 = A.runs('temple-review')['runs'][-1]['id']
+dm = cl.get(f'/admin/api/agent-runs/{rid0}?demo=1', headers=H).json()
+t('demo: run detail masked', 'Carport' not in json.dumps(dm['events']) and all(e['target_id'] == '' for e in dm['events'] if e.get('target_type')))

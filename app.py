@@ -1080,6 +1080,7 @@ class AgentChange(BaseModel):
     clear_budget: bool = False
     review_by: str|None = Field(default=None,max_length=10)
     note: str = Field(default='',max_length=300)
+    anatomy: dict|None = None
 
 class AgentStatus(BaseModel):
     status: Literal['active','paused','stopped']
@@ -1093,19 +1094,19 @@ def admin_agents():
 def admin_agent_runs(aid: str, offset: int=Query(0,ge=0)): return agents.runs(aid,50,offset)
 
 @app.get('/admin/api/agents/{aid}/touched')
-def admin_agent_touched(aid: str, days: int=Query(30,ge=1,le=365)): return {'items':agents.touched_items(aid,days)}
+def admin_agent_touched(aid: str, days: int=Query(30,ge=1,le=365), demo: bool=False): return {'items':agents.touched_items(aid,days,demo)}
 
 @app.get('/admin/api/agents/{aid}/versions')
 def admin_agent_versions(aid: str): return {'versions':agents.versions(aid)}
 
 @app.get('/admin/api/agent-runs/{rid}')
-def admin_agent_run(rid: str):
-    try: return agents.run_detail(rid)
+def admin_agent_run(rid: str, demo: bool=False):
+    try: return agents.run_detail(rid,demo)
     except ValueError as e: raise HTTPException(404,str(e)) from None
 
 @app.put('/admin/api/agents/{aid}')
 def admin_agent_update(aid: str, ch: AgentChange):
-    try: return agents.update(aid,ch.purpose,ch.permissions,ch.budget_usd,ch.review_by,ch.note,ch.clear_budget)
+    try: return agents.update(aid,ch.purpose,ch.permissions,ch.budget_usd,ch.review_by,ch.note,ch.clear_budget,ch.anatomy)
     except ValueError as e: raise HTTPException(400,str(e)) from None
 
 @app.post('/admin/api/agents/{aid}/status')
