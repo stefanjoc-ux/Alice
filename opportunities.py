@@ -254,7 +254,9 @@ def tracker(status='', org=''):
         counts = {r['status']: r['n'] for r in c.execute('SELECT status,count(*) AS n FROM opportunities GROUP BY status')}
         news = [dict(r) for r in c.execute("SELECT * FROM org_news WHERE (?='' OR org=?) ORDER BY coalesce(nullif(published,''),substr(created_at,1,10)) DESC LIMIT 40",
                                            (org, org))]
-    for r in rows: r['evidence'] = json.loads(r['evidence'] or '[]')
+    with store.db() as c:
+        mgr = {r['name'].lower(): r['account_manager'] for r in c.execute('SELECT name,account_manager FROM organisations')}
+    for r in rows: r['evidence'] = json.loads(r['evidence'] or '[]'); r['account_manager'] = mgr.get(r['org'].lower(), '')
     return {'opportunities': rows, 'counts': {s: counts.get(s, 0) for s in STATUSES}, 'news': news, 'statuses': STATUSES,
             'offerings': offerings(), 'watch': watch_list()}
 

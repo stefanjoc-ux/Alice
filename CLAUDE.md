@@ -105,7 +105,8 @@ A browser refresh is not enough: the old server process keeps running the old co
 | `rule_packs.py` | Demo rule packs (HR team, council social care, security operations, personal data): switchable safeguards and a sandboxed test (never calls a model); a pack can be applied to live rules (`live_check` on chat before saving, blocks/escalations on Temple's requests via `check_outbound`, guidance via `effective_guidance`) with per-service inside/outside-tenant classification |
 | `org_research.py` | Temple researches an organisation on the public web (provider web search) and proposes facts, each citing a page the search returned; agent `temple-org-research` |
 | `opportunities.py` | Client opportunity scans (profile brief + news via web search), on each organisation's schedule (background thread, `start_scheduler`; off when `ALICE_NO_SCHEDULER` is set) or Run now; suggestions with evidence; the tracker; agent `temple-opportunities` |
-| `organisations.py` | Organisation profiles: short approved facts with source pointers and review dates, the compiled brief, removal by source |
+| `organisations.py` | Organisation profiles: short approved facts with source pointers and review dates, the compiled brief, removal by source, account manager (typed now; `account_manager_oid` reserved for Entra ID) |
+| `demo_data.py` | Fictional demo data for the Organisations page and tracker, in a separate store (data\demo\substrate-demo.db, or schema `alice_demo` on PostgreSQL); rebuilt when the live schema changes |
 | `clients.py` | Clients, tagging, alias detection, separation enforcement |
 | `actions.py` | Everything awaiting a decision (Actions page) |
 | `activity_log.py` | Activity log labels, types, filters, CSV |
@@ -132,6 +133,14 @@ It translates `?`, `instr`, `LIKE` (case-insensitive), `COLLATE NOCASE` (CITEXT)
 - Opening sqlite3 directly: always go through `store.db()` / `store.connect()`.
 Run the suites against a test PostgreSQL server too (`ALICE_TEST_DATABASE_URL`, see tests\README.md).
 `migrate_to_postgres.py` copies data\substrate.db into PostgreSQL and verifies every table (dry run by default).
+
+## Demo data (Organisations)
+
+`store.DATASET` (a context variable) picks the live or demo store. Only `/admin/api/organisations*` and
+`/admin/api/opportunities*` switch, and only when the request carries `X-Alice-Dataset: demo` (the page sends it when
+its Demo data box is ticked, or in global demo mode). Research and opportunity scans are refused in demo: they would
+call real AI services. Never read the demo store anywhere else, and never let a scheduler or agent run against it.
+`CREATE`/`ALTER` statements skip the LIKE→ILIKE translation so `CREATE TABLE … (LIKE …)` works.
 
 ## Lessons already learned (don't relearn them)
 

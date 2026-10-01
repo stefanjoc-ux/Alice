@@ -66,25 +66,45 @@ SECTIONS = {
 <details id="opp-sched-box"><summary>Schedule</summary><p class="muted small">Scheduled scans run in the background (first slot: next Monday morning) and pause at the spending cap or if you pause the agent. Run now any time.</p><div id="opp-sched"></div></details>
 <details id="opp-off-box"><summary>Your offerings</summary><p class="muted small">Temple maps each opportunity to one of these. One per line.</p><textarea id="opp-offerings" rows="7"></textarea><button id="opp-off-save" type="button" class="secondary">Save offerings</button></details>
 </aside><div id="opp-scrim" class="opp-scrim" hidden></div>
-<section><div class="mem-head"><h2>Organisations</h2><span id="o-summary" class="muted small"></span></div>
-<p class="muted small">Summaries, not documents: each fact is a sentence or two with its source and a review-by date. Facts you add here are approved; facts from models wait for your approval. Data minimisation applies: organisational information and roles, not people.</p>
-<div id="o-list" class="mem-cats"></div>
-<div class="o-research-new"><h3>Add and research an organisation</h3><p class="muted small">Type a name, a website, or both. Temple searches the public web and proposes facts for each section, every one citing the page it came from. Nothing is approved until you approve it.</p>
-<div class="k-meta-row"><label>Name<input id="o-r-name" maxlength="60" placeholder="e.g. Perth and Kinross Council"></label><label>Website<input id="o-r-web" maxlength="300" placeholder="e.g. https://www.pkc.gov.uk"></label></div>
-<button id="o-r-go" type="button">Research online</button> <span id="o-r-status" class="muted small" role="status"></span></div>
-<details><summary>Add an organisation without research</summary><div class="k-meta-row"><label>Name<input id="o-new-name" maxlength="60"></label><label>Type<select id="o-new-kind"></select></label><label>Description<input id="o-new-desc" maxlength="500"></label></div><button id="o-new-save" type="button">Add organisation</button></details></section>
-<section id="o-detail" hidden><div class="mem-head"><h2 id="o-title"></h2><span id="o-meta" class="muted small"></span></div>
-<div class="k-meta-row"><label>Type<select id="o-kind"></select></label><label>Description<input id="o-desc" maxlength="500"></label><label>Website<input id="o-web" maxlength="300" placeholder="https://"></label></div><div class="arc-actions"><button id="o-save" type="button" class="secondary">Save details</button><button id="o-research" type="button">Research online</button><span id="o-research-status" class="muted small" role="status"></span></div>
-<div id="o-research-box"></div>
-<div class="arc-actions o-opp-row"><strong>Opportunities</strong><label class="small">Scan <select id="o-opp-freq"><option value="weekly">weekly</option><option value="fortnightly">fortnightly</option><option value="monthly">monthly</option><option value="off">off</option></select></label><button id="o-opp-scan" type="button" class="secondary">Scan for opportunities now</button><button id="o-opp-view" type="button" class="secondary">Open tracker</button><span id="o-opp-status" class="muted small" role="status"></span></div>
-<div id="o-status" class="mem-tabs"></div><div id="o-facts"></div>
-<h3>Add a fact</h3><div class="k-meta-row"><label>Section<select id="f-section"></select></label><label>Security label<select id="f-label"></select></label></div><p id="f-hint" class="muted small"></p>
-<label>Fact: a summary in a sentence or two<textarea id="f-statement" rows="3" maxlength="400"></textarea></label><span id="f-count" class="muted small"></span>
-<div class="k-meta-row"><label>Source system<input id="f-system" maxlength="80" placeholder="e.g. Council Plan (public website), SharePoint, Dataverse"></label><label>Source reference<input id="f-ref" maxlength="500" placeholder="URL, record ID or document name"></label></div>
-<div class="k-meta-row"><label>As of<input id="f-asof" type="date"></label><label>Review by (blank = default)<input id="f-review" type="date"></label></div><button id="f-save" type="button">Add fact</button>
-<h3>Brief models receive</h3><div class="arc-actions"><label>For <select id="b-provider"></select></label><label class="r-check"><input id="b-external" type="checkbox"> As an external app (Claude Desktop, Copilot)</label><button id="b-show" type="button" class="secondary">Show brief</button></div><pre id="b-text" class="k-text"></pre></section>
-<section><h2>Remove facts from a source</h2><p class="muted small">For an erasure request or a withdrawn source, across all organisations: retires every approved fact and rejects every proposal whose source matches. History is kept as retired.</p>
-<div class="k-meta-row"><label>Source system<input id="r-system" maxlength="80"></label><label>Source reference (optional)<input id="r-ref" maxlength="500"></label><label>Reason<input id="r-reason" maxlength="500" placeholder="e.g. erasure request"></label></div><div class="arc-actions"><button id="r-check" type="button" class="secondary">Check what matches</button><button id="r-go" type="button" class="secondary">Remove</button><span id="r-result" class="small" role="status"></span></div></section>''',
+<div id="o-demo-bar" class="o-demo-bar" hidden><strong>Demo data.</strong> These are fictional organisations kept in a separate store; your real organisations are hidden and untouched. Research and opportunity scans are off. <button id="o-demo-reset" type="button" class="secondary mini-act">Reset demo data</button></div>
+<div class="o-shell">
+<aside class="o-side" aria-label="Organisations list">
+ <div class="o-side-head"><input id="o-search" type="search" placeholder="Find an organisation" aria-label="Find an organisation"><button id="o-add-toggle" type="button" title="Add an organisation">+ Add</button></div>
+ <div id="o-filter" class="o-chips"></div>
+ <div class="o-side-sel"><select id="o-f-kind" aria-label="Type"></select><select id="o-f-mgr" aria-label="Account manager"></select></div>
+ <div class="o-side-foot"><span id="o-summary" class="muted small"></span><label class="o-demo-toggle" title="Show fictional organisations instead of your real ones"><input id="o-demo" type="checkbox"> Demo data</label></div>
+ <div id="o-list"></div>
+</aside>
+<div class="o-main">
+ <section id="o-add" hidden><div class="mem-head"><h2>Add an organisation</h2><button id="o-add-close" type="button" class="secondary mini-act">Close</button></div>
+  <div class="o-research-new"><h3>Research it online</h3><p class="muted small">Type a name, a website, or both. Temple searches the public web and proposes facts for each section, every one citing the page it came from. Nothing is approved until you approve it.</p>
+  <div class="k-meta-row"><label>Name<input id="o-r-name" maxlength="60" placeholder="e.g. Perth and Kinross Council"></label><label>Website<input id="o-r-web" maxlength="300" placeholder="e.g. https://www.pkc.gov.uk"></label></div>
+  <button id="o-r-go" type="button">Research online</button> <span id="o-r-status" class="muted small" role="status"></span></div>
+  <details><summary>Or add it without research</summary><div class="k-meta-row"><label>Name<input id="o-new-name" maxlength="60"></label><label>Type<select id="o-new-kind"></select></label><label>Description<input id="o-new-desc" maxlength="500"></label></div><button id="o-new-save" type="button">Add organisation</button></details></section>
+ <section id="o-empty" class="o-empty"><h2>Organisations</h2><p class="muted">Summaries, not documents: each fact is a sentence or two with its source and a review-by date. Facts you add are approved; facts from models wait for your approval. Organisational information and roles only, not people.</p><p class="muted">Choose an organisation on the left, or add one.</p></section>
+ <div id="o-detail" hidden>
+  <section class="o-head"><div class="o-head-top"><div><h2 id="o-title"></h2><div id="o-meta" class="o-meta"></div></div>
+   <div class="o-head-act"><button id="o-research" type="button">Research online</button><button id="o-opp-scan" type="button" class="secondary">Scan for opportunities</button><button id="o-opp-view" type="button" class="secondary">Open tracker</button></div></div>
+   <p id="o-research-status" class="muted small" role="status"></p><p id="o-opp-status" class="muted small" role="status"></p></section>
+  <details class="o-sec" data-sec="details"><summary><span>Details</span><span id="o-sum-details" class="o-sum"></span></summary><div class="o-sec-body">
+   <div class="k-meta-row"><label>Type<select id="o-kind"></select></label><label>Account manager<input id="o-mgr" list="o-mgr-list" maxlength="80" placeholder="e.g. Morven Hay"><datalist id="o-mgr-list"></datalist></label></div>
+   <div class="k-meta-row"><label>Description<input id="o-desc" maxlength="500"></label><label>Website<input id="o-web" maxlength="300" placeholder="https://"></label></div>
+   <p class="muted small">The account manager is for your own tracking: it is never sent to a model. It is typed here for now and can be looked up from Entra ID once Alice runs in Azure.</p>
+   <button id="o-save" type="button" class="secondary">Save details</button></div></details>
+  <details class="o-sec" data-sec="facts" open><summary><span>Profile facts</span><span id="o-sum-facts" class="o-sum"></span></summary><div class="o-sec-body"><div id="o-status" class="mem-tabs"></div><div id="o-facts"></div></div></details>
+  <details class="o-sec" data-sec="opps"><summary><span>Opportunities</span><span id="o-sum-opps" class="o-sum"></span></summary><div class="o-sec-body">
+   <div class="arc-actions"><label class="small">Scan for opportunities <select id="o-opp-freq"><option value="weekly">weekly</option><option value="fortnightly">fortnightly</option><option value="monthly">monthly</option><option value="off">off</option></select></label></div><div id="o-opp-mini"></div></div></details>
+  <details class="o-sec" data-sec="research"><summary><span>Research history</span><span id="o-sum-research" class="o-sum"></span></summary><div class="o-sec-body"><div id="o-research-box"></div></div></details>
+  <details class="o-sec" data-sec="add"><summary><span>Add a fact</span></summary><div class="o-sec-body">
+   <div class="k-meta-row"><label>Section<select id="f-section"></select></label><label>Security label<select id="f-label"></select></label></div><p id="f-hint" class="muted small"></p>
+   <label>Fact: a summary in a sentence or two<textarea id="f-statement" rows="3" maxlength="400"></textarea></label><span id="f-count" class="muted small"></span>
+   <div class="k-meta-row"><label>Source system<input id="f-system" maxlength="80" placeholder="e.g. Council Plan (public website), SharePoint, Dataverse"></label><label>Source reference<input id="f-ref" maxlength="500" placeholder="URL, record ID or document name"></label></div>
+   <div class="k-meta-row"><label>As of<input id="f-asof" type="date"></label><label>Review by (blank = default)<input id="f-review" type="date"></label></div><button id="f-save" type="button">Add fact</button></div></details>
+  <details class="o-sec" data-sec="brief"><summary><span>Brief models receive</span></summary><div class="o-sec-body"><div class="arc-actions"><label>For <select id="b-provider"></select></label><label class="r-check"><input id="b-external" type="checkbox"> As an external app (Claude Desktop, Copilot)</label><button id="b-show" type="button" class="secondary">Show brief</button></div><pre id="b-text" class="k-text"></pre></div></details>
+ </div>
+ <details class="o-sec o-erase" data-sec="erase"><summary><span>Remove facts from a source</span><span class="o-sum">Erasure requests and withdrawn sources</span></summary><div class="o-sec-body"><p class="muted small">Across all organisations: retires every approved fact and rejects every proposal whose source matches. History is kept as retired.</p>
+ <div class="k-meta-row"><label>Source system<input id="r-system" maxlength="80"></label><label>Source reference (optional)<input id="r-ref" maxlength="500"></label><label>Reason<input id="r-reason" maxlength="500" placeholder="e.g. erasure request"></label></div><div class="arc-actions"><button id="r-check" type="button" class="secondary">Check what matches</button><button id="r-go" type="button" class="secondary">Remove</button><span id="r-result" class="small" role="status"></span></div></div></details>
+</div></div>''',
 'knowledge': r'''<section><div class="mem-head"><h2>Knowledge library</h2><span id="k-summary" class="muted small"></span></div>
 <div class="arc-actions"><button id="k-new-note" type="button">New note</button><button id="k-new-meeting" type="button" class="secondary">Add meeting extract</button><button id="k-categorise" type="button" class="secondary">Categorise with Temple</button><button id="k-find-replaced" type="button" class="secondary">Find replaced items</button><span id="k-cat-result" class="small" role="status"></span></div>
 <div id="k-note" class="k-panel" hidden><h3>New note or summary</h3><label>Title<input id="kn-title" maxlength="200"></label><label>Content<textarea id="kn-content" rows="8" maxlength="90000"></textarea></label><label>Source<input id="kn-source" maxlength="500" value="Written by you"></label><div class="k-meta-row"><label>Category<select id="kn-category"></select></label><label>Client<select id="kn-client"></select></label><label>Security label<select id="kn-label"></select></label></div><div class="arc-actions"><button id="kn-save" type="button">Save note</button><button id="kn-cancel" type="button" class="secondary">Cancel</button></div></div>
@@ -160,8 +180,8 @@ section{background:var(--panel);border:1px solid var(--line);border-radius:10px;
 h2{font-size:17px;line-height:1.35;margin:0 0 10px}h3{font-size:15px;margin:14px 0 6px}h4{font-size:14px;margin:12px 0 4px}section>h2:first-child{margin-top:0}
 p,li{line-height:1.6}label{display:block;margin:10px 0}textarea,input[type=text]{width:100%;margin:6px 0}
 .content button{margin:4px 6px 4px 0}
-.content button:not(.secondary):not(.chip):not(.mini):not(.mem-title):not(.ghost):not(.ag-card),.button{background:var(--teal);border:1px solid var(--teal);color:#fff;font-weight:600;border-radius:8px;padding:6px 14px;text-decoration:none;display:inline-block}
-.content button:not(.secondary):not(.chip):not(.mini):not(.mem-title):not(.ghost):not(.ag-card):hover:not(:disabled),.button:hover{background:var(--teal-d);border-color:var(--teal-d)}
+.content button:not(.secondary):not(.chip):not(.mini):not(.mem-title):not(.ghost):not(.ag-card):not(.o-item),.button{background:var(--teal);border:1px solid var(--teal);color:#fff;font-weight:600;border-radius:8px;padding:6px 14px;text-decoration:none;display:inline-block}
+.content button:not(.secondary):not(.chip):not(.mini):not(.mem-title):not(.ghost):not(.ag-card):not(.o-item):hover:not(:disabled),.button:hover{background:var(--teal-d);border-color:var(--teal-d)}
 .content button.secondary{background:#fff;color:var(--ink)}
 pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:500px;overflow:auto;font:13px/1.6 ui-monospace,Consolas,monospace}summary{cursor:pointer}
 .card{border-top:1px solid var(--line);padding:16px 0;overflow-wrap:anywhere}.card p{overflow-wrap:anywhere}
@@ -260,6 +280,26 @@ nav{display:flex;gap:20px;flex-wrap:wrap}.sidebar nav{display:contents}
 .act-buttons{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.mini-act{margin:0!important;padding:6px 12px!important;font-size:12px!important}
 #al-custom[hidden]{display:none}#al-custom label{margin:0}.al-table td:nth-child(1){white-space:nowrap;width:1%}.al-table td:nth-child(2){white-space:nowrap;width:1%}.al-target{color:#314d62;overflow-wrap:anywhere}.al-table td:nth-child(4){overflow-wrap:anywhere;max-width:520px}
 #pane-ask[hidden]{display:none}.ask-log{max-height:520px;overflow:auto;margin:10px 0}.ask-msg{padding:10px 12px;border-radius:8px;margin:8px 0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55}.ask-user{background:#eaf5f8;border-left:3px solid #21758b;margin-left:60px}.ask-temple{background:#f3eff9;border-left:3px solid #786095;margin-right:30px}.ask-looked{margin-top:6px;color:#4b6376}.ask-looked summary{cursor:pointer;font-size:12px}.ask-form textarea{width:100%}
+/* Organisations: list on the left, one organisation at a time on the right */
+.o-shell{display:grid;grid-template-columns:310px minmax(0,1fr);gap:16px;align-items:start}@media(max-width:1000px){.o-shell{grid-template-columns:1fr}}
+.o-side{position:sticky;top:0;max-height:calc(100vh - 84px);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;display:grid;gap:10px}
+.o-side-head{display:flex;gap:8px}.o-side-head input{flex:1;min-width:0}.o-chips{display:flex;flex-wrap:wrap;gap:6px}.o-chips .chip{font-size:12px!important;padding:5px 10px!important}
+.o-side-sel{display:grid;grid-template-columns:1fr 1fr;gap:6px}.o-side-sel select{min-width:0;font-size:13px;padding:5px 6px}
+.o-side-foot{display:flex;justify-content:space-between;align-items:center;gap:8px}.o-demo-toggle{font-size:13px;display:flex;gap:6px;align-items:center;cursor:pointer;white-space:nowrap}
+.o-group>summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:6px 4px;border-bottom:1px solid var(--line)}.o-group>summary::-webkit-details-marker{display:none}
+.o-group>summary::before{content:'▸';margin-right:6px;transition:transform .15s}.o-group[open]>summary::before{transform:rotate(90deg)}.o-group>summary span:first-child{flex:1}
+.o-item{all:unset;box-sizing:border-box;display:grid;gap:2px;width:100%;padding:7px 8px;border-radius:8px;cursor:pointer}.o-item:hover{background:#eef5f8}.o-item.on{background:var(--teal2);box-shadow:inset 3px 0 0 var(--teal)}
+.content button.o-item{margin:0;font:inherit;color:var(--ink);text-align:left}.o-item:focus-visible{outline:2px solid var(--teal);outline-offset:1px}.o-item .o-name{font-weight:600;font-size:14px}.o-item .o-sub{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:12px;color:var(--muted)}
+.o-flag{font-size:11px;font-weight:700;padding:0 6px;border-radius:999px;background:#fdf3e1;color:#6b4406}.o-flag.o-opp{background:#ede7f6;color:#4b2f73}.o-flag.cl{background:#e3f1f6;color:#064b63}
+.o-main{display:grid;gap:12px;min-width:0}.o-empty{color:var(--muted)}
+.o-head-top{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;align-items:flex-start}.o-head h2{margin:0}.o-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;font-size:13px;color:var(--muted);align-items:center}
+.o-head-act{display:flex;flex-wrap:wrap;gap:8px}.o-head p:empty{display:none}
+.o-sec{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:0 16px}.o-sec>summary{cursor:pointer;list-style:none;display:flex;gap:12px;align-items:baseline;padding:13px 0;font-weight:700;font-size:15.5px}
+.o-sec>summary::-webkit-details-marker{display:none}.o-sec>summary::before{content:'▸';color:var(--muted);transition:transform .15s}.o-sec[open]>summary::before{transform:rotate(90deg)}
+.o-sum{font-weight:400;font-size:13px;color:var(--muted)}.o-sec-body{padding:0 0 16px}.o-erase{margin-top:8px}
+.o-fsec>summary{cursor:pointer;font-weight:700;margin:10px 0 4px;font-size:14.5px}.o-fsec>summary .o-sum{margin-left:8px}
+.o-demo-bar{background:#fdf3e1;border:1px solid #e2bf85;color:#6b4406;border-radius:10px;padding:9px 14px;margin-bottom:12px;font-size:14px}
+.o-mini{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--line);font-size:14px}
 /* Opportunity tracker: slides out from the right */
 .opp-tab{position:fixed;right:0;top:132px;z-index:30;writing-mode:vertical-rl;transform:rotate(180deg);background:var(--teal)!important;color:#fff!important;border:none!important;border-radius:0 10px 10px 0!important;padding:14px 9px!important;font-weight:700;letter-spacing:.04em;box-shadow:-2px 2px 10px #0002}
 .opp-tab .badge-count{position:absolute;top:auto;bottom:-9px;right:auto;left:50%;margin-left:-11px;writing-mode:horizontal-tb;transform:rotate(180deg);min-width:22px;text-align:center}
@@ -303,7 +343,7 @@ nav{display:flex;gap:20px;flex-wrap:wrap}.sidebar nav{display:contents}
 
 SCRIPT = r'''
 const $=id=>document.getElementById(id);let recordOffset=null,activityOffset=0;
-async function api(path,method='GET',body){const r=await fetch(path,{method,headers:{'Content-Type':'application/json','X-Admin-Token':'__TOKEN__'},...(body?{body:JSON.stringify(body)}:{})});if(!r.ok){let text=await r.text();try{text=JSON.parse(text).detail}catch{}throw Error(typeof text==='string'?text:'Request rejected; check the fields.')}return r.json()}
+async function api(path,method='GET',body){const r=await fetch(path,{method,headers:{'Content-Type':'application/json','X-Admin-Token':'__TOKEN__',...(window.ALICE_DATASET==='demo'?{'X-Alice-Dataset':'demo'}:{})},...(body?{body:JSON.stringify(body)}:{})});if(!r.ok){let text=await r.text();try{text=JSON.parse(text).detail}catch{}throw Error(typeof text==='string'?text:'Request rejected; check the fields.')}return r.json()}
 function el(tag,text,cls){const e=document.createElement(tag);e.textContent=text;if(cls)e.className=cls;return e}
 async function run(fn){try{await fn()}catch(e){$('notice').textContent=e.message}}
 async function files(){const data=await api('/files');$('file-list').replaceChildren();if(!data.length)$('file-list').textContent='No saved files.';for(const f of data){const box=el('div','', 'card');box.append(el('strong',f.name),el('p',f.summary));const b=el('button','View extracted text');b.onclick=()=>run(async()=>{$('extract').textContent='Loading…';const d=await api('/admin/api/files/'+f.id);$('extract').textContent=d.text});box.append(b);$('file-list').append(box)}}
@@ -830,55 +870,105 @@ if(PAGE==='usage'){
 
 SCRIPT += r"""
 if(PAGE==='organisations'){
- const st={org:'',status:'approved',L:null};const KL={general:'General',internal:'Internal',client:'Client-confidential',local:'Local only'};
- function opts(sel,list,val){sel.replaceChildren();for(const [v,t] of list){const o=document.createElement('option');o.value=v;o.textContent=t;sel.append(o)}if(val)sel.value=val}
+ const store=(k,v)=>{try{if(v===undefined)return JSON.parse(localStorage.getItem(k)||'null');localStorage.setItem(k,JSON.stringify(v))}catch{return null}};
+ const DEMO_ORG=DEMO||store('alice-org-demo')===true;window.ALICE_DATASET=DEMO_ORG?'demo':'live';
+ const st={org:'',status:'approved',L:null,opps:[],filter:store('alice-org-filter')||'all',kind:'',mgr:'',q:'',groups:store('alice-org-groups')||{},secs:store('alice-org-secs')||{}};
+ const KL={general:'General',internal:'Internal',client:'Client-confidential',local:'Local only'};
+ const KN={council:'Councils',police:'Police',university:'Universities',college:'Colleges','public body':'Public bodies',health:'Health',company:'Companies',charity:'Charities',other:'Other'};
+ const OPEN=['suggested','tracking','pursuing'];
+ function opts(sel,list,val){sel.replaceChildren();for(const [v,t] of list){const o=document.createElement('option');o.value=v;o.textContent=t;sel.append(o)}if(val!==undefined&&val!==null)sel.value=val}
  function hint(){const s=st.L.sections.find(x=>x.key===$('f-section').value);$('f-hint').textContent=s?s.hint:''}
- async function loadList(){st.L=await api('/admin/api/organisations');const L=st.L;
-  if(!st.org&&L.organisations.length)st.org=L.organisations[0].name;
-  $('o-summary').textContent=L.organisations.length+(L.organisations.length===1?' organisation':' organisations')+' · facts are reviewed every '+L.review_months+' months by default';
-  $('o-list').replaceChildren(...L.organisations.map(o=>{const b=el('button',o.name+' ('+o.facts.approved+(o.facts.proposed?' · '+o.facts.proposed+' to approve':'')+(o.facts.due?' · '+o.facts.due+' overdue':'')+')','chip'+(st.org===o.name?' on':'')+(o.facts.proposed||o.facts.due?' attention':''));b.type='button';b.onclick=()=>{st.org=o.name;st.status='approved';run(load)};return b}));
-  if(!L.organisations.length)$('o-list').append(el('p','No organisations yet. Add one below, or add clients on the Clients page.','muted'));
+ const attention=o=>o.facts.proposed>0||o.facts.due>0;
+ const openOpps=name=>st.opps.filter(x=>x.org.toLowerCase()===name.toLowerCase()&&OPEN.includes(x.status));
+ const domain=u=>(u||'').replace(/^https?:\/\/(www\.)?/i,'').split('/')[0];
+ $('o-demo').checked=DEMO_ORG;$('o-demo').disabled=DEMO;if(DEMO)$('o-demo').parentElement.title='Demo mode is on for the whole command centre';
+ $('o-demo-bar').hidden=!DEMO_ORG;for(const id of ['o-research','o-opp-scan','o-r-go'])$(id).disabled=DEMO_ORG;
+ if(DEMO_ORG){$('o-research').title=$('o-opp-scan').title=$('o-r-go').title='Off for demo data: no web searches or model calls.'}
+ $('o-demo').onchange=()=>{store('alice-org-demo',$('o-demo').checked);const u=new URL(location.href);u.searchParams.delete('org');location.href=u.href};
+ $('o-demo-reset').onclick=()=>run(async()=>{if(!confirm('Rebuild the demo data? Changes you made to the demo organisations are lost. Your real data is not touched.'))return;await api('/admin/api/demo-data/reset','POST');$('notice').textContent='Demo data rebuilt.';st.org='';await load()});
+ function renderFilters(){const L=st.L.organisations;const n={all:L.length,clients:L.filter(o=>o.is_client).length,attention:L.filter(attention).length,opps:L.filter(o=>openOpps(o.name).length).length};
+  $('o-filter').replaceChildren(...[['all','All'],['clients','Clients'],['attention','Needs attention'],['opps','Open opportunities']].map(([k,l])=>{const b=el('button',l+' ('+n[k]+')','chip'+(st.filter===k?' on':'')+(k==='attention'&&n[k]&&st.filter!==k?' attention':''));b.type='button';b.onclick=()=>{st.filter=k;store('alice-org-filter',k);renderList()};return b}));
+  opts($('o-f-kind'),[['','All types'],...st.L.kinds.map(k=>[k,KN[k]||k])],st.kind);
+  opts($('o-f-mgr'),[['','All account managers'],...st.L.managers.map(m=>[m,m]),['-','Unassigned']],st.mgr)}
+ function matches(o){if(st.filter==='clients'&&!o.is_client)return false;if(st.filter==='attention'&&!attention(o))return false;if(st.filter==='opps'&&!openOpps(o.name).length)return false;
+  if(st.kind&&o.kind!==st.kind)return false;if(st.mgr==='-'&&o.account_manager)return false;if(st.mgr&&st.mgr!=='-'&&o.account_manager!==st.mgr)return false;
+  if(st.q){const hay=(o.name+' '+(o.account_manager||'')+' '+(o.website||'')+' '+(o.description||'')).toLowerCase();if(!st.q.split(/\s+/).every(w=>hay.includes(w)))return false}return true}
+ function item(o){const b=el('button','','o-item'+(st.org===o.name?' on':''));b.type='button';b.append(el('span',o.name,'o-name'));const sub=el('span','','o-sub');
+  if(o.is_client)sub.append(el('span','Client','o-flag cl'));sub.append(el('span',o.facts.approved+(o.facts.approved===1?' fact':' facts')));
+  if(o.facts.proposed)sub.append(el('span',o.facts.proposed+' to approve','o-flag'));if(o.facts.due)sub.append(el('span',o.facts.due+' overdue','o-flag'));
+  const op=openOpps(o.name).length;if(op)sub.append(el('span',op+(op===1?' opportunity':' opportunities'),'o-flag o-opp'));if(o.account_manager)sub.append(el('span',o.account_manager));
+  b.append(sub);b.onclick=()=>{st.org=o.name;st.status='approved';history.replaceState(null,'','?org='+encodeURIComponent(o.name));run(load)};return b}
+ function renderList(){renderFilters();const rows=st.L.organisations.filter(matches);const box=$('o-list');box.replaceChildren();
+  $('o-summary').textContent=(rows.length===st.L.organisations.length?'':rows.length+' of ')+st.L.organisations.length+(st.L.organisations.length===1?' organisation':' organisations');
+  if(!st.L.organisations.length){box.append(el('p','No organisations yet. Use + Add, or add clients on the Clients page.','muted small'));return}
+  if(!rows.length){box.append(el('p','Nothing matches.','muted small'));return}
+  const groups={};for(const o of rows)(groups[o.kind]=groups[o.kind]||[]).push(o);
+  for(const k of [...st.L.kinds,...Object.keys(groups).filter(x=>!st.L.kinds.includes(x))]){const g=groups[k];if(!g)continue;
+   const d=el('details','','o-group');d.open=!!st.q||st.groups[k]!==false||g.some(o=>o.name===st.org);
+   const sm=el('summary','');sm.append(el('span',KN[k]||k),el('span',String(g.length)+(g.filter(attention).length?' · '+g.filter(attention).length+' need attention':''),'o-sum'));d.append(sm);
+   d.ontoggle=()=>{if(st.q)return;st.groups[k]=d.open;store('alice-org-groups',st.groups)};for(const o of g)d.append(item(o));box.append(d)}}
+ $('o-search').oninput=()=>{st.q=$('o-search').value.trim().toLowerCase();renderList()};
+ $('o-f-kind').onchange=()=>{st.kind=$('o-f-kind').value;renderList()};$('o-f-mgr').onchange=()=>{st.mgr=$('o-f-mgr').value;renderList()};
+ document.querySelectorAll('.o-sec[data-sec]').forEach(d=>{const k=d.dataset.sec;if(k in st.secs)d.open=st.secs[k];d.addEventListener('toggle',()=>{st.secs[k]=d.open;store('alice-org-secs',st.secs)})});
+ function showAdd(on){$('o-add').hidden=!on;if(on){$('o-add').scrollIntoView({block:'start',behavior:'smooth'});$('o-r-name').focus()}}
+ $('o-add-toggle').onclick=()=>showAdd($('o-add').hidden);$('o-add-close').onclick=()=>showAdd(false);
+ async function loadList(){const [L,O]=await Promise.all([api('/admin/api/organisations'),api('/admin/api/opportunities').catch(()=>({opportunities:[]}))]);st.L=L;st.opps=O.opportunities||[];
+  if(st.org&&!L.organisations.some(o=>o.name===st.org))st.org='';
+  $('o-mgr-list').replaceChildren(...L.managers.map(m=>{const o=document.createElement('option');o.value=m;return o}));
   opts($('o-new-kind'),L.kinds.map(k=>[k,k]),$('o-new-kind').value||'other');opts($('o-kind'),L.kinds.map(k=>[k,k]));
   opts($('f-section'),L.sections.map(s=>[s.key,s.name]),$('f-section').value||'identity');opts($('f-label'),Object.entries(KL),$('f-label').value||'general');
-  opts($('b-provider'),[['claude','Claude'],['openai','GPT-6 Luna'],['grok','Grok'],['copilot','Microsoft Copilot']],$('b-provider').value||'claude');hint()}
- async function load(){await loadList();const o=st.L.organisations.find(x=>x.name===st.org);$('o-detail').hidden=!o;if(!o)return;
-  $('o-title').textContent=o.name;$('o-meta').textContent=(o.is_client?'Client · ':'')+o.kind+(o.website?' · '+o.website:'');$('o-kind').value=o.kind;$('o-desc').value=o.description||'';$('o-web').value=o.website||'';
-  runs(await api('/admin/api/organisations/research?org='+encodeURIComponent(st.org)).then(x=>x.runs).catch(()=>[]));
+  opts($('b-provider'),[['claude','Claude'],['openai','GPT-6 Luna'],['grok','Grok'],['copilot','Microsoft Copilot']],$('b-provider').value||'claude');hint();renderList()}
+ function miniOpps(o){const rows=openOpps(o.name);const all=st.opps.filter(x=>x.org.toLowerCase()===o.name.toLowerCase());const box=$('o-opp-mini');box.replaceChildren();
+  $('o-sum-opps').textContent=rows.length?rows.length+' open':(all.length?'none open · '+all.length+' closed':'none yet');
+  if(!rows.length)box.append(el('p',all.length?'No open opportunities. Closed ones are in the tracker.':'None yet. Scan for opportunities above, or set a schedule.','muted small'));
+  const SL={suggested:'Suggested',tracking:'Tracking',pursuing:'Pursuing'};
+  for(const x of rows){const r=el('div','','o-mini');r.append(el('span',SL[x.status],'badge v-'+({suggested:'warn',pursuing:'run'}[x.status]||'none')),el('strong',x.title));
+   if(x.offering)r.append(el('span',x.offering,'tag know'));if(x.confidence!==null&&x.confidence!==undefined)r.append(el('span',Math.round(x.confidence*100)+'%','small muted'));box.append(r)}}
+ async function load(){await loadList();const o=st.L.organisations.find(x=>x.name===st.org);$('o-detail').hidden=!o;$('o-empty').hidden=!!o;if(!o)return;
+  $('o-title').textContent=o.name;const meta=$('o-meta');meta.replaceChildren();
+  if(o.is_client)meta.append(el('span','Client','o-flag cl'));meta.append(el('span',o.kind));meta.append(el('span',o.account_manager?'Account manager: '+o.account_manager:'No account manager','muted'));
+  if(o.website){const a=link(o.website,domain(o.website));meta.append(a)}
+  $('o-kind').value=o.kind;$('o-mgr').value=o.account_manager||'';$('o-desc').value=o.description||'';$('o-web').value=o.website||'';
+  $('o-sum-details').textContent=[o.kind,o.account_manager||'no account manager',domain(o.website)].filter(Boolean).join(' · ');miniOpps(o);
+  const rs=await api('/admin/api/organisations/research?org='+encodeURIComponent(st.org)).then(x=>x.runs).catch(()=>[]);runs(rs);
+  $('o-sum-research').textContent=rs.length?'last '+new Date(rs[0].created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'not researched yet';
   const d=await api('/admin/api/organisations/facts?org='+encodeURIComponent(st.org)+'&status=all');const counts={};for(const f of d.facts)counts[f.status]=(counts[f.status]||0)+1;
+  $('o-sum-facts').textContent=(counts.approved||0)+' approved'+(counts.proposed?' · '+counts.proposed+' to approve':'')+(o.facts.due?' · '+o.facts.due+' overdue':'');
   $('o-status').replaceChildren(...[['approved','Approved'],['proposed','Awaiting approval'],['retired','Retired'],['rejected','Rejected']].map(([k,l])=>{const b=el('button',l+' ('+(counts[k]||0)+')','chip'+(st.status===k?' on':'')+(k==='proposed'&&counts[k]&&st.status!==k?' attention':''));b.type='button';b.onclick=()=>{st.status=k;run(load)};return b}));
-  const names=Object.fromEntries(st.L.sections.map(s=>[s.key,s.name]));const box=$('o-facts');box.replaceChildren();let cur=null;const rows=d.facts.filter(f=>f.status===st.status);
-  if(!rows.length)box.append(el('p',st.status==='approved'?'No approved facts yet. Research online above, or add one below.':'None.','muted'));
+  const names=Object.fromEntries(st.L.sections.map(s=>[s.key,s.name]));const box=$('o-facts');box.replaceChildren();const rows=d.facts.filter(f=>f.status===st.status);
+  if(!rows.length)box.append(el('p',st.status==='approved'?'No approved facts yet. Research online above, or open Add a fact.':'None.','muted'));
   if(st.status==='proposed'&&rows.length>1){const bar=el('div','','arc-actions');const all=el('button','Approve all '+rows.length,'mini-act');all.type='button';all.title='Approve every fact shown. The rules are checked again for each.';
    all.onclick=()=>run(async()=>{if(!confirm('Approve all '+rows.length+' proposed facts? Check the sources first.'))return;const x=await api('/admin/api/organisations/facts/review','POST',{ids:rows.map(f=>f.id),decision:'approved'});$('notice').textContent=x.changed+' approved'+(x.blocked?'; '+x.blocked+' blocked: '+x.block_reasons.join(' '):'.');await load()});
    const rej=el('button','Reject all','secondary mini-act');rej.type='button';rej.onclick=()=>run(async()=>{if(!confirm('Reject all '+rows.length+' proposed facts?'))return;await api('/admin/api/organisations/facts/review','POST',{ids:rows.map(f=>f.id),decision:'rejected'});$('notice').textContent='Rejected.';await load()});bar.append(all,rej);box.append(bar)}
-  for(const f of rows){if(f.section!==cur){cur=f.section;box.append(el('h3',names[cur]||cur))}
-   const row=el('div','','act-row');const txt=el('div','','act-text');txt.append(el('div',f.statement));
-   const meta=el('div','Source: '+f.source_system+' · ','small muted');if(f.source_ref&&/^https?:\/\//i.test(f.source_ref))meta.append(link(f.source_ref,f.source_ref.replace(/^https?:\/\/(www\.)?/i,'').slice(0,80)),document.createTextNode(' · '));else if(f.source_ref)meta.append(document.createTextNode(f.source_ref+' · '));
-   meta.append(document.createTextNode('as of '+f.as_of+' · review by '+f.review_by+' · '+KL[f.label]+' · '+f.proposed_by));txt.append(meta);
-   if(f.overdue)txt.append(el('span','⚑ Review overdue','flag'));if(f.retired_reason)txt.append(el('div','Retired: '+f.retired_reason,'small'));
-   const act=el('div','','act-buttons');
-   if(f.status==='proposed')for(const [l,dec] of [['Approve','approved'],['Reject','rejected']]){const b=el('button',l,dec==='rejected'?'secondary mini-act':'mini-act');b.type='button';b.onclick=()=>run(async()=>{const x=await api('/admin/api/organisations/facts/review','POST',{ids:[f.id],decision:dec});$('notice').textContent=x.blocked?x.block_reasons.join(' '):(dec==='approved'?'Approved.':'Rejected.');await load()});act.append(b)}
-   if(f.status==='approved'){const rb=document.createElement('input');rb.type='date';rb.value=f.review_by;rb.setAttribute('aria-label','Review by');const sv=el('button','Set review date','secondary mini-act');sv.type='button';sv.onclick=()=>run(async()=>{await api('/admin/api/organisations/facts/'+f.id,'PUT',{review_by:rb.value});$('notice').textContent='Review date saved.';await load()});
-    const rt=el('button','Retire','secondary mini-act');rt.type='button';rt.onclick=()=>run(async()=>{const reason=prompt('Why is this fact no longer right?');if(!reason||!reason.trim())return;await api('/admin/api/organisations/facts/'+f.id+'/retire','POST',{reason});$('notice').textContent='Retired.';await load()});act.append(rb,sv,rt)}
-   row.append(txt,act);box.append(row)}
-  $('b-text').textContent=''}
+  const bySec={};for(const f of rows)(bySec[f.section]=bySec[f.section]||[]).push(f);
+  for(const [sec,list] of Object.entries(bySec)){const fs=el('details','','o-fsec');fs.open=true;const sm=el('summary',names[sec]||sec);const due=list.filter(f=>f.overdue).length;sm.append(el('span',list.length+(due?' · '+due+' overdue':''),'o-sum'));fs.append(sm);
+   for(const f of list){const row=el('div','','act-row');const txt=el('div','','act-text');txt.append(el('div',f.statement));
+    const meta=el('div','Source: '+f.source_system+' · ','small muted');if(f.source_ref&&/^https?:\/\//i.test(f.source_ref))meta.append(link(f.source_ref,f.source_ref.replace(/^https?:\/\/(www\.)?/i,'').slice(0,80)),document.createTextNode(' · '));else if(f.source_ref)meta.append(document.createTextNode(f.source_ref+' · '));
+    meta.append(document.createTextNode('as of '+f.as_of+' · review by '+f.review_by+' · '+KL[f.label]+' · '+f.proposed_by));txt.append(meta);
+    if(f.overdue)txt.append(el('span','⚑ Review overdue','flag'));if(f.retired_reason)txt.append(el('div','Retired: '+f.retired_reason,'small'));
+    const act=el('div','','act-buttons');
+    if(f.status==='proposed')for(const [l,dec] of [['Approve','approved'],['Reject','rejected']]){const b=el('button',l,dec==='rejected'?'secondary mini-act':'mini-act');b.type='button';b.onclick=()=>run(async()=>{const x=await api('/admin/api/organisations/facts/review','POST',{ids:[f.id],decision:dec});$('notice').textContent=x.blocked?x.block_reasons.join(' '):(dec==='approved'?'Approved.':'Rejected.');await load()});act.append(b)}
+    if(f.status==='approved'){const rb=document.createElement('input');rb.type='date';rb.value=f.review_by;rb.setAttribute('aria-label','Review by');const sv=el('button','Set review date','secondary mini-act');sv.type='button';sv.onclick=()=>run(async()=>{await api('/admin/api/organisations/facts/'+f.id,'PUT',{review_by:rb.value});$('notice').textContent='Review date saved.';await load()});
+     const rt=el('button','Retire','secondary mini-act');rt.type='button';rt.onclick=()=>run(async()=>{const reason=prompt('Why is this fact no longer right?');if(!reason||!reason.trim())return;await api('/admin/api/organisations/facts/'+f.id+'/retire','POST',{reason});$('notice').textContent='Retired.';await load()});act.append(rb,sv,rt)}
+    row.append(txt,act);fs.append(row)}box.append(fs)}
+  $('b-text').textContent='';const w=OT.data&&OT.data.watch.find(x=>x.org===st.org);$('o-opp-freq').value=w?w.frequency:'off'}
  function link(href,text){const a=el('a',text,'src-link');a.href=href;a.target='_blank';a.rel='noopener noreferrer';return a}
- function runs(list){const box=$('o-research-box');box.replaceChildren();if(!list.length)return;const r=list[0];
-  const d=el('details','','o-run');const sm=el('summary','Last researched '+new Date(r.created_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+': '+(r.status==='complete'?r.summary:'failed ('+r.error+')'));d.append(sm);
+ function runs(list){const box=$('o-research-box');box.replaceChildren();if(!list.length){box.append(el('p','Not researched yet. Use Research online at the top.','muted small'));return}const r=list[0];
+  const d=el('div','','o-run');d.append(el('p','Last researched '+new Date(r.created_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+': '+(r.status==='complete'?r.summary:'failed ('+r.error+')')));
   const cited=r.sources.filter(x=>x.cited),other=r.sources.filter(x=>!x.cited);
-  if(cited.length){d.append(el('div','Sources cited by the proposed facts','small'));const ol=el('ol','');cited.forEach(x=>{const li=el('li','');li.append(link(x.url,x.title||x.url),el('span',' · '+x.url.replace(/^https?:\/\/(www\.)?/i,'').split('/')[0],'muted small'));ol.append(li)});d.append(ol)}
+  if(cited.length){d.append(el('div','Sources cited by the proposed facts','small'));const ol=el('ol','');cited.forEach(x=>{const li=el('li','');li.append(link(x.url,x.title||x.url),el('span',' · '+domain(x.url),'muted small'));ol.append(li)});d.append(ol)}
   if(other.length){const o=el('details','');o.append(el('summary','Also consulted ('+other.length+')','small'));const ol=el('ol','uncited');other.forEach(x=>{const li=el('li','');li.append(link(x.url,x.title||x.url));ol.append(li)});o.append(ol);d.append(o)}
   if(r.dropped.length){const o=el('details','');o.append(el('summary','Dropped ('+r.dropped.length+')','small'));const ul=el('ul','');r.dropped.forEach(x=>ul.append(el('li',x.statement+' — '+x.reason)));o.append(ul);d.append(o)}
   box.append(d)}
  async function research(name,website,statusEl,btn){btn.disabled=true;statusEl.className='muted small o-busy';statusEl.textContent='Temple is searching the web. This usually takes under a minute…';
-  try{const x=await api('/admin/api/organisations/research','POST',{name,website});st.org=x.org;st.status='proposed';statusEl.className='muted small';statusEl.textContent='';
+  try{const x=await api('/admin/api/organisations/research','POST',{name,website});st.org=x.org;st.status='proposed';statusEl.className='muted small';statusEl.textContent='';showAdd(false);
    $('notice').textContent=x.org+': '+x.summary+'. Check the sources, then approve the facts you want to keep.';await load();$('o-detail').scrollIntoView({block:'start',behavior:'smooth'})}
-  catch(e){statusEl.className='muted small';statusEl.textContent=e.message}finally{btn.disabled=false}}
+  catch(e){statusEl.className='muted small';statusEl.textContent=e.message}finally{btn.disabled=DEMO_ORG}}
  $('o-r-go').onclick=()=>{const n=$('o-r-name').value.trim(),w=$('o-r-web').value.trim();if(!n&&!w){$('o-r-status').textContent='Type a name or a website.';return}research(n,w,$('o-r-status'),$('o-r-go')).then(()=>{$('o-r-name').value=$('o-r-web').value=''})};
  $('o-research').onclick=()=>research(st.org,$('o-web').value.trim(),$('o-research-status'),$('o-research'));
  $('f-section').onchange=hint;$('f-statement').oninput=()=>{$('f-count').textContent=$('f-statement').value.length+' / 400'};
- $('o-new-save').onclick=()=>run(async()=>{const x=await api('/admin/api/organisations','POST',{name:$('o-new-name').value,kind:$('o-new-kind').value,description:$('o-new-desc').value});st.org=x.name;$('o-new-name').value=$('o-new-desc').value='';$('notice').textContent='Added '+x.name+'.';await load()});
- $('o-save').onclick=()=>run(async()=>{await api('/admin/api/organisations','PUT',{name:st.org,kind:$('o-kind').value,description:$('o-desc').value,website:$('o-web').value.trim()});$('notice').textContent='Saved.';await load()});
+ $('o-new-save').onclick=()=>run(async()=>{const x=await api('/admin/api/organisations','POST',{name:$('o-new-name').value,kind:$('o-new-kind').value,description:$('o-new-desc').value});st.org=x.name;$('o-new-name').value=$('o-new-desc').value='';$('notice').textContent='Added '+x.name+'.';showAdd(false);await load()});
+ $('o-save').onclick=()=>run(async()=>{await api('/admin/api/organisations','PUT',{name:st.org,kind:$('o-kind').value,description:$('o-desc').value,website:$('o-web').value.trim(),account_manager:$('o-mgr').value.trim()});$('notice').textContent='Saved.';await load()});
  $('f-save').onclick=()=>run(async()=>{const x=await api('/admin/api/organisations/facts','POST',{org:st.org,section:$('f-section').value,statement:$('f-statement').value,source_system:$('f-system').value,source_ref:$('f-ref').value,as_of:$('f-asof').value,review_by:$('f-review').value,label:$('f-label').value});$('notice').textContent=x.duplicate?'That fact is already recorded.':'Fact added (review by '+x.review_by+').';$('f-statement').value='';$('f-count').textContent='';st.status='approved';await load()});
  $('b-show').onclick=()=>run(async()=>{const b=await api('/admin/api/organisations/brief?org='+encodeURIComponent(st.org)+'&provider='+$('b-provider').value+'&external='+$('b-external').checked);$('b-text').textContent=b.text?b.text+'\n\n('+b.facts+' facts · '+b.text.length+' characters · about '+Math.round(b.text.length/4)+' tokens)':(b.withheld||'Nothing would be sent: no approved facts this model may see.')});
  $('r-check').onclick=()=>run(async()=>{const x=await api('/admin/api/organisations/source?source_system='+encodeURIComponent($('r-system').value)+'&source_ref='+encodeURIComponent($('r-ref').value));$('r-result').textContent=x.facts.length+(x.facts.length===1?' fact matches':' facts match')+(x.facts.length?': '+x.facts.map(f=>f.org+' · '+f.statement.slice(0,60)).join(' | '):'')});
@@ -886,15 +976,15 @@ if(PAGE==='organisations'){
  // ---------- opportunity tracker (slide-out) ----------
  const OT={status:'suggested',org:'',open:false};const SL={suggested:'Suggested',tracking:'Tracking',pursuing:'Pursuing',won:'Won',lost:'Lost',dismissed:'Dismissed'};
  const when=d=>d?new Date(d).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'—';
- function drawer(open){OT.open=open;$('opp-drawer').classList.toggle('open',open);$('opp-drawer').setAttribute('aria-hidden',!open);$('opp-open').setAttribute('aria-expanded',open);$('opp-scrim').hidden=!open;if(open)run(loadOpps)}
- async function loadOpps(){const d=await api('/admin/api/opportunities?org='+encodeURIComponent(OT.org));
+ function drawer(open){const was=OT.open;OT.open=open;if(was&&!open)run(load);$('opp-drawer').classList.toggle('open',open);$('opp-drawer').setAttribute('aria-hidden',!open);$('opp-open').setAttribute('aria-expanded',open);$('opp-scrim').hidden=!open;if(open)run(loadOpps)}
+ async function loadOpps(){const d=await api('/admin/api/opportunities?org='+encodeURIComponent(OT.org));OT.data=d;
   $('opp-badge').hidden=!d.counts.suggested;$('opp-badge').textContent=d.counts.suggested;
   if(!OT.open)return d;
   $('opp-status').replaceChildren(...[...d.statuses,''].map(k=>{const n=k?d.counts[k]:Object.values(d.counts).reduce((a,b)=>a+b,0);const b=el('button',(k?SL[k]:'All')+' ('+n+')','chip'+(OT.status===k?' on':'')+(k==='suggested'&&n&&OT.status!==k?' attention':''));b.type='button';b.onclick=()=>{OT.status=k;run(loadOpps)};return b}));
   const sel=$('opp-org');const cur=OT.org;sel.replaceChildren(el('option','All organisations'));sel.options[0].value='';for(const w of d.watch){const o=el('option',w.org);o.value=w.org;sel.append(o)}sel.value=cur;
   const list=$('opp-list');list.replaceChildren();const rows=d.opportunities.filter(o=>!OT.status||o.status===OT.status);
   if(!rows.length)list.append(el('p',OT.status==='suggested'?'No new suggestions. Scan an organisation, or wait for its schedule.':'Nothing here.','muted'));
-  for(const o of rows){const c=el('div','','opp '+o.status);c.append(el('h3',o.title));const m=el('div','','opp-meta');m.append(el('span',o.org,'tag'),el('span',SL[o.status],'badge v-'+({suggested:'warn',pursuing:'run',won:'ok',lost:'none',dismissed:'none'}[o.status]||'none')));
+  for(const o of rows){const c=el('div','','opp '+o.status);c.append(el('h3',o.title));const m=el('div','','opp-meta');m.append(el('span',o.org,'tag'),...(o.account_manager?[el('span',o.account_manager,'small muted')]:[]),el('span',SL[o.status],'badge v-'+({suggested:'warn',pursuing:'run',won:'ok',lost:'none',dismissed:'none'}[o.status]||'none')));
    if(o.offering)m.append(el('span',o.offering,'tag know'));if(o.size)m.append(el('span',o.size,'small muted'));if(o.confidence!==null&&o.confidence!==undefined)m.append(el('span','confidence '+Math.round(o.confidence*100)+'%','small muted'));c.append(m);
    if(o.why_now){const p=el('p','');p.append(el('strong','Why now: '),document.createTextNode(o.why_now));c.append(p)}c.append(el('p',o.summary));
    if(o.next_step){const p=el('p','');p.append(el('strong','Next step: '),document.createTextNode(o.next_step+(o.timing?' ('+o.timing+')':'')));c.append(p)}
@@ -923,8 +1013,7 @@ if(PAGE==='organisations'){
  $('o-opp-view').onclick=()=>{OT.org=st.org;OT.status='';drawer(true)};
  $('o-opp-freq').onchange=()=>run(async()=>{await api('/admin/api/opportunities/schedule','POST',{org:st.org,frequency:$('o-opp-freq').value});$('notice').textContent=st.org+': scan '+$('o-opp-freq').value+'.';await loadOpps()});
  const q=new URLSearchParams(location.search).get('org');if(q)st.org=q;
- run(async()=>{await load();const d=await loadOpps();syncFreq(d)});
- function syncFreq(d){const w=d&&d.watch.find(x=>x.org===st.org);if(w)$('o-opp-freq').value=w.frequency}
+ run(async()=>{await loadOpps();await load()});
  if(new URLSearchParams(location.search).get('tracker')){OT.status='suggested';drawer(true)}
 }
 """
@@ -1177,7 +1266,7 @@ def render_admin(page, token):
             '<link rel="icon" href="/static/favicon.png" type="image/png">'
             '<title>' + escape(title) + ' · Alice</title><style>' + SHARED_CSS + CSS + '</style></head><body>'
             '<header class="topbar"><a class="brand" href="/" title="Back to chat"><img src="/static/favicon.png" alt=""><span>ALICE</span></a>'
-            '<h1 class="page-title">' + escape(title) + '</h1><div class="sp"></div><button id="demo-toggle" class="bar-link" type="button" title="Demo mode: only the Agents and Rule packs pages, with item names replaced and costs hidden">Demo mode</button><a class="bar-link" href="/">← Chat</a></header>'
+            '<h1 class="page-title">' + escape(title) + '</h1><div class="sp"></div><button id="demo-toggle" class="bar-link" type="button" title="Demo mode: only the Agents, Rule packs and Organisations pages, with fictional or replaced names and costs hidden">Demo mode</button><a class="bar-link" href="/">← Chat</a></header>'
             '<div class="shell"><aside class="sidebar"><nav aria-label="Command centre">' + nav + '</nav></aside>'
             '<main class="content"><div class="inner"><p class="page-desc">' + escape(description) + '</p><div id="notice" role="status"></div>'
             + SECTIONS[page] + '</div></main></div><script>const PAGE=' + json.dumps(page) + ';'
@@ -1186,8 +1275,8 @@ def render_admin(page, token):
 
 DEMO_PRELUDE = r"""
 const DEMO=(()=>{try{return localStorage.getItem('alice-demo')==='1'}catch{return false}})();
-const DEMO_PAGES=['agents','rule-packs'];
-if(DEMO&&!DEMO_PAGES.includes(PAGE)){location.replace('/admin/agents');throw new Error('Demo mode: only the Agents and Rule packs pages are shown')}
+const DEMO_PAGES=['agents','rule-packs','organisations'];
+if(DEMO&&!DEMO_PAGES.includes(PAGE)){location.replace('/admin/agents');throw new Error('Demo mode: only the Agents, Rule packs and Organisations pages are shown')}
 """
 
 NAV_SCRIPT = r"""
@@ -1196,7 +1285,7 @@ NAV_SCRIPT = r"""
  if(!DEMO)return;document.body.classList.add('demo');
  document.querySelectorAll('.sidebar a').forEach(a=>{if(!DEMO_PAGES.includes(a.dataset.page))a.hidden=true});document.querySelectorAll('.sidebar .grp').forEach(g=>g.hidden=true);
  document.querySelectorAll('.bar-link[href="/"]').forEach(a=>a.hidden=true);
- if(!DEMO_PAGES.includes(PAGE)){const inner=document.querySelector('.content .inner');inner.replaceChildren();const s=document.createElement('section');const h=document.createElement('h2');h.textContent='Demo mode is on';const p=document.createElement('p');p.textContent='Only the Agents page is shown, with item names replaced and costs hidden. Turn demo mode off in the top bar to see this page.';const a=document.createElement('a');a.href='/admin/agents';a.textContent='Go to Agents';s.append(h,p,a);inner.append(s)}})();
+ if(!DEMO_PAGES.includes(PAGE)){const inner=document.querySelector('.content .inner');inner.replaceChildren();const s=document.createElement('section');const h=document.createElement('h2');h.textContent='Demo mode is on';const p=document.createElement('p');p.textContent='Only the Agents, Rule packs and Organisations pages are shown, with fictional or replaced names and costs hidden. Turn demo mode off in the top bar to see this page.';const a=document.createElement('a');a.href='/admin/agents';a.textContent='Go to Agents';s.append(h,p,a);inner.append(s)}})();
 (async()=>{try{const d=await api('/admin/api/actions');const n={};for(const s of d.sections)n[s.key]=s.count;
  if(DEMO)return;const counts={agents:n.agents||0,actions:d.total,memories:n.proposals||0,knowledge:(n.drafts||0)+(n.replacements||0),organisations:(n.orgfacts||0)+(n.opportunities||0),temple:n.suggestions||0,archive:n.chats||0,rules:n.rules||0};
  for(const [k,v] of Object.entries(counts)){if(!v)continue;const a=document.querySelector('.sidebar a[data-page="'+k+'"]');if(!a)continue;const c=document.createElement('span');c.className='nav-count';c.textContent=v;a.append(c)}}catch{}})();

@@ -36,13 +36,14 @@ if _TEST_PG:
         _c.execute(f'CREATE SCHEMA {_SCHEMA}')
         _c.execute('CREATE EXTENSION IF NOT EXISTS citext SCHEMA public')
     os.environ['ALICE_DATABASE_URL'] = make_conninfo(_TEST_PG, options=f'-csearch_path={_SCHEMA},public')
+    os.environ['ALICE_DEMO_SCHEMA'] = _SCHEMA + '_demo'
 
     def _drop_schema():
         try:
             import dbcompat; dbcompat.close_pools()
         except Exception: pass
         try:
-            with psycopg.connect(_TEST_PG, autocommit=True) as c: c.execute(f'DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE')
+            with psycopg.connect(_TEST_PG, autocommit=True) as c: c.execute(f'DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE'); c.execute(f'DROP SCHEMA IF EXISTS {_SCHEMA}_demo CASCADE')
         except Exception: pass
     atexit.register(_drop_schema)
 

@@ -1,4 +1,5 @@
 """Shared persistence and enforced record policy. No model-facing approval tool."""
+import contextvars
 import json
 import os
 import sqlite3
@@ -12,15 +13,40 @@ load_dotenv(BASE / '.env')
 DB = Path(os.getenv('AISUBSTRATE_DATA_DIR', str(BASE / 'data'))) / 'substrate.db'
 IMAGE_DIR = DB.parent / 'images'
 
-DATABASE_URL = os.getenv('ALICE_DATABASE_URL', '').strip()   # set: PostgreSQL (Azure); unset: SQLite file in data\\
+DATABASE_URL = os.getenv('ALICE_DATABASE_URL', '').strip()
+# Demo data lives apart from your real data: its own SQLite file (or its own PostgreSQL schema). A request is switched
+# to it only for the Organisations and Opportunities pages (see demo_data.py); everything else always uses live data.
+DATASET = contextvars.ContextVar('alice_dataset', default='live')
+DEMO_DB = DB.parent / 'demo' / 'substrate-demo.db'
+DEMO_SCHEMA = os.environ.get('ALICE_DEMO_SCHEMA', 'alice_demo')   # tests use their own
+
+
+@contextmanager
+def dataset(name):
+    token = DATASET.set(name)
+    try: yield
+    finally: DATASET.reset(token)
+
+
+def demo_active():
+    return DATASET.get() == 'demo'   # set: PostgreSQL (Azure); unset: SQLite file in data\\
 
 
 def connect(readonly=False):
     """A connection that behaves like sqlite3 (rows by name, ? placeholders, `with` commits). Close it when done.
     SQLite by default; PostgreSQL when ALICE_DATABASE_URL is set (see dbcompat.py)."""
+    demo = DATASET.get() == 'demo'
     if DATABASE_URL:
         import dbcompat
+        if demo:
+            from psycopg.conninfo import make_conninfo
+            return dbcompat.connect(make_conninfo(DATABASE_URL, options=f'-csearch_path={DEMO_SCHEMA},public'), readonly)
         return dbcompat.connect(DATABASE_URL, readonly)
+    if demo:
+        DEMO_DB.parent.mkdir(parents=True, exist_ok=True)
+        c = sqlite3.connect(DEMO_DB, timeout=15)
+        c.row_factory = sqlite3.Row
+        return c
     DB.parent.mkdir(parents=True, exist_ok=True)
     if readonly:
         if not DB.is_file(): raise ValueError('No substrate database found. Start the web app and save a file first.')

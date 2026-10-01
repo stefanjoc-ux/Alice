@@ -45,9 +45,10 @@ def _table_info(m):
             f"WHERE table_schema=current_schema() AND table_name='{m.group(1).lower()}' ORDER BY ordinal_position")
 
 
-def _plain(p):
+def _plain(p, ddl=False):
     p = p.replace('%', '%%').replace('?', '%s')
     p = re.sub(r'\binstr\s*\(', 'strpos(', p, flags=re.I)
+    if ddl: return p                                       # CREATE TABLE ... (LIKE other) copies a table
     p = re.sub(r'\bNOT\s+LIKE\b', 'NOT ILIKE', p, flags=re.I)
     p = re.sub(r'(?<!NOT )\bLIKE\b', 'ILIKE', p, flags=re.I)
     return p
@@ -70,7 +71,7 @@ def translate(sql):
             p = re.sub(r'\bREAL\b', 'DOUBLE PRECISION', p, flags=re.I)
             p = re.sub(r'\bBLOB\b', 'BYTEA', p, flags=re.I)
         p = re.sub(r'([\w.]+)\s+COLLATE\s+NOCASE\b', r'lower(\1)', p, flags=re.I)
-        return _plain(p)
+        return _plain(p, bool(ddl))
 
     out = _outside_quotes(s, fix)
     t = re.match(r'CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+(\w+)\s*\(', out, re.I)

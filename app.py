@@ -43,7 +43,7 @@ from typing import Literal
 import anthropic
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Query
-from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from openai import AsyncOpenAI, APIError
 from fastmcp import Client
@@ -806,6 +806,27 @@ async def chat(request: SavedChatRequest):
 
 ADMIN_TOKEN = secrets.token_urlsafe(32)
 
+DEMO_PATHS = ('/admin/api/organisations', '/admin/api/opportunities')
+DEMO_REFUSED = {'/admin/api/organisations/research', '/admin/api/opportunities/scan'}
+
+@app.middleware("http")
+async def demo_dataset(request: Request, call_next):
+    """Demo data switch: only the Organisations and Opportunities APIs, only when the page asks for it."""
+    if request.headers.get('x-alice-dataset') == 'demo' and request.url.path.startswith(DEMO_PATHS):
+        if request.method == 'POST' and request.url.path in DEMO_REFUSED:
+            return JSONResponse({'detail': 'Research and opportunity scans are switched off with demo data, because they would call real AI '
+                                           'services. Switch demo data off to use them.'}, status_code=400)
+        import demo_data
+        await asyncio.to_thread(demo_data.ensure)
+        token = store.DATASET.set('demo')
+        try: return await call_next(request)
+        finally: store.DATASET.reset(token)
+    return await call_next(request)
+
+@app.post('/admin/api/demo-data/reset')
+def admin_demo_reset():
+    import demo_data; return demo_data.reset()
+
 @app.middleware("http")
 async def protect_admin(request: Request, call_next):
     if request.url.path.startswith('/admin/api') and request.method != 'GET':
@@ -1201,6 +1222,7 @@ class OrgChange(BaseModel):
     kind: str|None = Field(default=None,max_length=20)
     description: str|None = Field(default=None,max_length=500)
     website: str|None = Field(default=None,max_length=300)
+    account_manager: str|None = Field(default=None,max_length=80)
 
 class OrgResearch(BaseModel):
     name: str = Field(default='',max_length=60)
@@ -1242,7 +1264,7 @@ def admin_organisation_create(o: OrgIn):
 
 @app.put('/admin/api/organisations')
 def admin_organisation_update(o: OrgChange):
-    try: return organisations.update(o.name,o.kind,o.description,o.website)
+    try: return organisations.update(o.name,o.kind,o.description,o.website,o.account_manager)
     except ValueError as e: raise HTTPException(400,str(e)) from None
 
 @app.post('/admin/api/organisations/research')

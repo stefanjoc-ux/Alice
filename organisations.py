@@ -42,6 +42,10 @@ with store.db() as c:
         proposed_by TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, reviewed_at TEXT, retired_reason TEXT NOT NULL DEFAULT '',
         replaced_by TEXT)''')
     c.execute('CREATE INDEX IF NOT EXISTS org_facts_org ON org_facts(org, status)')
+    _ocols = {r['name'] for r in c.execute('PRAGMA table_info(organisations)')}
+    # Account manager: typed here for now; account_manager_oid is reserved for the Entra ID object ID once it is looked up.
+    if 'account_manager' not in _ocols: c.execute("ALTER TABLE organisations ADD COLUMN account_manager TEXT NOT NULL DEFAULT ''")
+    if 'account_manager_oid' not in _ocols: c.execute("ALTER TABLE organisations ADD COLUMN account_manager_oid TEXT NOT NULL DEFAULT ''")
 
 
 def _clean(text, limit):
@@ -98,8 +102,12 @@ def create(name, kind='other', description=''):
     return {'name': name}
 
 
-def update(name, kind=None, description=None, website=None):
+def update(name, kind=None, description=None, website=None, account_manager=None):
     name = canonical(name)
+    if account_manager is not None:
+        account_manager = _clean(account_manager, 80)
+        if account_manager and not re.fullmatch(r"[A-Za-z][A-Za-z .'\-]{1,79}", account_manager):
+            raise ValueError('Account manager: a person\'s name (letters, spaces, hyphens and apostrophes).')
     if website is not None:
         import org_research
         website = org_research._clean_url(website)
@@ -111,6 +119,7 @@ def update(name, kind=None, description=None, website=None):
             c.execute('UPDATE organisations SET kind=? WHERE name=?', (kind, name))
         if description is not None: c.execute('UPDATE organisations SET description=? WHERE name=?', (_clean(description, 500), name))
         if website is not None: c.execute('UPDATE organisations SET website=? WHERE name=?', (website, name))
+        if account_manager is not None: c.execute('UPDATE organisations SET account_manager=? WHERE name=?', (account_manager, name))
         store.audit(c, 'org_updated', name, 'human_review', 'details changed')
     return {'name': name}
 
@@ -126,12 +135,13 @@ def listing():
             d[r['status']] = r['n']
             if r['status'] == 'approved': d['due'] = r['due'] or 0
     for n in clients.names():
-        orgs.setdefault(n.lower(), {'name': n, 'kind': 'other', 'description': '', 'created_at': ''})
+        orgs.setdefault(n.lower(), {'name': n, 'kind': 'other', 'description': '', 'created_at': '', 'website': '', 'account_manager': ''})
     cl = client_names()
     out = [{**o, 'is_client': k in cl, 'facts': counts.get(k, {'approved': 0, 'proposed': 0, 'retired': 0, 'rejected': 0, 'due': 0})}
            for k, o in orgs.items()]
+    managers = sorted({o.get('account_manager') or '' for o in out} - {''}, key=str.lower)
     return {'organisations': sorted(out, key=lambda o: o['name'].lower()), 'sections': [{'key': k, 'name': n, 'hint': h} for k, n, h in SECTIONS],
-            'kinds': KINDS, 'review_months': _review_months()}
+            'kinds': KINDS, 'review_months': _review_months(), 'managers': managers, 'demo': store.demo_active()}
 
 
 # ---------------- facts ----------------
