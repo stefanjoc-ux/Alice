@@ -535,6 +535,8 @@ def _retention_loop():
         time.sleep(24*3600)
 
 threading.Thread(target=_retention_loop,daemon=True).start()
+import opportunities
+opportunities.start_scheduler()     # client opportunity scans on each organisation's schedule
 TEMPLE_TASKS = set()
 
 def start_temple(cid, tid, manual=False):
@@ -1239,6 +1241,45 @@ def admin_org_research_history(org: str=Query(min_length=1,max_length=60)):
     import org_research
     try: return {'runs':org_research.history(org)}
     except ValueError as e: raise HTTPException(404,str(e)) from None
+
+class OppScan(BaseModel):
+    org: str = Field(min_length=1,max_length=60)
+
+class OppSchedule(BaseModel):
+    org: str = Field(min_length=1,max_length=60)
+    frequency: Literal['weekly','fortnightly','monthly','off']
+
+class OppUpdate(BaseModel):
+    status: str|None = Field(default=None,max_length=20)
+    notes: str|None = Field(default=None,max_length=2000)
+
+class OppOfferings(BaseModel):
+    offerings: list[str] = Field(max_length=20)
+
+@app.get('/admin/api/opportunities')
+def admin_opportunities(status: str='', org: str=''):
+    return opportunities.tracker(status, org)
+
+@app.post('/admin/api/opportunities/scan')
+async def admin_opportunity_scan(r: OppScan):
+    """Run now: Temple reads the profile, searches recent news and suggests opportunities (a minute or so)."""
+    try: return await asyncio.to_thread(opportunities.scan, r.org, 'you')
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+@app.post('/admin/api/opportunities/schedule')
+def admin_opportunity_schedule(r: OppSchedule):
+    try: return opportunities.set_frequency(r.org, r.frequency)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+@app.put('/admin/api/opportunities/{oid}')
+def admin_opportunity_update(oid: str, u: OppUpdate):
+    try: return opportunities.update(oid, u.status, u.notes)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+@app.put('/admin/api/opportunities-offerings')
+def admin_opportunity_offerings(o: OppOfferings):
+    try: return {'offerings': opportunities.set_offerings(o.offerings)}
+    except ValueError as e: raise HTTPException(400,str(e)) from None
 
 @app.get('/admin/api/organisations/facts')
 def admin_org_facts(org: str=Query(min_length=1,max_length=60), status: Literal['approved','proposed','retired','rejected','all']='all'):

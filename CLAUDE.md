@@ -104,6 +104,7 @@ A browser refresh is not enough: the old server process keeps running the old co
 | `agents.py` | Agents register: Temple automations (`@agents.tracked`) and connected apps (`app_call` in every MCP tool); runs, data touched, cost, pause/stop, versions |
 | `rule_packs.py` | Demo rule packs (HR team, council social care, security operations, personal data): switchable safeguards and a sandboxed test (never calls a model); a pack can be applied to live rules (`live_check` on chat before saving, blocks/escalations on Temple's requests via `check_outbound`, guidance via `effective_guidance`) with per-service inside/outside-tenant classification |
 | `org_research.py` | Temple researches an organisation on the public web (provider web search) and proposes facts, each citing a page the search returned; agent `temple-org-research` |
+| `opportunities.py` | Client opportunity scans (profile brief + news via web search), on each organisation's schedule (background thread, `start_scheduler`; off when `ALICE_NO_SCHEDULER` is set) or Run now; suggestions with evidence; the tracker; agent `temple-opportunities` |
 | `organisations.py` | Organisation profiles: short approved facts with source pointers and review dates, the compiled brief, removal by source |
 | `clients.py` | Clients, tagging, alias detection, separation enforcement |
 | `actions.py` | Everything awaiting a decision (Actions page) |

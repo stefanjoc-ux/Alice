@@ -57,7 +57,16 @@ SECTIONS = {
 <details class="ag-group" id="ag-g-auto" open><summary><h2>Alice automations</h2><span class="ag-count"></span><span class="ag-attn"></span></summary><div id="ag-auto" class="ag-cards"></div></details>
 <details class="ag-group" id="ag-g-apps" open><summary><h2>Connected apps</h2><span class="ag-count"></span><span class="ag-attn"></span></summary><p class="muted small">Every tool call is checked against the app's permissions. New apps appear here when they first connect.</p><div id="ag-apps" class="ag-cards"></div></details></div></div>
 <div id="ag-detail" hidden></div>''',
-'organisations': r'''<section><div class="mem-head"><h2>Organisations</h2><span id="o-summary" class="muted small"></span></div>
+'organisations': r'''<button id="opp-open" type="button" class="opp-tab" aria-controls="opp-drawer" aria-expanded="false">Opportunities<span id="opp-badge" class="badge-count" hidden></span></button>
+<aside id="opp-drawer" class="opp-drawer" aria-label="Opportunity tracker" aria-hidden="true"><div class="opp-head"><h2>Opportunity tracker</h2><button id="opp-close" type="button" class="secondary">Close</button></div>
+<p class="muted small">Temple scans each watched organisation's approved profile and recent news, and suggests opportunities with the news behind them. Track the ones worth pursuing; nothing is shared or sent anywhere.</p>
+<div class="opp-filters"><div id="opp-status" class="mem-cats"></div><label class="small">Organisation <select id="opp-org"></select></label></div>
+<div id="opp-list"></div>
+<details id="opp-news-box"><summary>Latest news <span id="opp-news-n" class="muted small"></span></summary><ol id="opp-news"></ol></details>
+<details id="opp-sched-box"><summary>Schedule</summary><p class="muted small">Scheduled scans run in the background (first slot: next Monday morning) and pause at the spending cap or if you pause the agent. Run now any time.</p><div id="opp-sched"></div></details>
+<details id="opp-off-box"><summary>Your offerings</summary><p class="muted small">Temple maps each opportunity to one of these. One per line.</p><textarea id="opp-offerings" rows="7"></textarea><button id="opp-off-save" type="button" class="secondary">Save offerings</button></details>
+</aside><div id="opp-scrim" class="opp-scrim" hidden></div>
+<section><div class="mem-head"><h2>Organisations</h2><span id="o-summary" class="muted small"></span></div>
 <p class="muted small">Summaries, not documents: each fact is a sentence or two with its source and a review-by date. Facts you add here are approved; facts from models wait for your approval. Data minimisation applies: organisational information and roles, not people.</p>
 <div id="o-list" class="mem-cats"></div>
 <div class="o-research-new"><h3>Add and research an organisation</h3><p class="muted small">Type a name, a website, or both. Temple searches the public web and proposes facts for each section, every one citing the page it came from. Nothing is approved until you approve it.</p>
@@ -67,6 +76,7 @@ SECTIONS = {
 <section id="o-detail" hidden><div class="mem-head"><h2 id="o-title"></h2><span id="o-meta" class="muted small"></span></div>
 <div class="k-meta-row"><label>Type<select id="o-kind"></select></label><label>Description<input id="o-desc" maxlength="500"></label><label>Website<input id="o-web" maxlength="300" placeholder="https://"></label></div><div class="arc-actions"><button id="o-save" type="button" class="secondary">Save details</button><button id="o-research" type="button">Research online</button><span id="o-research-status" class="muted small" role="status"></span></div>
 <div id="o-research-box"></div>
+<div class="arc-actions o-opp-row"><strong>Opportunities</strong><label class="small">Scan <select id="o-opp-freq"><option value="weekly">weekly</option><option value="fortnightly">fortnightly</option><option value="monthly">monthly</option><option value="off">off</option></select></label><button id="o-opp-scan" type="button" class="secondary">Scan for opportunities now</button><button id="o-opp-view" type="button" class="secondary">Open tracker</button><span id="o-opp-status" class="muted small" role="status"></span></div>
 <div id="o-status" class="mem-tabs"></div><div id="o-facts"></div>
 <h3>Add a fact</h3><div class="k-meta-row"><label>Section<select id="f-section"></select></label><label>Security label<select id="f-label"></select></label></div><p id="f-hint" class="muted small"></p>
 <label>Fact: a summary in a sentence or two<textarea id="f-statement" rows="3" maxlength="400"></textarea></label><span id="f-count" class="muted small"></span>
@@ -250,6 +260,17 @@ nav{display:flex;gap:20px;flex-wrap:wrap}.sidebar nav{display:contents}
 .act-buttons{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.mini-act{margin:0!important;padding:6px 12px!important;font-size:12px!important}
 #al-custom[hidden]{display:none}#al-custom label{margin:0}.al-table td:nth-child(1){white-space:nowrap;width:1%}.al-table td:nth-child(2){white-space:nowrap;width:1%}.al-target{color:#314d62;overflow-wrap:anywhere}.al-table td:nth-child(4){overflow-wrap:anywhere;max-width:520px}
 #pane-ask[hidden]{display:none}.ask-log{max-height:520px;overflow:auto;margin:10px 0}.ask-msg{padding:10px 12px;border-radius:8px;margin:8px 0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.55}.ask-user{background:#eaf5f8;border-left:3px solid #21758b;margin-left:60px}.ask-temple{background:#f3eff9;border-left:3px solid #786095;margin-right:30px}.ask-looked{margin-top:6px;color:#4b6376}.ask-looked summary{cursor:pointer;font-size:12px}.ask-form textarea{width:100%}
+/* Opportunity tracker: slides out from the right */
+.opp-tab{position:fixed;right:0;top:132px;z-index:30;writing-mode:vertical-rl;transform:rotate(180deg);background:var(--teal)!important;color:#fff!important;border:none!important;border-radius:0 10px 10px 0!important;padding:14px 9px!important;font-weight:700;letter-spacing:.04em;box-shadow:-2px 2px 10px #0002}
+.opp-tab .badge-count{position:absolute;top:auto;bottom:-9px;right:auto;left:50%;margin-left:-11px;writing-mode:horizontal-tb;transform:rotate(180deg);min-width:22px;text-align:center}
+.opp-drawer{position:fixed;top:52px;right:0;bottom:0;width:min(620px,100vw);background:var(--bg);border-left:1px solid var(--line2);box-shadow:-8px 0 24px #0b162633;z-index:40;transform:translateX(105%);transition:transform .25s ease;overflow:auto;padding:16px 18px 40px}
+.opp-drawer.open{transform:none}.opp-scrim{position:fixed;inset:52px 0 0 0;background:#0b162633;z-index:35}
+.opp-head{display:flex;align-items:center;justify-content:space-between}.opp-head h2{margin:0}.opp-filters{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}
+.opp{background:#fff;border:1px solid var(--line);border-left:4px solid var(--teal);border-radius:10px;padding:12px 14px;margin:10px 0}.opp.suggested{border-left-color:#b7791f}.opp.won{border-left-color:#1e7a5a}.opp.lost,.opp.dismissed{border-left-color:#a7b4bf;opacity:.8}
+.opp h3{margin:0 0 4px;font-size:15.5px}.opp .opp-meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px}.opp p{margin:4px 0;font-size:14px}.opp .opp-ev{font-size:13px}.opp .opp-ev a{margin-right:10px;overflow-wrap:anywhere}
+.opp .opp-act{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}.opp textarea{width:100%;min-height:52px;margin-top:6px}
+#opp-news li{margin:6px 0;font-size:14px}#opp-news .muted{font-size:12.5px}.opp-sched-row{display:grid;grid-template-columns:1.4fr .9fr 1.6fr auto;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);font-size:13.5px}
+.o-opp-row{margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff}
 /* Organisation research */
 .o-research-new{background:#f4f9fb;border:1px solid #cfe2ea;border-radius:10px;padding:12px 14px;margin:12px 0}.o-research-new h3{margin:0 0 4px;font-size:15px}
 .o-run{border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:12px 0;background:#fff}.o-run summary{cursor:pointer;font-weight:600}
@@ -862,8 +883,49 @@ if(PAGE==='organisations'){
  $('b-show').onclick=()=>run(async()=>{const b=await api('/admin/api/organisations/brief?org='+encodeURIComponent(st.org)+'&provider='+$('b-provider').value+'&external='+$('b-external').checked);$('b-text').textContent=b.text?b.text+'\n\n('+b.facts+' facts · '+b.text.length+' characters · about '+Math.round(b.text.length/4)+' tokens)':(b.withheld||'Nothing would be sent: no approved facts this model may see.')});
  $('r-check').onclick=()=>run(async()=>{const x=await api('/admin/api/organisations/source?source_system='+encodeURIComponent($('r-system').value)+'&source_ref='+encodeURIComponent($('r-ref').value));$('r-result').textContent=x.facts.length+(x.facts.length===1?' fact matches':' facts match')+(x.facts.length?': '+x.facts.map(f=>f.org+' · '+f.statement.slice(0,60)).join(' | '):'')});
  $('r-go').onclick=()=>run(async()=>{if(!confirm('Retire every fact whose source matches? They stay in the history as retired.'))return;const x=await api('/admin/api/organisations/remove-source','POST',{source_system:$('r-system').value,source_ref:$('r-ref').value,reason:$('r-reason').value});$('r-result').textContent=x.removed+' removed.';await load()});
+ // ---------- opportunity tracker (slide-out) ----------
+ const OT={status:'suggested',org:'',open:false};const SL={suggested:'Suggested',tracking:'Tracking',pursuing:'Pursuing',won:'Won',lost:'Lost',dismissed:'Dismissed'};
+ const when=d=>d?new Date(d).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'—';
+ function drawer(open){OT.open=open;$('opp-drawer').classList.toggle('open',open);$('opp-drawer').setAttribute('aria-hidden',!open);$('opp-open').setAttribute('aria-expanded',open);$('opp-scrim').hidden=!open;if(open)run(loadOpps)}
+ async function loadOpps(){const d=await api('/admin/api/opportunities?org='+encodeURIComponent(OT.org));
+  $('opp-badge').hidden=!d.counts.suggested;$('opp-badge').textContent=d.counts.suggested;
+  if(!OT.open)return d;
+  $('opp-status').replaceChildren(...[...d.statuses,''].map(k=>{const n=k?d.counts[k]:Object.values(d.counts).reduce((a,b)=>a+b,0);const b=el('button',(k?SL[k]:'All')+' ('+n+')','chip'+(OT.status===k?' on':'')+(k==='suggested'&&n&&OT.status!==k?' attention':''));b.type='button';b.onclick=()=>{OT.status=k;run(loadOpps)};return b}));
+  const sel=$('opp-org');const cur=OT.org;sel.replaceChildren(el('option','All organisations'));sel.options[0].value='';for(const w of d.watch){const o=el('option',w.org);o.value=w.org;sel.append(o)}sel.value=cur;
+  const list=$('opp-list');list.replaceChildren();const rows=d.opportunities.filter(o=>!OT.status||o.status===OT.status);
+  if(!rows.length)list.append(el('p',OT.status==='suggested'?'No new suggestions. Scan an organisation, or wait for its schedule.':'Nothing here.','muted'));
+  for(const o of rows){const c=el('div','','opp '+o.status);c.append(el('h3',o.title));const m=el('div','','opp-meta');m.append(el('span',o.org,'tag'),el('span',SL[o.status],'badge v-'+({suggested:'warn',pursuing:'run',won:'ok',lost:'none',dismissed:'none'}[o.status]||'none')));
+   if(o.offering)m.append(el('span',o.offering,'tag know'));if(o.size)m.append(el('span',o.size,'small muted'));if(o.confidence!==null&&o.confidence!==undefined)m.append(el('span','confidence '+Math.round(o.confidence*100)+'%','small muted'));c.append(m);
+   if(o.why_now){const p=el('p','');p.append(el('strong','Why now: '),document.createTextNode(o.why_now));c.append(p)}c.append(el('p',o.summary));
+   if(o.next_step){const p=el('p','');p.append(el('strong','Next step: '),document.createTextNode(o.next_step+(o.timing?' ('+o.timing+')':'')));c.append(p)}
+   const ev=el('div','Evidence: ','opp-ev muted');o.evidence.forEach((u,i)=>ev.append(link(u,u.replace(/^https?:\/\/(www\.)?/i,'').split('/')[0]+(o.evidence.length>1?' ('+(i+1)+')':''))));c.append(ev);
+   const act=el('div','','opp-act');
+   if(o.status==='suggested'){const tr=el('button','Track','mini-act');tr.type='button';tr.onclick=()=>run(async()=>{await api('/admin/api/opportunities/'+o.id,'PUT',{status:'tracking'});$('notice').textContent='Tracking: '+o.title;await loadOpps()});
+    const di=el('button','Dismiss','secondary mini-act');di.type='button';di.onclick=()=>run(async()=>{await api('/admin/api/opportunities/'+o.id,'PUT',{status:'dismissed'});await loadOpps()});act.append(tr,di)}
+   else{const ss=document.createElement('select');ss.setAttribute('aria-label','Status');for(const k of d.statuses){const op=el('option',SL[k]);op.value=k;ss.append(op)}ss.value=o.status;ss.onchange=()=>run(async()=>{await api('/admin/api/opportunities/'+o.id,'PUT',{status:ss.value});await loadOpps()});act.append(ss)}
+   act.append(el('span','Found '+when(o.created_at)+(o.trigger==='schedule'?' (scheduled)':''),'small muted'));c.append(act);
+   if(o.status!=='suggested'){const ta=document.createElement('textarea');ta.value=o.notes||'';ta.placeholder='Notes: contacts in the account plan, value, dates…';ta.setAttribute('aria-label','Notes');ta.onchange=()=>run(async()=>{await api('/admin/api/opportunities/'+o.id,'PUT',{notes:ta.value});$('notice').textContent='Notes saved.'});c.append(ta)}
+   list.append(c)}
+  const nl=$('opp-news');nl.replaceChildren();$('opp-news-n').textContent='('+d.news.length+')';for(const n of d.news){const li=el('li','');li.append(link(n.url,n.title),el('div',(OT.org?'':n.org+' · ')+(n.published||'date unknown')+(n.summary?' · '+n.summary:''),'muted'));nl.append(li)}
+  const sc=$('opp-sched');sc.replaceChildren();for(const w of d.watch){const r=el('div','','opp-sched-row');const fs=document.createElement('select');fs.setAttribute('aria-label','Scan frequency for '+w.org);for(const f of ['weekly','fortnightly','monthly','off']){const op=el('option',f);op.value=f;fs.append(op)}fs.value=w.frequency;
+   fs.onchange=()=>run(async()=>{await api('/admin/api/opportunities/schedule','POST',{org:w.org,frequency:fs.value});$('notice').textContent=w.org+': scan '+fs.value+'.';await loadOpps()});
+   const go=el('button','Run now','secondary mini-act');go.type='button';go.onclick=()=>scanOrg(w.org,go);
+   r.append(el('strong',w.org+(w.is_client?'':' ')),fs,el('span',(w.last_run?'Last '+when(w.last_run)+(w.last_status&&w.last_status!=='complete'?' ('+w.last_status+')':''):'Not scanned yet')+(w.frequency!=='off'&&w.next_run?' · next '+when(w.next_run):''),'muted'),go);sc.append(r)}
+  if(document.activeElement!==$('opp-offerings'))$('opp-offerings').value=d.offerings.join('\n');return d}
+ async function scanOrg(org,btn,statusEl){btn.disabled=true;const old=btn.textContent;btn.textContent='Scanning…';if(statusEl){statusEl.className='muted small o-busy';statusEl.textContent='Temple is reading the profile and searching recent news…'}
+  try{const x=await api('/admin/api/opportunities/scan','POST',{org});$('notice').textContent=org+': '+x.summary+'. Open the tracker to review.';if(statusEl){statusEl.className='muted small';statusEl.textContent=x.summary}OT.status='suggested';await loadOpps();if(!OT.open&&x.opportunities)drawer(true)}
+  catch(e){$('notice').textContent=e.message;if(statusEl){statusEl.className='muted small';statusEl.textContent=e.message}}finally{btn.disabled=false;btn.textContent=old}}
+ $('opp-open').onclick=()=>drawer(!OT.open);$('opp-close').onclick=()=>drawer(false);$('opp-scrim').onclick=()=>drawer(false);
+ document.addEventListener('keydown',e=>{if(e.key==='Escape'&&OT.open)drawer(false)});
+ $('opp-org').onchange=()=>{OT.org=$('opp-org').value;run(loadOpps)};
+ $('opp-off-save').onclick=()=>run(async()=>{const x=await api('/admin/api/opportunities-offerings','PUT',{offerings:$('opp-offerings').value.split('\n')});$('notice').textContent='Offerings saved ('+x.offerings.length+').'});
+ $('o-opp-scan').onclick=()=>scanOrg(st.org,$('o-opp-scan'),$('o-opp-status'));
+ $('o-opp-view').onclick=()=>{OT.org=st.org;OT.status='';drawer(true)};
+ $('o-opp-freq').onchange=()=>run(async()=>{await api('/admin/api/opportunities/schedule','POST',{org:st.org,frequency:$('o-opp-freq').value});$('notice').textContent=st.org+': scan '+$('o-opp-freq').value+'.';await loadOpps()});
  const q=new URLSearchParams(location.search).get('org');if(q)st.org=q;
- run(load);
+ run(async()=>{await load();const d=await loadOpps();syncFreq(d)});
+ function syncFreq(d){const w=d&&d.watch.find(x=>x.org===st.org);if(w)$('o-opp-freq').value=w.frequency}
+ if(new URLSearchParams(location.search).get('tracker')){OT.status='suggested';drawer(true)}
 }
 """
 
@@ -1136,6 +1198,6 @@ NAV_SCRIPT = r"""
  document.querySelectorAll('.bar-link[href="/"]').forEach(a=>a.hidden=true);
  if(!DEMO_PAGES.includes(PAGE)){const inner=document.querySelector('.content .inner');inner.replaceChildren();const s=document.createElement('section');const h=document.createElement('h2');h.textContent='Demo mode is on';const p=document.createElement('p');p.textContent='Only the Agents page is shown, with item names replaced and costs hidden. Turn demo mode off in the top bar to see this page.';const a=document.createElement('a');a.href='/admin/agents';a.textContent='Go to Agents';s.append(h,p,a);inner.append(s)}})();
 (async()=>{try{const d=await api('/admin/api/actions');const n={};for(const s of d.sections)n[s.key]=s.count;
- if(DEMO)return;const counts={agents:n.agents||0,actions:d.total,memories:n.proposals||0,knowledge:(n.drafts||0)+(n.replacements||0),organisations:n.orgfacts||0,temple:n.suggestions||0,archive:n.chats||0,rules:n.rules||0};
+ if(DEMO)return;const counts={agents:n.agents||0,actions:d.total,memories:n.proposals||0,knowledge:(n.drafts||0)+(n.replacements||0),organisations:(n.orgfacts||0)+(n.opportunities||0),temple:n.suggestions||0,archive:n.chats||0,rules:n.rules||0};
  for(const [k,v] of Object.entries(counts)){if(!v)continue;const a=document.querySelector('.sidebar a[data-page="'+k+'"]');if(!a)continue;const c=document.createElement('span');c.className='nav-count';c.textContent=v;a.append(c)}}catch{}})();
 """

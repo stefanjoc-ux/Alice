@@ -64,6 +64,10 @@ BUILTIN = [
      'Searches the public web for an organisation and proposes profile facts, each citing the page it came from.',
      'When you ask (Research on the Organisations page)', ['Temple organisation research'],
      'Public web pages found by the search', 'Organisation facts awaiting your approval', True),
+    ('temple-opportunities', 'Temple: client opportunities', 'internal',
+     'Reads a client\'s approved profile, searches recent news and suggests opportunities, each citing the news behind it.',
+     'On each client\'s schedule (weekly by default), or Run now', ['Temple opportunity scan'],
+     'Approved organisation facts; public news found by the search', 'Opportunity suggestions and news in the tracker', True),
     ('claude-desktop', 'Claude Desktop', 'app', 'Claude Desktop connected through the alice connector (stdio).',
      'When you use Claude Desktop', [], 'Files, memories and organisation profiles allowed to external apps',
      'Proposals, knowledge drafts, saved conversations', True),
@@ -117,6 +121,11 @@ ANATOMY = {
                             'tools': ['Web search (provider built-in)'], 'data': ['web', 'organisations'],
                             'guardrails': ['secret_detection', 'protective_marking', 'data_minimisation', 'pii', 'spend_cap'],
                             'outputs': ['Proposed organisation facts with sources'], 'gate': 'You approve each fact on the Organisations page'},
+    'temple-opportunities': {'model': 'temple', 'instructions': 'Find news from the last 60 days; suggest opportunities only where the news gives a '
+                                                             'reason to engage now, mapped to your offerings, each with evidence.',
+                             'tools': ['Web search (provider built-in)'], 'data': ['organisations', 'web'],
+                             'guardrails': ['secret_detection', 'protective_marking', 'provider_allow', 'data_minimisation', 'spend_cap'],
+                             'outputs': ['Opportunity suggestions with evidence', 'News items'], 'gate': 'You accept or dismiss each suggestion in the tracker'},
     'claude-desktop': dict(_APP_ANATOMY, model='Claude (your Claude Desktop model)', identity='Caller name on this computer (stdio)'),
     'microsoft-copilot': dict(_APP_ANATOMY, model='Microsoft 365 Copilot', identity='Entra ID token from the Tuduma tenant'),
 }

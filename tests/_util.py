@@ -51,6 +51,7 @@ for key in ('OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'XAI_API_KEY', 'ELEVENLABS_AP
 os.environ['OPENAI_BASE_URL'] = 'http://127.0.0.1:9/v1'
 os.environ['ANTHROPIC_BASE_URL'] = 'http://127.0.0.1:9'
 os.environ['SUBSTRATE_HOTKEY'] = 'off'
+os.environ['ALICE_NO_SCHEDULER'] = '1'   # no background schedules during tests
 try:
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')

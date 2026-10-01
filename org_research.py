@@ -88,13 +88,13 @@ def _parse(raw):
 
 
 # ---------------- providers (web search) ----------------
-def _ask_openai(prompt, query):
+def _ask_openai(prompt, query, workload='Temple organisation research'):
     from openai import OpenAI
     t0 = time.time()
     with OpenAI(timeout=180, max_retries=0) as client:
         r = client.responses.create(model='gpt-6-luna', instructions=prompt, input=query, tools=[{'type': 'web_search'}],
                                     max_output_tokens=6000, store=False)
-    import usage_meter; usage_meter.log(r, 'openai', 'gpt-6-luna', 'Temple organisation research', time.time() - t0)
+    import usage_meter; usage_meter.log(r, 'openai', 'gpt-6-luna', workload, time.time() - t0)
     seen = {}
     for item in getattr(r, 'output', []) or []:
         action = getattr(item, 'action', None)
@@ -107,14 +107,14 @@ def _ask_openai(prompt, query):
     return r.output_text, seen
 
 
-def _ask_claude(prompt, query):
+def _ask_claude(prompt, query, workload='Temple organisation research'):
     from anthropic import Anthropic
     t0 = time.time()
     with Anthropic(timeout=180, max_retries=0) as client:
         r = client.messages.create(model='claude-haiku-4-5-20251001', system=prompt, max_tokens=6000,
                                    tools=[{'type': 'web_search_20250305', 'name': 'web_search', 'max_uses': MAX_SEARCHES}],
                                    messages=[{'role': 'user', 'content': query}])
-    import usage_meter; usage_meter.log(r, 'claude', 'claude-haiku-4-5-20251001', 'Temple organisation research', time.time() - t0)
+    import usage_meter; usage_meter.log(r, 'claude', 'claude-haiku-4-5-20251001', workload, time.time() - t0)
     seen, texts = {}, []
     for b in r.content:
         if b.type == 'web_search_tool_result':
@@ -127,8 +127,8 @@ def _ask_claude(prompt, query):
     return '\n'.join(texts), seen
 
 
-def _ask(prompt, query, provider):
-    return _ask_openai(prompt, query) if provider == 'openai' else _ask_claude(prompt, query)
+def _ask(prompt, query, provider, workload='Temple organisation research'):
+    return _ask_openai(prompt, query, workload) if provider == 'openai' else _ask_claude(prompt, query, workload)
 
 
 # ---------------- research ----------------

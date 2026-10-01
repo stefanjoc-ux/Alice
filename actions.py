@@ -53,6 +53,13 @@ def summary():
                           'detail': f"{f['statement']} · source: {f['source_system']}" + (f" ({f['source_ref'][:80]})" if f['source_ref'] else '')
                                     + f" · {f['proposed_by']}"} for f in of]))
 
+    # 2c-ii. Client opportunities Temple has suggested
+    import opportunities
+    ops = opportunities.tracker('suggested')['opportunities']
+    out.append(_section('opportunities', 'Client opportunities suggested', len(ops), '/admin/organisations?tracker=1',
+                        [{'type': 'link', 'id': o['id'], 'title': f"{o['org']} · {o['title']}", 'detail': (o['why_now'] or o['summary'])[:200],
+                          'href': '/admin/organisations?tracker=1&org=' + o['org']} for o in ops[:20]]))
+
     # 2d. Agents that paused themselves or are past their review date
     import agents
     al = agents.alerts()
