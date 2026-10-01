@@ -44,7 +44,7 @@ t('everything off: a protection concern would reach the AI', ev('care', CARE['Di
 
 # 4. the page's API: state saved, locked rules, sandbox
 d = cl.get('/admin/api/rule-packs').json()
-t('all three packs listed with samples and every rule on by default', {p['id'] for p in d['packs']} == {'hr', 'care', 'sec'} and all(all(v for v in d['state'][p].values()) for p in d['state']))
+t('all four packs listed with samples and every rule on by default', {p['id'] for p in d['packs']} == {'hr', 'care', 'sec', 'pd'} and all(all(v for v in d['state'][p].values()) for p in d['state']))
 cl.post('/admin/api/rule-packs/state', json={'pack': 'care', 'rule': 'sc_chi', 'enabled': False}, headers=H)
 t('switching a rule off is saved', cl.get('/admin/api/rule-packs').json()['state']['care']['sc_chi'] is False)
 res = cl.post('/admin/api/rule-packs/test', json={'pack': 'care', 'text': CARE['Case note summary'], 'provider': 'tenant'}, headers=H).json()
@@ -88,3 +88,20 @@ t('live incident to a public AI: blocked', any(f['rule'] == 'sec_incident' for f
 r = RP.redact('a@x.example then b@x.example then A@x.example', ['user name'])[0]
 t('the same user always gets the same pseudonym', r == '[user A] then [user B] then [user A]')
 t('security pack names its own services', any('Security Copilot' in p['name'] for p in [x for x in cl.get('/admin/api/rule-packs').json()['packs'] if x['id'] == 'sec'][0]['providers']))
+
+# 7. personal data (UK GDPR) pack
+PD = dict(RP.PACKS['pd']['samples'])
+r = ev('pd', PD['Customer complaint'])
+t('complaint: address, postcode, email, phone, card and bank details removed; name kept for the reply',
+  r['outcome'] == 'redacted' and {'street address', 'postcode', 'email address', 'phone number', 'payment card number', 'bank account details'} <= set(r['removed'])
+  and '4111' not in r['sent'] and 'Kinnoull' not in r['sent'] and 'Helen Dunn' in r['sent'] and 'removed] was' in r['sent'])
+t('reusing clinic data for fundraising: blocked (purpose limitation)', ev('pd', PD['Reuse for marketing'])['outcome'] == 'blocked')
+r = ev('pd', PD['Data breach'])
+t('possible breach: sent to the DPO, 72-hour clock mentioned', r['outcome'] == 'escalated' and 'Data Protection Officer' in r['headline'] and any('72-hour' in f['message'] for f in r['fired']))
+t('subject access request: held for the data protection team', ev('pd', PD['Subject access request'])['outcome'] == 'held')
+t('loan decision: refused', any(f['rule'] == 'pd_profiling' for f in ev('pd', PD['Credit decision'])['fired']))
+t("profiling children for adverts: refused", any(f['rule'] == 'pd_children' for f in ev('pd', PD["Children's app"])['fired']))
+t('a list of people: refused as bulk personal data', any(f['rule'] == 'pd_bulk' for f in ev('pd', PD['Mailing list'])['fired']))
+t('NHS number recognised only with a valid check digit', RP.find_ids('NHS number 943 476 5919', ['NHS number']) and not RP.find_ids('NHS number 943 476 5918', ['NHS number']))
+t('IP addresses removed as online identifiers', RP.redact('login from 203.0.113.9', ['IP address'])[0] == 'login from [IP address removed]')
+t('no AI instructions listed when nothing reaches the AI', ev('pd', PD['Data breach'])['instructions'] == [] and ev('hr', HR['Job advert'], on={r['id']: True for r in RP.PACKS['hr']['rules']})['instructions'])

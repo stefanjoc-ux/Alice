@@ -40,6 +40,15 @@ def _sentences(text):
     return [s for s in re.split(r'(?<=[.!?;])\s+|\n+', text or '') if s.strip()]
 
 
+def _mod11(d):
+    """NHS number check digit (modulus 11, weights 10..2)."""
+    if len(d) != 10: return False
+    total = sum(int(c) * w for c, w in zip(d[:9], range(10, 1, -1)))
+    check = 11 - total % 11
+    check = 0 if check == 11 else check
+    return check != 10 and check == int(d[9])
+
+
 def _chi_valid(d):
     """Community Health Index: DDMMYY + 3 digits + check digit (modulus 11, weights 10..2)."""
     dd, mm = int(d[0:2]), int(d[2:4])
@@ -65,6 +74,12 @@ IDENTIFIERS = {   # label -> (pattern, validator or None)
     'user name': (re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'), None),
     'internal IP address': (re.compile(r'\b(?:10\.\d{1,3}|192\.168|172\.(?:1[6-9]|2\d|3[01]))\.\d{1,3}\.\d{1,3}\b'), None),
     'subscription or tenant ID': (re.compile(r'(?i)\b(?:subscription|tenant|directory)(?:\s+id)?\W{0,3}[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b'), None),
+    'NHS number': (re.compile(r'(?i)\bNHS(?:\s+(?:no\.?|number))?\W{0,3}(\d{3}\s?\d{3}\s?\d{4})\b'), lambda m: _mod11(re.sub(r'\D', '', m.group(1)))),
+    'passport number': (re.compile(r'(?i)\bpassport(?:\s+(?:no\.?|number))?\W{0,3}[0-9]{9}\b'), None),
+    'driving licence number': (re.compile(r'\b[A-Z9]{5}\d{6}[A-Z9]{2}\d[A-Z]{2}\b'), None),
+    'bank account details': (re.compile(r'\b\d{2}-\d{2}-\d{2}\b[^\n]{0,25}?\b\d{8}\b|\b\d{8}\b[^\n]{0,25}?\b\d{2}-\d{2}-\d{2}\b|\bGB\d{2}\s?[A-Z]{4}(?:\s?\d{4}){3}\s?\d{2}\b'), None),
+    'IP address': (re.compile(r'\b(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}\b'), None),
+    'street address': (re.compile(r'\b\d{1,4}[A-Za-z]?,?\s+(?:[A-Z][a-z]+\s+){1,3}(?:Street|St|Road|Rd|Avenue|Ave|Lane|Drive|Crescent|Place|Terrace|Gardens|Court|Close|Way|Square|Wynd|Brae|Row|Park)\b'), None),
     'postcode': (re.compile(r'\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[ABD-HJLNP-UW-Z]{2}\b'), None),
 }
 
@@ -74,7 +89,10 @@ def find_ids(text, labels):
     for label in labels:
         pat, ok = IDENTIFIERS[label]
         for m in pat.finditer(text or ''):
-            if ok is None or ok(m): spans.append((m.start(), m.end(), label))
+            if ok is None or ok(m):
+                e = m.end()
+                while e > m.start() and (text or '')[e - 1] in ' -': e -= 1    # keep the space after a number
+                spans.append((m.start(), e, label))
     spans.sort()
     out, last = [], -1
     for s, e, l in spans:                  # drop overlaps (e.g. a CHI inside a longer number)
@@ -384,8 +402,119 @@ SEC = dict(
           'UK GDPR Article 5(2); ISO/IEC 27001 Annex A 8.15 (logging).', lambda t, p: 'Recorded in the audit trail.', locked=True),
     ])
 
-PACKS = {p['id']: p for p in (HR, CARE, SEC)}
-ESCALATE_TO = {'care': 'the duty social work team', 'hr': 'the HR business partner', 'sec': 'the on-call incident manager'}
+PD_IDS = ('National Insurance number', 'NHS number', 'passport number', 'driving licence number', 'payment card number',
+          'bank account details', 'date of birth')
+PD_CONTACT = ('street address', 'postcode', 'email address', 'phone number')
+REUSE = (r"\b(?:use|reuse|take|repurpose|send|upload|share|sell)\b[\s\S]{0,80}\b(?:list|data|records|emails|details|database|contacts|customers|patients|"
+         r"tenants|staff|members|clinic)\b[\s\S]{0,80}\b(?:marketing|fundrais\w*|campaign|advert\w*|newsletter|sell|third part\w*|train\w* (?:a|the|our) model|"
+         r"model training|another purpose|promotion\w*)\b")
+PROFILING = (r"\b(?:decide whether to (?:approve|refuse|grant|accept|reject)|credit (?:score|decision|check)|approve (?:his|her|their|the) (?:loan|application|claim)|"
+             r"refuse (?:his|her|their|the) (?:loan|application|claim)|predict which (?:customers|people|tenants|users)|profile (?:of )?(?:each|every|the) "
+             r"(?:customer|user|child|person|tenant)|build a profile|score (?:each|every|the) (?:customer|applicant|tenant|user))\b")
+CHILD = r"\b(?:aged? (?:[1-9]|1[0-7])\b|(?:[1-9]|1[0-7])[- ]year[- ]olds?|under[- ](?:13|16|18)s?|pupils?|school ?children|children|child's|minors?|teenagers?)\b"
+TARGETING = r"\b(?:advert\w*|marketing|target\w*|profil\w*|personalis\w* ads?|nudge|monetis\w*)\b"
+RIGHTS = r"\b(?:subject access|DSAR|SAR\b|right of access|right to erasure|right to be forgotten|erasure request|rectification|data portability|object to processing)\b"
+BREACH = (r"\b(?:data breach|personal data breach|sent (?:it |them )?to the wrong|emailed [\s\S]{0,60}to the wrong|accidentally (?:sent|shared|emailed|disclosed|published)|"
+          r"lost (?:a |my |the |an )?(?:laptop|phone|memory stick|usb|files?|paperwork)|stolen (?:laptop|phone|device)|hacked|left (?:it|them|the files) on the (?:train|bus))\b")
+
+
+def _bulk(text, p):
+    n = len(find_ids(text, ('email address', 'phone number', 'National Insurance number', 'NHS number', 'street address', 'bank account details')))
+    return f'Contains {n} personal identifiers: bulk personal data needs a DPIA-approved route, not a chat.' if n >= 5 else None
+
+
+def _pd_special(text, p):
+    if special_about_person(text) or _any(r'\b(?:convict\w*|criminal record|offen[cs]e\w*|clinic|patients?)\b', text):
+        return None if p['in_tenant'] else 'Special category or criminal offence data; not allowed outside your tenant.'
+    return None
+
+
+def _pd_special_note(text, p):
+    if (special_about_person(text) or _any(r'\b(?:convict\w*|criminal record|clinic|patients?)\b', text)) and p['in_tenant']:
+        return 'Special category data: processing needs an Article 9 condition and is recorded against it.'
+    return None
+
+
+PD = dict(
+    id='pd', name='Personal data (UK GDPR)', audience='Any organisation using AI with personal data: the safeguards a Data Protection Officer would expect, '
+                                                      'whichever team is asking.',
+    basis='UK GDPR and the Data Protection Act 2018 (as amended by the Data (Use and Access) Act 2025), ICO guidance on AI and data protection, '
+          'the ICO Age Appropriate Design Code, PECR for electronic marketing.',
+    samples=[
+        ('Customer complaint', 'Reply to this complaint from Mrs Helen Dunn, 14 Kinnoull Street, Perth PH1 5EN, helen.dunn@example.com, 07700 900321. '
+                               'Her card 4111 1111 1111 1111 was charged twice and she wants a refund to sort code 12-34-56 account 12345678.'),
+        ('Reuse for marketing', 'Take the list of patients who attended the diabetes clinic last year and use their emails for our new fundraising campaign.'),
+        ('Data breach', 'I accidentally emailed a spreadsheet of 40 tenants\' names and bank details to the wrong landlord this morning. What should I do?'),
+        ('Subject access request', 'A former employee, Daniel Fraser, has made a subject access request. Draft the response letter and list every email that mentions him.'),
+        ('Credit decision', 'Decide whether to approve Mr Lee\'s loan application based on his spending history and postcode.'),
+        ('Children\'s app', 'Our app has users aged 12 to 15. Build a profile of each child\'s interests so we can target adverts at them.'),
+        ('Mailing list', 'Tidy up this list and put it in a table:\nanna.b@example.com 07700 900101\nraj.p@example.com 07700 900102\n'
+                         'lucy.m@example.com 07700 900103\ntom.w@example.com 07700 900104\nsara.k@example.com 07700 900105'),
+    ],
+    rules=[
+        R('pd_breach', 'Breaches and rights', 'Possible breaches go straight to the DPO', 'enforced', 'escalate',
+          'A possible personal data breach is not handled by AI. It goes to the Data Protection Officer at once, because the 72-hour clock for telling the ICO has started.',
+          'UK GDPR Articles 33 and 34 (breach notification within 72 hours of becoming aware).',
+          lambda t, p: 'Describes a possible personal data breach: the 72-hour reporting clock has started.' if _any(BREACH, t) else None),
+        R('pd_rights', 'Breaches and rights', 'Rights requests are checked by the DPO', 'gate', 'review',
+          'Responses to subject access, erasure and other rights requests are held for the data protection team, who check exemptions and third-party data.',
+          'UK GDPR Articles 12 to 22 (one month to respond); DPA 2018 Schedule 2 exemptions.',
+          lambda t, p: 'A data subject rights request: one month to respond; held for the data protection team.' if _any(RIGHTS, t) else None),
+        R('pd_direct', 'Identifiers', 'Direct identifiers removed', 'enforced', 'redact',
+          'NI, NHS, passport and driving licence numbers, card and bank details, and dates of birth are replaced with placeholders.',
+          'UK GDPR Article 5(1)(c) data minimisation and Article 25 data protection by design.', PD_IDS),
+        R('pd_contact', 'Identifiers', 'Contact details removed', 'enforced', 'redact',
+          'Home addresses, postcodes, email addresses and phone numbers are replaced with placeholders.',
+          'UK GDPR Article 5(1)(c), data minimisation.', PD_CONTACT),
+        R('pd_online', 'Identifiers', 'Online identifiers removed', 'enforced', 'redact',
+          'IP addresses are personal data when they can be linked to a person, so they are removed too.',
+          'UK GDPR Article 4(1) and Recital 30 (online identifiers).', ('IP address',)),
+        R('pd_bulk', 'Lawful use', 'No bulk personal data in chat', 'enforced', 'block',
+          'Lists or tables of people are refused. Bulk processing needs an approved route with a DPIA.',
+          'UK GDPR Article 35 (DPIA for large-scale processing); Article 5(1)(f) security.', _bulk),
+        R('pd_purpose', 'Lawful use', 'Personal data only used for its original purpose', 'enforced', 'block',
+          'Data collected for one purpose is not reused for marketing, fundraising, sale or model training.',
+          'UK GDPR Article 5(1)(b) purpose limitation; PECR regulation 22 (consent for electronic marketing).',
+          lambda t, p: 'Reuses personal data for a different purpose (marketing, fundraising, sale or training).' if _any(REUSE, t) else None),
+        R('pd_profiling', 'Lawful use', 'No automated decisions with significant effects', 'enforced', 'block',
+          'AI does not decide loans, claims, applications or eligibility, or score people, without meaningful human involvement.',
+          'UK GDPR rules on automated decision-making (Article 22, as amended by the Data (Use and Access) Act 2025).',
+          lambda t, p: 'Asks the AI to make or score a decision about a person.' if _any(PROFILING, t) else None),
+        R('pd_children', 'Lawful use', 'Extra protection for children', 'enforced', 'block',
+          'Children\'s data is never used for profiling, targeting or advertising.',
+          'ICO Age Appropriate Design Code (Children\'s code); UK GDPR Recital 38.',
+          lambda t, p: 'Profiles or targets children.' if _any(CHILD, t) and _any(TARGETING, t) else None),
+        R('pd_special', 'Where data goes', 'Special category data stays in your tenant', 'enforced', 'block',
+          'Health, ethnicity, religion, sexuality, biometrics, union membership and criminal data never go to an AI service outside your tenant.',
+          'UK GDPR Articles 9 and 10; DPA 2018 Schedule 1.', _pd_special),
+        R('pd_special_log', 'Where data goes', 'Special category use is recorded', 'enforced', 'flag',
+          'Inside your tenant, special category use is recorded against its Article 9 condition.',
+          'UK GDPR Article 30; the appropriate policy document required by the DPA 2018.', _pd_special_note),
+        R('pd_transfer', 'Where data goes', 'No transfers without safeguards', 'enforced', 'block',
+          'Personal data only goes to AI services in the UK or covered by adequacy regulations or an International Data Transfer Agreement.',
+          'UK GDPR Chapter V (international transfers).',
+          lambda t, p: f'{p["name"]} would be an international transfer without safeguards.' if not p['uk'] else None),
+        R('pd_minimise', 'Transparency', 'Use the least personal data needed', 'guidance', 'guide',
+          'The AI refers to people by role where it can and does not repeat personal details it does not need.',
+          'UK GDPR Article 5(1)(c); ICO guidance on AI and data protection.',
+          guidance='Refer to people by role rather than name where possible. Do not repeat personal details that the task does not need.'),
+        R('pd_notice', 'Transparency', 'People are told when AI is used', 'guidance', 'guide',
+          'Replies to individuals say AI helped, in line with the privacy notice.',
+          'UK GDPR Articles 13 and 14 (right to be informed).',
+          guidance='Where a reply goes to an individual, include: "We used AI to help prepare this reply; a member of staff checked it."'),
+        R('pd_retention', 'Records', 'AI conversations with personal data expire', 'enforced', 'note',
+          'Conversations containing personal data are deleted after 30 days unless saved to the case or customer record.',
+          'UK GDPR Article 5(1)(e), storage limitation.',
+          lambda t, p: 'Contains personal data: this conversation is deleted after 30 days unless saved to the record.'
+                       if find_ids(t, PD_IDS + PD_CONTACT) or special_about_person(t) else None),
+        R('pd_audit', 'Records', 'Every request is recorded', 'enforced', 'log',
+          'Every request, redaction, block and escalation is written to the audit trail.',
+          'UK GDPR Article 5(2) accountability and Article 30 records of processing.', lambda t, p: 'Recorded in the audit trail.', locked=True),
+    ])
+
+PACKS = {p['id']: p for p in (HR, CARE, SEC, PD)}
+ESCALATE_TO = {'care': 'the duty social work team', 'hr': 'the HR business partner', 'sec': 'the on-call incident manager',
+               'pd': 'the Data Protection Officer'}
 
 
 # ---------------- state ----------------
@@ -488,4 +617,4 @@ def evaluate(pack, text, provider='tenant', enabled=None):
         'allowed': 'Sent to the AI.',
     }[outcome]
     return {'outcome': outcome, 'headline': headline, 'provider': p['name'], 'fired': fired, 'off': off,
-            'sent': sent, 'removed': removed, 'instructions': guidance}
+            'sent': sent, 'removed': removed, 'instructions': guidance if sent is not None else []}
