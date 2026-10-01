@@ -83,7 +83,7 @@ def redact(text, labels):
 
 
 HEALTH_EXTRA = re.compile(r'\b(dementia|depress\w*|anxiety|alcohol\w*|drug use|substance\w*|addict\w*|HIV|cancer|autis\w*|'
-                          r'ADHD|learning disabilit\w*|stroke|dementia)\b', re.I)
+                          r'ADHD|learning disabilit\w*|stroke|parkinson\w*|wheelchair|frail\w*|diabet\w*|epilep\w*|multiple sclerosis|incontinen\w*|terminal\w*|palliative)\b', re.I)
 SUBJECT = re.compile(r"\b(?:employee|colleague|staff member|candidate|applicant|service user|client|child|adult|resident|tenant|"
                      r"[A-Z][a-z]+'s|[A-Z][a-z]+ [A-Z][a-z]+)\b")
 
@@ -115,11 +115,14 @@ OUTBOUND = r'\b(?:draft|write|send|email|prepare)\b[\s\S]{0,60}\b(?:letter|email
 TO_PERSON = r'\b(?:employee|candidate|applicant|staff|him|her|them|family|parents?|carer|service user|Mr|Mrs|Ms|Miss|hearing|panel)\b'
 PROTECTION = (r"\b(?:child protection|CP register|IRD|inter-?agency referral|adult support and protection|ASP (?:inquiry|investigation)|"
               r"significant harm|at risk of harm|non-?accidental|disclos\w* (?:of )?(?:abuse|that)|abuse\w*|neglect\w*|hits? (?:her|him|them)|"
-              r"domestic abuse|self-?harm\w*|suicid\w*|grooming|exploitation)\b")
+              r"domestic abuse|self-?harm\w*|suicid\w*|grooming|exploitation|financial (?:abuse|harm)|taking (?:his |her |their )?money|stealing|"
+              r"frightened of|scared of|afraid of|coercive|controlling behaviour|unexplained (?:bruis\w*|injur\w*))\b")
 CARE_DECISION = (r"\b(?:eligib\w*|risk (?:score|level|rating)|what risk|care package|budget|approve|refuse|decide|prioriti[sz]e|"
+                 r"(?:reduce|increase|withdraw|cut|stop|end) (?:his |her |their |the )?(?:care|support|package|hours|visits)|"
                  r"should (?:we|the council) (?:remove|place|accommodate))\b")
 CARE_CONTEXT = r'\b(?:care|support|service user|child|adult|placement|self-directed support|SDS|package|respite|assessment)\b'
-THIRD_PARTY = (r"\b(?:mother|father|mum|dad|partner|ex-partner|boyfriend|girlfriend|husband|wife|neighbour|sibling|brother|sister|"
+THIRD_PARTY = (r"\b(?:mother|father|mum|dad|partner|ex-partner|boyfriend|girlfriend|husband|wife|neighbour|sibling|brother|sister|daughter|son|"
+               r"niece|nephew|cousin|landlord|GP|friend|"
                r"grandparent|grandmother|grandfather|aunt|uncle|carer|friend)(?:'s)?(?: partner)?\s+(?:said|says|reported|told|has|have|was|is|hits?|called)\b")
 MARKINGS = r'\bOFFICIAL[-\s]SENSITIVE\b|^\s*SECRET\s*$|\bTOP SECRET\b'
 
@@ -270,7 +273,7 @@ CARE = dict(
         R('sc_records', 'Records', 'AI output follows the records management plan', 'enforced', 'note',
           'Anything that becomes part of a case record follows the council\'s records management plan and retention schedule.',
           'Public Records (Scotland) Act 2011; Looked After Children (Scotland) Regulations 2009 for children\'s records.',
-          lambda t, p: 'Will be held under the records management plan.' if _any(r'\b(?:case notes?|record|chronology|minute|report)\b', t) else None),
+          lambda t, p: 'Will be held under the records management plan.' if _any(r'\b(?:case notes?|records?|file|chronology|minutes?|report)\b', t) else None),
         R('sc_audit', 'Records', 'Every request is recorded', 'enforced', 'log',
           'Every request, block, redaction, escalation and sign-off is written to the audit trail.',
           'UK GDPR Article 5(2), accountability.', lambda t, p: 'Recorded in the audit trail.', locked=True),

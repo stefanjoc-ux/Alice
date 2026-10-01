@@ -61,3 +61,14 @@ cl.post('/admin/api/rule-packs/state', json={'pack': 'hr', 'all_on': False}, hea
 t("Alice's own rules are untouched by the packs", json.dumps(R.all_rules(), sort_keys=True) == before)
 t('empty test message refused', cl.post('/admin/api/rule-packs/test', json={'pack': 'hr', 'text': '  '}, headers=H).status_code == 400)
 t('page renders', 'id="rp-rules"' in cl.get('/admin/rule-packs').text)
+
+# 5. wider social care wording
+care_review = ("Draft a summary of Mr John Paterson's care review for his file. CHI 1504470001, tel 01738 123456, PH2 8DY. "
+               "He has Parkinson's and uses a wheelchair. His daughter said he has missed several meals since his carer left.")
+r = ev('care', care_review)
+t('care review: CHI, phone and postcode removed; daughter\'s account flagged; held for sign-off',
+  r['outcome'] == 'held' and set(r['removed']) == {'CHI number', 'phone number', 'postcode'} and any(f['rule'] == 'sc_third_party' for f in r['fired']))
+t('Parkinson\'s and wheelchair use count as health information outside the tenant', any(f['rule'] == 'sc_special' for f in ev('care', care_review, 'public')['fired']))
+fin = "Mr Paterson's daughter told us his new partner has been taking money from his bank account and he seems frightened of her. Should we reduce his care package?"
+r = ev('care', fin)
+t('financial abuse is a protection concern; reducing a package is a care decision', r['outcome'] == 'escalated' and {'sc_protection', 'sc_decisions'} <= {f['rule'] for f in r['fired']})
