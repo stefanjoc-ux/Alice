@@ -40,9 +40,11 @@ SECTIONS = {
 <div id="ask-starters" class="mem-cats"></div><div id="ask-log" class="ask-log" aria-live="polite"></div>
 <form id="ask-form" class="ask-form"><textarea id="ask-q" rows="2" maxlength="4000" placeholder="e.g. What did the rules block this week?" aria-label="Question for Temple"></textarea><div class="arc-actions"><button id="ask-go">Ask</button><button id="ask-clear" type="button" class="secondary">Clear conversation</button></div></form>
 <p class="muted small">Temple looks things up with read-only tools and shows what it checked. It can't approve or change anything; it tells you where to do that. The conversation is kept on this page only.</p></section>''',
-'agents': r'''<section><div class="mem-head"><h2>Agents</h2><span id="ag-summary" class="muted small"></span></div>
-<p class="muted small">Agents only ever propose: nothing they do is approved without you, and the rules (separation, labels, markings, spending caps) apply on top of the limits set here. An agent pauses itself after 3 failed runs in a row or at its monthly budget. Apps that connect for the first time are added here automatically.</p>
-<div class="table-wrap"><table id="ag-table" class="mem-table"></table></div></section>''',
+'agents': r'''<div id="ag-list"><section><div class="mem-head"><h2>Alice automations</h2><span id="ag-summary" class="muted small"></span></div>
+<p class="muted small">Agents only propose; nothing they do is approved without you, and the rules apply on top of their limits. An agent pauses itself after 3 failed runs in a row or at its monthly budget.</p>
+<div id="ag-auto" class="ag-cards"></div></section>
+<section><div class="mem-head"><h2>Connected apps</h2><span class="muted small">Every tool call is checked against the app's permissions. New apps appear here when they first connect.</span></div><div id="ag-apps" class="ag-cards"></div></section></div>
+<div id="ag-detail" hidden></div>''',
 'organisations': r'''<section><div class="mem-head"><h2>Organisations</h2><span id="o-summary" class="muted small"></span></div>
 <p class="muted small">Summaries, not documents: each fact is a sentence or two with its source and a review-by date. Facts you add here are approved; facts from models wait for your approval. Data minimisation applies: organisational information and roles, not people.</p>
 <div id="o-list" class="mem-cats"></div>
@@ -128,8 +130,8 @@ section{background:var(--panel);border:1px solid var(--line);border-radius:10px;
 h2{font-size:17px;line-height:1.35;margin:0 0 10px}h3{font-size:15px;margin:14px 0 6px}h4{font-size:14px;margin:12px 0 4px}section>h2:first-child{margin-top:0}
 p,li{line-height:1.6}label{display:block;margin:10px 0}textarea,input[type=text]{width:100%;margin:6px 0}
 .content button{margin:4px 6px 4px 0}
-.content button:not(.secondary):not(.chip):not(.mini):not(.mem-title):not(.ghost),.button{background:var(--teal);border:1px solid var(--teal);color:#fff;font-weight:600;border-radius:8px;padding:6px 14px;text-decoration:none;display:inline-block}
-.content button:not(.secondary):not(.chip):not(.mini):not(.mem-title):not(.ghost):hover:not(:disabled),.button:hover{background:var(--teal-d);border-color:var(--teal-d)}
+.content button:not(.secondary):not(.chip):not(.mini):not(.mem-title):not(.ghost):not(.ag-card),.button{background:var(--teal);border:1px solid var(--teal);color:#fff;font-weight:600;border-radius:8px;padding:6px 14px;text-decoration:none;display:inline-block}
+.content button:not(.secondary):not(.chip):not(.mini):not(.mem-title):not(.ghost):not(.ag-card):hover:not(:disabled),.button:hover{background:var(--teal-d);border-color:var(--teal-d)}
 .content button.secondary{background:#fff;color:var(--ink)}
 pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:500px;overflow:auto;font:13px/1.6 ui-monospace,Consolas,monospace}summary{cursor:pointer}
 .card{border-top:1px solid var(--line);padding:16px 0;overflow-wrap:anywhere}.card p{overflow-wrap:anywhere}
@@ -177,10 +179,21 @@ nav{display:flex;gap:20px;flex-wrap:wrap}.sidebar nav{display:contents}
 .r-block{display:grid;grid-template-columns:130px 200px 1fr;gap:10px;padding:6px 0;border-top:1px solid #e3eaf0}#r-effective{white-space:pre-wrap}
 .k-panel{border:1px solid #c9d7e1;border-radius:10px;padding:14px 16px;margin-top:12px;background:#f8fbfd}.k-panel[hidden],#km-step1[hidden],#km-step2[hidden]{display:none}.k-panel h3{margin-top:0}.k-panel label{display:block;margin:8px 0}.k-panel textarea,.k-panel input:not([type=checkbox]){width:100%}
 .k-meta-row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}.k-meta-row label{flex:1 1 170px;margin:6px 0}.k-meta-row select,.k-meta-row input{width:100%}
-.ag-group{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:#f7fafc;padding:6px 12px!important}
-.ag-grid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:18px;align-items:start}.ag-grid textarea{width:100%}.ag-perms{display:grid;gap:10px;margin:6px 0 10px}.ag-perm strong{margin-right:6px}
-.ag-events{max-height:320px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:6px;padding:8px 10px;line-height:1.7}.ag-detail h3{margin-top:18px}
-@media(max-width:900px){.ag-grid{grid-template-columns:1fr}}
+.ag-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.ag-card{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:#fff;min-width:0}
+.ag-card:hover{border-color:#89b1bf;box-shadow:0 2px 10px #0b162612}.ag-card:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+.ag-card.off{border-color:#e2bf85;background:#fffbf3}.ag-card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}.ag-card-top strong{font-size:15px}
+.ag-card-purpose{font-size:13px;color:var(--muted);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.ag-card-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:auto}.ag-card-stat{margin-left:auto}
+.ag-card-flags{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;color:#6b4406}
+.ag-head{padding-bottom:6px}.ag-head>button{margin:0 0 10px}.ag-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.ag-title h2{margin:0;font-size:20px}
+.ag-ctl{display:flex;gap:6px;margin-top:10px}.ag-reason{margin:10px 0 0;padding:8px 12px;border-radius:8px;background:#fdf3e1;border:1px solid #e2bf85;color:#4a3004;font-size:13px}
+.ag-tabs{margin:14px 0 0}.ag-purpose{font-size:15px;margin:0 0 14px}.ag-stats{grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:16px}
+.ag-facts{display:grid;grid-template-columns:160px 1fr;gap:6px 14px;margin:0 0 16px;font-size:14px}.ag-facts dt{color:var(--muted)}.ag-facts dd{margin:0}
+.ag-mini{display:grid;grid-template-columns:120px 90px 130px 1fr;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}.ag-mini-sum{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ag-perms{display:grid;gap:10px;margin:6px 0 10px}.ag-perm strong{margin-right:6px}
+.ag-events{max-height:320px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:6px;padding:8px 10px;line-height:1.7}
+@media(max-width:900px){.ag-stats{grid-template-columns:1fr 1fr}.ag-facts{grid-template-columns:1fr}.ag-mini{grid-template-columns:1fr 1fr}}
 .k-text{max-height:360px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;border:1px solid #c9d7e1;border-radius:6px;padding:10px;font-size:13px}
 .badge.k-lab-general{background:#e6f4ea;color:#1e5b31;border-color:#9fcfaf}.badge.k-lab-internal{background:#e3f1f6;color:#064b63;border-color:#89b1bf}.badge.k-lab-client{background:#fdf3e1;color:#6b4406;border-color:#e2bf85}.badge.k-lab-local{background:#fbeaea;color:#7a1f1f;border-color:#e0aaaa}
 #k-table td:nth-child(2){min-width:260px}
@@ -760,81 +773,97 @@ if(PAGE==='organisations'){
 
 SCRIPT += r"""
 if(PAGE==='agents'){
- const st={sel:new URLSearchParams(location.search).get('agent')||'',L:null,runsOffset:0};
+ const st={L:null,sel:'',tab:'overview'};
  const STATUS={active:['Active','approved'],paused:['Paused','proposed'],stopped:['Stopped','rejected']};
  const RUNST={complete:'v-ok',failed:'v-bad',running:'v-run',skipped:'v-none',blocked:'v-warn',interrupted:'v-warn','failed (cleared)':'v-none'};
+ const TABS=[['overview','Overview'],['runs','Runs'],['data','Data touched'],['settings','Settings'],['history','History']];
  const when=d=>d?new Date(d).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'—';
  const usd=v=>'$'+(v||0).toFixed(v>=1?2:4);
- function badge(text,cls){return el('span',text,'badge '+cls)}
+ const plural=(ty,n)=>n+' '+(n===1?ty:({memory:'memories'}[ty]||ty+'s'));
+ const badge=(t,c)=>el('span',t,'badge '+c);
+ const pill=a=>{const [l,c]=STATUS[a.status]||[a.status,''];return el('span',l,c)};
+ const btn=(label,fn,cls)=>{const b=el('button',label);b.type='button';if(cls)b.className=cls;b.onclick=()=>run(fn);return b};
+ function readUrl(){const q=new URLSearchParams(location.search);st.sel=q.get('agent')||'';st.tab=q.get('tab')||'overview'}
+ function go(sel,tab='overview',push=true){st.sel=sel;st.tab=tab;const url=sel?'?agent='+sel+(tab!=='overview'?'&tab='+tab:''):location.pathname;push?history.pushState(null,'',url):history.replaceState(null,'',url);render()}
+ window.addEventListener('popstate',()=>{readUrl();render()});
  async function load(){st.L=await api('/admin/api/agents');render()}
- function render(){const L=st.L,t=$('ag-table');t.replaceChildren();
-  const internal=L.agents.filter(a=>a.kind!=='app'),apps=L.agents.filter(a=>a.kind==='app');
-  $('ag-summary').textContent=internal.length+' automations · '+apps.length+' connected apps · '+L.agents.filter(a=>a.status!=='active').length+' paused or stopped';
-  const head=document.createElement('tr');for(const h of ['Agent','Status','Last run','This month','Waiting']){const th=el('th',h);th.scope='col';head.append(th)}const th0=document.createElement('thead');th0.append(head);t.append(th0);
-  const body=document.createElement('tbody');
-  for(const [title,list] of [['Alice automations',internal],['Connected apps',apps]]){const gr=document.createElement('tr');const gtd=el('td',title,'ag-group');gtd.colSpan=5;gr.append(gtd);body.append(gr);
-   for(const a of list){const tr=document.createElement('tr');tr.className='mem-row'+(st.sel===a.id?' open':'');
-    const c1=document.createElement('td');const b=el('button',a.name,'mem-title');b.type='button';b.onclick=()=>{st.sel=st.sel===a.id?'':a.id;history.replaceState(null,'',st.sel?'?agent='+st.sel:location.pathname);render()};c1.append(b,el('div',a.trigger,'mem-preview'));
-    if(a.external_content){const x=el('span','Reads outside content','tag');x.title='Reads content from outside Alice (emails, transcripts, conversations): keep it to proposing only';x.style.marginTop='4px';c1.append(x)}
-    const [sl,sc]=STATUS[a.status]||[a.status,''];const c2=document.createElement('td');c2.append(el('span',sl,sc));if(a.status_reason)c2.append(el('div',a.status_reason,'small muted'));if(a.review_overdue)c2.append(el('div','⚑ Review overdue','flag'));
-    const lr=a.last_run;const c3=document.createElement('td');if(lr){c3.append(el('div',when(lr.started_at),'small'));c3.append(badge(a.kind==='app'&&lr.status==='running'?'today':lr.status,RUNST[lr.status]||'v-none'))}else c3.append(el('span','Not run yet','muted small'));
-    const c4=el('td',a.kind==='app'?(a.calls_month+' tool calls'):(a.runs_month+' runs · '+usd(a.cost_month)+(a.budget_usd!=null?' of $'+a.budget_usd.toFixed(2):'')),'small');if(a.failed_month)c4.append(el('div',a.failed_month+' failed','small'));
-    const c5=el('td',a.waiting?String(a.waiting):'—','num');
-    tr.append(c1,c2,c3,c4,c5);body.append(tr);
-    if(st.sel===a.id){const dr=document.createElement('tr');dr.className='mem-detail-row';const td=document.createElement('td');td.colSpan=5;dr.append(td);body.append(dr);detail(a,td)}}}
-  t.append(body)}
- async function detail(a,td){const box=el('div','','mem-detail ag-detail');td.append(box);
-  // what it is
-  const about=el('div','','ag-grid');
-  const pu=document.createElement('textarea');pu.value=a.purpose;pu.maxLength=1000;pu.rows=2;pu.setAttribute('aria-label','Purpose');
-  const lp=el('label','Purpose and tasks');lp.append(pu);about.append(lp);
-  const facts=el('div','','small');for(const [k,v] of [['Triggered',a.trigger],['Reads',a.reads],['Writes',a.writes],['Owner',a.owner],['Settings version',String(a.version)]])if(v){const p=el('div','');p.append(el('strong',k+': '),document.createTextNode(v));facts.append(p)}about.append(facts);box.append(about);
-  // controls
-  const ctl=el('div','','arc-actions');
-  const btn=(label,fn,cls)=>{const b=el('button',label);b.type='button';if(cls)b.className=cls;b.onclick=()=>run(fn);return b};
+ function render(){const a=st.L.agents.find(x=>x.id===st.sel);$('ag-list').hidden=!!a;$('ag-detail').hidden=!a;if(a)detail(a);else list();window.scrollTo(0,0);document.querySelector('.content').scrollTop=0}
+ // ---- list: two groups of compact cards
+ function card(a){const c=el('button','','ag-card'+(a.status!=='active'?' off':'')+(a.review_overdue?' due':''));c.type='button';c.onclick=()=>go(a.id);
+  const top=el('div','','ag-card-top');top.append(el('strong',a.name),pill(a));c.append(top);
+  c.append(el('div',a.purpose,'ag-card-purpose'));
+  const foot=el('div','','ag-card-foot');const lr=a.last_run;
+  foot.append(el('span',lr?('Last run '+when(lr.started_at)):(a.kind==='app'?'No calls yet':'Not run yet')));
+  if(lr)foot.append(badge(a.kind==='app'&&lr.status==='running'?'today':lr.status,RUNST[lr.status]||'v-none'));
+  foot.append(el('span',a.kind==='app'?a.calls_month+' calls this month':a.runs_month+' runs · '+usd(a.cost_month),'ag-card-stat'));
+  c.append(foot);
+  const flags=el('div','','ag-card-flags');if(a.status_reason&&a.status!=='active')flags.append(el('span',a.status_reason,'small'));if(a.external_content)flags.append(el('span','Reads outside content','tag'));if(a.review_overdue)flags.append(el('span','⚑ Review overdue','flag'));if(a.waiting)flags.append(el('span',a.waiting+' waiting for you','flag'));if(flags.childElementCount)c.append(flags);
+  return c}
+ function list(){const L=st.L,internal=L.agents.filter(a=>a.kind!=='app'),apps=L.agents.filter(a=>a.kind==='app'),off=L.agents.filter(a=>a.status!=='active').length;
+  $('ag-summary').textContent=internal.length+' automations · '+apps.length+' connected apps'+(off?' · '+off+' paused or stopped':'');
+  $('ag-auto').replaceChildren(...internal.map(card));$('ag-apps').replaceChildren(...apps.map(card))}
+ // ---- detail: header, tabs, one tab at a time
+ function detail(a){const box=$('ag-detail');box.replaceChildren();
+  const head=el('section','','ag-head');const back=el('button','← All agents','secondary');back.type='button';back.onclick=()=>go('');
+  const title=el('div','','ag-title');title.append(el('h2',a.name),pill(a),el('span',a.kind==='app'?'Connected app':'Alice automation','tag k-knowledge'));
+  const ctl=el('div','','ag-ctl');
   if(a.status!=='active')ctl.append(btn('Resume',async()=>{await api('/admin/api/agents/'+a.id+'/status','POST',{status:'active'});$('notice').textContent=a.name+' resumed.';await load()}));
-  if(a.status==='active')ctl.append(btn('Pause',async()=>{const r=prompt('Why pause '+a.name+'? (optional)')??null;if(r===null)return;await api('/admin/api/agents/'+a.id+'/status','POST',{status:'paused',reason:r});$('notice').textContent=a.name+' paused. It will not run until you resume it.';await load()},'secondary'));
+  if(a.status==='active')ctl.append(btn('Pause',async()=>{const r=prompt('Why pause '+a.name+'? (optional)');if(r===null)return;await api('/admin/api/agents/'+a.id+'/status','POST',{status:'paused',reason:r});$('notice').textContent=a.name+' paused. It will not run until you resume it.';await load()},'secondary'));
   if(a.status!=='stopped')ctl.append(btn('Stop',async()=>{if(!confirm('Stop '+a.name+'? It will not run, and an app will be refused every call, until you resume it.'))return;await api('/admin/api/agents/'+a.id+'/status','POST',{status:'stopped',reason:'stopped by you'});await load()},'secondary'));
-  box.append(ctl);
-  // limits
+  head.append(back,title,ctl);
+  if(a.status_reason&&a.status!=='active')head.append(el('p',a.status==='paused'?'Paused: '+a.status_reason:a.status_reason,'ag-reason'));
+  const tabs=el('div','','mem-tabs ag-tabs');for(const [k,l] of TABS){const b=el('button',l,'chip'+(st.tab===k?' on':''));b.type='button';b.onclick=()=>go(a.id,k,false);tabs.append(b)}head.append(tabs);
+  box.append(head);const body=el('section','');box.append(body);
+  ({overview,runs:runsTab,data:dataTab,settings,history:historyTab}[st.tab]||overview)(a,body)}
+ function overview(a,body){
+  body.append(el('p',a.purpose,'ag-purpose'));
+  const tiles=el('div','','stats ag-stats');const tile=(n,l)=>{const t=el('div','','stat');t.append(el('strong',n),el('span',l));return t};
+  if(a.kind==='app')tiles.append(tile(String(a.calls_month),'tool calls this month'),tile(String(a.waiting),'proposals waiting'));
+  else tiles.append(tile(String(a.runs_month),'runs this month'),tile(String(a.failed_month),'failed'),tile(usd(a.cost_month),a.budget_usd!=null?'of $'+a.budget_usd.toFixed(2)+' budget':'cost (no agent budget)'));
+  body.append(tiles);
+  const facts=el('dl','','ag-facts');for(const [k,v] of [['Starts',a.trigger],['Reads',a.reads],['Writes',a.writes],['Owner',a.owner],['Review access by',a.review_by||'—'],['Settings version',String(a.version)]]){facts.append(el('dt',k),el('dd',v||'—'))}
+  if(a.external_content){facts.append(el('dt','Outside content'),el('dd','Reads content from outside Alice. Keep it to proposing only.'))}
+  body.append(facts);
+  const recent=el('div','');body.append(el('h3','Latest '+(a.kind==='app'?'days':'runs')),recent);
+  api('/admin/api/agents/'+a.id+'/runs').then(r=>{if(!r.runs.length){recent.append(el('p','Nothing yet.','muted small'));return}for(const x of r.runs.slice(0,5)){const row=el('div','','ag-mini');row.append(el('span',when(x.started_at),'small'),badge(a.kind==='app'&&x.status==='running'?'today':x.status,RUNST[x.status]||'v-none'),el('span',(x.cost_usd?usd(x.cost_usd)+' · ':'')+x.calls+' calls','small muted'),el('span',x.error||x.summary||'','small muted ag-mini-sum'));recent.append(row)}
+   const all=el('button','All runs →','secondary');all.type='button';all.onclick=()=>go(a.id,'runs',false);recent.append(all)}).catch(e=>recent.append(el('p',e.message,'small')))}
+ async function runsTab(a,body){const r=await api('/admin/api/agents/'+a.id+'/runs');
+  if(!r.runs.length){body.append(el('p',a.kind==='app'?'No tool calls yet.':'No runs yet. Runs that had nothing to do are not kept.','muted'));return}
+  const t=el('table','','mem-table');const h=document.createElement('tr');for(const x of ['Started','Trigger','Outcome','Cost / calls','Summary'])h.append(el('th',x));t.append(h);
+  for(const x of r.runs){const tr=document.createElement('tr');const b=el('button',when(x.started_at),'mem-title');b.type='button';const c1=document.createElement('td');c1.append(b);const c3=document.createElement('td');c3.append(badge(a.kind==='app'&&x.status==='running'?'today':x.status,RUNST[x.status]||'v-none'));
+   tr.append(c1,el('td',x.trigger,'small'),c3,el('td',(x.cost_usd?usd(x.cost_usd)+' · ':'')+x.calls+' calls','small'),el('td',x.error||x.summary||'','small'));t.append(tr);
+   const dr=document.createElement('tr');dr.hidden=true;const dtd=document.createElement('td');dtd.colSpan=5;dr.append(dtd);t.append(dr);
+   b.onclick=()=>run(async()=>{if(!dr.hidden){dr.hidden=true;return}const d=await api('/admin/api/agent-runs/'+x.id);dtd.replaceChildren();
+    const tch=Object.entries(d.touched).map(([k,v])=>(k==='read'?'Read ':'Wrote ')+Object.entries(v).map(([ty,n])=>plural(ty,n)).join(', ')).join(' · ');if(tch)dtd.append(el('p',tch,'small'));
+    const l=el('div','','ag-events');for(const e of d.events.slice(-200)){const row=el('div','','small');row.append(el('span',new Date(e.at).toLocaleTimeString('en-GB')+'  ','muted'),el('strong',e.kind+' '),document.createTextNode((e.target_name||[e.target_type,e.target_id].filter(Boolean).join(' '))+(e.detail?' · '+e.detail:'')));l.append(row)}
+    if(!d.events.length)l.append(el('p','No details recorded for this run.','muted small'));dtd.append(l);dr.hidden=false})}
+  body.append(t)}
+ async function dataTab(a,body){const d=await api('/admin/api/agents/'+a.id+'/touched');body.append(el('p','Everything '+a.name+' read or wrote in the last 30 days, newest first.','muted small'));
+  if(!d.items.length){body.append(el('p','Nothing recorded.','muted'));return}
+  const t=el('table','','mem-table');const h=document.createElement('tr');for(const x of ['Item','Type','Read / wrote','Times','Last'])h.append(el('th',x));t.append(h);
+  for(const i of d.items){const tr=document.createElement('tr');tr.append(el('td',i.target_name||i.target_id),el('td',i.target_type,'small'),el('td',i.kind,'small'),el('td',String(i.times),'num'),el('td',when(i.last),'small'));t.append(tr)}body.append(t)}
+ function settings(a,body){
+  const pu=document.createElement('textarea');pu.value=a.purpose;pu.maxLength=1000;pu.rows=3;const lp=el('label','Purpose and tasks');lp.append(pu);body.append(lp);
   const lim=el('div','','k-meta-row');const extra={};
   const bud=document.createElement('input');bud.type='number';bud.min='0';bud.max='1000';bud.step='0.5';bud.placeholder='No agent limit';bud.value=a.budget_usd??'';
   const rb=document.createElement('input');rb.type='date';rb.value=a.review_by||'';
   if(a.kind!=='app'){const l1=el('label','Monthly budget (USD)');l1.append(bud);lim.append(l1)}
-  const l2=el('label','Review access by');l2.append(rb);lim.append(l2);
-  let perm=null;
-  if(a.kind==='app'){const p=a.permissions;perm=el('div','','ag-perms');
+  const l2=el('label','Review access by');l2.append(rb);lim.append(l2);body.append(lim);
+  if(a.kind==='app'){const p=a.permissions;
    const mode=document.createElement('select');for(const [v,t2] of [['propose','Read and propose'],['read','Read only']]){const o=document.createElement('option');o.value=v;o.textContent=t2;mode.append(o)}mode.value=p.mode||'propose';const lm=el('label','Mode');lm.append(mode);lim.append(lm);
    const calls=document.createElement('input');calls.type='number';calls.min='1';calls.max='100000';calls.value=p.max_calls_per_day??'';calls.placeholder='No limit';const lc=el('label','Tool calls per day');lc.append(calls);lim.append(lc);
-   const group=(title,all,chosen,hint)=>{const g=el('div','','ag-perm');g.append(el('strong',title),el('span',hint,'muted small'));const set=new Set(chosen||[]);const wrap=el('div','','r-checks');for(const v of all){const l=el('label','','r-check');const i=document.createElement('input');i.type='checkbox';i.checked=set.has(v);i.onchange=()=>i.checked?set.add(v):set.delete(v);l.append(i,document.createTextNode(' '+v));wrap.append(l)}g.append(wrap);perm.append(g);return set};
-   extra.tools=group('Tools',st.L.tools,p.tools,' none ticked = all tools');extra.categories=group('Memory categories',st.L.categories,p.categories,' none ticked = all the external rules allow');extra.labels=group('Knowledge labels',st.L.labels,p.labels,' none ticked = all the external rules allow (never Local only; client-confidential never leaves for external apps)');
-   extra.mode=mode;extra.calls=calls}
-  box.append(el('h3','Limits'),lim);if(perm)box.append(perm);
-  box.append(btn('Save settings',async()=>{const body={purpose:pu.value,review_by:rb.value,note:''};
-   if(a.kind!=='app'){if(bud.value==='')body.clear_budget=true;else body.budget_usd=+bud.value}
-   else body.permissions={mode:extra.mode.value,max_calls_per_day:extra.calls.value===''?null:+extra.calls.value,tools:[...extra.tools],categories:[...extra.categories],labels:[...extra.labels]};
-   const n=prompt('What changed and why? (kept in the version history; optional)')??null;if(n===null)return;body.note=n;
-   await api('/admin/api/agents/'+a.id,'PUT',body);$('notice').textContent='Saved as a new version.';await load()}));
-  // runs
-  box.append(el('h3',a.kind==='app'?'Activity by day':'Runs'));const runsBox=el('div','');box.append(runsBox);
-  const showRuns=async()=>{const r=await api('/admin/api/agents/'+a.id+'/runs');runsBox.replaceChildren();if(!r.runs.length){runsBox.append(el('p',a.kind==='app'?'No tool calls yet.':'No runs yet. Runs that had nothing to do are not kept.','muted small'));return}
-   const t=el('table','','mem-table');const h=document.createElement('tr');for(const x of ['Started','Trigger','Outcome','Cost / calls','Summary'])h.append(el('th',x));t.append(h);
-   for(const x of r.runs){const tr=document.createElement('tr');const b=el('button',when(x.started_at),'mem-title');b.type='button';const c1=document.createElement('td');c1.append(b);
-    const c3=document.createElement('td');c3.append(badge(x.status,RUNST[x.status]||'v-none'));
-    tr.append(c1,el('td',x.trigger,'small'),c3,el('td',(x.cost_usd?usd(x.cost_usd)+' · ':'')+x.calls+' calls','small'),el('td',x.error||x.summary||'','small'));t.append(tr);
-    const dr=document.createElement('tr');dr.hidden=true;const dtd=document.createElement('td');dtd.colSpan=5;dr.append(dtd);t.append(dr);
-    b.onclick=()=>run(async()=>{if(!dr.hidden){dr.hidden=true;return}const d=await api('/admin/api/agent-runs/'+x.id);dtd.replaceChildren();
-     const tch=Object.entries(d.touched).map(([k,v])=>(k==='read'?'Read ':'Wrote ')+Object.entries(v).map(([ty,n])=>n+' '+(n===1?ty:({memory:'memories'}[ty]||ty+'s'))).join(', ')).join(' · ');if(tch)dtd.append(el('p',tch,'small'));
-     const list=el('div','','ag-events');for(const e of d.events.slice(-200)){const row=el('div','','small');row.append(el('span',new Date(e.at).toLocaleTimeString('en-GB')+'  ','muted'),el('strong',e.kind+' '),document.createTextNode((e.target_name||[e.target_type,e.target_id].filter(Boolean).join(' '))+(e.detail?' · '+e.detail:'')));list.append(row)}
-     if(!d.events.length)list.append(el('p','No details recorded for this run.','muted small'));dtd.append(list);dr.hidden=false})}
-   runsBox.append(t)};
-  // data touched and history
-  const more=el('div','','arc-actions');const out=el('div','');
-  more.append(btn('Data touched (30 days)',async()=>{const d=await api('/admin/api/agents/'+a.id+'/touched');out.replaceChildren(el('h3','Data touched in the last 30 days'));if(!d.items.length){out.append(el('p','Nothing recorded.','muted small'));return}
-   const t=el('table','','mem-table');const h=document.createElement('tr');for(const x of ['Item','Type','Read / wrote','Times','Last'])h.append(el('th',x));t.append(h);for(const i of d.items){const tr=document.createElement('tr');tr.append(el('td',i.target_name||i.target_id),el('td',i.target_type,'small'),el('td',i.kind,'small'),el('td',String(i.times),'num'),el('td',when(i.last),'small'));t.append(tr)}out.append(t)},'secondary'),
-   btn('Version history',async()=>{const d=await api('/admin/api/agents/'+a.id+'/versions');out.replaceChildren(el('h3','Version history'));for(const v of d.versions){const p=el('div','','card');p.append(el('strong','Version '+v.version+' · '+when(v.changed_at)+' · '+v.changed_by),el('div',v.note||'','small'),el('pre',JSON.stringify(v.config,null,1)));out.append(p)}},'secondary'));
-  box.append(more,out);await showRuns()}
- run(load);
+   const perm=el('div','','ag-perms');const group=(title,all,chosen,hint)=>{const g=el('div','','ag-perm');g.append(el('strong',title),el('span',hint,'muted small'));const set=new Set(chosen||[]);const wrap=el('div','','r-checks');for(const v of all){const l=el('label','','r-check');const i=document.createElement('input');i.type='checkbox';i.checked=set.has(v);i.onchange=()=>i.checked?set.add(v):set.delete(v);l.append(i,document.createTextNode(' '+v));wrap.append(l)}g.append(wrap);perm.append(g);return set};
+   extra.tools=group('Tools',st.L.tools,p.tools,' none ticked = all tools');extra.categories=group('Memory categories',st.L.categories,p.categories,' none ticked = everything the external rules allow');extra.labels=group('Knowledge labels',st.L.labels,p.labels,' none ticked = everything the external rules allow');
+   extra.mode=mode;extra.calls=calls;body.append(el('h3','Permissions'),el('p','These only narrow what the rules already allow external apps; they can never widen it.','muted small'),perm)}
+  body.append(btn('Save settings',async()=>{const b={purpose:pu.value,review_by:rb.value,note:''};
+   if(a.kind!=='app'){if(bud.value==='')b.clear_budget=true;else b.budget_usd=+bud.value}
+   else b.permissions={mode:extra.mode.value,max_calls_per_day:extra.calls.value===''?null:+extra.calls.value,tools:[...extra.tools],categories:[...extra.categories],labels:[...extra.labels]};
+   const n=prompt('What changed and why? (kept in the history; optional)');if(n===null)return;b.note=n;
+   await api('/admin/api/agents/'+a.id,'PUT',b);$('notice').textContent='Saved as version '+(a.version+1)+'.';await load()}))}
+ async function historyTab(a,body){const d=await api('/admin/api/agents/'+a.id+'/versions');
+  for(const v of d.versions){const p=el('div','','card');p.append(el('strong','Version '+v.version+' · '+when(v.changed_at)+' · '+v.changed_by));if(v.note)p.append(el('div',v.note,'small'));const det=document.createElement('details');det.append(el('summary','Settings'),el('pre',JSON.stringify(v.config,null,1)));p.append(det);body.append(p)}
+  body.append(el('p','Pauses, resumes and stops are in the Activity log (type: Agents).','muted small'))}
+ readUrl();run(load);
 }
 """
 

@@ -119,6 +119,6 @@ t('Alice web chat is not an agent (no gating)', M._app('list_files') == (None, N
 
 # 8. the page and activity
 page = cl.get('/admin/agents').text
-t('Agents page renders', 'id="ag-table"' in page)
+t('Agents page renders (cards and detail view)', 'id="ag-auto"' in page and 'id="ag-detail"' in page)
 with s.db() as c: acts = {r[0] for r in c.execute('SELECT DISTINCT action FROM activity')}
 t('pauses, stops and changes are in the activity log', {'agent_paused', 'agent_stopped', 'agent_updated', 'agent_registered'} <= acts)
