@@ -49,3 +49,4 @@ t('Auto never routes or retries to Astra', 'openai_astra' not in inspect.getsour
 t('the chat page offers GPT-6 Astra', 'value="openai_astra"' in cl.get('/').text)
 t('rule packs treat Astra as OpenAI', rule_packs._live_provider('openai_astra')['name'].startswith('OpenAI'))
 t('labelled for routing notes', router.LABEL['openai_astra'] == 'GPT-6 Astra')
+t('the image button explains why it is off for Astra', 'not set up for GPT-6 Astra' in cl.get('/').text)
