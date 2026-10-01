@@ -7,6 +7,7 @@ import hashlib
 from datetime import datetime, timezone, timedelta
 import substrate_store as store
 import temple
+import agents
 from pydantic import BaseModel, Field
 from typing import Literal
 
@@ -83,6 +84,7 @@ def reserve(cid,tid,manual=False):
                   (tid,cid,'running',provider,store.now()))
     return True
 
+@agents.tracked('temple-chat', subject=lambda cid, tid: ('chat', cid))
 def analyse(cid,tid):
     try:
         with store.db() as c:

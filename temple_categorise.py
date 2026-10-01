@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 import substrate_store as store
 import temple
 import usage_meter
+import agents
 
 _lock = threading.Lock()
 BATCH = 40
@@ -54,6 +55,7 @@ def _ask(payload):
     return '\n'.join(b.text for b in r.content if b.type == 'text')
 
 
+@agents.tracked('temple-categorise')
 def run(ids=None, manual=False):
     """Categorise uncategorised memories. Returns counts. Safe to call concurrently (one run at a time)."""
     current = mode()

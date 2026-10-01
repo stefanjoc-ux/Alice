@@ -6,6 +6,7 @@ import re
 import uuid
 from datetime import datetime, timezone, timedelta
 import substrate_store as store
+import agents
 
 with store.db() as c:
     c.executescript('''CREATE TABLE IF NOT EXISTS temple_reviews (
@@ -54,6 +55,7 @@ def expire(c):
     cutoff=(datetime.now(timezone.utc)-timedelta(minutes=3)).isoformat()
     c.execute("UPDATE temple_reviews SET status='failed',error='Review interrupted or expired. Review again manually.',finished_at=? WHERE status='running' AND created_at<?",(store.now(),cutoff))
 
+@agents.tracked('temple-review', subject=lambda rid: ('memory', rid))
 def review_record(rid):
     import rules_engine
     rules_engine.check_spend('automation')   # raises RuleViolation (a ValueError) when paused
@@ -86,6 +88,7 @@ def review_record(rid):
                  'compared_count':len(chosen),'selection':'Word overlap, then recent; up to 20 complete records within 30,000 JSON characters'}
         c.execute('INSERT INTO temple_reviews(id,record_id,status,provider,model,created_at,context) VALUES (?,?,?,?,?,?,?)',
                   (review_id,rid,'running',provider,model,store.now(),json.dumps(context)))
+    for m in chosen: agents.note('read','memory',m['id'],'compared')   # after the transaction: lineage for the Agents page
     try:
         key='OPENAI_API_KEY' if provider=='openai' else 'ANTHROPIC_API_KEY'
         if not os.getenv(key): raise ValueError('Missing '+key+'. Set it in .env and restart both servers.')
@@ -109,7 +112,7 @@ def review_record(rid):
     with store.db() as c:
         c.execute('UPDATE temple_reviews SET status=?,report=?,error=?,finished_at=? WHERE id=?',(status,report,error,store.now(),review_id))
         store.audit(c,'temple_'+status,rid,'advisory_only','Review '+review_id+'; record status unchanged')
-    return {'id':review_id,'status':status}
+    return {'id':review_id,'status':status,**({'error':error} if error else {})}
 
 def automatic_review(rid):
     try:

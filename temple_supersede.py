@@ -14,6 +14,7 @@ import threading
 from difflib import SequenceMatcher
 import substrate_store as store
 import knowledge
+import agents
 
 MAX_CANDIDATES = 3          # model checks per new item
 THRESHOLD = 0.35            # Python score needed before a pair is worth a model call
@@ -166,6 +167,7 @@ def check_one(fid, items, provider, use_model=True, budget=None):
     return added, calls
 
 
+@agents.tracked('temple-replacements', subject=lambda ids, **k: ('knowledge', ids[0]) if len(ids or []) == 1 else None)
 def check(ids, manual=False, limit_calls=None):
     """After items become active (or from the backlog sweep). Automatic runs respect Temple's on/off setting."""
     import rules_engine, temple

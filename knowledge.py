@@ -15,6 +15,7 @@ import uuid
 import zipfile
 from xml.etree import ElementTree
 import substrate_store as store
+import agents
 
 KINDS = {'file': 'File', 'note': 'Note', 'meeting': 'Meeting extract'}
 STATUSES = ('active', 'draft', 'rejected', 'archived')   # 'replaced' is a view: archived with a link to the newer item
@@ -316,10 +317,12 @@ def add_replacement(new_id, old_id, source, verdict='', reason='', quote='', con
         cur = c.execute('INSERT OR IGNORE INTO knowledge_replacements(id,new_id,old_id,source,verdict,reason,quote,confidence,created_at) '
                         'VALUES (?,?,?,?,?,?,?,?,?)', (uuid.uuid4().hex, new_id, old_id, source, verdict, reason[:500], quote[:500],
                                                        confidence, store.now()))
-        if cur.rowcount:
+        added = bool(cur.rowcount)
+        if added:
             store.audit(c, 'temple_replacement_suggested' if source == 'temple' else 'knowledge_replacement_proposed', old_id,
                         'advisory_only', f'May be replaced by {new_id}: {reason[:200]}')
-        return bool(cur.rowcount)
+    if added: agents.note('wrote', 'knowledge', old_id, 'suggested retiring it (replaced by a newer item)')
+    return added
 
 
 def supersede(old_id, new_id, reason, by='you'):
@@ -447,6 +450,7 @@ def listing(kind='', status='active', category='', client='', label='', query=''
 
 
 # ---------------- Temple: categories for knowledge ----------------
+@agents.tracked('temple-categorise')
 def categorise(manual=False):
     import temple_categorise, rules_engine
     mode = temple_categorise.mode()
@@ -744,6 +748,7 @@ def to_docx(fid):
     return buf.getvalue(), _slug(m['title'], '.docx')
 
 
+@agents.tracked('temple-meeting', trigger='you asked')
 def extract_meeting(transcript):
     import rules_engine, temple, usage_meter
     transcript = (transcript or '').strip()

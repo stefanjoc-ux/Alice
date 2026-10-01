@@ -13,6 +13,7 @@ import threading
 from typing import Optional
 from pydantic import BaseModel, Field
 import substrate_store as store
+import agents
 
 THRESHOLD = 0.75
 _lock = threading.Lock()
@@ -347,6 +348,7 @@ def _ask(payload):
     return '\n'.join(b.text for b in r.content if b.type == 'text')
 
 
+@agents.tracked('temple-tagging')
 def run_tagging(manual=False, use_model=True):
     """Alias matches first (free), then Temple for the rest. Uses the Temple category mode (auto/suggest/off)."""
     import temple_categorise, rules_engine

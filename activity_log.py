@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 import substrate_store as store
 
 TYPES = [
-    ('memories', 'Memories and decisions'), ('knowledge', 'Knowledge'), ('organisations', 'Organisations'), ('temple', 'Temple'),
+    ('memories', 'Memories and decisions'), ('knowledge', 'Knowledge'), ('organisations', 'Organisations'), ('agents', 'Agents'), ('temple', 'Temple'),
     ('blocks', 'Security blocks'), ('rules', 'Rules and settings'), ('clients', 'Clients'),
     ('chats', 'Chats and imports'), ('routing', 'Model routing'), ('tools', 'Tool use'), ('other', 'Other'),
 ]
@@ -23,6 +23,8 @@ LABELS = {
     'knowledge_added': ('knowledge', 'Knowledge added'), 'knowledge_proposed': ('knowledge', 'Knowledge draft proposed'),
     'knowledge_approved': ('knowledge', 'Knowledge draft approved'), 'knowledge_rejected': ('knowledge', 'Knowledge draft rejected'),
     'knowledge_updated': ('knowledge', 'Knowledge details changed'),
+    'agent_active': ('agents', 'Agent resumed'), 'agent_paused': ('agents', 'Agent paused'), 'agent_stopped': ('agents', 'Agent stopped'),
+    'agent_updated': ('agents', 'Agent settings changed'), 'agent_registered': ('agents', 'Agent registered'),
     'org_created': ('organisations', 'Organisation added'), 'org_updated': ('organisations', 'Organisation details changed'),
     'org_fact_added': ('organisations', 'Organisation fact added by you'), 'org_fact_proposed': ('organisations', 'Organisation fact proposed'),
     'org_fact_approved': ('organisations', 'Organisation fact approved'), 'org_fact_rejected': ('organisations', 'Organisation fact rejected'),

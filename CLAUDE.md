@@ -38,6 +38,10 @@ knowledge note "AI Substrate: status summary" through the `alice` connector, or 
    reached from outside goes through `mcp_server.py --external` (port 8002, Entra token on every request), and every
    tool decides what to return with `_who()`: external callers get the external rules and their own provider.
 
+10. **Every automation that calls a model is an agent.** Wrap its entry point with `@agents.tracked('<agent-id>')`
+    (register the id in `agents.BUILTIN`), record what it reads/writes with `agents.note()` *outside* any write
+    transaction, and every external MCP tool must call `_app('<tool>')` first. Paused or stopped agents must not run.
+
 ## How Alice runs
 
 - **Desktop app** (`desktop.py`): tray icon; starts the servers without console windows; opens the chat in
@@ -95,6 +99,7 @@ A browser refresh is not enough: the old server process keeps running the old co
 | `temple_supersede.py` | Temple finds older knowledge a newer item replaces (wording first, then a quoted model check); suggestions only |
 | `conversations.py` | Saved conversations, Claude export import (incl. manifest download), whole-chat reviews |
 | `knowledge.py` | Knowledge library: kinds, drafts, labels, meeting extracts, Word in/out, replacements (`supersede`, `history`) |
+| `agents.py` | Agents register: Temple automations (`@agents.tracked`) and connected apps (`app_call` in every MCP tool); runs, data touched, cost, pause/stop, versions |
 | `organisations.py` | Organisation profiles: short approved facts with source pointers and review dates, the compiled brief, removal by source |
 | `clients.py` | Clients, tagging, alias detection, separation enforcement |
 | `actions.py` | Everything awaiting a decision (Actions page) |

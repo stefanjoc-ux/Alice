@@ -98,6 +98,11 @@ def _describe(name, args):
 
 
 def ask(question, history=()):
+    import agents
+    return agents.tracked('temple-ask', trigger='you asked')(_ask)(question, history)
+
+
+def _ask(question, history=()):
     import rules_engine, temple, usage_meter
     question = (question or '').strip()
     if not question: raise ValueError('Ask a question.')

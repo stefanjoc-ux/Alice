@@ -36,6 +36,10 @@ def log(response,provider,model,workload,duration=None):
           (store.now(),provider,model,workload,i,o,estimate,json.dumps(raw)))
     except sqlite3.Error:
         logging.exception('Usage could not be saved; check provider billing for this call')
+    try:
+        import agents; agents.add_cost(estimate)    # the cost also lands on the agent run in progress, if any
+    except Exception:
+        pass
 
 # USD per million tokens: input, cache read, cache write, output. Standard rates checked 2026-09-29.
 RATES = {

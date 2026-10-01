@@ -16,6 +16,7 @@ import uuid
 from typing import Literal
 from pydantic import BaseModel, Field
 import substrate_store as store
+import agents
 
 MAX_TRANSCRIPT = 60000
 _running = set()
@@ -250,6 +251,7 @@ def _finish(cid, status, n=0, error='', provider=''):
         store.audit(c, 'temple_chat_review_' + status, cid, 'advisory_only', error or f'{n} suggestions')
 
 
+@agents.tracked('temple-chat-review', subject=lambda cid, manual=False: ('chat', cid))
 def review_chat(cid, manual=False):
     import rules_engine
     with _lock:

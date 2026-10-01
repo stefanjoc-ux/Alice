@@ -14,6 +14,7 @@ import clients
 import knowledge
 import conversations
 import organisations
+import agents
 import actions
 import activity_log
 import temple_ask
@@ -1071,6 +1072,46 @@ def admin_knowledge_update(ch: KnowledgeChange):
         try: knowledge.update(ch.ids[0],**fields);return {'updated':1}
         except ValueError as e: raise HTTPException(400,str(e)) from None
     return knowledge.bulk_update(ch.ids,**fields)
+
+class AgentChange(BaseModel):
+    purpose: str|None = Field(default=None,max_length=1000)
+    permissions: dict|None = None
+    budget_usd: float|None = Field(default=None,ge=0,le=1000)
+    clear_budget: bool = False
+    review_by: str|None = Field(default=None,max_length=10)
+    note: str = Field(default='',max_length=300)
+
+class AgentStatus(BaseModel):
+    status: Literal['active','paused','stopped']
+    reason: str = Field(default='',max_length=300)
+
+@app.get('/admin/api/agents')
+def admin_agents():
+    d=agents.listing();d['categories']=[c['name'] for c in store.list_categories()['categories']];return d
+
+@app.get('/admin/api/agents/{aid}/runs')
+def admin_agent_runs(aid: str, offset: int=Query(0,ge=0)): return agents.runs(aid,50,offset)
+
+@app.get('/admin/api/agents/{aid}/touched')
+def admin_agent_touched(aid: str, days: int=Query(30,ge=1,le=365)): return {'items':agents.touched_items(aid,days)}
+
+@app.get('/admin/api/agents/{aid}/versions')
+def admin_agent_versions(aid: str): return {'versions':agents.versions(aid)}
+
+@app.get('/admin/api/agent-runs/{rid}')
+def admin_agent_run(rid: str):
+    try: return agents.run_detail(rid)
+    except ValueError as e: raise HTTPException(404,str(e)) from None
+
+@app.put('/admin/api/agents/{aid}')
+def admin_agent_update(aid: str, ch: AgentChange):
+    try: return agents.update(aid,ch.purpose,ch.permissions,ch.budget_usd,ch.review_by,ch.note,ch.clear_budget)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+@app.post('/admin/api/agents/{aid}/status')
+def admin_agent_status(aid: str, st: AgentStatus):
+    try: return agents.set_status(aid,st.status,st.reason)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
 
 class OrgIn(BaseModel):
     name: str = Field(min_length=1,max_length=60)

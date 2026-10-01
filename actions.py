@@ -53,6 +53,13 @@ def summary():
                           'detail': f"{f['statement']} · source: {f['source_system']}" + (f" ({f['source_ref'][:80]})" if f['source_ref'] else '')
                                     + f" · {f['proposed_by']}"} for f in of]))
 
+    # 2d. Agents that paused themselves or are past their review date
+    import agents
+    al = agents.alerts()
+    out.append(_section('agents', 'Agents needing attention', len(al), '/admin/agents',
+                        [{'type': 'link', 'id': a['id'], 'title': a['title'], 'detail': a['detail'], 'href': '/admin/agents?agent=' + a['id']} for a in al],
+                        level='warn' if al else 'normal'))
+
     # 3. Temple's chat suggestions
     s = temple.chat_suggestions('pending')
     out.append(_section('suggestions', "Temple's suggestions from chats", s['counts']['pending'], '/admin/temple?tab=suggestions',
