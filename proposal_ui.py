@@ -17,7 +17,7 @@ PE_CSS = r'''
 .pe-file{cursor:pointer;border:1px solid var(--line2,#b9cbd8);border-radius:8px;background:#fff;display:inline-flex;align-items:center}
 .pe-rwrap{overflow-x:auto;margin:0 -4px;padding:0 4px}.pe-rates{min-width:700px}.pe-rates .pe-x{font-size:16px!important;line-height:1;padding:4px 9px!important}.pe-rates td:nth-child(3) select{min-width:84px}.pe-rates td:nth-child(4) input{min-width:64px}.pe-rates td:nth-child(5) input,.pe-rates td:nth-child(6) input{min-width:84px}.pe-rates td:nth-child(2) input{min-width:150px}.pe-rates td:nth-child(2){min-width:170px}.pe-rates td:nth-child(3){width:92px}.pe-rates td:nth-child(4){width:84px}
 .pe-rates td:nth-child(5),.pe-rates td:nth-child(6){width:96px}.pe-rates td:nth-child(5) input,.pe-rates td:nth-child(6) input,.pe-rates td:nth-child(4) input{text-align:right;font-variant-numeric:tabular-nums}
-.pe-rates tr.off td{opacity:.55}.pe-rates td:first-child{width:34px;text-align:center}.pe-rates input[type=checkbox]{width:auto}
+.pe-rates tr.off td{opacity:.55}.pe-rates td:first-child{width:34px;text-align:center}.pe-rates input[type=checkbox]{width:auto}.pe-rates th:first-child{text-align:center;width:34px}
 .pe-mcell{white-space:nowrap}.pe-mwrap{display:inline-flex;align-items:center;gap:3px}.pe-mwrap input{width:64px!important;text-align:right}.pe-mwrap input.bad{color:#b3261e;border-color:#e0aaaa}.pe-mcell .pe-mini{margin-left:4px!important}
 .pe-rtotal{display:flex;gap:6px 18px;flex-wrap:wrap;align-items:center;margin-top:10px;padding:10px 12px;border-radius:10px;background:#f4f8fb;border:1px solid var(--line);font-size:14px}
 .pe-rsum{display:flex;gap:6px 14px;flex-wrap:wrap;align-items:baseline}.pe-rsum span{color:var(--muted);font-size:12.5px}.pe-rsum b{font-variant-numeric:tabular-nums;margin-right:6px}.pe-bad{color:#b3261e;font-weight:600}
@@ -91,13 +91,15 @@ const PE=(()=>{
    const pb=btn('Paste a table',()=>{pasteOpen=!pasteOpen;draw();box.querySelector('.pe-paste textarea')?.focus()},'Paste a rate card copied from Excel, Word or an email');top.append(pb);
    box.append(top);
    if(list.length>8){const fb=mk('div','','pe-rtop');const used=list.filter(r=>r.use).length;const c1=btn('Ticked ('+used+')',()=>{showAll=false;draw()}),c2=btn('All roles ('+list.length+')',()=>{showAll=true;draw()});(showAll?c2:c1).classList.add('on');
-    const fi=document.createElement('input');fi.type='search';fi.placeholder='Find a role';fi.value=filter;fi.setAttribute('aria-label','Find a role');fi.oninput=()=>{filter=fi.value.toLowerCase();body()};fb.append(c1,c2,fi);box.append(fb)}
+    const fi=document.createElement('input');fi.type='search';fi.placeholder='Find a role';fi.value=filter;fi.setAttribute('aria-label','Find a role');fi.oninput=()=>{filter=fi.value.toLowerCase();body();syncAll()};fb.append(c1,c2,fi);box.append(fb)}
    const t=mk('table','','pe-rates');const h=document.createElement('thead');const hr=document.createElement('tr');
-   for(const x of ['Use','Role','Unit','Days','Cost rate','Sell rate','Margin',''])hr.append(mk('th',x));h.append(hr);t.append(h);const tb=document.createElement('tbody');t.append(tb);const tw=mk('div','','pe-rwrap');tw.append(t);box.append(tw);
+   const ua=document.createElement('input');ua.type='checkbox';ua.className='pe-all';ua.title='Tick or untick every role shown';ua.setAttribute('aria-label','Tick or untick every role shown');const uth=mk('th');uth.append(ua);hr.append(uth);for(const x of ['Role','Unit','Days','Cost rate','Sell rate','Margin',''])hr.append(mk('th',x));h.append(hr);t.append(h);const tb=document.createElement('tbody');t.append(tb);const tw=mk('div','','pe-rwrap');tw.append(t);box.append(tw);
    const tf=mk('div','','pe-rtotal');box.append(tf);
+   const syncAll=()=>{const sh=list.filter(r=>(showAll||r.use)&&(!filter||r.role.toLowerCase().includes(filter)));const n=sh.filter(r=>r.use).length;ua.checked=!!sh.length&&n===sh.length;ua.indeterminate=n>0&&n<sh.length};
+   ua.onchange=()=>{const on=ua.checked;for(const r of list.filter(r=>(showAll||r.use)&&(!filter||r.role.toLowerCase().includes(filter))))r.use=on;if(!on)showAll=true;draw()};
    function body(){tb.replaceChildren();const shown=list.filter(r=>(showAll||r.use)&&(!filter||r.role.toLowerCase().includes(filter)));
     for(const r of shown){const i=list.indexOf(r);const tr=document.createElement('tr');if(!r.use)tr.className='off';
-     const u0=document.createElement('input');u0.type='checkbox';u0.checked=r.use;u0.setAttribute('aria-label','Use '+(r.role||'this role'));u0.onchange=()=>{r.use=u0.checked;tr.className=r.use?'':'off';foot()};
+     const u0=document.createElement('input');u0.type='checkbox';u0.checked=r.use;u0.setAttribute('aria-label','Use '+(r.role||'this role'));u0.onchange=()=>{r.use=u0.checked;tr.className=r.use?'':'off';foot();syncAll()};
      const role=document.createElement('input');role.maxLength=80;role.value=r.role;role.placeholder='e.g. Solution architect';role.setAttribute('aria-label','Role '+(i+1));role.oninput=()=>{r.role=role.value};
      const u=document.createElement('select');u.setAttribute('aria-label','Unit for '+(r.role||'role'));for(const k of units||['day','hour']){const o=mk('option',k==='hour'?'Hour':'Day');o.value=k;u.append(o)}u.value=r.unit;u.onchange=()=>{r.unit=u.value;foot()};
      const inp=(k,label,ph)=>{const x=document.createElement('input');x.inputMode='decimal';x.value=r[k];x.placeholder=ph||'';x.setAttribute('aria-label',label+' for '+(r.role||'role'));return x};
@@ -119,7 +121,7 @@ const PE=(()=>{
     if(wd.length){const g=mk('div','','pe-rsum');for(const [l,v] of [['Cost',gbp(c)],['Sell price',gbp(sv)],['Margin',sv?((sv-c)/sv*100).toFixed(1)+'%':'—']])g.append(mk('span',l),mk('b',v));tf.append(g);
      const m=sv?(sv-c)/sv*100:0;if(opts.minMargin!=null&&sv&&m<opts.minMargin)tf.append(mk('span','⚠ Below your minimum margin of '+opts.minMargin+'%','pe-bad'))}
     else tf.append(mk('span','Add days to the ticked roles to see the cost, sell price and margin. Roles without days: the writer suggests the days.','pe-note'))}
-   body();foot();
+   body();foot();syncAll();
    const bar=mk('div','','pe-addbar');bar.append((()=>{const b=btn('Add role',()=>{list.push(mk_({role:'',unit:'day',cost:'',sell:'',use:true}));showAll=true;draw();const ins=box.querySelectorAll('.pe-rates tbody tr:last-child input');ins[1]?.focus()});b.classList.add('pe-add');return b})());
    box.append(bar,mk('p','','pe-note pe-rnote'));
    if(pasteOpen){const pp=mk('div','','pe-paste');const ta=document.createElement('textarea');ta.rows=5;ta.placeholder='Copy the rows from Excel, Word or an email and paste them here, for example:\nRole\tCost\tSell\nSolution architect\t650\t1200\nConsultant\t450\t850';ta.setAttribute('aria-label','Pasted rate card');

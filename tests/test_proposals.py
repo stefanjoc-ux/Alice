@@ -390,3 +390,4 @@ try: P.rates_from_sheet('levels.xlsx', bio3.getvalue()); lvl_ok = False
 except ValueError: lvl_ok = True
 t('levels and grades (1 to 6) are not mistaken for rates', lvl_ok)
 t('the rate card can be cleared, and a new spreadsheet replaces or adds', 'Remove every role from this rate card' in proposal_ui.PE_JS and 'OK replaces them' in proposal_ui.PE_JS)
+t('the rate card has a tick-all / untick-all box', 'pe-all' in proposal_ui.PE_JS and 'Tick or untick every role shown' in proposal_ui.PE_JS)
