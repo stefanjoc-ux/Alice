@@ -185,8 +185,40 @@ def create(kind, title, content, source, added_by, status='active', label='gener
         for old in resolve_target(h, exclude=fid):
             if add_replacement(fid, old, 'proposer', reason=f'{added_by} said this supersedes “{" ".join(str(h).split())[:120]}”.'):
                 replaces.append(old)
+    if status == 'active': _default_review(fid)
     schedule_background([fid] if status == 'active' else None)
     return {'id': fid, 'status': status, 'duplicate': False, 'replaces': replaces}
+
+
+REVIEW_DAYS_KEY = 'knowledge_review_days'
+DEFAULT_REVIEW_DAYS = 30
+
+
+def review_days():
+    """Days after an item becomes active before it is due for review (0 = no default review date)."""
+    with store.db() as c:
+        row = c.execute('SELECT value FROM settings WHERE key=?', (REVIEW_DAYS_KEY,)).fetchone()
+    try: return max(0, min(730, int(row[0]))) if row else DEFAULT_REVIEW_DAYS
+    except (TypeError, ValueError): return DEFAULT_REVIEW_DAYS
+
+
+def set_review_days(days):
+    days = int(days)
+    if not 0 <= days <= 730: raise ValueError('Use between 0 (no default) and 730 days.')
+    with store.db() as c:
+        c.execute('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', (REVIEW_DAYS_KEY, str(days)))
+        store.audit(c, 'knowledge_review_days', REVIEW_DAYS_KEY, 'human_control', f'{days} days' if days else 'no default review date')
+    return {'days': days}
+
+
+def _default_review(fid):
+    """Give a newly active item the default review date, unless it already has one."""
+    from datetime import date, timedelta
+    days = review_days()
+    if not days: return
+    due = (date.today() + timedelta(days=days)).isoformat()
+    with store.db() as c:
+        c.execute('UPDATE knowledge_meta SET review_by=? WHERE file_id=? AND review_by IS NULL', (due, fid))
 
 
 def register_upload(fid, chat_client=''):
@@ -198,6 +230,7 @@ def register_upload(fid, chat_client=''):
         c.execute("INSERT INTO knowledge_meta(file_id,kind,title,status,label,source,added_by,created_at,reviewed_at) VALUES (?,?,?,?,?,?,?,?,?)",
                   (fid, 'file', row['name'], 'active', 'client' if chat_client else 'general',
                    'Uploaded in a chat' + (f' for {chat_client}' if chat_client else ''), 'you', row['created_at'], row['created_at']))
+    _default_review(fid)
     schedule_background([fid])
 
 
@@ -275,6 +308,7 @@ def review(ids, decision, retire_replaced=False):
                 c.execute("UPDATE knowledge_replacements SET status='dismissed',resolved_at=? WHERE new_id=? AND status='pending'", (store.now(), fid))
         changed += 1
         if decision == 'approved':
+            _default_review(fid)
             approved.append(fid)
             if retire_replaced:
                 with store.db() as c:
@@ -452,7 +486,7 @@ def listing(kind='', status='active', category='', client='', label='', query=''
     page = out[offset:offset + limit]
     dec = store.decisions_for([r['id'] for r in page])
     for r in page: r['decided'] = dec.get(r['id'])
-    return {'items': page, 'total': len(out), 'counts': counts, 'labels': LABELS, 'kinds': KINDS, 'owners': store.owners(),
+    return {'items': page, 'total': len(out), 'counts': counts, 'labels': LABELS, 'kinds': KINDS, 'owners': store.owners(), 'review_days': review_days(),
             'next_offset': offset + len(page) if offset + len(page) < len(out) else None}
 
 

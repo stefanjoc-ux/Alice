@@ -1494,6 +1494,22 @@ def admin_assistant_update(aid: str, a: AssistantIn):
     except ValueError as e: raise HTTPException(400,str(e)) from None
     except LookupError as e: raise HTTPException(404,str(e)) from None
 
+@app.post('/admin/api/assistants/demo-hr')
+def admin_assistant_demo_hr():
+    try: return assistants.load_demo_hr()
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+class ReviewDays(BaseModel):
+    days: int = Field(ge=0,le=730)
+
+@app.get('/admin/api/knowledge-review-days')
+def admin_review_days(): return {'days':knowledge.review_days()}
+
+@app.put('/admin/api/knowledge-review-days')
+def admin_review_days_set(r: ReviewDays):
+    try: return knowledge.set_review_days(r.days)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
 @app.get('/assistant/{aid}', response_class=HTMLResponse)
 def assistant_view(aid: str):
     try: return assistant_page.render(assistants.get(aid))
