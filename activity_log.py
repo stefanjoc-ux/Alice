@@ -53,7 +53,7 @@ LABELS = {
     'document_source_added': ('knowledge', 'Document source added'), 'proposal_started': ('chats', 'Proposal started'), 'proposal_written': ('chats', 'Proposal written'), 'proposal_failed': ('chats', 'Proposal failed'), 'document_created': ('chats', 'Document created'), 'assistant_answered': ('chats', 'Assistant answered'),
     'assistant_blocked': ('blocks', 'Assistant question blocked'), 'assistant_escalated': ('blocks', 'Assistant question sent to a person'),
     'assistant_saved': ('rules', 'Assistant changed'), 'demo_hr_loaded': ('knowledge', 'Demo HR policy loaded'), 'knowledge_review_days': ('rules', 'Knowledge review period changed'),
-    'owner_set': ('memories', 'Owner set'), 'purview_label_seen': ('rules', 'New Purview label seen'),
+    'owner_set': ('memories', 'Owner set'), 'purview_label_seen': ('rules', 'New Purview label seen'), 'citations_tidied': ('organisations', 'Web citation markup removed'),
     'purview_label_mapped': ('rules', 'Purview label mapping changed'), 'purview_label_applied': ('knowledge', 'Purview label applied to an upload'),
 }
 RULE_NAMES = {'secret_detection': 'Secret detection', 'protective_marking': 'Protective marking guard', 'pii': 'Personal identifiers',

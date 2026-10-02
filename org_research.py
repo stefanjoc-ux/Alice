@@ -124,7 +124,7 @@ def _ask_claude(prompt, query, workload='Temple organisation research'):
             texts.append(b.text)
             for cte in getattr(b, 'citations', None) or []:
                 if getattr(cte, 'url', None): seen.setdefault(cte.url, getattr(cte, 'title', '') or '')
-    return '\n'.join(texts), seen
+    return ''.join(texts), seen          # text blocks are split around citations: join them as written
 
 
 def _ask(prompt, query, provider, workload='Temple organisation research'):

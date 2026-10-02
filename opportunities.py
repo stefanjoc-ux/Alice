@@ -42,6 +42,8 @@ with store.db() as c:
     c.execute('''CREATE TABLE IF NOT EXISTS org_news (id TEXT PRIMARY KEY, org TEXT NOT NULL COLLATE NOCASE, url TEXT NOT NULL,
         title TEXT NOT NULL, published TEXT NOT NULL DEFAULT '', summary TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL)''')
     c.execute('CREATE UNIQUE INDEX IF NOT EXISTS org_news_url ON org_news(org, url)')
+O.tidy_citations('opportunities', ['title', 'summary', 'why_now', 'next_step'])
+O.tidy_citations('org_news', ['title', 'summary'])
 
 PROMPT = '''You are Temple, helping an account lead at a Microsoft-focused IT solutions provider find genuine,
 well-evidenced opportunities with a client. Today is {today}.

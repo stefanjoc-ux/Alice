@@ -48,8 +48,35 @@ with store.db() as c:
     if 'account_manager_oid' not in _ocols: c.execute("ALTER TABLE organisations ADD COLUMN account_manager_oid TEXT NOT NULL DEFAULT ''")
 
 
+# Web search answers sometimes carry the search tool's citation markup inside the text (<cite index="3-1">…</cite>).
+# Sources are kept separately (source_ref), so the markup is removed wherever organisation text is cleaned.
+CITE = re.compile(r'</?\s*cite\b[^>]*>|\(\s*/?\s*cite\s+index\s*=\s*"[^"]*"\s*>?|\[\s*cite\s*:?[^\]]*\]|</?\s*antml:cite[^>]*>', re.I)
+
+
+def strip_citations(text):
+    return CITE.sub('', str(text or ''))
+
+
 def _clean(text, limit):
-    return ' '.join(str(text or '').split())[:limit]
+    return ' '.join(strip_citations(text).split())[:limit]
+
+
+def tidy_citations(table, columns, key='id'):
+    """Remove citation markup already stored by earlier research runs (formatting only; the words are unchanged)."""
+    fixed = 0
+    with store.db() as c:
+        where = ' OR '.join(f"{col} LIKE '%cite%'" for col in columns)
+        rows = c.execute(f'SELECT {key},{",".join(columns)} FROM {table} WHERE {where}').fetchall()
+        for r in rows:
+            new = {col: ' '.join(strip_citations(r[col]).split()) for col in columns}
+            if any(new[col] != r[col] for col in columns):
+                c.execute(f'UPDATE {table} SET {",".join(col + "=?" for col in columns)} WHERE {key}=?', [new[col] for col in columns] + [r[key]])
+                fixed += 1
+        if fixed: store.audit(c, 'citations_tidied', table, 'automatic_safeguard', f'{fixed} rows: web search citation markup removed')
+    return fixed
+
+
+tidy_citations('org_facts', ['statement'])
 
 
 def _today():
