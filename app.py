@@ -1763,6 +1763,15 @@ class ProposalFixes(BaseModel):
     fixes: list[dict] = Field(default_factory=list,max_length=30)
     rejected: list[dict] = Field(default_factory=list,max_length=30)
 
+class ProposalReprice(BaseModel):
+    rate_card: list[dict] = Field(min_length=1,max_length=300)
+
+@app.post('/assistant/{aid}/proposals/{pid}/reprice')
+def proposal_reprice(aid: str, pid: str, x: ProposalReprice, request: Request):
+    import proposals
+    _same_origin(request); _proposal_writer(aid)
+    return _proposal_call(lambda: proposals.reprice(aid,pid,x.rate_card))
+
 @app.post('/assistant/{aid}/proposals/{pid}/revise')
 def proposal_revise(aid: str, pid: str, x: ProposalFixes, request: Request):
     import proposals

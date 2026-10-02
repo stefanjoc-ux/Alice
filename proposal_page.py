@@ -50,7 +50,7 @@ details.fold>summary::before{content:'\\25B8';color:var(--muted)}details.fold[op
 table.t{width:100%;border-collapse:collapse;font-size:14px}table.t th{text-align:left;font-size:12.5px;color:var(--muted);padding:6px;border-bottom:1px solid var(--line)}
 table.t td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}table.t td.num{text-align:right;white-space:nowrap}table.t tr.tot td{font-weight:700}
 .st{font-size:12px;padding:1px 8px;border-radius:999px;border:1px solid}.st.met{background:#eef8f1;color:#1e5b31;border-color:#9fcfaf}.st.partly{background:#fdf3e1;color:#6b4406;border-color:#e2bf85}.st.missing,.st.high{background:#fbeaea;color:#7a1f1f;border-color:#e0aaaa}.st.medium{background:#fdf3e1;color:#6b4406;border-color:#e2bf85}.st.low{background:#f4f6f8;color:#4b5a66;border-color:#c1cbd3}
-.internal{border:2px dashed #c7b8dd;background:#faf7fd}.internal h2::after{content:' \\00b7 internal: not in the document, never sent to the AI';font-size:12px;font-weight:400;color:#634394}
+.internal{border:2px dashed #c7b8dd;background:#faf7fd}.internal h2::after{content:' \\00b7 internal: costs and margins are never in the document or sent to the AI';font-size:12px;font-weight:400;color:#634394}
 .warnline{color:#7a1f1f;font-weight:600;margin:6px 0 0}
 .issues{display:grid;gap:8px;margin:0;padding:0;list-style:none}.issues li{display:grid;gap:2px;border-left:3px solid #c1cbd3;padding-left:10px}.issues li.high{border-color:#b3261e}.issues li.medium{border-color:#e2a33b}
 .draft h3{margin:16px 0 4px;font-size:15px}.draft .body{white-space:pre-wrap;font-size:14px;line-height:1.55}
@@ -136,6 +136,8 @@ section.panel.shut>:not(.ph){display:none!important}
 .fixch{display:flex;gap:6px;margin-top:4px}.fixch button{font-size:12px;padding:3px 10px;border-radius:999px}.fixch .fx-y.on{background:#eef8f1!important;border-color:#55b987!important;color:#1e5b31!important;font-weight:700}
 .fixch .fx-n.on{background:#fbeaea!important;border-color:#e0aaaa!important;color:#7a1f1f!important;font-weight:700}.issues li.rej>div:first-child,.issues li.rej>.hint{opacity:.5;text-decoration:line-through}
 .fixwhy{width:100%;margin-top:6px;font-size:13px;border-radius:10px;border:1px solid #cddbe5;padding:7px 10px;background:#fbfdfe;resize:vertical}.issues li.rej .fixwhy{opacity:1;text-decoration:none}
+.pdiff{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0 0 12px}.pdiff .hint{flex:1;min-width:240px}.pdiff ul{margin:0 0 4px;padding-left:20px;width:100%;font-size:14px}
+.pdiff.on{background:#fdf7ea;border:1px solid #ecd6a8;border-radius:12px;padding:10px 14px}.pd-h{margin:0;font-weight:700;width:100%;color:#6b4406}
 .fixbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}.wb-cost{font-size:11.5px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 .tfill{border-color:#a98fd0!important;background:#fbf8ff!important;box-shadow:0 0 0 3px rgba(99,67,148,.10)!important}
 /* ---------- look and feel ---------- */
@@ -355,7 +357,7 @@ async function fillIn(p,quiet,noSay){const i=p.inputs||{};const before=snap();
  picked.clear();(i.references||[]).forEach(x=>picked.add(x));drawRefs();
  if(i.form)rateEd.set(i.rate_card||[]);else if((i.rate_card||[]).length)rateEd.pick(i.rate_card);
  for(const [id,k] of [['wm','writer'],['qm','qa']])if(i[k]&&[...$(id).options].some(o=>o.value===i[k]))$(id).value=i[k];
- if(i.use_memory!=null)$('mem').checked=!!i.use_memory;if(window.cost)window.cost();summary();updateBar();if(noSay)return;
+ if(i.use_memory!=null)$('mem').checked=!!i.use_memory;if(window.cost)window.cost();summary();updateBar();drawPriceDiff();if(noSay)return;
  pkSay('pk-p','I\u2019ve loaded \u201c'+(p.title||'this proposal')+'\u201d into the form'+((p.draft&&(p.draft.sections||[]).length)?', and I can see the draft as written. Tell me what to change, for example \u201cadd to the approach that the first days are on site\u201d, and I\u2019ll update the draft and the brief.':'.')+(quiet?'':' Undo puts the form back.'));
  if(!quiet){const m=$('pk-log').lastChild;const un=mk('button','Undo','pk-undo');un.type='button';un.onclick=async()=>{await restore(before);un.replaceWith(mk('span','Undone.','hint'))};m.append(un)}}
 function summary(){const dl=$('sum');if(!dl||!S)return;dl.replaceChildren();const row=(k,v)=>{const d=mk('div');d.append(mk('dt',k),mk('dd',v||'Not set',v?'':'none'));dl.append(d)};
@@ -433,9 +435,10 @@ function show(p){CUR=p;EDS=null;if(formEmpty()&&!p.inputs.qa_only&&S)setTimeout(
  if((qa.issues||[]).some(i=>i.fix)&&!p.inputs.qa_only&&(p.draft.sections||[]).length){fgo.onclick=async()=>{const withNote=k=>({...qa.issues[k],note:(NOTES.get(k)||{}).value||''});const fixes=[...pickF.entries()].filter(([,v])=>v==='yes').map(([k])=>withNote(k)),rejected=[...pickF.entries()].filter(([,v])=>v==='no').map(([k])=>withNote(k));fgo.disabled=true;
    try{await api('/proposals/'+p.id+'/revise','POST',{fixes,rejected});follow(p.id);document.querySelector('main').scrollTop=0}catch(e){fgo.disabled=false;alertBox(e.message)}};fbar.append(fgo,fnote);is.append(fbar);syncF()}if((qa.strengths||[]).length)is.append(mk('p','Strengths: '+qa.strengths.join('; '),'hint'));
  cols.append(rq,is);box.append(cols);
- const pr=p.pricing||{};if((pr.lines||[]).length){const c=mk('section','','card internal');c.append(mk('h2','Commercials'));
+ const pr=p.pricing||{};if((pr.lines||[]).length||(!p.inputs.qa_only&&(p.draft.sections||[]).length)){const c=mk('section','','card internal');c.append(mk('h2','Commercials'));
+  const pd=mk('div','','pdiff');pd.id='pdiff';c.append(pd);PRICED=pr;drawPriceDiff(pd);if(!(pr.lines||[]).length){box.append(c);c.append(mk('p','Not priced yet: tick roles with days on the rate card, then Update the pricing.','hint'))}else{
   c.append(table(['Role','Quantity','Sell rate','Sell','Cost','Margin'],pr.lines.map(l=>({cells:[l.role,n(l.quantity+' '+l.unit+(l.quantity===1?'':'s'),1),n(PE.gbp(l.sell_rate),1),n(PE.gbp(l.sell),1),n(PE.gbp(l.cost),1),n(l.margin==null?'—':l.margin.toFixed(1)+'%',1)]})).concat([{cls:'tot',cells:['Total','','',n(PE.gbp(pr.sell),1),n(PE.gbp(pr.cost),1),n(pr.margin==null?'—':pr.margin.toFixed(1)+'%',1)]}])));
-  for(const w of pr.warnings||[])c.append(mk('p','⚠ '+w,'warnline'));box.append(c)}
+  for(const w of pr.warnings||[])c.append(mk('p','⚠ '+w,'warnline'));box.append(c)}}
  const d=p.draft||{};const more=mk('section','','card');
  if((d.gaps||[]).length){more.append(mk('h2','Gaps the writer could not fill'));const g=mk('ul');for(const x of d.gaps)g.append(mk('li',x));more.append(g)}
  if((d.dropped_roles||[]).length)more.append(mk('p','Roles the writer wanted that are not on the rate card (left out): '+d.dropped_roles.join(', '),'hint'));
@@ -469,7 +472,8 @@ async function applyParker(u){clearTags();
 function draftNow(){if(EDS&&CUR)return (CUR.draft.sections||[]).map(s=>{const e=EDS.find(x=>x[0]===s);return {title:s.title,body:e?e[1].value:s.body,keep:!!s.keep}});
  if(CUR&&!CUR.inputs.qa_only&&CUR.draft)return (CUR.draft.sections||[]).map(s=>({title:s.title,body:s.body,keep:!!s.keep}));return []}
 function form(){return {title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value,template:$('tplsel').value,structure:$('structure').value,
- references:[...picked],sections:secEd?secEd.value().map(x=>x.title):[],draft:draftNow(),roles:rateEd?rateEd.value().map(r=>({role:r.role,unit:r.unit,use:r.use,days:r.days})):[]}}
+ references:[...picked],sections:secEd?secEd.value().map(x=>x.title):[],draft:draftNow(),roles:rateEd?rateEd.value().map(r=>({role:r.role,unit:r.unit,use:r.use,days:r.days,sell:r.sell})):[],
+ priced:CUR&&CUR.pricing?(CUR.pricing.lines||[]).map(l=>({role:l.role,quantity:l.quantity,sell_rate:l.sell_rate})):[],priced_total:CUR&&CUR.pricing?CUR.pricing.sell:null}}
 function pkScroll(){const l=$('pk-log');l.scrollTop=l.scrollHeight}
 function pkSay(cls,text){const m=mk('div',text,'pk-m '+cls);$('pk-log').append(m);pkScroll();return m}
 function pkIntro(){$('pk-log').replaceChildren();const m=pkSay('pk-p',A.paused?A.name+' is paused at the moment.':'Hi, I’m Parker. Tell me about the proposal in a sentence or two, or add the client’s brief or RFP with +. I’ll fill in the form with you and ask for anything that’s missing.');
@@ -503,6 +507,19 @@ pkIntro();
 document.querySelectorAll('section.panel>.ph').forEach(h=>h.addEventListener('click',e=>{if(e.target.closest('button,input,select,a,label,textarea'))return;h.parentElement.classList.toggle('shut')}));
 $('exp-all').onclick=()=>{document.querySelectorAll('main section.panel').forEach(p=>p.classList.remove('shut'));document.querySelectorAll('main details.panel').forEach(d=>d.open=true)};
 $('col-all').onclick=()=>{document.querySelectorAll('main section.panel').forEach(p=>p.classList.add('shut'));document.querySelectorAll('main details.panel').forEach(d=>d.open=false)};
+let PRICED=null;
+function priceDiff(){if(!PRICED||!rateEd)return [];const num=v=>{const x=parseFloat(String(v??'').replace(/[£,\s]/g,''));return isNaN(x)?null:x};
+ const now=rateEd.value().filter(r=>r.use&&r.role.trim()),was=new Map((PRICED.lines||[]).map(l=>[l.role.toLowerCase(),l])),out=[];
+ for(const r of now){const l=was.get(r.role.trim().toLowerCase()),d=num(r.days),sv=num(r.sell);
+  if(!l){if(d)out.push(r.role+': added, '+d+' '+r.unit+(d===1?'':'s'));continue}
+  if(d&&Math.abs(d-l.quantity)>0.001)out.push(r.role+': '+l.quantity+' \u2192 '+d+' '+r.unit+'s');
+  if(sv!==null&&Math.abs(sv-l.sell_rate)>0.004)out.push(r.role+': '+PE.gbp(l.sell_rate)+' \u2192 '+PE.gbp(sv)+' a '+r.unit)}
+ const nowSet=new Set(now.map(r=>r.role.trim().toLowerCase()));for(const l of PRICED.lines||[])if(!nowSet.has(l.role.toLowerCase()))out.push(l.role+': unticked, comes out');return out}
+function drawPriceDiff(el){const box=el||$('pdiff');if(!box||!CUR)return;box.replaceChildren();const diff=priceDiff();const b=mk('button',diff.length?'Update the pricing':'Update the pricing from the rate card','');b.type='button';b.className=diff.length?'primary':'secondary';
+ if(diff.length){const h=mk('p','The rate card has changed since this proposal was priced:','pd-h');const ul=mk('ul');diff.slice(0,8).forEach(x=>ul.append(mk('li',x)));box.append(h,ul)}
+ b.onclick=async()=>{b.disabled=true;try{const r=await api('/proposals/'+CUR.id+'/reprice','POST',{rate_card:rateEd.value()});follow(CUR.id);document.querySelector('main').scrollTop=0}catch(e){b.disabled=false;alertBox(e.message)}};
+ box.append(b,mk('span','Alice reprices it from the ticked roles (your days win), Argus checks the draft against the new price, and the Word document is rebuilt. Ask Parker to bring the wording in line, e.g. \u201c20 consultant days\u201d.','hint'));box.classList.toggle('on',!!diff.length)}
+$('full').addEventListener('input',()=>setTimeout(drawPriceDiff,0));$('full').addEventListener('change',()=>setTimeout(drawPriceDiff,0));$('full').addEventListener('click',()=>setTimeout(drawPriceDiff,0));
 function alertBox(msg){const e=mk('div',msg,'err');$('result').prepend(e);setTimeout(()=>e.remove(),8000)}
 function editDraft(p){const box=$('result');const c=mk('section','','card');c.append(mk('h2','Edit the draft'),mk('p','Change any section, then send it back: Argus checks your version against the brief and the Word document is rebuilt from the template. The headings stay as they are.','hint'));
  const eds=[];for(const s of p.draft.sections||[]){const w=mk('div','','edit-sec');w.append(mk('b',s.title));if(s.keep){w.append(mk('span','(standard text from the template: not edited here)','hint'))}else{const t=document.createElement('textarea');t.value=s.body;t.maxLength=20000;t.setAttribute('aria-label','Text of '+s.title);w.append(t);eds.push([s,t])}c.append(w)}

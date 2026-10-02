@@ -38,9 +38,12 @@ Choose only from the lists given, using the exact path or role name.
 If a DRAFT is given, the colleague is revising a proposal that has already been written: when they ask for a change to the
 proposal (e.g. "add to the approach..."), rewrite the affected DRAFT sections and return them in "draft" (whole sections, in the
 same style and format, keeping everything that is still right); keep the brief in line when the change is a fact about the work.
-Never put prices or day rates in the draft: Alice adds the pricing table. You never see cost rates, sell rates or margins; when the
-colleague tells you the rate to charge the client (e.g. "a 1050 day rate"), set "sell" on the roles it applies to (the ticked roles
-unless they say otherwise) and say that the page shows the margin. Keep your reply short and always return valid JSON.
+Never put prices or day rates in the draft: Alice adds the pricing table. You see each role's days and SELL rate (what the client is
+charged) and the PRICED total, never cost rates or margins. When the colleague tells you the rate to charge the client (e.g. "a 1050
+day rate"), set "sell" on the roles it applies to (the ticked roles unless they say otherwise) and say that the page shows the margin.
+Keep words in the draft (e.g. "20 consultant days" in Commercials) in line with the rate card. If the proposal has been written and
+the rate card no longer matches what was PRICED, say so and tell them to press "Update the pricing" so Alice reprices it and rebuilds
+the document. Keep your reply short and always return valid JSON.
 Reply with JSON only:
 {"reply": "what you say: 1 to 4 short sentences; say what you changed, then ask your next question",
  "updates": {ONLY the fields you are changing, from:
@@ -113,19 +116,35 @@ def _offer(client):
     return tpls, tpl_paths, refs, {_slash(d['path']): d['path'] for d in refs}
 
 
+def _num(v):
+    try:
+        x = float(str(v).replace(',', '').replace('\u00a3', '').strip())
+        return x if 0 < x <= 1e6 else None
+    except (TypeError, ValueError):
+        return None
+
+
 def _form(f, roles_known):
-    """The form as the browser sent it, cut down to what Parker may see (no rates)."""
+    """The form as the browser sent it, cut down to what Parker may see: role names, units, ticks, days and sell rates. Never cost
+    rates or margins, even if the page sends them. Roles on the page count as known (a price book loaded on the page, not saved)."""
     f = f if isinstance(f, dict) else {}
     roles = []
     for r in (f.get('roles') or [])[:300]:
-        if not isinstance(r, dict) or _clean(r.get('role'), 80).casefold() not in roles_known: continue
-        roles.append({'role': roles_known[_clean(r.get('role'), 80).casefold()], 'use': r.get('use') is not False,
-                      'days': _clean(r.get('days'), 10) or None})
+        name = ' '.join(str((r or {}).get('role') or '').split())[:80] if isinstance(r, dict) else ''
+        if not name: continue
+        roles_known.setdefault(name.casefold(), name)
+        roles.append({'role': roles_known[name.casefold()], 'unit': 'hour' if r.get('unit') == 'hour' else 'day', 'use': r.get('use') is not False,
+                      'days': _num(r.get('days')), 'sell': _num(r.get('sell'))})
+    priced = []
+    for l in (f.get('priced') or [])[:60]:
+        if isinstance(l, dict) and _clean(l.get('role'), 80):
+            priced.append({'role': _clean(l.get('role'), 80), 'quantity': _num(l.get('quantity')), 'sell_rate': _num(l.get('sell_rate'))})
     return {'title': _clean(f.get('title'), 150), 'organisation': _clean(f.get('organisation'), 80),
             'brief': str(f.get('brief') or '').strip()[:20000], 'notes': str(f.get('notes') or '').strip()[:4000],
             'template': _clean(f.get('template'), 300), 'structure': str(f.get('structure') or '').strip()[:6000],
             'references': [_slash(x) for x in (f.get('references') or [])][:10],
-            'sections': [_clean(x, 120) for x in (f.get('sections') or [])][:40], 'roles': roles, 'draft': _draft(f.get('draft'))}
+            'sections': [_clean(x, 120) for x in (f.get('sections') or [])][:40], 'roles': roles, 'draft': _draft(f.get('draft')),
+            'priced': priced, 'priced_total': _num(f.get('priced_total'))}
 
 
 def _draft(items):
@@ -234,14 +253,18 @@ def _chat(aid, message, history=(), form=None, organisation='', doc_token=''):
     fields = [('TITLE', f['title']), ('ORGANISATION', org or f['organisation']), ('TEMPLATE', _slash(f['template'])),
               ('BRIEF', f['brief']), ('NOTES', f['notes']), ('STRUCTURE', f['structure']),
               ('SECTIONS', '; '.join(f['sections'])), ('REFERENCES CHOSEN', '; '.join(f['references'])),
-              ('ROLES', '; '.join(r['role'] + ((' (ticked' + (f', {r["days"]} days' if r['days'] else '') + ')') if r['use'] else ' (not ticked)')
-                                  for r in f['roles']))]
+              ('ROLES ON THE RATE CARD', '; '.join(r['role'] + ((' (ticked' + (f', {r["days"]:g} {r["unit"]}s' if r['days'] else '')
+                                                                + (f', sells at \u00a3{r["sell"]:,.2f} per {r["unit"]}' if r['sell'] else '') + ')')
+                                                               if r['use'] else ' (not ticked)') for r in f['roles'] if r['use'])
+               + ('; not ticked: ' + ', '.join(r['role'] for r in f['roles'] if not r['use'])[:1500] if any(not r['use'] for r in f['roles']) else '')),
+              ('PRICED (the pricing in the written proposal)', '; '.join(f'{l["role"]}: {l["quantity"] or 0:g} at \u00a3{l["sell_rate"] or 0:,.2f}' for l in f['priced'])
+               + (f'; total \u00a3{f["priced_total"]:,.2f}' if f['priced_total'] else ''))]
     msg = ('FORM\n' + ('\n'.join(f'{k}: {v}' for k, v in fields if v) or '(empty)') + '\n\n'
            + (f'ORGANISATION: {org}' + (' (a client)' if client else '') + '\n\n' if org else '')
            + 'TEMPLATES\n' + ('\n'.join(f'- {_slash(t["path"])} ({t["source"]})' for t in tpls) or '(none)') + '\n\n'
            + 'REFERENCE DOCUMENTS\n' + ('\n'.join(f'- {_slash(d["path"])}' + (' (summary approved)' if d['summary'] == 'approved' else '')
                                                  for d in refs)[:6000] or '(none)') + '\n\n'
-           + 'ROLES\n' + ('\n'.join(f'- {r["role"]} (per {r["unit"]})' for r in card)[:4000] or '(no rate card)') + '\n\n'
+           + 'ROLES\n' + ('\n'.join(f'- {r}' for r in sorted(set(roles_known.values())))[:4000] or '(no rate card)') + '\n\n'
            + ('DRAFT (the proposal as written; the colleague is revising it)\n' + '\n\n'.join(
                f'## {d["title"]}' + (' [standard text: do not change]' if d['keep'] else '') + f'\n{d["body"]}' for d in f['draft']) + '\n\n' if f['draft'] else '')
            + (f'DOCUMENT: {doc["name"]}' + (' (first part only)' if doc['cut'] else '') + f'\n{dtext}\n\n' if doc else '')

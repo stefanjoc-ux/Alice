@@ -496,3 +496,17 @@ d7 = wait(pw2)
 t('only rejections: nothing is rewritten, Argus checks again with your reasons', ro.status_code == 200 and not [c for c in calls if c['system'].startswith('You are the proposal writer')]
   and len(d7['qa']) == before_rounds + 1 and d7['qa'][-1]['source'] == 'your 1 rejected fix' and "client's own gateway process" in calls[-1]['messages'][0]['content'])
 t('nothing accepted or rejected: refused', cl.post(f'/assistant/proposal-writer/proposals/{pw2}/revise', json={'fixes': [{}]}).status_code == 400)
+
+# ---------------- the rate card changes after writing: update the pricing ----------------
+calls.clear(); MODE['qa'] = [QA2]
+pp = P.get(pw2); was = pp['pricing']['sell']
+role0 = pp['pricing']['lines'][0]['role']
+newcard = [dict(r, use=(r['role'] == role0), days=(20 if r['role'] == role0 else '')) for r in card]
+rp = cl.post(f'/assistant/proposal-writer/proposals/{pw2}/reprice', json={'rate_card': newcard})
+d8 = wait(pw2)
+t('updating the pricing reprices from the ticked roles, your days win, unticked roles come out', rp.status_code == 200
+  and [(l['role'], l['quantity']) for l in d8['pricing']['lines']] == [(role0, 20)] and d8['pricing']['sell'] != was)
+t('Argus checks the new price and the document is rebuilt', d8['qa'][-1]['source'] == 'new pricing' and d8['document_id'] != pp['document_id']
+  and any(c['system'].startswith('You are Argus') for c in calls))
+t('nothing ticked: refused', cl.post(f'/assistant/proposal-writer/proposals/{pw2}/reprice', json={'rate_card': [dict(r, use=False) for r in card]}).status_code == 400)
+t('the page offers Update the pricing and shows what changed', all(x in cl.get('/assistant/proposal-writer').text for x in ('Update the pricing', 'has changed since this proposal was priced', '/reprice')))

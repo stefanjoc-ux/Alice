@@ -832,6 +832,49 @@ def _revise_job(pid, fixes):
     _save(pid, status='done', stage='', document_id=doc['id'])
 
 
+def reprice(aid, pid, rate_card):
+    """The rate card changed after the proposal was written: reprice it from the ticked roles (your fixed days win; roles you untick
+    come out; ticked roles with days that the plan did not have go in), Argus checks the draft against the new price, and the Word
+    document is rebuilt. The draft's words are not changed here: ask Parker to bring them in line."""
+    import assistants
+    p = _owned(aid, pid)
+    if p['inputs'].get('qa_only'): raise ValueError('This was a QA of your own document: there is no pricing to update.')
+    if not (p['draft'] or {}).get('sections'): raise ValueError('There is no draft to price yet.')
+    agents._gate(agents.get(QA))
+    card = used(clean_rate_card(rate_card))
+    if not card: raise ValueError('Tick at least one role on the rate card.')
+    a = assistants.get(aid)
+    cards = {r['role'].casefold(): r for r in card}
+    plan = []
+    for x in (p['draft'].get('resource_plan') or []):
+        r = cards.get(str(x.get('role') or '').casefold())
+        if not r: continue                                                    # untick a role: it comes out
+        plan.append({'role': r['role'], 'quantity': r['days'] or x.get('quantity') or 0, 'purpose': x.get('purpose', '')})
+    have = {x['role'] for x in plan}
+    plan += [{'role': r['role'], 'quantity': r['days'], 'purpose': ''} for r in card if r.get('days') and r['role'] not in have]
+    plan = [x for x in plan if x['quantity'] and x['quantity'] > 0]
+    if not plan: raise ValueError('Add days to the ticked roles: there is nothing to price.')
+    new = price(plan, card, a['settings'].get('min_margin', 25))
+    old = p['pricing'] or {}
+    rules = __import__('rules_engine')
+    rules.check_spend('chat')
+    _save(pid, status='running', stage='Repricing from the rate card; Argus checks the new price', error='',
+          inputs=dict(p['inputs'], rate_card=card), draft=dict(p['draft'], resource_plan=plan), pricing=new)
+    _background(pid, _repriced_job)
+    with store.db() as c:
+        store.audit(c, 'proposal_repriced', pid, 'human_review', f'{p["title"]}: {money(old.get("sell") or 0)} to {money(new["sell"])} from the rate card')
+    return {'id': pid, 'sell': new['sell'], 'was': old.get('sell')}
+
+
+def _repriced_job(pid):
+    import assistants
+    p = get(pid); a = assistants.get(p['assistant_id']); job = _job_of(p)
+    rep = dict(review(p['assistant_id'], job, p['draft'], p['pricing']), round=len(p['qa']) + 1, source='new pricing')
+    _save(pid, qa=p['qa'] + [rep], stage='Building the Word document')
+    doc = _build(p, a, job, p['draft'], p['pricing'])
+    _save(pid, status='done', stage='', document_id=doc['id'])
+
+
 def _decided_job(pid, n):
     p = get(pid); job = _job_of(p)
     pricing = p['pricing'] if (p['pricing'] or {}).get('lines') is not None else {'lines': [], 'sell': 0}
