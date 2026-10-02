@@ -15,6 +15,22 @@ t('tool: search blocks', r['total_matching'] == 1 and r['entries'][0]['what'] ==
 t('tool: counts by type', T.run_tool('activity_counts', {'start': '2026-01-01', 'group_by': 'type'})['total'] >= 2)
 t('tool: outstanding actions', 'total' in T.run_tool('outstanding_actions', {}))
 t('tool: usage and costs', 'spending_caps' in T.run_tool('usage_and_costs', {'period': '7d'}))
+import assistants as AS, agents as AG, proposals as PR
+with s.db() as c:
+    c.execute('INSERT INTO activity(created_at,action,target,rule,detail) VALUES (?,?,?,?,?)', (s.now(), 'assistant_answered', 'hr-policy', 'assistant', 'summaries: Leave'))
+    c.execute('INSERT INTO activity(created_at,action,target,rule,detail) VALUES (?,?,?,?,?)', (s.now(), 'assistant_blocked', 'hr-policy', 'assistant', 'health'))
+ao = T.run_tool('agents_overview', {})
+t('tool: agents overview lists every agent with its group and status', any(x['id'] == 'parker' and x['group'] == 'Proposals' for x in ao['agents'])
+  and all('status' in x for x in ao['agents']) and not any(x['id'] == 'temple-proposal-starter' for x in ao['agents']))
+t('tool: agent runs by id or name', T.run_tool('agent_runs', {'agent': 'parker'})['agent'].startswith('Parker') and 'error' in T.run_tool('agent_runs', {'agent': 'nobody at all'}))
+asv = T.run_tool('assistants_overview', {'days': 30})
+alex = next(x for x in asv['assistants'] if x['id'] == 'hr-policy'); park = next(x for x in asv['assistants'] if x['id'] == 'proposal-writer')
+t('tool: the team of assistants, with how they are used', alex['name'] == 'Alex' and alex['questions'] == {'answered': 1, 'blocked': 1}
+  and park['type'] == 'proposal writer' and 'proposals_by_status' in park)
+w = PR.save_form('proposal-writer', {'title': 'Fabric baseline', 'organisation': 'NSC', 'brief': 'Six weeks.'})
+po = T.run_tool('proposals_overview', {'status': 'in_progress'})
+t('tool: proposals in progress', po['shown'] == 1 and po['proposals'][0]['title'] == 'Fabric baseline' and po['proposals'][0]['status'] == 'in progress (form)')
+t('Temple is told about agents, assistants and proposals', 'team of assistants' in T.PROMPT and 'agents' in T.PROMPT)
 
 def resp(output):
     return Response.model_validate({'id': 'r', 'object': 'response', 'created_at': 0, 'model': 'gpt-6-luna', 'output': output,

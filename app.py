@@ -1519,13 +1519,18 @@ class ProposalIn(BaseModel):
     brief: str = Field(min_length=1,max_length=20000)
     notes: str = Field(default='',max_length=4000)
     sections: list[dict]|None = Field(default=None,max_length=30)
-    rate_card: list[dict]|None = Field(default=None,max_length=40)
+    rate_card: list[dict]|None = Field(default=None,max_length=300)
     use_memory: bool = True
     writer_model: str = Field(default='',max_length=20)
     qa_model: str = Field(default='',max_length=20)
     references: list[Annotated[str, Field(max_length=300)]] = Field(default_factory=list,max_length=10)
     structure: str = Field(default='',max_length=6000)
     template: str|None = Field(default=None,max_length=300)
+    work_id: str = Field(default='',max_length=40)
+
+class ProposalWork(BaseModel):
+    id: str = Field(default='',max_length=40)
+    form: dict = Field(default_factory=dict)
 
 class ProposalRecheck(BaseModel):
     sections: list[dict] = Field(min_length=1,max_length=40)
@@ -1614,7 +1619,7 @@ def proposal_setup(aid: str):
 def proposal_start(aid: str, x: ProposalIn, request: Request):
     import proposals
     _same_origin(request)
-    try: return {'id':proposals.start(aid,x.title,x.organisation,x.brief,x.notes,x.sections,x.rate_card,x.use_memory,x.writer_model,x.qa_model,x.references,x.structure,x.template)}
+    try: return {'id':proposals.start(aid,x.title,x.organisation,x.brief,x.notes,x.sections,x.rate_card,x.use_memory,x.writer_model,x.qa_model,x.references,x.structure,x.template,x.work_id)}
     except LookupError: raise HTTPException(404,'No such proposal writer.') from None
     except Exception as e:
         code,detail=_assistant_error(e)
@@ -1735,6 +1740,18 @@ def proposal_qa_upload(aid: str, pid: str, x: ProposalDoc, request: Request):
     _same_origin(request)
     raw=_b64(x.data)
     return _proposal_call(lambda: proposals.qa_upload(aid,pid,x.name,raw))
+
+@app.post('/assistant/{aid}/work')
+def proposal_work_save(aid: str, x: ProposalWork, request: Request):
+    import proposals
+    _same_origin(request); _proposal_writer(aid)
+    return _proposal_call(lambda: proposals.save_form(aid,x.form,x.id))
+
+@app.post('/assistant/{aid}/work/{pid}/discard')
+def proposal_work_discard(aid: str, pid: str, request: Request):
+    import proposals
+    _same_origin(request); _proposal_writer(aid)
+    return _proposal_call(lambda: proposals.discard_form(aid,pid))
 
 @app.get('/assistant/{aid}/proposals')
 def proposal_list(aid: str):

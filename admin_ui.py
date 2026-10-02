@@ -57,7 +57,7 @@ SECTIONS = {
 <details id="t-settings-panel"><summary>Temple settings</summary><form id="temple-settings"><label>Reviewer <select id="temple-provider"><option value="openai">OpenAI · GPT-6 Luna</option><option value="claude">Claude · Haiku 4.5</option></select></label><label><input type="checkbox" id="temple-enabled"> Automatically review new memory proposals</label><p class="muted small">Temple checks proposals for duplicates, conflicts and unclear sources. It is advisory: it cannot approve or change memories. Each review sends the proposal and a selection of approved memories to the reviewer and costs API usage. Source descriptions are not independently verified.</p><button>Save Temple settings</button></form></details>
 <details id="t-parker" class="t-auto t-parker" hidden><summary></summary><ul id="t-parker-list"></ul><p class="muted small">Parker works through proposal forms with people on the Parker page. Each turn is logged here: what it changed and what it asked for, never the conversation. Nothing Parker does is saved until someone writes the proposal.</p></details>
 <details id="t-auto" class="t-auto" hidden><summary></summary><ul id="t-auto-list"></ul><p class="muted small">Reference summaries are approved automatically because the Proposal writer is set to do so (Assistants page). Each one is in Knowledge, where you can retire it.</p></details>
-<div class="t-tabs" role="tablist"><button id="tab-reviews" type="button" role="tab" class="chip on">Memory reviews</button><button id="tab-suggestions" type="button" role="tab" class="chip">Chat suggestions</button><button id="tab-ask" type="button" role="tab" class="chip">Ask Temple</button></div></section>
+<div class="t-tabs" role="tablist"><button id="tab-ask" type="button" role="tab" class="chip on">Ask Temple</button><button id="tab-reviews" type="button" role="tab" class="chip">Memory reviews</button><button id="tab-suggestions" type="button" role="tab" class="chip">Chat suggestions</button></div></section>
 <section id="pane-reviews"><div id="t-views" class="mem-tabs"></div><div class="mem-tools"><input id="t-query" type="search" maxlength="200" placeholder="Search proposals" aria-label="Search proposals"></div><div id="t-verdicts" class="mem-cats"></div>
 <div id="t-bulk" class="mem-bulk" hidden><strong id="t-selected"></strong><button id="t-approve" type="button">Approve</button><button id="t-reject" type="button" class="secondary">Reject</button><button id="t-review" type="button" class="secondary">Review with Temple</button><button id="t-clear" type="button" class="secondary">Clear</button></div>
 <div class="table-wrap"><table id="t-table" class="mem-table"></table></div><p id="t-count" class="muted small"></p><button id="t-more" type="button" class="secondary" hidden>Load more</button></section>
@@ -65,9 +65,9 @@ SECTIONS = {
 <div id="s-bulk" class="mem-bulk" hidden><strong id="s-selected"></strong><button id="s-accept" type="button" class="primary" title="Accept the selected suggestions as written. Memories and decisions become proposals for you to approve.">Accept</button><button id="s-later" type="button" class="secondary">Later</button><button id="s-dismiss" type="button" class="secondary">Dismiss</button><button id="s-clear" type="button" class="secondary">Clear</button></div>
 <div class="table-wrap"><table id="s-table" class="mem-table"></table></div><p id="s-count" class="muted small"></p><button id="s-more" type="button" class="secondary" hidden>Load more</button>
 <p class="muted small">Accepting a memory creates a proposal for approval. A knowledge note becomes a searchable file. Guidance is appended to your response guidance. Rule requests are logged, not enforced.</p></section>
-<section id="pane-ask" hidden><div class="mem-head"><h2>Ask Temple</h2><span class="muted small">Read-only · answers from the activity log, actions and usage</span></div>
+<section id="pane-ask" hidden><div class="ask-hero"><span class="ask-badge" aria-hidden="true">T</span><div><h2>Ask Temple anything about Alice</h2><span class="muted small">What has happened, what is waiting for you, what the agents are doing, how the assistants (Alex, Parker and the rest) are being used, proposals in progress, and what it all costs. Read-only.</span></div></div>
 <div id="ask-starters" class="mem-cats"></div><div id="ask-log" class="ask-log" aria-live="polite"></div>
-<form id="ask-form" class="ask-form"><textarea id="ask-q" rows="2" maxlength="4000" placeholder="e.g. What did the rules block this week?" aria-label="Question for Temple"></textarea><div class="arc-actions"><button id="ask-go">Ask</button><button id="ask-clear" type="button" class="secondary">Clear conversation</button></div></form>
+<form id="ask-form" class="ask-form"><textarea id="ask-q" rows="2" maxlength="4000" placeholder="e.g. How are the assistants being used this month? Which agents failed this week?" aria-label="Question for Temple"></textarea><div class="arc-actions"><button id="ask-go">Ask</button><button id="ask-clear" type="button" class="secondary">Clear conversation</button></div></form>
 <p class="muted small">Temple looks things up with read-only tools and shows what it checked. It can't approve or change anything; it tells you where to do that. The conversation is kept on this page only.</p></section>''',
 'agents': r'''<div id="ag-list"><div id="ag-view" class="mem-tabs ag-view"></div>
 <section id="ag-map-wrap" hidden><div class="mem-head"><h2>System map</h2><span id="ag-map-note" class="muted small"></span></div><div id="ag-map"></div></section>
@@ -299,6 +299,8 @@ nav{display:flex;gap:20px;flex-wrap:wrap}.sidebar nav{display:contents}
 @media(max-width:1100px){.anat{grid-template-columns:repeat(3,minmax(0,1fr))}.anat-stage:nth-child(3):after{display:none}}
 .ag-perms{display:grid;gap:10px;margin:6px 0 10px}.ag-perm strong{margin-right:6px}
 .t-parker{background:#f6f2fb!important;border-color:#d6c8ea!important}.t-parker summary{color:#4b2f73!important}
+.ask-hero{display:flex;gap:14px;align-items:flex-start;padding:16px 18px;margin:0 0 12px;border-radius:14px;color:#e8f1f7;background:linear-gradient(120deg,#0b1626 0%,#2a1f4a 60%,#4b2f73 100%)}.ask-hero h2{margin:0 0 4px;color:#fff;font-size:19px}.ask-hero .muted{color:#cbbfe3!important}
+.ask-badge{flex:none;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-weight:700;font-size:18px;color:#fff;background:linear-gradient(135deg,#7a5bb5,#4b2f73);border:1px solid rgba(255,255,255,.25)}
 .t-auto{margin:10px 0;background:#eef8f1;border:1px solid #9fcfaf;border-radius:10px;padding:8px 12px}.t-auto summary{cursor:pointer;font-weight:600;color:#1e5b31}.t-auto ul{margin:8px 0;padding-left:18px}
 .hm-hero{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;background:linear-gradient(120deg,#0b3d5c,#075e79 60%,#1f6f8b);color:#fff;border:0!important;border-radius:14px!important;padding:22px 26px!important}
 .hm-hero h2{margin:0 0 4px;font-size:24px;color:#fff}.hm-hero p{margin:0;color:#cfe3ee!important}
@@ -974,7 +976,7 @@ if(PAGE==='temple'){
  // ---------- wiring ----------
  records=()=>loadReviews();
  $('tab-reviews').onclick=()=>tab('reviews');$('tab-ask').onclick=()=>{tab('ask');$('ask-q').focus()};
- const askHistory=[];const STARTERS=['What was blocked this week?',"What's waiting for me?",'Summarise yesterday\'s activity','Which model was slowest this week, and what did Temple cost?','What did Temple suggest from chats this month?'];
+ const askHistory=[];const STARTERS=["What's waiting for me?",'How are the assistants being used this month?','Which agents failed or are paused?','What is Parker working on, and what did QA say?','What did Alex block or escalate this week?','What was blocked this week?','What did the agents cost this month?','Summarise yesterday\'s activity'];
  function bubble(role,text,meta){const d=el('div','','ask-msg ask-'+role);d.append(el('div',role==='user'?'You':'Temple','t-label'),el('div',text,'t-body'));if(meta)d.append(meta);$('ask-log').append(d);d.scrollIntoView({block:'nearest'});return d}
  async function askTemple(q){q=q.trim();if(!q)return;$('ask-q').value='';bubble('user',q);const wait=bubble('temple','Looking…');$('ask-go').disabled=true;
   try{const r=await api('/admin/api/temple/ask','POST',{question:q,history:askHistory});wait.remove();
@@ -997,7 +999,7 @@ if(PAGE==='temple'){
   s.picked.clear();await loadSuggestions();loadReviews()});
  for(const [id,action] of [['s-later','later'],['s-dismiss','dismiss']])$(id).onclick=()=>run(async()=>{const r=await api('/admin/api/temple/suggestions/bulk','POST',{ids:[...s.picked],action});$('notice').textContent=r.done+(r.done===1?' suggestion ':' suggestions ')+(action==='later'?'moved to Later.':'dismissed.');s.picked.clear();await loadSuggestions()});
  $('temple-settings').onsubmit=e=>{e.preventDefault();run(async()=>{await api('/admin/api/temple/settings','PUT',{enabled:$('temple-enabled').checked,provider:$('temple-provider').value});$('notice').textContent='Temple settings saved.';await loadReviews()})};
- run(async()=>{const st=await api('/admin/api/temple/settings');$('temple-enabled').checked=st.enabled;$('temple-provider').value=st.provider;tab(({suggestions:'suggestions',ask:'ask'})[new URLSearchParams(location.search).get('tab')]||'reviews');await Promise.all([loadReviews(),loadSuggestions()])});
+ run(async()=>{const st=await api('/admin/api/temple/settings');$('temple-enabled').checked=st.enabled;$('temple-provider').value=st.provider;tab(({suggestions:'suggestions',ask:'ask',reviews:'reviews'})[new URLSearchParams(location.search).get('tab')]||'ask');await Promise.all([loadReviews(),loadSuggestions()])});
 }
 """
 
@@ -1267,8 +1269,8 @@ if(PAGE==='home'){
   for(const x of d.chats){const li=document.createElement('li');const a=document.createElement('a');a.href='/#'+x.id;a.title=x.title||'';const l=el('b',x.title||'Untitled chat');a.append(l,el('span',(x.client?x.client+' · ':'')+ago(x.updated_at),'muted'));li.append(a);ul.append(li)}c.append(ul);return c}
  function props(d){const pw=d.assistants.find(a=>a.kind==='proposal');const c=card('Recent proposals',pw?'/assistant/'+encodeURIComponent(pw.id):null,'Write one →');if(!d.proposals.length){c.append(el('p','No proposals yet.','hm-empty'));return c}const ul=el('ul','','hm-list');
   for(const x of d.proposals){const li=document.createElement('li');const a=document.createElement('a');a.href='/assistant/'+encodeURIComponent(x.assistant_id)+'?p='+x.id;a.target='_blank';a.rel='noopener';
-   const st=x.status==='running'?el('span','writing…','hm-pill'):x.status==='failed'?el('span','failed','hm-pill warn'):el('span',(x.verdict==='client_ready'?'client ready':'needs attention')+(x.score!=null?' · '+x.score:''),'hm-pill '+(x.verdict==='client_ready'?'ok':'warn'));
-   a.append(el('b',x.title+(x.organisation?' · '+x.organisation:'')),st);li.append(a);ul.append(li)}c.append(ul);return c}
+   const st=x.status==='form'?el('span','in progress','hm-pill'):x.status==='running'?el('span','writing…','hm-pill'):x.status==='failed'?el('span','failed','hm-pill warn'):el('span',(x.verdict==='client_ready'?'client ready':'needs attention')+(x.score!=null?' · '+x.score:''),'hm-pill '+(x.verdict==='client_ready'?'ok':'warn'));
+   a.append(el('b',(x.title||'Untitled proposal')+(x.organisation?' · '+x.organisation:'')),st);li.append(a);ul.append(li)}c.append(ul);return c}
  function helpers(d){const c=card('Assistants and agents','/admin/agents','Agents →');const ul=el('ul','','hm-list');
   for(const x of d.assistants){const li=document.createElement('li');const a=document.createElement('a');a.href='/assistant/'+encodeURIComponent(x.id);a.target='_blank';a.rel='noopener';a.append(el('b',x.name),el('span',x.status==='active'?'open ↗':'paused','muted'));li.append(a);ul.append(li)}c.append(ul);
   const ag=d.agents;c.append(el('p',fmt(ag.active)+' of '+fmt(ag.total)+' agents active.','hm-empty'));for(const x of ag.attention){const a=document.createElement('a');a.href='/admin/agents?agent='+encodeURIComponent(x.id);a.className='hm-pill warn';a.textContent='⚑ '+x.name+': '+x.why;c.append(a)}return c}
@@ -1277,7 +1279,7 @@ if(PAGE==='home'){
  run(async()=>{const d=await api('/admin/api/home?tz='+new Date().getTimezoneOffset());
   $('hm-hello').textContent=d.greeting+', '+d.name+'.';
   $('hm-sub').textContent=d.waiting.total?d.waiting.total+' thing'+(d.waiting.total===1?' needs':'s need')+' a decision from you. Everything else is running.':'Nothing is waiting for you. Here is what is happening in Alice.';
-  const pw=d.assistants.find(a=>a.kind==='proposal');if(pw){$('hm-prop').href='/assistant/'+encodeURIComponent(pw.id);$('hm-prop').target='_blank'}
+  const pw=d.assistants.find(a=>a.kind==='proposal');if(pw){$('hm-prop').href='/assistant/'+encodeURIComponent(pw.id);$('hm-prop').dataset.name=pw.name;$('hm-prop').target='_blank'}
   const r1=el('div','','hm-row hm-2');r1.append(waiting(d),today(d));const r2=el('div','','hm-row hm-3');r2.append(chats(d),props(d),helpers(d));const r3=el('div','','hm-row hm-2');r3.append(week(d),substrate(d));
   $('hm').replaceChildren(r1,r2,r3)});
 }
@@ -1388,7 +1390,7 @@ if(PAGE==='assistants'){
  function chips(box,opts,cur,set){box.replaceChildren();for(const [k,t,n] of opts){const b=el('button',t);b.type='button';if(n!=null)b.append(el('i',String(n)));b.className=k===cur?'on':'';b.setAttribute('aria-pressed',k===cur);b.onclick=()=>{set(k);render()};box.append(b)}}
  function uses(a){if(a.kind==='proposal'){const S=a.settings||{};return [S.template?'Template: '+S.template.split(/[\\/]/).pop().replace(/\.docx$/i,''):'No template yet',(S.rate_card||[]).length+' roles']}
   const kn=a.knowledge||{active:0,draft:0};return [(a.categories.join(', ')||'No knowledge yet'),kn.active+(kn.active===1?' item':' items')+(kn.draft?' · '+kn.draft+' waiting':'')]}
- function openBtn(a){const go=document.createElement('a');go.href='/assistant/'+encodeURIComponent(a.id);go.target='_blank';go.rel='noopener';go.className='button-link';go.textContent='Open ↗';return go}
+ function openBtn(a){const go=document.createElement('a');go.href='/assistant/'+encodeURIComponent(a.id);go.dataset.name=a.name;go.target='_blank';go.rel='noopener';go.className='button-link';go.textContent='Open ↗';return go}
  function editBtn(a){const ed=el('button',open.has(a.id)?'Close':'Edit');ed.type='button';ed.className='secondary';ed.onclick=()=>{const was=open.has(a.id);open.clear();if(!was)open.add(a.id);render();if(!was)$('as-editor').scrollIntoView({behavior:'smooth',block:'start'})};return ed}
  function demoBtn(a){if(a.id!=='hr-policy')return null;const dm=el('button','Load demo HR policy');dm.type='button';dm.className='secondary demo';dm.title='Adds summaries of a demonstration UK HR handbook as knowledge drafts (category HR). The full handbook stays in the policy library folder.';dm.onclick=()=>run(async()=>{const x=await api('/admin/api/assistants/demo-hr','POST',{});$('notice').textContent=x.added?x.added+' summaries of '+x.document+' added as drafts in '+x.category+'. Approve them on Knowledge (Drafts) and the assistant can use them. The full document stays at '+x.location+'.':'The demo summaries are already in Knowledge ('+x.already+').';await load()});return dm}
  function cardOf(a){const c=el('div','','as-c'+(a.status==='active'?'':' paused')+(open.has(a.id)?' editing':''));
@@ -1730,6 +1732,7 @@ NAV_GROUPS = [('Work', ['home', 'actions', 'temple', 'memories', 'knowledge', 'd
 
 def render_admin(page, token):
     from ui_theme import SHARED_CSS
+    from stage_ui import STAGE_CSS, STAGE_HTML, STAGE_JS
     title, description = PAGES[page]
     href = lambda key: '/admin' + ('' if key == 'home' else '/' + key)
     listed = [k for _, keys in NAV_GROUPS for k in keys]
@@ -1740,13 +1743,13 @@ def render_admin(page, token):
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
             '<link rel="icon" href="/static/favicon.png" type="image/png">'
-            '<title>' + escape(title) + ' · Alice</title><style>' + SHARED_CSS + CSS + '</style></head><body>'
+            '<title>' + escape(title) + ' · Alice</title><style>' + SHARED_CSS + CSS + STAGE_CSS + '</style></head><body>'
             '<header class="topbar"><a class="brand" href="/" title="Back to chat"><img src="/static/favicon.png" alt=""><span>ALICE</span></a>'
             '<h1 class="page-title">' + escape(title) + '</h1><div class="sp"></div><button id="demo-toggle" class="bar-link" type="button" title="Demo mode: only the Agents, Rule packs and Organisations pages, with fictional or replaced names and costs hidden">Demo mode</button><a class="bar-link" href="/">← Chat</a></header>'
             '<div class="shell"><aside class="sidebar"><nav aria-label="Command centre">' + nav + '</nav></aside>'
             '<main class="content"><div class="inner"><p class="page-desc">' + escape(description) + '</p><div id="notice" role="status"></div>'
-            + SECTIONS[page] + '</div></main></div><script>const PAGE=' + json.dumps(page) + ';'
-            + DEMO_PRELUDE + SCRIPT.replace('__TOKEN__', token) + NAV_SCRIPT + '</script></body></html>')
+            + SECTIONS[page] + '</div></main></div>' + STAGE_HTML + '<script>const PAGE=' + json.dumps(page) + ';'
+            + DEMO_PRELUDE + SCRIPT.replace('__TOKEN__', token) + NAV_SCRIPT + STAGE_JS + '</script></body></html>')
 
 
 DEMO_PRELUDE = r"""

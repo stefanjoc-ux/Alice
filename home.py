@@ -21,7 +21,7 @@ def summary(tz=0):
             'SELECT c.id,c.title,c.updated_at,c.client,(SELECT count(*) FROM chat_turns t WHERE t.chat_id=c.id) AS turns FROM chats c '
             'ORDER BY c.updated_at DESC LIMIT 25')]
         props = [dict(r) for r in _safe(lambda: list(c.execute(
-            'SELECT id,assistant_id,title,organisation,status,qa,created_at FROM proposals ORDER BY created_at DESC LIMIT 4')), [])]
+            "SELECT id,assistant_id,title,organisation,status,qa,created_at FROM proposals WHERE status!='discarded' ORDER BY updated_at DESC LIMIT 4")), [])]
     for p in props:
         try:
             import json

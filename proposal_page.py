@@ -23,7 +23,7 @@ def render(a):
     data = json.dumps({'id': a['id'], 'name': a['name'], 'greeting': a['greeting'], 'paused': a['status'] != 'active'})
     return ('''<!doctype html>
 <html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>''' + escape(a['name']) + '''</title><link rel="icon" type="image/svg+xml" href="data:image/svg+xml,''' + quote(parker_logo(48, 'fv')) + '''">
+<title>''' + escape(a['name']) + '''</title>''' + __import__('stage_ui').EMBED_HEAD + '''<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,''' + quote(parker_logo(48, 'fv')) + '''">
 <style>''' + SHARED_CSS + PE_CSS + '''
 body{display:grid;grid-template-rows:52px minmax(0,1fr);overflow:hidden}
 .topbar .brand{width:auto}.topbar .who{font-size:15px;font-weight:600;color:#fff;letter-spacing:0}
@@ -120,6 +120,19 @@ section.panel.shut>.ph::after{transform:rotate(45deg)}
 section.panel.shut>:not(.ph){display:none!important}
 .panel.pk-hit{animation:hit 1.6s ease-out}@keyframes hit{0%{box-shadow:0 0 0 4px rgba(99,67,148,.35)}100%{box-shadow:0 0 0 0 rgba(99,67,148,0)}}
 .ph .pk-tag,summary .pk-tag{font-size:11.5px;font-weight:700;color:#4b2f73;background:#f1ebf7;border:1px solid #d6c8ea;border-radius:999px;padding:1px 8px;margin-left:8px;vertical-align:middle}
+.workbar{position:relative;display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:var(--panel);border:1px solid #dce6ee;border-radius:14px;padding:10px 12px 10px 16px;box-shadow:0 1px 2px rgba(16,42,67,.04)}
+.wb-cur{display:flex;gap:10px;align-items:baseline;min-width:0;flex:1 1 300px}.wb-k{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;flex:none}
+.wb-cur b{font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.wb-state{font-size:12.5px;color:var(--muted);white-space:nowrap}.wb-state.bad{color:#b3261e;font-weight:600;white-space:normal}.wb-state.ok::before{content:'\2713  ';color:#2f9e6e}
+.wb-acts{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.wb-n{display:inline-block;min-width:18px;padding:0 6px;border-radius:999px;background:#eef3f7;font-size:12px;margin-left:2px}
+.wb-pop{position:absolute;z-index:30;right:10px;top:calc(100% + 6px);width:min(560px,94vw);max-height:min(70vh,560px);overflow:auto;background:var(--panel);border:1px solid #cddbe5;border-radius:14px;box-shadow:0 18px 40px -16px rgba(16,42,67,.45);padding:12px;display:grid;gap:10px}
+.wb-pop input{width:100%}.wb-g{font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700;margin:6px 2px 2px}
+.wb-it{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px 10px;cursor:pointer;background:#fff}
+.wb-it:hover{border-color:var(--teal)}.wb-it.on{border-color:var(--teal);box-shadow:0 0 0 2px rgba(7,94,121,.12)}
+.wb-it b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wb-it .hint{display:block}
+.wb-pill{font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 9px;white-space:nowrap;background:#eef3f7;color:#4b5a66}
+.wb-pill.form{background:#f1ebf7;color:#4b2f73}.wb-pill.run{background:#e3f1f6;color:#064b63}.wb-pill.ok{background:#eef8f1;color:#1e5b31}.wb-pill.warn{background:#fdf3e1;color:#6b4406}.wb-pill.bad{background:#fbeaea;color:#7a1f1f}
+.wb-x{border:0!important;background:none!important;color:var(--muted)!important;font-size:16px;padding:0 4px!important}.wb-x:hover{color:#b3261e!important}
 .tfill{border-color:#a98fd0!important;background:#fbf8ff!important;box-shadow:0 0 0 3px rgba(99,67,148,.10)!important}
 /* ---------- look and feel ---------- */
 main{padding:20px 0 40px;background:linear-gradient(180deg,#eef3f7 0,#f4f7fa 260px)}
@@ -206,6 +219,9 @@ table.t th{text-transform:uppercase;letter-spacing:.05em;font-size:11.5px}table.
 </style></head><body>
 <header class="topbar"><span class="brand">''' + parker_logo(26, 'tb') + '''<span class="who">''' + escape(a['name']) + '''</span></span><div class="sp"></div><span class="small" style="color:#9fb8ca">Built on Alice</span></header>
 <main><div class="wrap"><div class="layout"><div class="colmain">
+<div class="workbar" id="workbar"><div class="wb-cur"><span class="wb-k">Working on</span><b id="wb-title">New proposal</b><span id="wb-state" class="wb-state"></span></div>
+<div class="wb-acts"><button type="button" class="secondary" id="wb-keep" hidden title="Keep the changes you have made to this written proposal as a new proposal in progress">Save as a new version</button><button type="button" class="secondary" id="wb-list" aria-expanded="false" aria-controls="wb-pop">Proposals <span id="wb-n" class="wb-n"></span> ▾</button><button type="button" class="primary" id="wb-new">+ New proposal</button></div>
+<div class="wb-pop" id="wb-pop" hidden><input type="search" id="wb-q" placeholder="Find a proposal by title or client" aria-label="Find a proposal"><div id="wb-items"></div></div></div>
 <section class="hero"><div class="hero-in"><div><div class="ptitle">''' + parker_logo(58, 'hr') + '''<div><p class="eyebrow">Proposal writer \u00b7 bid and proposal studio</p><h1>''' + escape(a['name']) + '''</h1></div></div><p class="lead" id="greeting"></p></div>
 <ol class="flow" aria-label="How it works"><li>Brief</li><li>Draft</li><li>QA check</li><li>Word document</li></ol></div></section>
 <section class="card" id="prog" hidden aria-live="polite"><h2 id="prog-title">Working on it</h2><ol class="steps" id="steps"></ol><div class="err" id="perr" hidden></div></section>
@@ -249,7 +265,6 @@ table.t th{text-transform:uppercase;letter-spacing:.05em;font-size:11.5px}table.
 <details class="fold panel w-only"><summary><span>Rate card<span class="psub">Roles, days, cost and sell rates, margin</span></span></summary><div class="pbody">
 <p class="pe-note">Load your pricing tool or paste a rate card, set the target margin Alice applies to each cost, and tick the roles this proposal needs. Change any sell rate or margin to override it (\u21ba puts it back); Price book keeps the rate from your pricing tool and Change shows the difference, so you can see what applying the target margin does. Add days to fix a role's quantity; the writer suggests the rest. Cost rates stay in Alice: never sent to the AI, never in the document.</p><div id="rates"></div></div></details>
 <div class="actionbar"><button class="primary" id="go" type="submit" form="f">Write proposal</button><span class="hint" id="go-note">Writing, a QA check and one revision if needed: usually two to four minutes.</span></div>
-<section class="card" id="recent-box" hidden><h2>Recent proposals</h2><div class="recent" id="recent"></div></section>
 </div></div></main>
 <script>
 const A=''' + data.replace('</', '<\\/') + ''';
@@ -322,20 +337,21 @@ async function load(){S=await api('/setup');loadRefs();$('greeting').textContent
  ts.onchange=async()=>{try{const o=await api('/outline?template='+encodeURIComponent(ts.value));const now=secEd.value();const fresh=new Set(o.sections.map(x=>x.title.toLowerCase()));
    const mine=now.filter(x=>!tplTitles.has(x.title)&&!fresh.has(x.title.toLowerCase())).map(x=>({...x,source:'added'}));
    secEd.set(o.sections.concat(mine));tplTitles=new Set(o.sections.filter(x=>x.source==='template').map(x=>x.title));tplHint(o)}catch(e){tplHint(null,e.message)}};
- if(A.paused)$('go').disabled=true;summary();recent();const q=new URLSearchParams(location.search).get('p');if(q)follow(q)}
+ if(A.paused)$('go').disabled=true;summary();await recent();const q=new URLSearchParams(location.search).get('p');if(q)await openItem(q);else{setState('Saves itself as you work');updateBar()}}
 $('org').addEventListener('input',()=>drawRefs());
 $('org').oninput=()=>{const o=S&&S.organisations.find(x=>x.name.toLowerCase()===$('org').value.trim().toLowerCase());$('org-hint').textContent=o?(o.client?o.name+' is a client: its tagged memories and knowledge are included; other clients’ never are.':'Its approved profile is used.'):($('org').value.trim()?'Not in the list: Alice checks other names it knows (e.g. SBC); if none match, the name is used as typed.':'Its approved profile is used. Only this client’s tagged material is used, never another client’s.')};
 let mode='write',CUR=null,EDS=null;
 function formEmpty(){return !$('title').value.trim()&&!$('brief').value.trim()}
-async function loadIntoForm(p,quiet){const i=p.inputs||{};const before=snap();
+async function loadIntoForm(p,quiet,noSay){LOADING++;try{await fillIn(p,quiet,noSay)}finally{LOADING--}}
+async function fillIn(p,quiet,noSay){const i=p.inputs||{};const before=snap();
  $('title').value=p.title||'';$('org').value=p.organisation||'';$('brief').value=p.brief||'';$('notes').value=p.notes||'';$('structure').value=i.structure||'';
  ['title','org','brief','notes','structure'].forEach(id=>$(id).dispatchEvent(new Event('input',{bubbles:true})));
  if(i.template!=null&&i.template!==$('tplsel').value&&[...$('tplsel').options].some(o=>o.value===i.template)){$('tplsel').value=i.template;await $('tplsel').onchange()}
  if((i.sections||[]).length){const tt=window.tplOf?window.tplOf():new Set();secEd.set(i.sections.map(x=>({...x,source:tt.has(x.title)?'template':'added'})))}
  picked.clear();(i.references||[]).forEach(x=>picked.add(x));drawRefs();
- if((i.rate_card||[]).length)rateEd.pick(i.rate_card);
+ if(i.form)rateEd.set(i.rate_card||[]);else if((i.rate_card||[]).length)rateEd.pick(i.rate_card);
  for(const [id,k] of [['wm','writer'],['qm','qa']])if(i[k]&&[...$(id).options].some(o=>o.value===i[k]))$(id).value=i[k];
- if(i.use_memory!=null)$('mem').checked=!!i.use_memory;if(window.cost)window.cost();summary();
+ if(i.use_memory!=null)$('mem').checked=!!i.use_memory;if(window.cost)window.cost();summary();updateBar();if(noSay)return;
  pkSay('pk-p','I\u2019ve loaded \u201c'+(p.title||'this proposal')+'\u201d into the form'+((p.draft&&(p.draft.sections||[]).length)?', and I can see the draft as written. Tell me what to change, for example \u201cadd to the approach that the first days are on site\u201d, and I\u2019ll update the draft and the brief.':'.')+(quiet?'':' Undo puts the form back.'));
  if(!quiet){const m=$('pk-log').lastChild;const un=mk('button','Undo','pk-undo');un.type='button';un.onclick=async()=>{await restore(before);un.replaceWith(mk('span','Undone.','hint'))};m.append(un)}}
 function summary(){const dl=$('sum');if(!dl||!S)return;dl.replaceChildren();const row=(k,v)=>{const d=mk('div');d.append(mk('dt',k),mk('dd',v||'Not set',v?'':'none'));dl.append(d)};
@@ -368,13 +384,14 @@ async function fileData(f){if(f.size>15*1024*1024)throw new Error('That file is 
 $('f').onsubmit=async e=>{e.preventDefault();$('ferr').hidden=true;$('go').disabled=true;
  if(mode==='qa'){try{const f=$('qa-file').files[0];if(!f)throw new Error('Choose your proposal document.');const r=await api('/proposals/qa-only','POST',{title:$('title').value,organisation:$('org').value,brief:$('brief').value,name:f.name,data:await fileData(f),qa_model:$('qm').value});
    history.replaceState(null,'','?p='+r.id);follow(r.id);document.querySelector('main').scrollTop=0}catch(err){$('ferr').textContent=err.message;$('ferr').hidden=false;$('go').disabled=A.paused}return}
- try{const r=await api('/proposals','POST',{structure:$('structure').value,title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value,use_memory:$('mem').checked,references:[...picked],template:$('tplsel').value,writer_model:$('wm').value,qa_model:$('qm').value,sections:secEd.value(),rate_card:rateEd.value()});
+ try{const r=await api('/proposals','POST',{structure:$('structure').value,title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value,use_memory:$('mem').checked,references:[...picked],template:$('tplsel').value,writer_model:$('wm').value,qa_model:$('qm').value,sections:secEd.value(),rate_card:rateEd.value(),work_id:WORK||''});
+  clearTimeout(saveT);saveT=null;stashChat();if(WORK&&WORK!==r.id)moveChat(WORK,r.id);else if(!WORK)moveChat(OPEN,r.id,!!OPEN);WORK=null;OPEN=r.id;DIRTY=false;setState('');recent();
   history.replaceState(null,'','?p='+r.id);document.querySelectorAll('details.fold').forEach(d=>d.open=false);follow(r.id);document.querySelector('main').scrollTop=0}
  catch(err){$('ferr').textContent=err.message;$('ferr').hidden=false;$('go').disabled=A.paused}};
 function follow(pid){clearInterval(timer);$('result').replaceChildren();$('prog').hidden=false;$('perr').hidden=true;$('prog-title').textContent='Working on it';drawSteps('Gathering','running');
  const tick=async()=>{let p;try{p=await api('/proposals/'+pid)}catch(err){clearInterval(timer);$('perr').textContent=err.message;$('perr').hidden=false;return}
   drawSteps(p.stage,p.status,p.qa);
-  if(p.status==='running')return;clearInterval(timer);$('go').disabled=A.paused;
+  if(p.status==='running')return;clearInterval(timer);$('go').disabled=A.paused;if(p.status==='form'){$('prog').hidden=true;return}
   if(p.status==='failed'){$('prog-title').textContent='This proposal could not be finished';$('perr').textContent=p.error;$('perr').hidden=false;recent();return}
   $('prog').hidden=true;show(p);recent()};
  tick();timer=setInterval(tick,1500)}
@@ -448,7 +465,7 @@ $('pk-wide').onclick=()=>pkWide(!document.querySelector('.layout').classList.con
 async function pkSend(text){if(PK.busy||A.paused)return;text=(text||'').trim();if(!text&&!PK.doc)return;PK.busy=true;$('pk-send').disabled=true;$('pk-title').textContent='Parker';
  if(text)pkSay('you',text);const ty=mk('div','','pk-typing');ty.append(mk('i'),mk('i'),mk('i'));$('pk-log').append(ty);pkScroll();
  try{const before=snap();const r=await api('/parker','POST',{message:text,history:PK.history,form:form(),organisation:$('org').value,doc_token:PK.doc?PK.doc.token:''});ty.remove();
-  await applyParker(r.updates);const m=pkSay('pk-p',r.reply);
+  await applyParker(r.updates);if(r.changed.length)changed();const m=pkSay('pk-p',r.reply);
   if(r.changed.length){const ch=mk('div','','pk-ch');for(const c of r.changed){const t=mk('span',c);t.title='Show '+c;t.onclick=()=>{const e=$(WHERE[c]);if(e){reveal(e);e.scrollIntoView({behavior:'smooth',block:'center'})}};ch.append(t)}m.append(ch);
    const un=mk('button','Undo these changes','pk-undo');un.type='button';un.onclick=async()=>{await restore(before);un.replaceWith(mk('span','Undone.','hint'))};m.append(un)}
   if(r.questions.length>1){const ul=mk('ul','','pk-q');for(const q of r.questions.slice(1)){const li=mk('li',q);li.title='Answer this';li.onclick=()=>{$('pk-msg').value=q.replace(/\?$/,'')+': ';$('pk-msg').focus();pkGrow()};ul.append(li)}m.append(ul)}
@@ -475,8 +492,60 @@ function editDraft(p){const box=$('result');const c=mk('section','','card');c.ap
  const go=document.createElement('button');go.type='button';go.className='primary';go.textContent='Save changes and check again';const cancel=document.createElement('button');cancel.type='button';cancel.className='secondary';cancel.textContent='Cancel';cancel.onclick=()=>show(p);
  go.onclick=async()=>{go.disabled=true;try{await api('/proposals/'+p.id+'/recheck','POST',{sections:(p.draft.sections||[]).map(s=>{const e=eds.find(x=>x[0]===s);return {title:s.title,body:e?e[1].value:''}})});follow(p.id)}catch(e){go.disabled=false;alertBox(e.message)}};
  const a=mk('div','','act');a.append(go,cancel);c.append(a);box.replaceChildren(c);EDS=eds;c.id='draft-ed';document.querySelector('main').scrollTop=0}
-async function recent(){try{const d=await api('/proposals');$('recent-box').hidden=!d.proposals.length;$('recent').replaceChildren(...d.proposals.map(x=>{const b=mk('button','','secondary '+(x.status==='running'?'run':x.status==='failed'?'bad':x.verdict==='client_ready'?'ok':'warn'));b.type='button';
- b.append(mk('span',x.title+(x.organisation?' · '+x.organisation:'')),mk('span',x.status==='running'?'writing…':x.status==='failed'?'failed':(x.verdict==='client_ready'?'client ready':'needs attention')+(x.score!=null?' · '+x.score+'/100':'')+' · '+new Date(x.created_at).toLocaleDateString('en-GB'),'hint'));
- b.onclick=()=>{history.replaceState(null,'','?p='+x.id);follow(x.id);window.scrollTo(0,0);document.querySelector('main').scrollTop=0};return b}))}catch{}}
+// ---------- proposals on the go: list, switching, autosave ----------
+let WORK=null,OPEN=null,LOADING=0,saveT=null,ITEMS=[],DIRTY=false;
+const STATE=x=>x.status==='form'?['In progress','form']:x.status==='running'?['Being written','run']:x.status==='failed'?['Failed','bad']:[(x.verdict==='client_ready'?'Client ready':'Needs attention')+(x.score!=null?' · '+x.score:''),x.verdict==='client_ready'?'ok':'warn'];
+async function recent(){try{const d=await api('/proposals');ITEMS=d.proposals;$('wb-n').textContent=ITEMS.length||'';drawItems();updateBar()}catch{}}
+function drawItems(){const q=($('wb-q').value||'').toLowerCase(),box=$('wb-items');box.replaceChildren();
+ const list=ITEMS.filter(x=>!q||((x.title||'')+' '+(x.organisation||'')).toLowerCase().includes(q));
+ if(!list.length){box.append(mk('p',ITEMS.length?'No proposals match.':'No proposals yet. Start one with + New proposal; it saves itself as you work.','hint'));return}
+ for(const [g,f] of [['In progress',x=>x.status==='form'],['Being written',x=>x.status==='running'],['Written',x=>x.status==='done'||x.status==='failed']]){const its=list.filter(f);if(!its.length)continue;box.append(mk('div',g+' ('+its.length+')','wb-g'));
+  for(const x of its){const it=mk('div','','wb-it'+(x.id===OPEN?' on':''));it.tabIndex=0;it.setAttribute('role','button');const t=mk('div');
+   t.append(mk('b',(x.title||'Untitled proposal')+(x.organisation?' · '+x.organisation:'')),mk('span',(x.status==='form'?'Saved ':'Updated ')+new Date(x.updated_at||x.created_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),'hint'));
+   const [lab,cls]=STATE(x);it.append(t,mk('span',lab,'wb-pill '+cls));
+   if(x.status==='form'){const xb=mk('button','×','wb-x');xb.type='button';xb.title='Remove this proposal in progress';xb.setAttribute('aria-label','Remove '+(x.title||'this proposal'));
+    xb.onclick=async e=>{e.stopPropagation();if(!confirm('Remove “'+(x.title||'Untitled proposal')+'” from your proposals in progress?'))return;try{await api('/work/'+x.id+'/discard','POST',{});if(x.id===OPEN)await openNew();await recent()}catch(err){alertBox(err.message)}};it.append(xb)}else it.append(mk('span'));
+   it.onclick=()=>{$('wb-pop').hidden=true;$('wb-list').setAttribute('aria-expanded','false');openItem(x.id)};it.onkeydown=e=>{if(e.key==='Enter')it.click()};box.append(it)}}}
+function updateBar(){$('wb-title').textContent=$('title').value.trim()||(OPEN?'Untitled proposal':'New proposal');const x=ITEMS.find(i=>i.id===OPEN);
+ $('wb-keep').hidden=!(OPEN&&!WORK&&DIRTY);if(!saveT&&!$('wb-state').classList.contains('bad')){const st=$('wb-state');
+  if(WORK)st.textContent=st.textContent||'Saved';else if(x&&x.status!=='form'){st.className='wb-state';st.textContent=STATE(x)[0]+(DIRTY?' · changes not saved: write a new version or Save as a new version':'')}else if(!OPEN){st.className='wb-state';st.textContent=DIRTY?'':'Saves itself as you work'}}}
+function setState(t,cls){const st=$('wb-state');st.textContent=t;st.className='wb-state'+(cls?' '+cls:'')}
+function formData(){return {title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value,structure:$('structure').value,template:$('tplsel').value,
+ sections:secEd.value(),rate_card:rateEd.value(),references:[...picked],writer:$('wm').value,qa:$('qm').value,use_memory:$('mem').checked}}
+function changed(){if(LOADING||mode!=='write'||!S)return;DIRTY=true;
+ if(!WORK&&OPEN){updateBar();return}                                           // a written proposal: kept as it is unless you save a new version
+ clearTimeout(saveT);setState('Saving…');saveT=setTimeout(saveNow,1200)}
+async function saveNow(force){clearTimeout(saveT);saveT=null;const f=formData();
+ if(!WORK&&!force&&!f.title.trim()&&!f.brief.trim()&&!f.notes.trim()){setState('');return}
+ try{const r=await api('/work','POST',{id:WORK||'',form:f});if(r.created){moveChat(OPEN||'new',r.id);WORK=r.id;OPEN=r.id;CUR=null;history.replaceState(null,'','?p='+r.id);recent()}
+  DIRTY=false;setState('Saved '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}),'ok');const x=ITEMS.find(i=>i.id===WORK);if(x){x.title=f.title;x.organisation=f.organisation;x.updated_at=new Date().toISOString()}updateBar()}
+ catch(e){setState('Not saved: '+e.message,'bad')}}
+$('f').addEventListener('input',changed);$('f').addEventListener('change',changed);
+$('full').addEventListener('input',changed);$('full').addEventListener('change',changed);$('full').addEventListener('click',e=>{if(e.target.closest('button'))setTimeout(changed,0)});
+$('secs').addEventListener('click',e=>{if(e.target.closest('button'))setTimeout(changed,0)});$('ref-list').addEventListener('change',changed);
+$('title').addEventListener('input',updateBar);
+$('wb-keep').onclick=()=>{stashChat();const from=OPEN;OPEN=null;CUR=null;DIRTY=true;saveNow(true).then(()=>{if(OPEN&&from)moveChat(from,OPEN,true)})};
+$('wb-list').onclick=()=>{const p=$('wb-pop');p.hidden=!p.hidden;$('wb-list').setAttribute('aria-expanded',String(!p.hidden));if(!p.hidden){drawItems();$('wb-q').focus()}};
+$('wb-q').oninput=drawItems;document.addEventListener('click',e=>{if(!e.target.closest('#workbar'))$('wb-pop').hidden=true});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('wb-pop').hidden=true});
+$('wb-new').onclick=()=>openNew();
+const chatKey=id=>'alice.parker.chat.'+(id||'new');
+function stashChat(){try{localStorage.setItem(chatKey(OPEN),JSON.stringify(PK.history.slice(-24)))}catch{}}
+function moveChat(a,b,copy){try{const v=localStorage.getItem(chatKey(a));if(v){localStorage.setItem(chatKey(b),v);if(!copy)localStorage.removeItem(chatKey(a))}}catch{}}
+function restoreChat(id){PK.history=[];PK.doc=null;pkDocs();pkIntro();let h=[];try{h=JSON.parse(localStorage.getItem(chatKey(id))||'[]')}catch{}
+ if(h.length){PK.history=h;$('pk-title').textContent='Parker';for(const m of h)pkSay(m.role==='you'?'you':'pk-p',m.text)}}
+async function resetForm(){LOADING++;try{clearInterval(timer);$('result').replaceChildren();$('prog').hidden=true;$('ferr').hidden=true;CUR=null;EDS=null;
+ for(const id of ['title','org','brief','notes','structure']){$(id).value='';$(id).classList.remove('tfill')}
+ if($('tplsel').value!==(S.template||'')){$('tplsel').value=S.template||'';await $('tplsel').onchange()}
+ secEd.set(S.sections);rateEd.set(S.rate_card);picked.clear();drawRefs();$('wm').value=S.writer;$('qm').value=S.qa;$('mem').checked=true;clearTags();
+ ['org','title'].forEach(id=>$(id).dispatchEvent(new Event('input',{bubbles:true})));if(window.cost)window.cost();summary()}finally{LOADING--}}
+async function flush(){if(saveT){await saveNow()}}
+async function openNew(){await flush();stashChat();await resetForm();WORK=null;OPEN=null;DIRTY=false;setState('Saves itself as you work');history.replaceState(null,'',location.pathname);restoreChat(null);updateBar();drawItems();document.querySelector('main').scrollTop=0}
+async function openItem(id){await flush();stashChat();let p;try{p=await api('/proposals/'+id)}catch(e){alertBox(e.message);return}
+ await resetForm();OPEN=id;DIRTY=false;history.replaceState(null,'','?p='+id);restoreChat(id);
+ if(p.status==='form'){WORK=id;await loadIntoForm(p,true,true);setState('Saved '+new Date(p.updated_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),'ok');
+  if(!PK.history.length)pkSay('pk-p','Back to “'+(p.title||'this proposal')+'”. Everything you had is here. What would you like to change?')}
+ else{WORK=null;setState('');follow(id)}
+ updateBar();drawItems();document.querySelector('main').scrollTop=0}
 load().catch(e=>{$('ferr').textContent=e.message;$('ferr').hidden=false});
 </script></body></html>''')

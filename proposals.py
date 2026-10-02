@@ -559,7 +559,7 @@ def _save(pid, **f):
 
 
 def start(aid, title, organisation, brief, notes='', sections=None, rate_card=None, use_memory=True, writer_model='', qa_model='', references=None,
-          structure='', template=None):
+          structure='', template=None, work_id=''):
     """Check the request and start the background job. Returns the proposal id."""
     import assistants, organisations, rules_engine, rule_packs
     a = assistants.get(aid)
@@ -594,9 +594,15 @@ def start(aid, title, organisation, brief, notes='', sections=None, rate_card=No
     inputs = {'sections': secs, 'rate_card': card, 'use_memory': bool(use_memory), 'template': tpl,
               'writer': writer, 'qa': qa, 'references': [str(x)[:300] for x in (references or [])][:10], 'structure': structure}
     with store.db() as c:
-        c.execute('INSERT INTO proposals(id,assistant_id,title,organisation,client,brief,notes,inputs,status,stage,created_by,created_at,updated_at) '
-                  'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', (pid, aid, title, org, client, brief, notes, json.dumps(inputs), 'running',
-                                                         'Starting', store.actor(), store.now(), store.now()))
+        w = c.execute("SELECT id FROM proposals WHERE id=? AND assistant_id=? AND status='form'", (str(work_id or '')[:40], aid)).fetchone() if work_id else None
+        if w:                                                   # the form you were working on becomes this proposal
+            pid = w['id']
+            c.execute("UPDATE proposals SET title=?,organisation=?,client=?,brief=?,notes=?,inputs=?,status='running',stage='Starting',error='',"
+                      "updated_at=? WHERE id=?", (title, org, client, brief, notes, json.dumps(inputs), store.now(), pid))
+        else:
+            c.execute('INSERT INTO proposals(id,assistant_id,title,organisation,client,brief,notes,inputs,status,stage,created_by,created_at,updated_at) '
+                      'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', (pid, aid, title, org, client, brief, notes, json.dumps(inputs), 'running',
+                                                             'Starting', store.actor(), store.now(), store.now()))
         store.audit(c, 'proposal_started', pid, 'human_review', f'{title}' + (f' for {org}' if org else ''))
     who = store.actor()
     threading.Thread(target=_run, args=(pid, who), daemon=True, name='proposal-' + pid[:6]).start()
@@ -808,6 +814,57 @@ def qa_only(aid, title, organisation, brief, name, raw, qa_model=''):
     return pid
 
 
+# ---------------- proposals in progress: the form, saved as you work ----------------
+def save_form(aid, form, work_id=''):
+    """Save the proposal form as it stands (autosave). A form row has status 'form' until it is written; saving changes to a
+    proposal that has already been written starts a new form. Secrets and protective markings are refused, nothing is sent anywhere."""
+    import assistants, rules_engine
+    a = assistants.get(aid)
+    if a['kind'] != 'proposal': raise ValueError('Only a proposal writer saves proposal forms.')
+    f = form if isinstance(form, dict) else {}
+    title, org = _clean(f.get('title'), 150), _clean(f.get('organisation'), 80)
+    brief, notes = str(f.get('brief') or '').strip()[:MAX_BRIEF], str(f.get('notes') or '').strip()[:4000]
+    structure = str(f.get('structure') or '').strip()[:6000]
+    try: secs = clean_sections(f.get('sections'))
+    except ValueError: secs = [s_ for s_ in (f.get('sections') or []) if isinstance(s_, dict)][:40]      # mid-edit duplicates: keep as typed
+    try: card = clean_rate_card(f.get('rate_card'))
+    except ValueError: card = None                                                                        # a half-typed number: keep the last good card
+    text = '\n'.join([title, org, brief, notes, structure] + [str(x.get('include') or '') + str(x.get('guidance') or '') for x in secs])
+    if text.strip(): rules_engine.check_file(text, 'Proposal form')
+    with store.db() as c:
+        row = c.execute("SELECT id,status,inputs FROM proposals WHERE id=? AND assistant_id=?", (str(work_id or '')[:40], aid)).fetchone() if work_id else None
+        if row and row['status'] == 'form':
+            old = json.loads(row['inputs'] or '{}')
+        else:
+            row, old = None, {}
+        inputs = {'form': True, 'sections': secs, 'rate_card': card if card is not None else old.get('rate_card', []),
+                  'use_memory': f.get('use_memory') is not False, 'template': _clean(f.get('template'), 300),
+                  'writer': _clean(f.get('writer'), 20), 'qa': _clean(f.get('qa'), 20),
+                  'references': [str(x)[:300] for x in (f.get('references') or [])][:10], 'structure': structure}
+        now = store.now()
+        if row:
+            pid = row['id']
+            c.execute('UPDATE proposals SET title=?,organisation=?,client=?,brief=?,notes=?,inputs=?,updated_at=? WHERE id=?',
+                      (title, org, _client_for(org), brief, notes, json.dumps(inputs), now, pid))
+        else:
+            pid = uuid.uuid4().hex
+            c.execute('INSERT INTO proposals(id,assistant_id,title,organisation,client,brief,notes,inputs,status,stage,created_by,created_at,updated_at) '
+                      "VALUES (?,?,?,?,?,?,?,?,'form','',?,?,?)", (pid, aid, title, org, _client_for(org), brief, notes, json.dumps(inputs),
+                                                                  store.actor(), now, now))
+            store.audit(c, 'proposal_form_started', pid, 'human_review', (title or 'Untitled proposal') + (f' for {org}' if org else ''))
+    return {'id': pid, 'saved_at': now, 'created': not row}
+
+
+def discard_form(aid, pid):
+    """Remove a proposal you were working on from the list (kept in the database as 'discarded'; written proposals are not affected)."""
+    with store.db() as c:
+        r = c.execute("SELECT title FROM proposals WHERE id=? AND assistant_id=? AND status='form'", (pid, aid)).fetchone()
+        if not r: raise LookupError('No such proposal in progress.')
+        c.execute("UPDATE proposals SET status='discarded',updated_at=? WHERE id=?", (store.now(), pid))
+        store.audit(c, 'proposal_form_discarded', pid, 'human_review', r['title'] or 'Untitled proposal')
+    return {'status': 'discarded'}
+
+
 def get(pid, internal=False):
     with store.db() as c:
         r = c.execute('SELECT * FROM proposals WHERE id=?', (pid,)).fetchone()
@@ -819,10 +876,10 @@ def get(pid, internal=False):
     return d
 
 
-def listing(aid, limit=20):
+def listing(aid, limit=50):
     with store.db() as c:
-        return [dict(r) for r in c.execute('SELECT id,title,organisation,status,stage,document_id,created_at,qa FROM proposals WHERE assistant_id=? '
-                                           'ORDER BY created_at DESC LIMIT ?', (aid, limit))]
+        return [dict(r) for r in c.execute("SELECT id,title,organisation,status,stage,document_id,created_at,updated_at,qa FROM proposals WHERE assistant_id=? AND status!='discarded' "
+                                           'ORDER BY updated_at DESC LIMIT ?', (aid, limit))]
 
 
 def summary_row(r):

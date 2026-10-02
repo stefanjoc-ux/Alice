@@ -23,7 +23,7 @@ def render(a):
     cover = ''.join(f'<li>{escape(t)}</li>' for t in topics[:12]) + (f'<li class="more">and {len(topics) - 12} more</li>' if len(topics) > 12 else '')
     return ('''<!doctype html>
 <html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>''' + escape(a['name']) + '''</title><link rel="icon" href="/static/favicon.png" type="image/png">
+<title>''' + escape(a['name']) + '''</title>''' + __import__('stage_ui').EMBED_HEAD + '''<link rel="icon" href="/static/favicon.png" type="image/png">
 <style>''' + SHARED_CSS + '''
 body{display:grid;grid-template-rows:52px minmax(0,1fr);overflow:hidden;background:linear-gradient(180deg,#eef3f7 0,#f4f7fa 300px)}
 .topbar .brand{width:auto}.topbar .who{font-size:15px;font-weight:600;color:#fff;letter-spacing:0}

@@ -396,3 +396,41 @@ t('the price book rate is kept beside the adjusted sell rate', cl_[0]['list'] ==
 t('the rate card shows the price book rate and the change', all(x in proposal_ui.PE_JS for x in ("'Price book'", "'Change'", 'At price book', 'Adjusted sell price')))
 pgx = cl.get('/assistant/proposal-writer').text
 t('the rate card spans the page below Parker; the button still writes the proposal', 'id="full"' in pgx and 'form="f"' in pgx)
+
+# ---------------- proposals in progress: saved as you work, a list to switch between ----------------
+cl.put('/admin/api/assistants/proposal-writer', headers=H, json=body)
+wsave = lambda **k: cl.post('/assistant/proposal-writer/work', json=k)
+r1 = wsave(form={'title': 'Fabric baseline', 'organisation': 'NSC', 'brief': 'Six-week baseline.', 'rate_card': card + [{'role': 'Trainer', 'cost': 300, 'sell': 600, 'use': False}],
+                 'sections': [{'title': 'Approach'}], 'references': [], 'template': ''}).json()
+t('a proposal form saves itself: a new one gets an id', r1['created'] and len(r1['id']) == 32)
+r2 = wsave(id=r1['id'], form={'title': 'Fabric data security baseline', 'brief': 'Six-week baseline, then a roadmap.', 'rate_card': card}).json()
+pf = P.get(r1['id'])
+t('later saves update the same proposal', r2['id'] == r1['id'] and not r2['created'] and pf['title'] == 'Fabric data security baseline' and pf['status'] == 'form'
+  and pf['inputs']['form'] and len(pf['inputs']['rate_card']) == 2)
+t('a half-typed rate keeps the last good rate card', wsave(id=r1['id'], form={'title': 'x', 'rate_card': [{'role': 'A', 'cost': 'abc', 'sell': 1}]}).status_code == 200
+  and len(P.get(r1['id'])['inputs']['rate_card']) == 2)
+wsave(id=r1['id'], form={'title': 'Fabric data security baseline', 'organisation': 'NSC', 'brief': 'Six-week baseline, then a roadmap.', 'rate_card': card})
+t('secrets are not saved', wsave(id=r1['id'], form={'title': 'x', 'brief': 'key sk-proj-abcdefghijklmnopqrstuvwxyz0123456789ABCD'}).status_code == 400
+  and P.get(r1['id'])['brief'] == 'Six-week baseline, then a roadmap.')
+r3 = wsave(form={'title': 'Copilot readiness', 'brief': 'Review.'}).json()
+lst = cl.get('/assistant/proposal-writer/proposals').json()['proposals']
+t('the list shows proposals in progress, newest first', [x['id'] for x in lst][:2] == [r3['id'], r1['id']] and lst[0]['status'] == 'form')
+t('a proposal in progress can be removed from the list', cl.post(f'/assistant/proposal-writer/work/{r3["id"]}/discard', json={}).status_code == 200
+  and r3['id'] not in [x['id'] for x in cl.get('/assistant/proposal-writer/proposals').json()['proposals']] and P.get(r3['id'])['status'] == 'discarded')
+t('written proposals cannot be discarded', cl.post(f'/assistant/proposal-writer/work/{p9["id"]}/discard', json={}).status_code == 404)
+calls.clear(); MODE['qa'] = [QA2]
+pw2 = cl.post('/assistant/proposal-writer/proposals', json={'title': 'Fabric data security baseline', 'organisation': 'NSC', 'brief': brief, 'sections': [{'title': 'Approach'}],
+                                                            'rate_card': card, 'work_id': r1['id']}).json()['id']
+done2 = wait(pw2)
+t('writing it turns the form into the proposal (one item, not two)', pw2 == r1['id'] and done2['status'] == 'done')
+r4 = wsave(id=r1['id'], form={'title': 'Fabric v2', 'brief': 'Changed.'}).json()
+t('changes after writing start a new proposal in progress; the written one is kept', r4['created'] and r4['id'] != r1['id'] and P.get(r1['id'])['status'] == 'done')
+t('another assistant\'s id cannot be used', cl.post('/assistant/hr-policy/work', json={'form': {'title': 'x'}}).status_code == 404)
+t('cross-origin saves are refused', cl.post('/assistant/proposal-writer/work', headers={'origin': 'http://evil.example'}, json={'form': {'title': 'x'}}).status_code == 403)
+t('a big price book can be sent with the proposal', cl.post('/assistant/proposal-writer/proposals', json={'title': 'T', 'brief': 'short'}).status_code == 400
+  and len(P.clean_rate_card([{'role': f'R{i}', 'cost': 1, 'sell': 2} for i in range(60)])) == 60)
+pg2 = cl.get('/assistant/proposal-writer').text
+t('the page has the proposals list and saves as you work', all(x in pg2 for x in ('id="wb-list"', 'id="wb-new"', 'Saves itself as you work', "api('/work'")))
+adm = cl.get('/admin').text
+t('Alice opens assistants on a stage: back to Alice or a new window', all(x in adm for x in ('id="as-stage"', 'Back to Alice', 'Open in a new window', 'embed')))
+t('assistant pages hide their own top bar on the stage', 'html.embed .topbar' in pg2 and 'html.embed .topbar' in cl.get('/assistant/hr-policy').text)
