@@ -175,9 +175,11 @@ SECTIONS = {
 <section><h2>Additional guidance</h2><form id="rule-form"><label><input id="allow" type="checkbox"> Allow new memory proposals</label><label>Free-text guidance, added after the rule sets<textarea id="guidance" maxlength="8000" rows="4"></textarea></label><button>Save</button></form>
 <details><summary>What models receive</summary><pre id="r-effective"></pre></details></section>
 <section><h2>Recent rule blocks</h2><div id="r-blocks"></div></section>''' ,
-'activity': r'''<section><div class="mem-tools"><label>Period <select id="al-period"><option value="today">Today</option><option value="7d" selected>Last 7 days</option><option value="30d">Last 30 days</option><option value="all">All time</option><option value="custom">Custom…</option></select></label>
+'activity': r'''<section class="av-bar"><div class="mem-tools"><label>Period <select id="al-period"><option value="today">Today</option><option value="7d" selected>Last 7 days</option><option value="30d">Last 30 days</option><option value="all">All time</option><option value="custom">Custom…</option></select></label>
 <span id="al-custom" hidden><label>From <input id="al-from" type="date"></label> <label>To <input id="al-to" type="date"></label></span>
-<input id="al-q" type="search" maxlength="200" placeholder="Search what happened, names and details" aria-label="Search activity"><a id="al-csv" class="button-link" href="#">Export CSV</a></div>
+<span class="av-views" id="av-views"></span></div></section>
+<div id="av" class="av" aria-live="polite"></div>
+<section id="al-log"><h2 class="av-h">Everything that happened</h2><div class="mem-tools"><input id="al-q" type="search" maxlength="200" placeholder="Search what happened, names and details" aria-label="Search activity"><a id="al-csv" class="button-link" href="#">Export CSV</a></div>
 <div id="al-types" class="mem-cats"></div><div class="table-wrap"><table id="al-table" class="mem-table al-table"></table></div><p id="al-count" class="muted small"></p><button id="al-more" type="button" class="secondary" hidden>Load more</button>
 <p class="muted small">Reads by Claude Desktop and Claude Code are not logged; their proposals, drafts and saved conversations are. Times are shown in your local time; the CSV uses UTC.</p></section>''' ,
 'overview': r'''<section><h2>Your substrate at a glance</h2><p>Knowledge and approved memories are shared by both models.</p><div id="overview-stats" class="stats"></div><p id="proposal-state" class="muted"></p><a class="button" href="/admin/memories?status=proposed">Review proposed memories →</a></section><section><h2>How it works</h2><p>Upload source files in Chat and inspect them in Knowledge. Proposed memories wait for your review; only approved memories are available through memory search.</p><p>Rules contains model response guidance and the controls enforced by the substrate. Activity shows recorded tool use, rule changes and review decisions.</p></section>''' ,
@@ -287,6 +289,27 @@ nav{display:flex;gap:20px;flex-wrap:wrap}.sidebar nav{display:contents}
 .ag-anat-edit{border-top:1px solid var(--line);margin-top:16px;padding-top:4px}.ag-anat-edit input,.ag-anat-edit textarea{width:100%}
 @media(max-width:1100px){.anat{grid-template-columns:repeat(3,minmax(0,1fr))}.anat-stage:nth-child(3):after{display:none}}
 .ag-perms{display:grid;gap:10px;margin:6px 0 10px}.ag-perm strong{margin-right:6px}
+.av-bar{padding:12px 18px!important}.av-bar .mem-tools{margin:0}.av-views{margin-left:auto;display:flex;gap:6px}.av-h{margin:0 0 10px;font-size:17px}
+.av{--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;--good:#0ca30c;--bad:#d03b3b;--open:#c9d3dc;--grid:#e6ecf1;display:grid;gap:14px;margin-bottom:14px}
+.av-tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
+.av-tile{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:grid;gap:2px;text-decoration:none;color:var(--ink)}
+a.av-tile:hover{border-color:var(--teal)}.av-tile b{font-size:28px;line-height:1.1;font-variant-numeric:tabular-nums}.av-tile span{font-size:13px;color:var(--muted)}.av-tile em{font-style:normal;font-size:12px;color:var(--muted)}
+.av-tile.alert b{color:#b3261e}.av-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;min-width:0}
+.av-card h3{margin:0 0 2px;font-size:15px}.av-card .av-sub{margin:0 0 10px;font-size:12.5px;color:var(--muted)}
+.av-two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+.av-legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12.5px;color:var(--muted);margin:0 0 6px}.av-legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.av svg{display:block;width:100%;height:auto;overflow:visible}.av svg text{font-family:inherit}
+.av-tip{position:fixed;z-index:50;pointer-events:none;background:#14324a;color:#fff;border-radius:8px;padding:8px 10px;font-size:12.5px;line-height:1.45;box-shadow:0 4px 14px rgba(0,0,0,.18);max-width:260px}
+.av-tip b{display:block;margin-bottom:2px}.av-tip i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px}
+.av-rows{display:grid;gap:12px}.av-row{display:grid;gap:4px}.av-row-head{display:flex;justify-content:space-between;gap:10px;font-size:13.5px}.av-row-head span{color:var(--muted);font-size:12.5px;text-align:right}
+.av-seg{display:flex;height:12px;gap:2px;border-radius:4px;overflow:hidden;background:var(--grid)}.av-seg>div{height:100%;min-width:3px}
+.av-bars{display:grid;gap:8px}.av-bars .av-b{display:grid;grid-template-columns:minmax(120px,38%) minmax(0,1fr) auto;gap:10px;align-items:center;font-size:13px}
+.av-bars .av-track{height:12px;background:var(--grid);border-radius:4px;overflow:hidden;display:flex;gap:2px}.av-bars .av-track>div{height:100%;border-radius:0 4px 4px 0}
+.av-bars .av-n{font-variant-numeric:tabular-nums;color:var(--muted);font-size:12.5px;white-space:nowrap}
+.av-empty{color:var(--muted);font-size:13px;margin:6px 0}
+.av-key{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-top:8px;flex-wrap:wrap}.av-key i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.av details{margin-top:8px;font-size:13px}.av details table{width:100%;border-collapse:collapse;margin-top:6px;font-size:12.5px}.av details th,.av details td{padding:3px 6px;border-bottom:1px solid var(--line);text-align:right}.av details th:first-child,.av details td:first-child{text-align:left}
+@media(max-width:1000px){.av-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.av-two{grid-template-columns:1fr}}
 .dt-bar{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 8px}.dt-group{margin:12px 0;border:1px solid var(--line);border-radius:8px;background:#fff}.dt-head{cursor:pointer;padding:9px 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .dt-out{margin-left:auto}.dt-note{margin:0 12px 6px}.dt-table{margin:0}.dt-table{table-layout:fixed;width:100%}.dt-table th:nth-child(1){width:32%}.dt-table th:nth-child(2){width:24%}.dt-table th:nth-child(3){width:17%}.dt-table th:nth-child(4){width:13%}.dt-sent{display:inline-block;background:#f1ebf7;color:#4b2f73;border:1px solid #c7b8dd;border-radius:999px;padding:1px 8px;margin:0 0 3px;font-size:11.5px}.dt-table td{vertical-align:top;overflow-wrap:anywhere}.dt-loc{font-size:12px;margin-top:3px;overflow-wrap:anywhere}.dt-loc code{font-size:11.5px;background:#f4f6f8;padding:1px 4px;border-radius:4px}
 @media(max-width:700px){.dt-table,.dt-table tbody,.dt-table tr,.dt-table td{display:block;width:auto!important}.dt-table tr:first-child{display:none}.dt-table tr{padding:8px 12px;border-top:1px solid var(--line)}.dt-table td{padding:2px 0!important;border:0!important}.dt-out{margin-left:0}}
@@ -514,12 +537,81 @@ if(PAGE==='activity'){
  async function load(more=false){const d=await api('/admin/api/activity-log?'+qs()+'&offset='+(more?st.offset:0));st.rows=more?st.rows.concat(d.rows):d.rows;st.offset=d.next_offset;
   $('al-types').replaceChildren(chip('Everything ('+d.total_all+')',!st.type,()=>{st.type='';run(()=>load())}),...d.types.filter(([k])=>d.counts[k]).map(([k,n])=>chip(n+' ('+d.counts[k]+')',st.type===k,()=>{st.type=k;run(()=>load())},k==='blocks'?'attention':'')));
   render();$('al-count').textContent='Showing '+st.rows.length+' of '+d.total;$('al-more').hidden=st.offset===null;$('al-csv').href='/admin/api/activity-log.csv?'+qs()}
- $('al-period').onchange=()=>{$('al-custom').hidden=$('al-period').value!=='custom';if($('al-period').value!=='custom')run(()=>load())};
- for(const id of ['al-from','al-to'])$(id).onchange=()=>run(()=>load());
+ // ---- the picture: what is happening in Alice
+ const SV='http://www.w3.org/2000/svg';const S=(t,a,x)=>{const e=document.createElementNS(SV,t);for(const [k,v] of Object.entries(a||{}))e.setAttribute(k,v);if(x!=null)e.textContent=x;return e};
+ const COL={knowledge:'var(--s1)',work:'var(--s2)',temple:'var(--s3)',orgs:'var(--s4)',settings:'var(--s5)'};
+ const fmt=n=>Number(n||0).toLocaleString('en-GB');const usd=v=>'$'+(v>=1?v.toFixed(2):v.toFixed(v?3:2));
+ let tip=null;function showTip(e,html){if(!tip){tip=el('div','','av-tip');document.body.append(tip)}tip.innerHTML=html;tip.hidden=false;const r=tip.getBoundingClientRect();let x=e.clientX+14,y=e.clientY+14;if(x+r.width>innerWidth-8)x=e.clientX-r.width-14;if(y+r.height>innerHeight-8)y=e.clientY-r.height-14;tip.style.left=x+'px';tip.style.top=y+'px'}
+ function hideTip(){if(tip)tip.hidden=true}
+ const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+ function card(title,sub){const c=el('section','','av-card');c.append(el('h3',title));if(sub)c.append(el('p',sub,'av-sub'));return c}
+ function tiles(d){const t=d.totals,box=el('div','','av-tiles');
+  const add=(n,label,extra,href,alert)=>{const x=el(href?'a':'div','','av-tile'+(alert?' alert':''));if(href)x.href=href;x.append(el('b',n),el('span',label));if(extra)x.append(el('em',extra));box.append(x)};
+  add(fmt(t.events),'things recorded','every change, review and block');
+  add(t.pending==null?'—':fmt(t.pending),'waiting for you','open Actions →','/admin/actions',t.pending>0);
+  add(fmt(t.blocked),'stopped by the rules',t.blocked?'see what was blocked below':'nothing blocked',null,t.blocked>0);
+  add(fmt(t.runs),'agent runs',t.failed_runs?t.failed_runs+' failed':'none failed','/admin/agents',t.failed_runs>0);
+  add(fmt(t.model_calls),'AI calls',usd(t.cost_usd)+' estimated','/admin/usage');return box}
+ function timeline(d){const c=card('Activity over time','What happened in Alice, by area. Blocks are counted separately, under Stopped by the rules.');
+  const lg=el('div','','av-legend');for(const g of d.groups){const s=el('span');s.append(Object.assign(el('i'),{style:'background:'+COL[g.key]}),document.createTextNode(g.name));lg.append(s)}c.append(lg);
+  const B=d.buckets,W=Math.max(300,Math.min(1200,($('av').clientWidth||900)-40)),H=W<500?200:230,L=36,R=8,T=8,Bm=26,n=Math.max(B.length,1),cw=(W-L-R)/n,bw=Math.max(2,Math.min(28,cw-4));
+  const tot=B.map(b=>d.groups.reduce((a,g)=>a+b[g.key],0)),max=Math.max(1,...tot);const nice=m=>{const p=Math.pow(10,Math.floor(Math.log10(m))),f=m/p;return (f<=1?1:f<=2?2:f<=5?5:10)*p};const top=nice(max);
+  const svg=S('svg',{viewBox:`0 0 ${W} ${H}`,role:'img','aria-label':'Activity over time, stacked by area'});
+  for(let i=0;i<=4;i++){const v=top*i/4,y=T+(H-T-Bm)*(1-i/4);svg.append(S('line',{x1:L,x2:W-R,y1:y,y2:y,stroke:i?'var(--grid)':'#b9cbd8','stroke-width':1}),S('text',{x:L-6,y:y+4,'text-anchor':'end','font-size':11,fill:'#5d7385'},fmt(Math.round(v))))}
+  const every=Math.ceil(n/(W/70));
+  B.forEach((b,i)=>{const x=L+i*cw+(cw-bw)/2;let y=H-Bm;const g=S('g');
+   d.groups.forEach((gr,gi)=>{const v=b[gr.key];if(!v)return;const h=(H-T-Bm)*v/top;const top_=gi===d.groups.map(x=>b[x.key]>0).lastIndexOf(true);
+    g.append(S('rect',{x,y:y-h+(gi?0:0),width:bw,height:Math.max(h-(y<H-Bm?2:0),1),fill:COL[gr.key],rx:top_?Math.min(4,bw/3):0}));y-=h});
+   const hit=S('rect',{x:L+i*cw,y:T,width:cw,height:H-T-Bm,fill:'transparent'});
+   hit.onmousemove=e=>showTip(e,'<b>'+esc(b.label)+' · '+fmt(tot[i])+' things</b>'+d.groups.filter(gr=>b[gr.key]).map(gr=>'<i style="background:'+COL[gr.key]+'"></i>'+esc(gr.name)+': '+fmt(b[gr.key])).join('<br>')+(b.blocks?'<br>Blocked by the rules: '+fmt(b.blocks):'')+(tot[i]?'':'Nothing happened'));hit.onmouseleave=hideTip;
+   g.append(hit);svg.append(g);if(i%every===0)svg.append(S('text',{x:L+i*cw+cw/2,y:H-8,'text-anchor':'middle','font-size':11,fill:'#5d7385'},b.label))});
+  c.append(svg);
+  const det=document.createElement('details');det.append(el('summary','Show the numbers'));const tb=document.createElement('table');const hr=document.createElement('tr');for(const x of [d.unit==='hour'?'Hour':'Period',...d.groups.map(g=>g.name),'Blocked'])hr.append(el('th',x));tb.append(hr);
+  for(const b of B){if(!d.groups.some(g=>b[g.key])&&!b.blocks)continue;const tr=document.createElement('tr');tr.append(el('td',b.label),...d.groups.map(g=>el('td',fmt(b[g.key]))),el('td',fmt(b.blocks)));tb.append(tr)}det.append(tb);c.append(det);return c}
+ function bars(c,items,opts){if(!items.length){c.append(el('p',opts.empty,'av-empty'));return}const box=el('div','','av-bars');const max=Math.max(1,...items.map(opts.total));
+  for(const it of items){const row=el('div','','av-b');const tr=el('div','','av-track');
+   for(const [v,col,name] of opts.parts(it)){if(!v)continue;const seg=el('div');seg.style.width=(100*v/max)+'%';seg.style.background=col;tr.append(seg)}
+   row.append(el('span',it.name),tr,el('span',opts.label(it),'av-n'));row.onmousemove=e=>showTip(e,opts.tip(it));row.onmouseleave=hideTip;box.append(row)}c.append(box);if(opts.key)c.append(opts.key)}
+ function key(pairs){const k=el('div','','av-key');for(const [col,name] of pairs){const s=el('span');s.append(Object.assign(el('i'),{style:'background:'+col}),document.createTextNode(name));k.append(s)}return k}
+ function gate(d){const c=card('The approval gate','What models, Temple and connected apps proposed, and what you decided. Nothing becomes approved without you.');const rows=el('div','','av-rows');
+  const any=d.gate.some(g=>g.proposed||g.approved||g.rejected);if(!any){c.append(el('p','Nothing was proposed or decided in this period.','av-empty'));return c}
+  for(const g of d.gate){const open=Math.max(0,g.proposed-g.approved-g.rejected),tot=Math.max(1,g.approved+g.rejected+open);const r=el('div','','av-row');const h=el('div','','av-row-head');
+   h.append(el('strong',g.name),el('span',fmt(g.proposed)+' proposed · '+fmt(g.approved)+' approved · '+fmt(g.rejected)+' rejected'+(open?' · '+fmt(open)+' still open':'')));
+   const seg=el('div','','av-seg');for(const [v,col,name] of [[g.approved,'var(--good)','approved'],[g.rejected,'var(--bad)','rejected'],[open,'var(--open)','still open']]){if(!v)continue;const x=el('div');x.style.flex=v+' 0 0';x.style.background=col;x.onmousemove=e=>showTip(e,'<b>'+esc(g.name)+'</b>'+fmt(v)+' '+name);x.onmouseleave=hideTip;seg.append(x)}
+   if(!g.approved&&!g.rejected&&!open)seg.append(el('div'));r.append(h,seg);rows.append(r)}
+  c.append(rows,key([['var(--good)','✓ Approved by you'],['var(--bad)','✕ Rejected by you'],['var(--open)','Still open (proposed in this period, not yet decided)']]));return c}
+ function blocks(d){const c=card('Stopped by the rules','Every time a rule blocked something or sent it to a person, by rule.');
+  bars(c,d.blocks,{empty:'Nothing was blocked in this period.',total:x=>x.n,parts:x=>[[x.n,'var(--bad)']],label:x=>fmt(x.n),tip:x=>'<b>'+esc(x.name)+'</b>'+fmt(x.n)+' blocked or escalated'});return c}
+ function agentsCard(d){const c=card('Agents at work','Runs per agent in this period; failed and rule-blocked runs shown separately.');
+  bars(c,d.agents.map(a=>({...a,ok:a.runs-a.failed-a.blocked})),{empty:'No agent ran in this period.',total:x=>x.runs,parts:x=>[[x.ok,'var(--s3)'],[x.blocked,'var(--s4)'],[x.failed,'var(--bad)']],
+   label:x=>fmt(x.runs)+' run'+(x.runs===1?'':'s')+(x.cost&&!DEMO?' · '+usd(x.cost):''),tip:x=>'<b>'+esc(x.name)+'</b>'+fmt(x.ok)+' completed'+(x.blocked?'<br>'+fmt(x.blocked)+' stopped by a rule':'')+(x.failed?'<br>'+fmt(x.failed)+' failed':'')+(x.calls?'<br>'+fmt(x.calls)+' AI calls':'')+(x.cost&&!DEMO?'<br>'+usd(x.cost)+' estimated':''),
+   key:key([['var(--s3)','Completed'],['var(--s4)','Stopped by a rule'],['var(--bad)','✕ Failed']])});return c}
+ function modelsCard(d){const c=card('AI models used','Calls to each model in this period, from chat, Temple, agents and assistants.');
+  bars(c,d.models,{empty:'No AI calls in this period.',total:x=>x.calls,parts:x=>[[x.calls,'var(--s1)']],label:x=>fmt(x.calls)+(DEMO?'':' · '+usd(x.cost)),tip:x=>'<b>'+esc(x.name)+'</b>'+fmt(x.calls)+' calls'+(DEMO?'':'<br>'+usd(x.cost)+' estimated')});return c}
+ function heat(d){const c=card('When things happen','Activity by day of the week and hour, in your local time.');const W=Math.max(300,Math.min(520,(($('av').clientWidth||900)>1000?($('av').clientWidth-14)/2:$('av').clientWidth)-40)),cell=(W-44)/24,ch=24,H=7*ch+26;
+  const svg=S('svg',{viewBox:`0 0 ${W} ${H}`,role:'img','aria-label':'Activity by weekday and hour'});const max=Math.max(1,...d.heat.flat());
+  const RAMP=['#cde2fb','#9ec5f4','#6da7ec','#3987e5','#256abf','#184f95','#0d366b'];const col=v=>v?RAMP[Math.min(RAMP.length-1,Math.floor((v/max)*(RAMP.length-0.001)))]:'#f0f3f6';
+  d.heat.forEach((row,w)=>{svg.append(S('text',{x:34,y:w*ch+ch/2+4,'text-anchor':'end','font-size':11,fill:'#5d7385'},d.weekdays[w]));
+   row.forEach((v,h)=>{const r=S('rect',{x:44+h*cell+1,y:w*ch+1,width:cell-2,height:ch-2,rx:3,fill:col(v)});r.onmousemove=e=>showTip(e,'<b>'+d.weekdays[w]+' '+String(h).padStart(2,'0')+':00</b>'+fmt(v)+' thing'+(v===1?'':'s'));r.onmouseleave=hideTip;svg.append(r)})});
+  for(let h=0;h<24;h+=6)svg.append(S('text',{x:44+h*cell+cell/2,y:7*ch+16,'text-anchor':'middle','font-size':11,fill:'#5d7385'},String(h).padStart(2,'0')+':00'));
+  c.append(svg,key([['#f0f3f6','Nothing'],[RAMP[1],'Some'],[RAMP[3],'More'],[RAMP[6],'Busiest ('+fmt(max)+')']]));return c}
+ function topCard(d){const c=card('Most frequent','The things that happened most often.');bars(c,d.top.map(x=>({name:x.label,n:x.n})),{empty:'Nothing yet.',total:x=>x.n,parts:x=>[[x.n,'var(--s1)']],label:x=>fmt(x.n),tip:x=>'<b>'+esc(x.name)+'</b>'+fmt(x.n)+' times'});return c}
+ let lastD=null,lastW=0,rz=null;
+ window.addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(()=>{if(lastD&&Math.abs(($('av').clientWidth||0)-lastW)>40)draw(lastD)},200)});
+ async function viz(){const p=$('al-period').value;const d=await api('/admin/api/activity-overview?preset='+p+'&start='+$('al-from').value+'&end='+$('al-to').value+'&tz='+new Date().getTimezoneOffset());draw(d)}
+ function draw(d){lastD=d;lastW=$('av').clientWidth;hideTip();
+  const r1=el('div','','av-two'),r2=el('div','','av-two'),r3=el('div','','av-two');r1.append(gate(d),blocks(d));r2.append(agentsCard(d),modelsCard(d));r3.append(heat(d),topCard(d));
+  $('av').replaceChildren(tiles(d),timeline(d),r1,r2,r3)}
+ let view=(()=>{try{return localStorage.getItem('alice-activity-view')||'both'}catch{return 'both'}})();
+ function views(){$('av-views').replaceChildren(...[['both','Picture and log'],['picture','Picture'],['log','Log']].map(([k,l])=>chip(l,view===k,()=>{view=k;try{localStorage.setItem('alice-activity-view',k)}catch{}views()})));$('av').hidden=view==='log';$('al-log').hidden=view==='picture'}
+ views();
+ const reload=()=>{run(()=>load());run(viz)};
+ $('al-period').onchange=()=>{$('al-custom').hidden=$('al-period').value!=='custom';if($('al-period').value!=='custom')reload()};
+ for(const id of ['al-from','al-to'])$(id).onchange=reload;
  $('al-q').oninput=()=>{clearTimeout(timer);timer=setTimeout(()=>run(()=>load()),300)};
  $('al-more').onclick=()=>run(()=>load(true));
  const p=new URLSearchParams(location.search);if(p.get('type'))st.type=p.get('type');
- run(()=>load());
+ run(()=>load());run(viz);
 }
 if(PAGE==='overview')run(async()=>{const d=await api('/admin/api/overview');for(const [key,label,path] of [['files','Saved files','knowledge'],['approved','Approved memories','memories?status=approved'],['proposed','Awaiting approval','memories?status=proposed'],['chats','Saved chats','']]){const card=el('a','','stat');card.href=path?'/admin/'+path:'/';card.append(el('strong',String(d[key])),el('span',label));$('overview-stats').append(card)}$('proposal-state').textContent='New record proposals are '+(d.allow_proposals?'enabled.':'disabled. Change this in Rules.');});
 '''

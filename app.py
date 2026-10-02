@@ -1979,6 +1979,11 @@ def admin_activity_log(type: str=Query('',max_length=20), preset: Literal['today
                        q: str=Query('',max_length=200), offset: int=Query(0,ge=0)):
     return activity_log.query(type,preset,start,end,q,offset)
 
+@app.get('/admin/api/activity-overview')
+def admin_activity_overview(preset: Literal['today','7d','30d','all','custom']='7d', start: str=Query('',max_length=10),
+                            end: str=Query('',max_length=10), tz: int=Query(0,ge=-840,le=840)):
+    return activity_log.overview(preset,start,end,tz)
+
 @app.get('/admin/api/activity-log.csv')
 def admin_activity_csv(type: str=Query('',max_length=20), preset: Literal['today','7d','30d','all','custom']='7d',
                        start: str=Query('',max_length=10), end: str=Query('',max_length=10), q: str=Query('',max_length=200)):

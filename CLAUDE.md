@@ -114,7 +114,7 @@ A browser refresh is not enough: the old server process keeps running the old co
 | `documents.py` | Word, Excel and PDF created in chat via the local `create_document` tool (not MCP, so outside apps don't get it): Word and PDF from simple markdown (stdlib; PDF written by hand with Helvetica), Excel with openpyxl; `check_file` runs first; kept in `generated_documents` for download at `/documents/{id}/download`; never knowledge |
 | `clients.py` | Clients (the separation list), tagging, alias detection, separation enforcement. There is no Clients page: a client is an organisation with Client ticked (`organisations.set_client` writes the clients table), and tagging lives in Organisations → Tag memories and files; `/admin/clients` redirects |
 | `actions.py` | Everything awaiting a decision (Actions page) |
-| `activity_log.py` | Activity log labels, types, filters, CSV |
+| `activity_log.py` | Activity log labels, types, filters, CSV; `overview()` feeds the Activity page's picture (`/admin/api/activity-overview`): tiles, activity over time by area (blocks counted separately), the approval gate, blocks by rule, agent runs, AI calls by model, a weekday-by-hour heatmap in the browser's time zone, most frequent actions |
 | `router.py` | Auto model routing, provider failure memory |
 | `usage_meter.py` | Token/cost ledger, timings, savings |
 | `images.py`, `voice.py` | Generated images; ElevenLabs speech |
