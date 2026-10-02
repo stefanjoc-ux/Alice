@@ -1504,7 +1504,7 @@ class AssistantIn(BaseModel):
     description: str = Field(default='',max_length=500)
     greeting: str = Field(default='',max_length=800)
     packs: list[Annotated[str, Field(max_length=10)]] = Field(default_factory=list,max_length=10)
-    provider: Literal['openai','claude','claude_sonnet'] = 'openai'
+    provider: Literal['openai','claude','claude_sonnet','claude_opus','openai_astra'] = 'openai'
     categories: list[Annotated[str, Field(max_length=40)]] = Field(default_factory=list,max_length=20)
     guidance: str = Field(default='',max_length=3000)
     contact: str = Field(default='',max_length=120)
@@ -1521,6 +1521,8 @@ class ProposalIn(BaseModel):
     sections: list[dict]|None = Field(default=None,max_length=30)
     rate_card: list[dict]|None = Field(default=None,max_length=40)
     use_memory: bool = True
+    writer_model: str = Field(default='',max_length=20)
+    qa_model: str = Field(default='',max_length=20)
 
 class AssistantQuestion(BaseModel):
     question: str = Field(min_length=1,max_length=2000)
@@ -1580,7 +1582,7 @@ def proposal_setup(aid: str):
 def proposal_start(aid: str, x: ProposalIn, request: Request):
     import proposals
     _same_origin(request)
-    try: return {'id':proposals.start(aid,x.title,x.organisation,x.brief,x.notes,x.sections,x.rate_card,x.use_memory)}
+    try: return {'id':proposals.start(aid,x.title,x.organisation,x.brief,x.notes,x.sections,x.rate_card,x.use_memory,x.writer_model,x.qa_model)}
     except LookupError: raise HTTPException(404,'No such proposal writer.') from None
     except Exception as e:
         code,detail=_assistant_error(e)

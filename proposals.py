@@ -141,7 +141,8 @@ def setup(aid):
     orgs = [{'name': o['name'], 'client': o['is_client']} for o in organisations.listing()['organisations']]
     return {'assistant': {k: a[k] for k in ('id', 'name', 'description', 'greeting', 'status')}, 'sections': secs,
             'rate_card': a['settings'].get('rate_card') or [], 'template': a['settings'].get('template') or '', 'template_error': err,
-            'organisations': orgs, 'units': list(UNITS), 'min_margin': a['settings'].get('min_margin', 25)}
+            'organisations': orgs, 'units': list(UNITS), 'min_margin': a['settings'].get('min_margin', 25),
+            'models': assistants.model_choices('proposal'), 'writer': a['provider'], 'qa': a['settings'].get('qa_provider') or a['provider']}
 
 
 # ---------------- context from Alice, under the rules ----------------
@@ -150,10 +151,11 @@ def _client_for(org):
     return next((n for n in clients.names() if n.casefold() == (org or '').casefold()), '')
 
 
-def gather(a, title, brief, org, client, use_memory=True):
+def gather(a, title, brief, org, client, use_memory=True, providers=None):
     """Context for the writer. Every piece is checked; nothing from another client is ever included."""
     import assistants, clients, knowledge, organisations, rules_engine
-    fam = assistants.family(a['provider'])
+    fams = list(dict.fromkeys(assistants.family(p) for p in (providers or [a['provider']])))   # writer and QA both see it
+    fam = fams[0]
     words = set(assistants._words(f'{title} {brief} {org}')) - assistants.GENERIC
     parts, used, skipped = [], {'organisation': '', 'memories': [], 'knowledge': []}, 0
     def ok(text):
@@ -162,6 +164,8 @@ def gather(a, title, brief, org, client, use_memory=True):
     if org:
         try:
             b = organisations.brief(org, provider=fam)
+            for other in fams[1:]:                                            # the stricter of the two models' rules
+                if organisations.brief(org, provider=other).get('text') != b.get('text'): b = organisations.brief(org, provider=other)
             if b.get('text') and ok(b['text']):
                 parts.append(b['text']); used['organisation'] = b['org']; agents.note('read', 'organisation', b['org'], f'{b["facts"]} facts for a proposal')
         except ValueError:
@@ -169,7 +173,8 @@ def gather(a, title, brief, org, client, use_memory=True):
     if not use_memory: return '\n\n'.join(parts), used, skipped
     recs = store.records('approved', '', 0, 2000)['records']
     recs = rules_engine.annotate_records(recs)
-    recs, n = rules_engine.filter_records_for_provider(recs, fam); skipped += n
+    for f_ in fams:
+        recs, n = rules_engine.filter_records_for_provider(recs, f_); skipped += n
     tags = clients.clients_for('memory', [r['id'] for r in recs])
     recs = [r for r in recs if not tags.get(r['id']) or tags.get(r['id']) == client]      # general, or this client only
     def score(text, head=''):
@@ -186,7 +191,7 @@ def gather(a, title, brief, org, client, use_memory=True):
         agents.note('read', 'memory', r['id'], 'context for a proposal')
     if lines: parts.append('APPROVED MEMORIES AND DECISIONS\n' + '\n'.join(lines))
     items = [i for i in knowledge.listing(status='active', limit=100000)['items']
-             if i['label'] != 'local' and (not i.get('client') or i.get('client') == client) and not knowledge.model_block(i['id'], fam)]
+             if i['label'] != 'local' and (not i.get('client') or i.get('client') == client) and not any(knowledge.model_block(i['id'], f_) for f_ in fams)]
     ids = [i['id'] for i in items]
     texts = {}
     if ids:
@@ -198,7 +203,7 @@ def gather(a, title, brief, org, client, use_memory=True):
     klines = []
     for sc, i in ranked[:5]:
         if sc <= 0: break
-        best = assistants.sources({'categories': [], 'provider': a['provider']}, f'{title} {brief[:500]}', [i])[:2]
+        best = assistants.sources({'categories': [], 'provider': fam}, f'{title} {brief[:500]}', [i])[:2]
         text = f'[K{len(klines) + 1}] {i["title"]}:\n' + '\n'.join(b['text'] for b in best) if best else ''
         if not text or not ok(text): skipped += 1 if text else 0; continue
         if size + len(text) > MAX_CONTEXT: break
@@ -264,7 +269,8 @@ def write(aid, job, previous=None, feedback=None):
     a = assistants.get(aid)
     rules_engine.check_spend('chat')
     if previous is None:
-        ctx, used, skipped = gather(a, job['title'], job['brief'], job['organisation'], job['client'], job['use_memory'])
+        ctx, used, skipped = gather(a, job['title'], job['brief'], job['organisation'], job['client'], job['use_memory'],
+                                    [job.get('writer') or a['provider'], job.get('qa') or a['provider']])
         if job.get('template'): agents.note('read', 'document', job['template'], 'proposal template')
         job['context'], job['context_used'], job['context_skipped'] = ctx, used, skipped
     secs = '\n'.join(f'- {s["title"]}' + (' [KEEP]' if s['keep'] else '') + (f'\n  Guidance: {s["guidance"]}' if s['guidance'] and not s['keep'] else '')
@@ -278,7 +284,7 @@ def write(aid, job, previous=None, feedback=None):
                 'keep what is already good.\n' + json.dumps(feedback)[:12000])
     rules_engine.check_outbound(msg, 'Proposal writer', packs=False)
     guidance = ('Tone and style: ' + a['guidance']) if a['guidance'] else ''
-    out = _json(assistants._call(a['provider'], WRITER_PROMPT.format(guidance=guidance), [{'role': 'user', 'content': msg}],
+    out = _json(assistants._call(job.get('writer') or a['provider'], WRITER_PROMPT.format(guidance=guidance), [{'role': 'user', 'content': msg}],
                                  max_tokens=12000, timeout=300, workload='Proposal writer'))
     got = {(_clean(s.get('title'), 120)).casefold(): str(s.get('body') or '').strip() for s in out.get('sections') or [] if isinstance(s, dict)}
     sections = [{'title': s['title'], 'body': '' if s['keep'] else got.get(s['title'].casefold(), ''), 'keep': s['keep']} for s in job['sections']]
@@ -357,7 +363,7 @@ def review(aid, job, draft, pricing):
            + f'\n\nPRICE SUMMARY (sell)\n{summary or "(no pricing)"}\nTotal: {money(pricing["sell"])}\n\nDRAFT\n{_sections_text(draft["sections"])}'
            + '\n\nALICE CHECKS\n' + (json.dumps(checks) if checks else '(none)'))
     rules_engine.check_outbound(msg, 'Proposal QA', packs=False)
-    qa_provider = a['settings'].get('qa_provider') or a['provider']
+    qa_provider = job.get('qa') or a['settings'].get('qa_provider') or a['provider']
     if qa_provider not in assistants.PROVIDERS: qa_provider = a['provider']
     out = _json(assistants._call(qa_provider, QA_PROMPT, [{'role': 'user', 'content': msg}], max_tokens=4000, timeout=180, workload='Proposal QA'))
     issues = [i for i in (out.get('issues') or []) if isinstance(i, dict)][:40]
@@ -384,7 +390,7 @@ def _save(pid, **f):
         c.execute(f'UPDATE proposals SET {",".join(k + "=?" for k in f)} WHERE id=?', list(f.values()) + [pid])
 
 
-def start(aid, title, organisation, brief, notes='', sections=None, rate_card=None, use_memory=True):
+def start(aid, title, organisation, brief, notes='', sections=None, rate_card=None, use_memory=True, writer_model='', qa_model=''):
     """Check the request and start the background job. Returns the proposal id."""
     import assistants, organisations, rules_engine, rule_packs
     a = assistants.get(aid)
@@ -403,14 +409,19 @@ def start(aid, title, organisation, brief, notes='', sections=None, rate_card=No
     rules_engine.check_spend('chat')
     for text in (title, brief, notes):
         if text: rules_engine.check_outbound(text, 'Proposal writer', packs=False)
+    writer = writer_model or a['provider']
+    qa = qa_model or a['settings'].get('qa_provider') or a['provider']
+    for m in (writer, qa):
+        if m not in assistants.PROVIDERS: raise ValueError('Choose a model from the list.')
     if a['packs']:
-        r = rule_packs.live_check(brief, assistants.family(a['provider']), a['name'], packs=a['packs']); brief = r['text']
+        r = rule_packs.live_check(brief, assistants.family(writer), a['name'], packs=a['packs']); brief = r['text']
     secs = clean_sections(sections) if sections is not None else outline(a)
     if not secs: raise ValueError('List at least one section (Format and flow), or choose a template on the Assistants page.')
     card = clean_rate_card(rate_card) if rate_card is not None else a['settings'].get('rate_card') or []
     if a['settings'].get('template'): _template(a['settings']['template'])          # fail now, not in the background
     pid = uuid.uuid4().hex
-    inputs = {'sections': secs, 'rate_card': card, 'use_memory': bool(use_memory), 'template': a['settings'].get('template') or ''}
+    inputs = {'sections': secs, 'rate_card': card, 'use_memory': bool(use_memory), 'template': a['settings'].get('template') or '',
+              'writer': writer, 'qa': qa}
     with store.db() as c:
         c.execute('INSERT INTO proposals(id,assistant_id,title,organisation,client,brief,notes,inputs,status,stage,created_by,created_at,updated_at) '
                   'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', (pid, aid, title, org, client, brief, notes, json.dumps(inputs), 'running',

@@ -166,6 +166,9 @@ call real AI services. Never read the demo store anywhere else, and never let a 
   categories, never client-tagged or Local only, and only labels its model may receive. The model answers only from those sources.
 - No transcript is stored. Activity rows record the outcome and the sources used, never the question.
 - Validate input before calling `ask` (it is `@agents.tracked`); the staff page refuses cross-origin posts and never carries the admin token.
+- Assistant models are `assistants.PROVIDERS` keys; rules use `assistants.family()` (claude/openai). Premium models (`claude_opus`,
+  `openai_astra`, Astra always with reasoning on) are for proposal writers only. Each proposal can override the writer and QA model
+  (stored in `inputs`); context is filtered for BOTH models' provider rules, since QA sees the draft.
 - Proposal writers (`kind='proposal'`, settings JSON: template, sections, rate_card, qa_provider, min_margin, pricing_note, author) never answer
   questions. Their job runs in a thread: call `write()` and `review()` separately (each is its own tracked run; nested tracked calls would
   merge into one run). Cost rates must never appear in a prompt or the document; client separation for proposals is stricter than chat:

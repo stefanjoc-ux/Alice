@@ -240,6 +240,17 @@ def live_anatomy(a):
     an['guardrails'] = [{'id': g, 'name': rules[g]['name'] if g in rules else g, 'on': bool(rules.get(g, {}).get('enabled', True))}
                         for g in an.get('guardrails', [])]
     an['data'] = [{'key': k, 'name': DATA_SOURCES.get(k, k)} for k in an.get('data', [])]
+    if a['id'] in ('alice-proposal-writer', 'alice-proposal-qa'):        # the model is set on each Proposal writer assistant
+        try:
+            import assistants
+            names = []
+            for x in assistants.listing()['assistants']:
+                if x['kind'] != 'proposal': continue
+                k = x['provider'] if a['id'] == 'alice-proposal-writer' else (x['settings'].get('qa_provider') or x['provider'])
+                names.append(f"{assistants.PROVIDERS.get(k, (k, k))[1]} ({x['name']})")
+            if names: an['model'] = ', '.join(names) + ' by default; change it on the Assistants page or on each proposal'
+        except Exception:
+            pass
     if a['kind'] == 'app' and a['permissions'].get('tools'): an['tools'] = a['permissions']['tools']
     return an
 

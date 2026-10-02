@@ -211,3 +211,32 @@ with zipfile.ZipFile(io.BytesIO(out)) as z:
     ids = _re.findall(r'<w:numId w:val="(\d+)"', z.read('word/document.xml').decode())
     t('each numbered list restarts at 1', len(set(ids)) == 2 and z.read('word/numbering.xml').decode().count('<w:startOverride w:val="1"/>') == 2)
 t('placeholders split across runs are still filled', 'Prepared for Acme' in K.docx_to_text(PD.fill(raw, [], {'client': 'Acme'})))
+
+# ---------------- choosing a better model ----------------
+t('premium models are offered for proposals, with rough costs', {'claude_opus', 'openai_astra'} <= {m['key'] for m in cl.get('/assistant/proposal-writer/setup').json()['models'] if m['premium']}
+  and all(m['writer_cost'] is not None for m in cl.get('/assistant/proposal-writer/setup').json()['models']))
+t('a question-answering assistant cannot use a premium model', cl.put('/admin/api/assistants/hr-policy', headers=H, json={'name': 'HR policy assistant', 'provider': 'claude_opus'}).status_code == 400)
+t('provider families for the rules', AS.family('openai_astra') == 'openai' and AS.family('claude_opus') == 'claude')
+cl.put('/admin/api/assistants/proposal-writer', headers=H, json=dict(body, settings=dict(body['settings'], template='Proposal Templates/Proposal-template.docx')))
+calls.clear(); MODE['qa'] = [QA2]
+p4 = wait(start(writer_model='claude_opus', qa_model='claude_sonnet', sections=[{'title': 'Summary'}], rate_card=card).json()['id'])
+wm = [c['model'] for c in calls if c['system'].startswith('You are the proposal writer')]
+qm = [c['model'] for c in calls if c['system'].startswith('You are the Proposal QA')]
+t('each proposal can use another writer and QA model', p4['status'] == 'done' and wm == ['claude-opus-5-5'] and qm == ['claude-sonnet-5-5']
+  and p4['inputs']['writer'] == 'claude_opus')
+t('unknown models are refused', start(writer_model='gpt-99').status_code == 400)
+t('Opus is recorded as where the data went', any('Claude Opus 5.5 (Anthropic)' in i['sent_to'] for i in A.touched_items(P.WRITER)))
+t('the Agents page names the model in use', 'Claude Sonnet 5.5 (Proposal writer)' in next(a for a in cl.get('/admin/api/agents', headers=H).json()['agents'] if a['id'] == P.WRITER)['anatomy_live']['model'])
+import openai
+seen_o = []
+class ORsp:
+    def create(self, **kw):
+        seen_o.append(kw)
+        return NS(output_text='{}', usage=NS(model_dump=lambda: {'input_tokens': 10, 'output_tokens': 5}))
+class OAI:
+    def __init__(s_, **k): s_.responses = ORsp()
+    def __enter__(s_): return s_
+    def __exit__(s_, *a): pass
+openai.OpenAI = OAI
+AS._call('openai_astra', 'sys', [{'role': 'user', 'content': 'x'}])
+t('GPT-6 Astra is called with reasoning on (it has no "none" setting)', seen_o[-1]['model'] == 'gpt-6-astra' and seen_o[-1]['reasoning']['effort'] == 'medium')

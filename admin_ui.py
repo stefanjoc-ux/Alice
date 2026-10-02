@@ -1223,13 +1223,16 @@ if(PAGE==='assistants'){
  function form(a,isNew){const f=el('div','','as-form');const kind=isNew?newKind:(a.kind||'qa');
   if(isNew){const ty=sel(Object.entries(L.kinds),kind);ty.onchange=()=>{newKind=ty.value;render()};f.append(field('Type',ty))}
   const name=input(a.name,80,kind==='proposal'?'e.g. Proposal writer':'e.g. HR policy assistant'),desc=input(a.description,500,'What it is for, in one line'),greet=area(a.greeting,800,2),guide=area(a.guidance,3000,4),contact=input(a.contact,120,'e.g. your HR business partner');
-  const prov=sel(Object.entries(L.providers),a.provider||(kind==='proposal'?'claude_sonnet':'openai'));
+  const premium=new Set(L.models.filter(m=>m.premium).map(m=>m.key));
+  const provOpts=keys=>keys.map(k=>[k,L.providers[k]+(premium.has(k)?' (premium)':'')]);
+  const prov=sel(provOpts(kind==='proposal'?Object.keys(L.providers):L.qa_providers),a.provider||(kind==='proposal'?'claude_sonnet':'openai'));
   const st=sel([['active','Active'],['paused','Paused']],a.status||'active');
   const S=a.settings||{};let body=()=>({});
   if(kind==='proposal'){
-   const qap=sel(Object.entries(L.providers),S.qa_provider||'claude_sonnet');
+   const qap=sel(provOpts(Object.keys(L.providers)),S.qa_provider||'claude_sonnet');
+   const est=el('p','','muted small');const upd=()=>{const w=L.models.find(m=>m.key===prov.value),q=L.models.find(m=>m.key===qap.value);est.textContent=w&&q&&w.writer_cost!=null&&q.qa_cost!=null?'Roughly $'+(w.writer_cost+q.qa_cost).toFixed(2)+' per proposal with these defaults. Premium models write better and cost more; people can choose another model on each proposal.':''};prov.onchange=upd;qap.onchange=upd;
    const r1=el('div','','k-meta-row');r1.append(field('Name',name),field('Writer model',prov),field('QA model',qap),field('Status',st));
-   f.append(r1,field('Description',desc),field('Greeting shown on its page',greet),field('Tone and style for the writer',guide));
+   upd();f.append(r1,est,field('Description',desc),field('Greeting shown on its page',greet),field('Tone and style for the writer',guide));
    const tpl=sel([['','No template: Alice’s own Word layout']].concat(T.map(x=>[x.path,x.name+' ('+x.source+')'])),S.template||'');
    if(S.template&&!T.some(x=>x.path===S.template)){const o=el('option',S.template+' (not found)');o.value=S.template;tpl.append(o);tpl.value=S.template}
    const prev=el('div','','muted small as-tpl');

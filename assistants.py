@@ -18,13 +18,30 @@ import agents
 import substrate_store as store
 
 PROVIDERS = {'openai': ('gpt-6-luna', 'GPT-6 Luna'), 'claude': ('claude-haiku-4-5-20251001', 'Claude Haiku 4.5'),
-             'claude_sonnet': ('claude-sonnet-5-5', 'Claude Sonnet 5.5')}
+             'claude_sonnet': ('claude-sonnet-5-5', 'Claude Sonnet 5.5'), 'claude_opus': ('claude-opus-5-5', 'Claude Opus 5.5'),
+             'openai_astra': ('gpt-6-astra', 'GPT-6 Astra')}
+PREMIUM = {'claude_opus', 'openai_astra'}                  # proposal writers only: too costly for answering questions
+QA_PROVIDERS = [k for k in PROVIDERS if k not in PREMIUM]
 KINDS = {'qa': 'Answers questions from knowledge', 'proposal': 'Writes proposals (writer and QA agents)'}
 
 
 def family(provider):
     """The provider name Alice's rules use (labels and allow-lists are per provider, not per model)."""
-    return 'claude' if (provider or '').startswith('claude') else provider
+    p = provider or ''
+    return 'claude' if p.startswith('claude') else 'openai' if p.startswith('openai') else p
+
+
+def model_choices(kind='proposal'):
+    """[{key, name, premium, writer_cost, qa_cost}]: rough USD per proposal for writing (draft and revision) and for two QA checks."""
+    import usage_meter
+    out = []
+    for k, (m, name) in PROVIDERS.items():
+        if kind != 'proposal' and k in PREMIUM: continue
+        r = usage_meter.RATES.get(m)
+        w = (2 * 15000 * r[0] + 2 * 8000 * r[3]) / 1e6 if r else None      # draft and revision
+        q = (2 * 22000 * r[0] + 2 * 3000 * r[3]) / 1e6 if r else None      # two QA checks
+        out.append({'key': k, 'name': name, 'premium': k in PREMIUM, 'writer_cost': w, 'qa_cost': q})
+    return out
 MAX_SOURCES, CHUNK, MAX_CONTEXT = 6, 900, 7000
 HISTORY_TURNS = 6
 MARKER = 'NOT_IN_SOURCES'
@@ -95,6 +112,7 @@ def listing():
     for r in rows:                      # what each assistant can use now, and what is still waiting for approval
         r['knowledge'] = {st: sum(knowledge.listing(status=st, category=c, limit=1)['total'] for c in r['categories']) for st in ('active', 'draft')}
     return {'assistants': rows, 'providers': {k: v[1] for k, v in PROVIDERS.items()}, 'kinds': KINDS,
+            'qa_providers': QA_PROVIDERS, 'models': model_choices('proposal'),
             'packs': {pid: p['name'] for pid, p in rule_packs.PACKS.items()}, 'categories': cats}
 
 
@@ -113,11 +131,12 @@ def save(aid=None, name='', description='', greeting='', packs=(), provider='ope
     packs = [p for p in dict.fromkeys(packs or []) if p]
     bad = [p for p in packs if p not in rule_packs.PACKS]
     if bad: raise ValueError('Unknown rule pack: ' + ', '.join(bad) + '.')
-    if provider not in PROVIDERS: raise ValueError('Choose one of: ' + ', '.join(v[1] for v in PROVIDERS.values()) + '.')
     if kind not in KINDS: raise ValueError('Unknown assistant type.')
     if aid:
         try: kind = get(aid)['kind']             # the type is fixed once created
         except LookupError: pass
+    allowed = PROVIDERS if kind == 'proposal' else QA_PROVIDERS
+    if provider not in allowed: raise ValueError('Choose one of: ' + ', '.join(PROVIDERS[k][1] for k in allowed) + '.')
     if kind == 'proposal':
         import proposals
         settings = proposals.clean_settings(settings or {})
@@ -205,13 +224,13 @@ Rules you must follow:
 def _call(provider, system, messages, max_tokens=1500, timeout=60, workload='Assistant'):
     import os, usage_meter
     model = PROVIDERS[provider][0]
-    if provider == 'openai':
+    if family(provider) == 'openai':
         if not os.getenv('OPENAI_API_KEY'): raise ValueError('Missing OPENAI_API_KEY.')
         from openai import OpenAI
         with OpenAI(timeout=timeout, max_retries=0) as client:
             r = client.responses.create(model=model, instructions=system, input=messages, max_output_tokens=max_tokens,
-                                        reasoning={'effort': 'none'}, store=False)
-        usage_meter.log(r, provider, model, workload)
+                                        reasoning={'effort': 'medium' if model == 'gpt-6-astra' else 'none'}, store=False)
+        usage_meter.log(r, 'openai', model, workload)
         return r.output_text
     if not os.getenv('ANTHROPIC_API_KEY'): raise ValueError('Missing ANTHROPIC_API_KEY.')
     from anthropic import Anthropic
