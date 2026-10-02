@@ -28,7 +28,7 @@ form{border-top:1px solid var(--line);background:var(--panel);padding:12px 16px}
 .row{max-width:780px;margin:0 auto;display:flex;gap:10px;align-items:flex-end}
 textarea{flex:1;resize:none;min-height:46px;max-height:180px}
 .foot{max-width:780px;margin:6px auto 0;font-size:12px;color:var(--muted)}
-.busy{color:var(--muted);font-style:italic;align-self:flex-start}
+.busy{color:var(--muted);font-style:italic;align-self:flex-start}.busy.deep{font-style:normal;color:var(--ink,#14324a);background:#fdf6e3;border:1px solid #ecd9a6;border-radius:10px;padding:8px 12px;max-width:80%}
 </style></head><body>
 <header class="topbar"><span class="brand"><img src="/static/favicon.png" alt=""><span class="who">''' + escape(a['name']) + '''</span></span><div class="sp"></div><span class="small" style="color:#9fb8ca">Built on Alice</span></header>
 <main id="log" aria-live="polite"><div class="wrap" id="wrap">
@@ -45,15 +45,23 @@ $('greeting').textContent=A.paused?A.name+' is paused at the moment.':A.greeting
 function add(cls,text){const d=document.createElement('div');d.className='msg '+cls;d.textContent=text;$('wrap').append(d);$('log').scrollTop=$('log').scrollHeight;return d}
 $('q').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('ask').requestSubmit()}});
 $('ask').onsubmit=async e=>{e.preventDefault();const q=$('q').value.trim();if(!q||$('send').disabled)return;
- add('me',q);$('q').value='';$('send').disabled=true;const busy=document.createElement('div');busy.className='busy';busy.textContent='Checking the policies…';$('wrap').append(busy);
- try{const r=await fetch('/assistant/'+encodeURIComponent(A.id)+'/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q,history:turns})});
-  let d;try{d=await r.json()}catch{d={}}busy.remove();
-  if(!r.ok){add('bot stop',(d&&d.detail)||'Something went wrong. Try again in a moment.');return}
+ add('me',q);$('q').value='';$('send').disabled=true;const busy=document.createElement('div');busy.className='busy';busy.textContent='Checking the policy summaries…';$('wrap').append(busy);
+ try{const r=await fetch('/assistant/'+encodeURIComponent(A.id)+'/ask',{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/x-ndjson'},body:JSON.stringify({question:q,history:turns})});
+  let d={},err=null;
+  if(r.ok&&r.body&&(r.headers.get('content-type')||'').includes('ndjson')){const rd=r.body.getReader(),dec=new TextDecoder();let buf='';
+   for(;;){const {value,done}=await rd.read();if(value)buf+=dec.decode(value,{stream:true});let i;
+    while((i=buf.indexOf('\\n'))>=0){const line=buf.slice(0,i).trim();buf=buf.slice(i+1);if(!line)continue;const x=JSON.parse(line);
+     if(x.stage){busy.textContent=x.message;busy.classList.add('deep')}else if(x.error)err=x.error;else d=x.result}
+    if(done)break}}
+  else{try{d=await r.json()}catch{d={}}if(!r.ok)err={detail:d&&d.detail}}
+  busy.remove();
+  if(err){add('bot stop',err.detail||'Something went wrong. Try again in a moment.');return}
   const m=add('bot'+(d.status==='answered'?'':' stop'),d.reply);
   if(d.sources&&d.sources.length){const s=document.createElement('div');s.className='src';const b=document.createElement('b');b.textContent='Sources: ';s.append(b,document.createTextNode(d.sources.map(x=>'['+x.ref+'] '+x.title+(x.part>1?' (part '+x.part+')':'')).join(' · ')));m.append(s)}
   const checked=(d.sources||[]).filter(x=>x.type==='document');
-  if(checked.length){const f=document.createElement('div');f.className='src';f.textContent='Checked the full document: '+[...new Set(checked.map(x=>x.name+(x.section?', section '+x.section:'')))].join(' · ')+'. Read for this answer only; not stored in Alice.';m.append(f)}
-  const docs=[...new Set((d.sources||[]).filter(x=>x.type!=='document').map(x=>x.source).filter(Boolean))];if(docs.length){const f=document.createElement('div');f.className='src';f.textContent='Full policy: '+docs.map(x=>x.split(' (full document')[0]).join(' · ')+'. Alice keeps summaries only; the full document stays in the policy library.';m.append(f)}
+  if(checked.length){const by={};for(const x of checked){const k=x.name+'|'+(x.where||'');(by[k]=by[k]||{name:x.name,where:x.where,secs:[]});if(x.section&&!by[k].secs.includes(x.section))by[k].secs.push(x.section)}
+   const f=document.createElement('div');f.className='src';f.textContent='Full document checked: '+Object.values(by).map(v=>v.name+(v.secs.length?(v.secs.length>1?', sections ':', section ')+v.secs.join(', '):'')+(v.where?' \u2014 '+v.where:'')).join(' · ');m.append(f)}
+  const docs=[...new Set((d.sources||[]).filter(x=>x.type!=='document').map(x=>x.source).filter(Boolean))];if(docs.length){const f=document.createElement('div');f.className='src';f.textContent='Full policy: '+docs.map(x=>x.split(' (full document')[0]).join(' · ')+'. Alice keeps summaries only; the full document stays in its document source.';m.append(f)}
   if(d.notes&&d.notes.length){const n=document.createElement('div');n.className='note';n.textContent=d.notes.join(' ');m.append(n)}
   if(d.status==='answered'){turns.push({role:'user',text:q},{role:'assistant',text:d.reply});while(turns.length>6)turns.shift()}}
  catch{busy.remove();add('bot stop','Could not reach the assistant. Check your connection and try again.')}

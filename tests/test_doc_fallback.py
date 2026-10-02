@@ -1,10 +1,11 @@
 """Assistants answer from summaries first; only when those do not answer do they read the full document, on demand."""
 import _util  # first: throwaway data folder, dummy keys, no real model calls
 from _util import t
-import io, tempfile, zipfile
+import io, json, tempfile, zipfile
 from pathlib import Path
 from types import SimpleNamespace as NS
 import substrate_store as s
+import agents as A_
 s.init()
 import knowledge as K, assistants as A, documents as D, doc_library as L
 import openai
@@ -93,7 +94,7 @@ t('when the summaries do not answer, the full document is checked', len(seen) ==
   and 'salary sacrifice' in seen[1]['instructions'] and d['reply'].startswith('You can buy'))
 t('the pointed-to section is the one read', 'Up to 5 days may be carried over' in seen[1]['instructions'])
 t('the answer cites the document and says it was read on demand', d['sources'][0]['type'] == 'document' and d['sources'][0]['name'] == 'Handbook.docx'
-  and any('not stored in Alice' in n for n in d['notes']))
+  and any('isn\u2019t in my policy summaries' in n and 'not stored' in n for n in d['notes']))
 with s.db() as c:
     t('nothing from the document is stored in Alice', not c.execute("SELECT 1 FROM files WHERE text LIKE '%salary sacrifice%'").fetchone())
     t('the document read is logged as activity', c.execute("SELECT 1 FROM activity WHERE detail LIKE '%full document consulted%'").fetchone() is not None)
@@ -118,10 +119,32 @@ import doc_library
 ex, skipped = doc_library.extracts([('Labelled.docx', '3', 'x')], 'sickness', 'openai')
 t('the reader says why it was skipped', not ex and any('Restricted HR' in x and 'blocked' in x for x in skipped))
 
+# streamed: the person is told when the full document is being checked
+cl.put(f'/admin/api/assistants/{a["id"]}', headers=H, json={'name': 'HR test', 'categories': ['HRX'], 'contact': 'HR', 'allow_documents': True})
+with s.db() as c: c.execute('UPDATE knowledge_meta SET source=? WHERE file_id=?', (SRC.format(3, 'Handbook.docx'), sick))
+seen.clear(); replies[:] = ['NOT_IN_SOURCES', 'You can buy up to 5 extra days [D1].']
+r = cl.post(f'/assistant/{a["id"]}/ask', json={'question': 'Can I buy extra annual leave days?'}, headers={'Accept': 'application/x-ndjson'})
+lines = [json.loads(x) for x in r.text.splitlines() if x.strip()]
+t('streamed: first a notice that the full document is being checked, then the answer', r.headers['content-type'].startswith('application/x-ndjson')
+  and lines[0].get('stage') == 'documents' and 'checking the full policy document' in lines[0]['message'] and lines[-1]['result']['reply'].startswith('You can buy'))
+t('the document source is named in the answer', 'where' in lines[-1]['result']['sources'][0])
+seen.clear(); replies[:] = ['You get 25 days [S1].']
+lines = [json.loads(x) for x in cl.post(f'/assistant/{a["id"]}/ask', json={'question': 'How many days of annual leave do I get?'},
+                                        headers={'Accept': 'application/x-ndjson'}).text.splitlines() if x.strip()]
+t('streamed: no notice when the summaries answer', len(lines) == 1 and lines[0]['result']['sources'][0]['type'] == 'summary')
+r = cl.post(f'/assistant/{a["id"]}/ask', json={'question': 'Here is my key sk-proj-abcdefghijklmnopqrstuvwxyz0123456789ABCD'}, headers={'Accept': 'application/x-ndjson'})
+x = [json.loads(v) for v in r.text.splitlines() if v.strip()][-1]
+t('streamed: blocked questions come back as an answer the page can show', x.get('result', {}).get('status') == 'blocked' or x.get('error', {}).get('status') == 400)
+
+runs = [r for r in A_.runs('alice-assistants')['runs']]
+t('every answer is a tracked agent run, with the document read and the model it went to',
+  runs and any(i['target_type'] == 'document' and i['sent_to'] for i in A_.touched_items('alice-assistants')))
+t('the staff page script parses the streamed lines', "buf.indexOf('\\n')" in cl.get(f'/assistant/{a["id"]}').text)
+
 # switched off
 cl.put(f'/admin/api/assistants/{a["id"]}', headers=H, json={'name': 'HR test', 'categories': ['HRX'], 'contact': 'HR', 'allow_documents': False})
 seen.clear(); replies[:] = ['The summaries do not say; contact HR.']
 d = ask('Can I buy extra annual leave days?')
 t('with document checks off, only the summaries are used', len(seen) == 1 and 'NOT_IN_SOURCES' not in seen[0]['instructions'] and d['sources'][0]['type'] == 'summary')
 t('the Assistants form offers the switch and the staff page shows document checks',
-  'allow_documents' in cl.get('/admin/assistants').text and 'Checked the full document' in cl.get(f'/assistant/{a["id"]}').text)
+  'allow_documents' in cl.get('/admin/assistants').text and 'Full document checked' in cl.get(f'/assistant/{a["id"]}').text)

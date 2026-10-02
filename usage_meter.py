@@ -38,7 +38,7 @@ def log(response,provider,model,workload,duration=None):
     except sqlite3.Error:
         logging.exception('Usage could not be saved; check provider billing for this call')
     try:
-        import agents; agents.add_cost(estimate)    # the cost also lands on the agent run in progress, if any
+        import agents; agents.add_cost(estimate, provider, model)    # the cost also lands on the agent run in progress, if any
     except Exception:
         pass
 

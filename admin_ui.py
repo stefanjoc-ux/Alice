@@ -12,6 +12,7 @@ PAGES = {
  'agents': ('Agents','Everything that acts on Alice without you typing it: Temple\'s automations and connected apps. What each does, what it touched, what it cost, and its limits. Pause or stop any of them here.'),
  'organisations': ('Organisations','Clients and other organisations: short approved facts with a pointer to the source, opportunities, and for clients the names Alice recognises and the memories and files tagged to them. Detail stays in the source system.'),
  'archive': ('Archived chats','Inactive Alice chats (30 days) and conversations saved from Claude apps. Ask Temple to review any of them for memories and knowledge.'),
+ 'documents': ('Documents','Document sources: full documents that stay outside Alice. Knowledge keeps approved summaries that point to them; assistants read a section on demand only when the summaries do not answer. For now each source is a folder in the Documents folder that stands in for SharePoint, Fabric or Power Platform; in Azure each becomes a real connector.'),
  'assistants': ('Assistants','Focused chat bots built on Alice, such as an HR policy assistant. Each has its own rule packs, model and knowledge, and staff use it on its own page without seeing the rest of Alice.'),
  'rule-packs': ('Rule packs','Ready-made safeguards for teams adopting AI. Switch each one on or off, test a message against the pack (a sandbox: no AI is called), and apply a pack to Alice\'s live rules when you want it enforced.'),
  'rules': ('Rules','Rule sets in precedence order. Enforced rules are checked in code; guidance rules are instructions to the model.'),
@@ -19,6 +20,13 @@ PAGES = {
 }
 
 SECTIONS = {
+'documents': r'''<section><div class="mem-head"><h2>Document sources</h2><button id="ds-new" type="button" class="secondary">Add a source</button></div>
+<p class="muted small" id="ds-root"></p>
+<div class="ds-how"><div><strong>1. Documents stay in their source</strong><span>SharePoint, Fabric, Power Platform or a folder. Alice never copies them in.</span></div><div><strong>2. Knowledge holds summaries</strong><span>Approved summaries point to the document and section they came from.</span></div><div><strong>3. Full detail on demand</strong><span>When the summaries don't answer, an assistant reads that section for one answer, under the rules.</span></div></div>
+<form id="ds-form" class="as-card" hidden><h3>New document source</h3><div class="k-meta-row"><label>Name<input id="ds-name" maxlength="60" placeholder="e.g. Finance Policies"></label><label>Stands in for<select id="ds-type"></select></label></div>
+<label>What it simulates<input id="ds-sim" maxlength="200" placeholder="e.g. SharePoint: Finance site, Policies library"></label><label>Description<input id="ds-desc" maxlength="300"></label>
+<div class="arc-actions"><button>Create source</button><button type="button" id="ds-cancel" class="secondary">Cancel</button></div><p class="muted small">This creates a folder in the Documents folder. Put the documents in that folder; Alice lists them here.</p></form>
+<div id="ds-list"></div></section>''',
 'assistants': r'''<section><div class="mem-head"><h2>Assistants</h2><button id="as-new" type="button" class="secondary">New assistant</button></div>
 <p class="muted small">Every question goes through Alice first: secrets and protective markings are blocked, the assistant's rule packs block, escalate or remove identifiers, and only knowledge in its categories is used (never client-tagged or Local only material). No transcript is kept; the Activity log records whether each question was answered, blocked or escalated, and which sources were used.</p>
 <div id="as-list"></div></section>''',
@@ -280,8 +288,11 @@ nav{display:flex;gap:20px;flex-wrap:wrap}.sidebar nav{display:contents}
 @media(max-width:1100px){.anat{grid-template-columns:repeat(3,minmax(0,1fr))}.anat-stage:nth-child(3):after{display:none}}
 .ag-perms{display:grid;gap:10px;margin:6px 0 10px}.ag-perm strong{margin-right:6px}
 .dt-bar{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 8px}.dt-group{margin:12px 0;border:1px solid var(--line);border-radius:8px;background:#fff}.dt-head{cursor:pointer;padding:9px 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.dt-out{margin-left:auto}.dt-note{margin:0 12px 6px}.dt-table{margin:0}.dt-table{table-layout:fixed;width:100%}.dt-table th:nth-child(1){width:38%}.dt-table th:nth-child(2){width:32%}.dt-table th:nth-child(3){width:16%}.dt-table td{vertical-align:top;overflow-wrap:anywhere}.dt-loc{font-size:12px;margin-top:3px;overflow-wrap:anywhere}.dt-loc code{font-size:11.5px;background:#f4f6f8;padding:1px 4px;border-radius:4px}
+.dt-out{margin-left:auto}.dt-note{margin:0 12px 6px}.dt-table{margin:0}.dt-table{table-layout:fixed;width:100%}.dt-table th:nth-child(1){width:32%}.dt-table th:nth-child(2){width:24%}.dt-table th:nth-child(3){width:17%}.dt-table th:nth-child(4){width:13%}.dt-sent{display:inline-block;background:#f1ebf7;color:#4b2f73;border:1px solid #c7b8dd;border-radius:999px;padding:1px 8px;margin:0 0 3px;font-size:11.5px}.dt-table td{vertical-align:top;overflow-wrap:anywhere}.dt-loc{font-size:12px;margin-top:3px;overflow-wrap:anywhere}.dt-loc code{font-size:11.5px;background:#f4f6f8;padding:1px 4px;border-radius:4px}
 @media(max-width:700px){.dt-table,.dt-table tbody,.dt-table tr,.dt-table td{display:block;width:auto!important}.dt-table tr:first-child{display:none}.dt-table tr{padding:8px 12px;border-top:1px solid var(--line)}.dt-table td{padding:2px 0!important;border:0!important}.dt-out{margin-left:0}}
+.ds-how{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:10px 0 14px}.ds-how div{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:grid;gap:4px}.ds-how span{font-size:13px;color:var(--muted)}
+.ds-kind.ds-sharepoint{background:#e3f1f6;color:#064b63;border-color:#89b1bf}.ds-kind.ds-fabric{background:#e6f4ea;color:#1e5b31;border-color:#9fcfaf}.ds-kind.ds-power_platform{background:#ede7f6;color:#4b2f73;border-color:#c7b8dd}.ds-files{margin-top:12px}.ds-table td{vertical-align:top}
+@media(max-width:800px){.ds-how{grid-template-columns:1fr}}
 .dt-loc .mini-act{margin-left:6px!important;padding:1px 8px!important}.dt-bar .chips{display:flex;flex-wrap:wrap;gap:6px}
 .ag-events{max-height:320px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:6px;padding:8px 10px;line-height:1.7}
 @media(max-width:900px){.ag-stats{grid-template-columns:1fr 1fr}.ag-facts{grid-template-columns:1fr}.ag-mini{grid-template-columns:1fr 1fr}}
@@ -1079,6 +1090,35 @@ if(PAGE==='rules'){
 """
 
 SCRIPT += r"""
+if(PAGE==='documents'){
+ let D=null;const open=new Set();
+ const size=n=>n>=1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round(n/1024))+' KB';
+ const day=d=>new Date(d).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+ function copyBtn(text){const b=el('button','Copy path','secondary mini-act');b.type='button';b.onclick=()=>{navigator.clipboard?.writeText(text);b.textContent='Copied'};return b}
+ async function filesFor(src,box){const d=await api('/admin/api/document-sources/files?source='+encodeURIComponent(src.id));box.replaceChildren();
+  if(!d.files.length){box.append(el('p','No documents yet. Put .docx, .pdf, .txt, .md or .csv files in '+src.path+'.','muted small'));return}
+  const t=el('table','','mem-table ds-table');const h=document.createElement('tr');for(const x of ['Document','Modified','Size','Purview label','Summaries in Alice','Read by agents (30 days)'])h.append(el('th',x));t.append(h);
+  for(const f of d.files){const tr=document.createElement('tr');const c=document.createElement('td');c.append(el('strong',f.name));if(f.path!==f.name)c.append(el('div',f.path,'muted small'));
+   const sm=document.createElement('td');if(f.summaries){const a=el('a',f.summaries_active+' active'+(f.summaries>f.summaries_active?', '+(f.summaries-f.summaries_active)+' other':''));a.href='/admin/knowledge?status=all&q='+encodeURIComponent(f.name.replace(/\.[^.]+$/,'').replace(/-/g,' ').slice(0,60));sm.append(a)}else sm.append(el('span','None yet','muted'));
+   tr.append(c,el('td',day(f.modified),'small'),el('td',size(f.size),'small'),el('td',f.label||'None','small'),sm,el('td',f.reads?String(f.reads):'—','num'));t.append(tr)}
+  box.append(t)}
+ function render(){const box=$('ds-list');box.replaceChildren();$('ds-root').textContent='Documents folder: '+D.root+(D.exists?'':' (not created yet: add a source to create it)');
+  if(!D.sources.length)box.append(el('p','No document sources yet.','muted'));
+  for(const src of D.sources){const c=el('div','','as-card');const h=el('div','','as-head');const t=el('div','');t.append(el('h3',src.name));
+   const meta=el('div','','as-meta');meta.append(el('span',src.type_name,'tag ds-kind ds-'+src.type));if(src.simulated)meta.append(el('span','Simulated by a folder','tag'));meta.append(el('span',src.files+' document'+(src.files===1?'':'s'),'tag'));t.append(meta);
+   if(src.simulates)t.append(el('p','Stands in for: '+src.simulates,'small'));if(src.description)t.append(el('p',src.description,'muted small'));
+   t.append(el('p',src.simulated?'In Azure: a '+src.connector+' connector replaces this folder; nothing else changes.':'A local folder.','muted small'));
+   const loc=el('div','','dt-loc');loc.append(el('code',src.path),copyBtn(src.path));t.append(loc);
+   const btns=el('div','','as-btns');const sh=el('button',open.has(src.id)?'Hide documents':'Show documents','secondary');sh.type='button';sh.onclick=()=>{open.has(src.id)?open.delete(src.id):open.add(src.id);render()};btns.append(sh);
+   h.append(t,btns);c.append(h);if(open.has(src.id)){const fb=el('div','','ds-files');fb.append(el('p','Loading…','muted small'));c.append(fb);run(()=>filesFor(src,fb))}box.append(c)}}
+ async function load(){D=await api('/admin/api/document-sources');$('ds-type').replaceChildren(...Object.entries(D.kinds).map(([k,v])=>{const o=el('option',v);o.value=k;return o}));$('ds-type').value='sharepoint';render()}
+ $('ds-new').onclick=()=>{$('ds-form').hidden=false;$('ds-name').focus()};$('ds-cancel').onclick=()=>{$('ds-form').hidden=true};
+ $('ds-form').onsubmit=e=>{e.preventDefault();run(async()=>{const x=await api('/admin/api/document-sources','POST',{name:$('ds-name').value,type:$('ds-type').value,simulates:$('ds-sim').value,description:$('ds-desc').value});$('ds-form').reset();$('ds-form').hidden=true;$('notice').textContent='Created '+x.name+'. Put its documents in '+x.path+'.';open.add(x.id);await load()})};
+ run(load);
+}
+"""
+
+SCRIPT += r"""
 if(PAGE==='assistants'){
  let L=null;const open=new Set();
  function field(label,node){const l=el('label',label);l.append(node);return l}
@@ -1213,24 +1253,31 @@ if(PAGE==='agents'){
   if(!groups.length){body.append(el('p','Nothing recorded in this period.','muted'));return}
   const total=groups.reduce((n,g)=>n+g.items.length,0);
   body.append(el('p',a.name+' touched '+total+' item'+(total===1?'':'s')+' from '+groups.length+' source'+(groups.length===1?'':'s')+' in the last '+(DT.days===365?'year':DT.days+' days')+': '+groups.map(g=>g.name+' ('+g.items.length+')').join(', ')+'.','muted small'));
+  const sent={};for(const g of groups)for(const i of g.items)for(const m of (i.sent_to||[]))sent[m]=(sent[m]||0)+1;
+  const sl=Object.entries(sent);body.append(el('p',sl.length?'Sent to: '+sl.map(([m,n])=>m+' ('+n+' item'+(n===1?'':'s')+')').join(', ')+'. Items count as sent when the run that read them called that model; a connected app receives what it reads.':'Nothing it read was sent to a model in this period.','muted small'));
   for(const g of groups){const sec=document.createElement('details');sec.open=true;sec.className='dt-group';
    const sm=el('summary','','dt-head');sm.append(el('strong',g.name),el('span',g.items.length+' item'+(g.items.length===1?'':'s')+(g.read?' · '+g.read+' read':'')+(g.wrote?' · '+g.wrote+' written':''),'muted small'));
    if(g.key==='web'||g.key==='library')sm.append(el('span','Outside Alice','tag dt-out'));sec.append(sm);
    if(g.note)sec.append(el('p',g.note,'muted small dt-note'));
-   const t=el('table','','mem-table dt-table');const h=document.createElement('tr');for(const x of ['Item and where it is','What happened','Status','Last'])h.append(el('th',x));t.append(h);
+   const t=el('table','','mem-table dt-table');const h=document.createElement('tr');for(const x of ['Item and where it is','What happened','Sent to','Status','Last'])h.append(el('th',x));t.append(h);
    for(const i of g.items){const tr=document.createElement('tr');const c1=document.createElement('td');
     const nm=i.href&&g.key!=='web'?Object.assign(el('a',i.target_name),{href:i.href}):el('strong',i.target_name);c1.append(nm,el('div',i.type_name,'muted small'));
     if(i.location){const loc=el('div','','dt-loc');
      if(g.key==='web'&&i.href){const u=el('a',i.location);u.href=i.href;u.target='_blank';u.rel='noopener noreferrer';loc.append(u)}
      else loc.append(el('code',i.location));
+     if(i.where)c1.append(el('div',i.where,'muted small'));
      if(g.key==='library'||(g.key!=='web'&&/[\\\/]/.test(i.location)&&!/^https?:/.test(i.location))){const cp=el('button','Copy path','secondary mini-act');cp.type='button';cp.onclick=()=>{navigator.clipboard?.writeText(i.location);cp.textContent='Copied'};loc.append(cp)}
      c1.append(loc)}
     const c2=document.createElement('td');c2.className='small';
     const parts=[];if(i.read)parts.push('Read'+(i.read>1?' '+i.read+'×':''));if(i.wrote)parts.push((g.key==='organisations'||g.key==='memories'||g.key==='knowledge'?'Proposed or wrote':'Wrote')+(i.wrote>1?' '+i.wrote+'×':''));
     c2.append(el('div',parts.join(' · ')));for(const x of (i.details||[]))c2.append(el('div',x,'muted'));
-    const c3=document.createElement('td');if(i.status)c3.append(badge(STATUSNAME[i.status]||i.status,i.status==='deleted'?'v-warn':'v-none'));if(i.label)c3.append(document.createTextNode(' '),el('span',LABNAME[i.label]||i.label,'badge k-lab-'+i.label));
+    const c4=document.createElement('td');c4.className='small';
+    if(i.sent_to&&i.sent_to.length)for(const m of i.sent_to)c4.append(el('div',m,'dt-sent'));else if(i.read)c4.append(el('span','Not sent to a model','muted'));
+    if(i.produced_by&&i.produced_by.length)c4.append(el('div','Written using '+i.produced_by.join(', '),'muted'));
+    if(!c4.childNodes.length)c4.append(el('span','—','muted'));
+    const c3=document.createElement('td');if(i.status)c3.append(badge(i.status==='deleted'&&g.key==='library'?'File no longer there':(STATUSNAME[i.status]||i.status),i.status==='deleted'?'v-warn':'v-none'));if(i.label)c3.append(document.createTextNode(' '),el('span',LABNAME[i.label]||i.label,'badge k-lab-'+i.label));
     if(!i.status&&!i.label)c3.append(el('span',g.key==='web'||g.key==='library'?'Not stored':'—','muted small'));
-    tr.append(c1,c2,c3,el('td',when(i.last)+(i.first!==i.last?' (first '+when(i.first)+')':''),'small'));t.append(tr)}
+    tr.append(c1,c2,c4,c3,el('td',when(i.last)+(i.first!==i.last?' (first '+when(i.first)+')':''),'small'));t.append(tr)}
    sec.append(t);body.append(sec)}
  }
  function settings(a,body){
@@ -1283,7 +1330,7 @@ if(PAGE==='agents'){
  function drawMap(){const L=st.L,box=$('ag-map');box.replaceChildren();
   const left=L.agents.filter(a=>a.kind!=='app'),right=L.agents.filter(a=>a.kind==='app');
   const STORES=[['memories','Memories and decisions'],['knowledge','Knowledge and files'],['organisations','Organisation profiles'],['chats','Chats and conversations'],['activity','Activity and usage']];
-  const OUTSIDE=[['web','The public web','web search, cited URLs'],['documents','Document library','full documents, on demand'],['input','What people type','questions, transcripts']];
+  const OUTSIDE=[['web','The public web','web search, cited URLs'],['documents','Document sources','SharePoint, Fabric, Power Platform'],['input','What people type','questions, transcripts']];
   // left to right: data outside Alice → automations → Alice's data (inside the rules) ← connected apps; you at the gate
   const rowH=58,top=70,W=1320,srcX=115,autoX=410,cx=770,appX=W-150,coreW=290,coreY=top-10,coreH=STORES.length*rowH+20;
   const rows=Math.max(left.length,right.length,STORES.length+3),youY=coreY+coreH+70,H=Math.max(top+rows*rowH+40,youY+70);
@@ -1389,7 +1436,7 @@ if(PAGE==='rules'){
 }
 """
 
-NAV_GROUPS = [('Work', ['actions', 'temple', 'memories', 'knowledge', 'organisations', 'archive']),
+NAV_GROUPS = [('Work', ['actions', 'temple', 'memories', 'knowledge', 'documents', 'organisations', 'archive']),
               ('Records and settings', ['agents', 'assistants', 'rules', 'rule-packs', 'activity', 'usage', 'overview'])]
 
 

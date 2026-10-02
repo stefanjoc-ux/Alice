@@ -21,6 +21,9 @@ PROVIDERS = {'openai': ('gpt-6-luna', 'GPT-6 Luna'), 'claude': ('claude-haiku-4-
 MAX_SOURCES, CHUNK, MAX_CONTEXT = 6, 900, 7000
 HISTORY_TURNS = 6
 MARKER = 'NOT_IN_SOURCES'
+CHECKING = 'That level of detail isn\u2019t in my policy summaries, so I\u2019m checking the full policy document\u2026'
+CHECKED = ('That level of detail isn\u2019t in my policy summaries, so I checked the full policy document for this answer. '
+           'It was read for this answer only and is not stored.')
 DOC_CONTEXT = 12000
 STOP = set('a an and are as at be but by can do does for from has have how i if in is it its me my of on or our should '
            'so than that the their them there this to was we what when where which who why will with you your'.split())
@@ -186,8 +189,15 @@ def _outcome(aid, outcome, detail=''):
     with store.db() as c: store.audit(c, 'assistant_' + outcome, aid, 'assistant', detail[:500])
 
 
+def cited(reply, refs):
+    """Only the sources the answer actually cites ([S1], [D2]...); all of them if it cites none."""
+    used = set(re.findall(r'\[([SD]\d+)\]', reply or ''))
+    keep = [r for r in refs if r['ref'] in used]
+    return keep or refs
+
+
 @agents.tracked('alice-assistants', trigger='when someone asks')
-def ask(aid, question, history=()):
+def ask(aid, question, history=(), progress=None):
     """Answer one question. Returns {status: answered|blocked|escalated|paused, reply, sources, notes}."""
     import rules_engine, rule_packs
     a = get(aid)
@@ -246,11 +256,14 @@ def ask(aid, question, history=()):
         reply = _call(a['provider'], PROMPT.format(missing_rule=missing, **common) + '\n\nSOURCES\n' + block, sendable)
         if not (can_check and MARKER in reply):
             _outcome(aid, 'answered', 'summaries: ' + ', '.join(f'{x["title"]} part {x["part"]}' for x in found))
-            return {'status': 'answered', 'reply': reply, 'notes': notes, 'sources': [ref(n, x) for n, x in enumerate(found, 1)]}
+            return {'status': 'answered', 'reply': reply, 'notes': notes, 'sources': cited(reply, [ref(n, x) for n, x in enumerate(found, 1)])}
     if not can_check:
         _outcome(aid, 'answered', 'no sources in scope')
         return {'status': 'answered', 'sources': [], 'notes': notes, 'reply': not_found}
     # 2. the summaries did not answer: read the pointed-to sections of the full documents, on demand (not stored)
+    if progress:                                # tell the person why this one takes a little longer
+        try: progress('documents', CHECKING)
+        except Exception: pass
     wanted = [doc_library.pointer(x['item']) + (x['title'],) for x in found]
     wanted += [(rel, None, rel) for rel in dict.fromkeys(r for r, _, _ in docs_in_scope)]       # best passages anywhere in each document
     ex, skipped = doc_library.extracts(wanted, question, a['provider'], a['name'])
@@ -272,11 +285,11 @@ def ask(aid, question, history=()):
         _outcome(aid, 'answered', 'not found in summaries or documents: ' + ', '.join(e['name'] for e in used))
         return {'status': 'answered', 'sources': [], 'notes': notes, 'reply': not_found}
     _outcome(aid, 'answered', 'full document consulted: ' + ', '.join(e['name'] + (f' section {e["section"]}' if e['section'] else '') for e in used))
-    notes = notes + ['The summaries did not cover this, so the full policy document was checked for this answer. It was read on demand and is not stored in Alice.']
+    notes = notes + [CHECKED]
     return {'status': 'answered', 'reply': reply, 'notes': notes,
-            'sources': [{'ref': f'D{n}', 'title': e['name'] + (f', section {e["section"]}' if e['section'] else ''), 'part': 1,
-                         'source': 'Full document (read on demand; not stored in Alice)', 'type': 'document',
-                         'name': e['name'], 'section': e['section']} for n, e in enumerate(used, 1)]}
+            'sources': cited(reply, [{'ref': f'D{n}', 'title': e['name'] + (f', section {e["section"]}' if e['section'] else ''), 'part': 1,
+                                      'source': 'Full document (read on demand; not stored in Alice)', 'type': 'document',
+                                      'name': e['name'], 'section': e['section'], 'where': e.get('where', '')} for n, e in enumerate(used, 1)])}
 
 
 # ---------------- demo content ----------------

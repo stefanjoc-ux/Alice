@@ -40,7 +40,7 @@ import os
 import sqlite3
 import uuid
 import zipfile
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -1558,11 +1558,71 @@ async def assistant_ask(aid: str, q: AssistantQuestion, request: Request):
     try: assistants.get(aid)
     except LookupError: raise HTTPException(404,'No such assistant.') from None
     if not q.question.strip(): raise HTTPException(400,'Type a question.')
+    if 'application/x-ndjson' in (request.headers.get('accept') or ''):
+        # Streamed: the page is told when the full document is being checked, then gets the answer.
+        loop=asyncio.get_running_loop(); queue=asyncio.Queue()
+        def progress(stage,message): loop.call_soon_threadsafe(queue.put_nowait,{'stage':stage,'message':message})
+        async def work():
+            try: out={'result':await asyncio.to_thread(assistants.ask,aid,q.question,q.history,progress)}
+            except Exception as e:
+                code,detail=_assistant_error(e)
+                if code==500: logging.exception('Assistant failed')
+                out={'error':{'status':code,'detail':detail}}
+            await queue.put(out)
+        task=asyncio.create_task(work())
+        async def stream():
+            while True:
+                x=await queue.get()
+                yield json.dumps(x)+'\n'
+                if 'stage' not in x: break
+            await task
+        return StreamingResponse(stream(),media_type='application/x-ndjson',headers={'Cache-Control':'no-store'})
     try: return await asyncio.to_thread(assistants.ask,aid,q.question,q.history)
-    except rules_engine.RuleViolation as e: raise HTTPException(429 if 'Spending caps' in str(e) else 400,str(e)) from None
-    except agents.AgentBlocked as e: raise HTTPException(503,str(e)) from None
-    except (APIError, anthropic.APIError) as e: raise HTTPException(502,'The AI service did not answer: '+provider_error(e)) from None
+    except Exception as e:
+        code,detail=_assistant_error(e)
+        if code==500: raise
+        raise HTTPException(code,detail) from None
+
+def _assistant_error(e):
+    if isinstance(e,rules_engine.RuleViolation): return (429 if 'Spending caps' in str(e) else 400),str(e)
+    if isinstance(e,agents.AgentBlocked): return 503,str(e)
+    if isinstance(e,(APIError, anthropic.APIError)): return 502,'The AI service did not answer: '+provider_error(e)
+    if isinstance(e,ValueError): return 400,str(e)
+    return 500,'Something went wrong. Try again in a moment.'
+
+class DocSourceIn(BaseModel):
+    name: str = Field(min_length=1,max_length=60)
+    type: Literal['folder','sharepoint','fabric','power_platform'] = 'folder'
+    simulates: str = Field(default='',max_length=200)
+    description: str = Field(default='',max_length=300)
+
+@app.get('/admin/api/document-sources')
+def admin_doc_sources():
+    import doc_library
+    return {'root':str(doc_library.ROOT),'exists':doc_library.ROOT.is_dir(),'sources':doc_library.sources(),'kinds':doc_library.KINDS}
+
+@app.get('/admin/api/document-sources/files')
+def admin_doc_source_files(source: str=Query('',max_length=80)):
+    import doc_library
+    try: files=doc_library.files(source)
+    except ValueError as e: raise HTTPException(404,str(e)) from None
+    since=(datetime.now(timezone.utc)-timedelta(days=30)).isoformat()
+    with store.db() as c:
+        rows=c.execute("SELECT target_id,count(*) FROM agent_events WHERE kind='read' AND target_type='document' AND at>=? GROUP BY target_id",(since,)).fetchall()
+    reads={}
+    for tid,n in rows:
+        p=doc_library.resolve(tid)
+        if p: reads[str(p)]=reads.get(str(p),0)+n
+    for f in files: f['reads']=reads.get(f['full_path'],0)
+    return {'files':files}
+
+@app.post('/admin/api/document-sources')
+def admin_doc_source_add(x: DocSourceIn):
+    import doc_library
+    try: r=doc_library.add_source(x.name,x.type,x.simulates,x.description)
     except ValueError as e: raise HTTPException(400,str(e)) from None
+    with store.db() as c: store.audit(c,'document_source_added',r['id'],'human_review',f'{r["name"]}: {r["type_name"]}'+(f' (simulates {r["simulates"]})' if r['simulates'] else ''))
+    return r
 
 @app.get('/admin/api/owners')
 def admin_owners(): return {'owners':store.owners(),'you':store.actor()}

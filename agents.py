@@ -83,7 +83,7 @@ BUILTIN = [
 # The parts of each agent, for its anatomy diagram and the system map. model 'temple' = Temple's reviewer setting.
 DATA_SOURCES = {'memories': 'Memories and decisions', 'knowledge': 'Knowledge', 'organisations': 'Organisation profiles',
                 'chats': 'Chats and saved conversations', 'activity': 'Activity and usage', 'input': 'What you or staff type or paste',
-                'web': 'The public web', 'documents': 'Document library (outside Alice)'}
+                'web': 'The public web', 'documents': 'Document sources: SharePoint, Fabric, Power Platform (outside Alice)'}
 _APP_ANATOMY = {'model': 'Its own model (the app decides)', 'instructions': 'Alice connector instructions plus your response guidance',
                 'tools': TOOLS, 'data': ['memories', 'knowledge', 'organisations', 'chats'],
                 'guardrails': ['external_scope', 'client_separation', 'provider_allow', 'protective_marking', 'secret_detection', 'pii',
@@ -133,7 +133,7 @@ ANATOMY = {
                              'outputs': ['Opportunity suggestions with evidence', 'News items'], 'gate': 'You accept or dismiss each suggestion in the tracker'},
     'alice-assistants': {'model': 'Chosen per assistant (GPT-6 Luna or Claude Haiku 4.5)',
                          'instructions': 'Answer only from the sources in scope, cite them, never advise on individual cases; the assistant\'s guidance and its rule packs\' guidance.',
-                         'tools': ['None: Alice picks the sources in code', 'Document library reader (only when the summaries do not answer)'],
+                         'tools': ['None: Alice picks the sources in code', 'Document source reader (only when the summaries do not answer)'],
                          'data': ['knowledge', 'documents', 'input'],
                          'guardrails': ['secret_detection', 'protective_marking', 'provider_allow', 'client_separation', 'data_minimisation', 'spend_cap'],
                          'outputs': ['Answers with cited sources'], 'gate': 'Rule packs block or escalate before any model sees the question'},
@@ -317,7 +317,7 @@ def run_detail(run_id, demo=False):
 # Where each kind of item comes from, for the Data touched tab. Order is the order shown.
 SOURCE_GROUPS = [
     ('web', 'Internet', 'Public web pages, read during the run. Not stored in Alice except as a cited source URL.'),
-    ('library', 'Document library', 'Full documents kept outside Alice, read on demand for one answer. Not stored in Alice.'),
+    ('library', 'Document sources', 'Full documents in SharePoint, Fabric, Power Platform or folders (simulated by the Documents folder for now), read on demand for one answer. Not stored in Alice.'),
     ('knowledge', 'Files and knowledge', 'Uploaded files, notes and meeting records stored in Alice.'),
     ('memories', 'Memories and decisions', 'Approved and proposed memories and decisions in Alice.'),
     ('organisations', 'Organisations', 'Organisation profiles, facts and opportunities in Alice.'),
@@ -326,7 +326,7 @@ SOURCE_GROUPS = [
 ]
 _GROUP_OF = {'web': 'web', 'document': 'library', 'knowledge': 'knowledge', 'file': 'knowledge', 'memory': 'memories', 'decision': 'memories',
              'organisation': 'organisations', 'org_fact': 'organisations', 'opportunity': 'organisations', 'chat': 'chats'}
-TYPE_NAMES = {'web': 'Web page', 'document': 'Library document', 'knowledge': 'Knowledge', 'file': 'File', 'memory': 'Memory',
+TYPE_NAMES = {'web': 'Web page', 'document': 'Document', 'knowledge': 'Knowledge', 'file': 'File', 'memory': 'Memory',
               'decision': 'Decision', 'organisation': 'Organisation', 'org_fact': 'Organisation fact', 'opportunity': 'Opportunity', 'chat': 'Chat'}
 _HEX = re.compile(r'^[0-9a-f]{32}$')
 
@@ -376,6 +376,13 @@ def _describe(rows):
         elif t == 'document':
             r['target_name'] = tid.replace('\\', '/').rsplit('/', 1)[-1]
             r['location'] = (root.rstrip('\\/') + ('\\' if '\\' in root else '/') + tid) if root else tid
+            try:
+                import doc_library
+                p = doc_library.resolve(tid)
+                r['where'] = doc_library.describe(p) if p else 'No longer in the document sources'
+                if not p: r['status'] = 'deleted'
+            except Exception:
+                pass
         elif t == 'organisation':
             r['target_name'] = tid; r['href'] = '/admin/organisations?org=' + quote(tid)
         elif d:
@@ -390,21 +397,34 @@ def touched_items(aid, days=30, demo=False):
     """Lineage: which items this agent read or wrote in the period, newest first, one row per item, with where it lives."""
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     with store.db() as c:
-        ev = c.execute("SELECT e.kind,e.target_type,e.target_id,e.at,e.detail FROM agent_events e JOIN agent_runs r ON r.id=e.run_id "
+        ev = c.execute("SELECT e.run_id,e.kind,e.target_type,e.target_id,e.at,e.detail FROM agent_events e JOIN agent_runs r ON r.id=e.run_id "
                        "WHERE r.agent_id=? AND e.at>=? AND e.kind IN ('read','wrote') AND e.target_id<>'' ORDER BY e.at DESC LIMIT 5000",
                        (aid, since)).fetchall()
+        run_ids = list({e['run_id'] for e in ev})
+        models = {}
+        for i in range(0, len(run_ids), 500):
+            part = run_ids[i:i + 500]
+            for m in c.execute(f"SELECT DISTINCT run_id,target_type,target_id FROM agent_events WHERE kind='model' AND run_id IN ({','.join('?' * len(part))})", part):
+                models.setdefault(m['run_id'], set()).add(model_label(m['target_type'], m['target_id']))
+        agent = c.execute('SELECT name,kind FROM agents WHERE id=?', (aid,)).fetchone()
+    is_app = bool(agent and agent['kind'] == 'app')
     items = {}
     for e in ev:
         k = (e['target_type'], e['target_id'])
         i = items.get(k)
         if not i:
             i = items[k] = {'target_type': e['target_type'], 'target_id': e['target_id'], 'kind': e['kind'], 'last': e['at'], 'first': e['at'],
-                            'read': 0, 'wrote': 0, 'times': 0, 'details': []}
+                            'read': 0, 'wrote': 0, 'times': 0, 'details': [], 'sent_to': set(), 'produced_by': set()}
+        if e['kind'] == 'read':                  # what read it went to: the models its run called, or the app itself
+            i['sent_to'] |= ({agent['name'] + ' (connected app)'} if is_app else models.get(e['run_id'], set()))
+        else:
+            i['produced_by'] |= models.get(e['run_id'], set())
         i[e['kind']] += 1; i['times'] += 1; i['first'] = e['at']
         if i['read'] and i['wrote']: i['kind'] = 'read and wrote'
         dt = (e['detail'] or '').strip()
         if dt and dt not in i['details'] and len(i['details']) < 3: i['details'].append(dt)
     rows = list(items.values())[:300]
+    for r in rows: r['sent_to'], r['produced_by'] = sorted(r['sent_to']), sorted(r['produced_by'])
     try:
         import activity_log
         names = activity_log._names([r['target_id'] for r in rows])
@@ -414,7 +434,7 @@ def touched_items(aid, days=30, demo=False):
     _describe(rows)
     if demo:
         _mask(rows)
-        for r in rows: r['location'] = r['href'] = ''; r['details'] = []
+        for r in rows: r['location'] = r['href'] = r['where'] = ''; r['details'] = []
     return rows
 
 
@@ -551,12 +571,27 @@ def note(kind, target_type='', target_id='', detail=''):
                   (rid, _now(), kind, target_type, str(target_id or '')[:500], str(detail or '')[:500]))
 
 
-def add_cost(usd):
-    """Called by usage_meter for every model call: the cost lands on the agent run in progress, if any."""
+MODEL_NAMES = {'gpt-6-luna': 'GPT-6 Luna', 'gpt-6-astra': 'GPT-6 Astra', 'claude-haiku-4-5-20251001': 'Claude Haiku 4.5',
+               'claude-sonnet-5-5': 'Claude Sonnet 5.5', 'claude-opus-5-5': 'Claude Opus 5.5', 'grok-4.7': 'Grok 4.7'}
+PROVIDER_NAMES = {'openai': 'OpenAI', 'claude': 'Anthropic', 'anthropic': 'Anthropic', 'grok': 'xAI', 'copilot': 'Microsoft'}
+
+
+def model_label(provider, model):
+    name = MODEL_NAMES.get(model, model or 'model')
+    org = PROVIDER_NAMES.get(provider, provider or '')
+    return f'{name} ({org})' if org else name
+
+
+def add_cost(usd, provider='', model=''):
+    """Called by usage_meter for every model call: the cost lands on the agent run in progress, if any, and the run
+    records which model it called (for 'Sent to' on Data touched)."""
     rid = _current.get()
     if not rid: return
     with store.db() as c:
         c.execute('UPDATE agent_runs SET cost_usd=cost_usd+?,calls=calls+1 WHERE id=?', (float(usd or 0), rid))
+        if model or provider:
+            c.execute('INSERT INTO agent_events(run_id,at,kind,target_type,target_id,detail) VALUES (?,?,?,?,?,?)',
+                      (rid, _now(), 'model', str(provider or '')[:40], str(model or '')[:80], 'called ' + model_label(provider, model)))
 
 
 def _summary(result):

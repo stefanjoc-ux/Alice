@@ -28,6 +28,7 @@ def fake_run():
     A.note('wrote', 'memory', mem, 'suggested replacement')
     A.note('read', 'memory', gone, 'compared')
     A.note('read', 'organisation', 'Acme Council', '')
+    A.add_cost(0.001, 'openai', 'gpt-6-luna')
     return {'status': 'complete', 'checked': 1}
 
 
@@ -64,7 +65,26 @@ L_ = cl.get('/admin/api/agents', headers=H).json()['agents']
 hr = next(a for a in L_ if a['id'] == 'alice-assistants')
 t('the assistants agent reads the document library', any(x['key'] == 'documents' for x in hr['anatomy_live']['data']))
 page = cl.get('/admin/agents').text
-t('the map draws the outside sources and the tab groups by source', 'Outside Alice' in page and "['documents','Document library'" in page and 'dt-group' in page)
+t('the map draws the outside sources and the tab groups by source', 'Outside Alice' in page and "['documents','Document sources'" in page and 'Sent to' in page and 'dt-group' in page)
 t('documents is an allowed data source when editing an agent',
   cl.put('/admin/api/agents/temple-meeting', headers=H, json={'anatomy': {'data': ['input', 'documents']}}).status_code == 200)
 t('Memories and Knowledge accept a search link', "params.get('q')" in cl.get('/admin/memories').text and "KQ.get('q')" in cl.get('/admin/knowledge').text)
+
+t('items read in a run that called a model show where they were sent', 'GPT-6 Luna (OpenAI)' in m['sent_to'] and 'GPT-6 Luna (OpenAI)' in w['sent_to'])
+t('writes show the model used to produce them', 'GPT-6 Luna (OpenAI)' in m['produced_by'])
+t('the run lists the model call', any(e['kind'] == 'model' and 'GPT-6 Luna' in e['detail'] for e in A.run_detail(A.runs('temple-org-research')['runs'][0]['id'])['events']))
+
+
+@A.tracked('temple-tagging', trigger='test')
+def free_run():
+    A.note('read', 'memory', mem, 'name matching')
+    return {'status': 'complete', 'checked': 1}
+
+
+free_run()
+fr = [i for gg in cl.get('/admin/api/agents/temple-tagging/touched', headers=H).json()['groups'] for i in gg['items']]
+t('items read without a model call: not sent', fr and fr[0]['sent_to'] == [])
+ap = A.app_for('Claude Desktop')
+rid = A._day_run(ap['id']); A.app_note(rid, 'read', 'memory', [mem], 'search: rail')
+ar = [i for gg in cl.get(f'/admin/api/agents/{ap["id"]}/touched', headers=H).json()['groups'] for i in gg['items']]
+t('a connected app is what receives what it reads', ar and ar[0]['sent_to'] == ['Claude Desktop (connected app)'])
