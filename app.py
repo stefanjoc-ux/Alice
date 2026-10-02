@@ -1760,7 +1760,7 @@ def proposal_qa_upload(aid: str, pid: str, x: ProposalDoc, request: Request):
     return _proposal_call(lambda: proposals.qa_upload(aid,pid,x.name,raw))
 
 class ProposalFixes(BaseModel):
-    fixes: list[dict] = Field(min_length=1,max_length=30)
+    fixes: list[dict] = Field(default_factory=list,max_length=30)
     rejected: list[dict] = Field(default_factory=list,max_length=30)
 
 @app.post('/assistant/{aid}/proposals/{pid}/revise')

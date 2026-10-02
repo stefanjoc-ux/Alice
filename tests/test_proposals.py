@@ -476,3 +476,23 @@ calls.clear(); MODE['qa'] = [QA4]
 cl.post(f'/assistant/proposal-writer/proposals/{pw2}/recheck', json={'sections': [{'title': x['title'], 'body': x['body']} for x in P.get(pw2)['draft']['sections']]})
 d5 = wait(pw2)
 t('rejections still stand when you re-check your own edits', not any('expenses' in i['issue'].lower() for i in d5['qa'][-1]['issues']))
+calls.clear(); MODE['qa'] = [QA2]
+cl.post(f'/assistant/proposal-writer/proposals/{pw2}/revise', json={
+    'fixes': [dict(QA4['issues'][2], note='Use the council\'s own gateway names')],
+    'rejected': [dict(QA2['issues'][0], note='The client asked us not to name owners until contract')]})
+d6 = wait(pw2)
+wmsg = [c for c in calls if c['system'].startswith('You are the proposal writer')][-1]['messages'][0]['content']
+amsg = [c for c in calls if c['system'].startswith('You are Argus')][-1]['messages'][0]['content']
+t('your note on an accepted fix goes to the writer', "gateway names" in wmsg and 'follow the note' in wmsg)
+t('your reason for rejecting goes to Argus with the decision', "author's note: The client asked us not to name owners until contract" in amsg)
+t('notes are kept with the decisions', any(d.get('note') == 'The client asked us not to name owners until contract' for d in P.get(pw2)['context']['fix_decisions']))
+t('a secret in a note is refused, and not kept', cl.post(f'/assistant/proposal-writer/proposals/{pw2}/revise', json={'fixes': [dict(QA2['issues'][0], note='sk-proj-abcdefghijklmnopqrstuvwxyz0123456789ABCD')]}).status_code == 400
+  and not any('sk-proj' in (d.get('note') or '') for d in P.get(pw2)['context']['fix_decisions']))
+t('the page has a why box for each decision', 'fixwhy' in cl.get('/assistant/proposal-writer').text)
+calls.clear(); MODE['qa'] = [QA2]
+before_rounds = len(P.get(pw2)['qa'])
+ro = cl.post(f'/assistant/proposal-writer/proposals/{pw2}/revise', json={'fixes': [], 'rejected': [dict(QA4['issues'][2], note='Exit criteria are in the client\'s own gateway process')]})
+d7 = wait(pw2)
+t('only rejections: nothing is rewritten, Argus checks again with your reasons', ro.status_code == 200 and not [c for c in calls if c['system'].startswith('You are the proposal writer')]
+  and len(d7['qa']) == before_rounds + 1 and d7['qa'][-1]['source'] == 'your 1 rejected fix' and "client's own gateway process" in calls[-1]['messages'][0]['content'])
+t('nothing accepted or rejected: refused', cl.post(f'/assistant/proposal-writer/proposals/{pw2}/revise', json={'fixes': [{}]}).status_code == 400)
