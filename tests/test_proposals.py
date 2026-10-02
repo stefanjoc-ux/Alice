@@ -367,3 +367,26 @@ t('the rate card has the target margin, ticks, margin column and reference total
   all(x in proposal_ui.PE_JS for x in ('pe-target', 'pe-rtotal', 'Load a pricing spreadsheet', 'Apply to every role')))
 pg_ = cl.get('/assistant/proposal-writer').text
 t("Parker's logo is on the page and as the tab icon", 'class="parker"' in pg_ and 'image/svg+xml' in pg_ and 'id="go2"' in pg_)
+
+# ---------------- a pricing tool with cost and sell sheets by country (hourly) ----------------
+wb2 = openpyxl.Workbook(); p1 = wb2.active; p1.title = 'Personas'
+p1.append(['IT Capability', 'Level', 'Persona Title']); [p1.append(['Advisory & Strategy', i, f'Persona {i}']) for i in range(1, 7)]
+for title, rates in (('StdCosts', {'Strategic Investment Executive': 149.4667, 'Business Value Advisor': 80.2667, 'Offshore Analyst': None}),
+                     ('SellPricing', {'Strategic Investment Executive': 233.7333, 'Business Value Advisor': 186.6667, 'Offshore Analyst': 43.3333})):
+    w = wb2.create_sheet(title); w.append(['', 'EMEA Solutions Delivery'])
+    w.append(['', '', '', '', '', '', '', 8, 8, 7.5]); w.append([])
+    w.append(['', '', '', '', '', '', '', 'AT', 'DE', 'UK']); w.append(['', '', '', '', '', '', '', 'EUR', 'EUR', 'GBP'])
+    w.append(['', 'Resource group', 'IT Capability', 'Persona', 'Role', 'Pricing Tool role?']); w.append(['', '(blank)', '(blank)', '(blank)'])
+    for k, v in rates.items(): w.append(['', 'EMEA (SFIA)', 'Advisory & Strategy', k, 'EMEA-' + k, 'y', None, 99, 99, v])
+bio2 = io.BytesIO(); wb2.save(bio2)
+mx = P.rates_from_sheet('scheduler.xlsx', bio2.getvalue())
+t('a pricing tool with cost and sell sheets: UK hourly rates become day rates (x 7.5 hours)', 'StdCosts and SellPricing' in mx['sheet']
+  and mx['rows'][0] == {'role': 'Strategic Investment Executive', 'unit': 'day', 'cost': 1121.0, 'sell': 1753.0}
+  and mx['rows'][2] == {'role': 'Offshore Analyst', 'unit': 'day', 'cost': '', 'sell': 325.0} and len(mx['rows']) == 3)
+lv = openpyxl.Workbook(); lw = lv.active; lw.append(['IT Capability', 'Level', 'Persona Title', 'Pay band'])
+for i in range(1, 7): lw.append(['Advisory & Strategy', i, f'Persona {i}', i])
+bio3 = io.BytesIO(); lv.save(bio3)
+try: P.rates_from_sheet('levels.xlsx', bio3.getvalue()); lvl_ok = False
+except ValueError: lvl_ok = True
+t('levels and grades (1 to 6) are not mistaken for rates', lvl_ok)
+t('the rate card can be cleared, and a new spreadsheet replaces or adds', 'Remove every role from this rate card' in proposal_ui.PE_JS and 'OK replaces them' in proposal_ui.PE_JS)

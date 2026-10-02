@@ -419,7 +419,7 @@ table.as-tbl{width:100%;border-collapse:collapse;background:var(--panel);border:
 .as-empty{padding:30px;text-align:center;color:var(--muted);background:var(--panel);border:1px dashed var(--line2);border-radius:14px}
 @media(max-width:700px){.as-tbl .hide-s{display:none}}
 .as-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.as-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.as-btns{display:flex;gap:8px;align-items:center}.as-btns .button-link{margin:0}
-.as-form{display:grid;gap:12px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}.as-form label{display:grid;gap:4px}.as-two{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.as-form{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}.as-form label{display:grid;gap:4px}.as-two{display:grid;grid-template-columns:1fr 1fr;gap:20px}
 .k-review-row{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:4px 0 12px}.k-review-row input{width:80px}
 .as-checks{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:4px}.as-checks label{display:flex!important;gap:6px;align-items:center}
 /* Opportunity tracker: slides out from the right */

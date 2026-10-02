@@ -112,6 +112,8 @@ def rates_from_sheet(name, raw):
         tables.append(('CSV', list(csv.reader(io.StringIO(text), dialect))))
     else:
         raise ValueError('Upload the pricing tool as an Excel (.xlsx) or CSV file.')
+    m = _cost_sell_matrix(tables)                      # a pricing tool with separate cost and sell sheets by country (e.g. Insight's scheduler)
+    if m: return m
     def num(v):
         if isinstance(v, (int, float)) and not isinstance(v, bool): return float(v)
         m = re.match(r'^-?\d+(\.\d+)?$', re.sub(r'[£$€\s,]', '', str(v or '')))
@@ -139,11 +141,59 @@ def rates_from_sheet(name, raw):
                 seen.add(nm.casefold())
                 got.append({'role': nm, 'unit': (unit_of(r[unit_col]) if unit_col is not None else None) or hdr_unit or 'day',
                             'cost': c if c is not None else '', 'sell': sv if sv is not None else ''})
+            vals = sorted(float(g['cost'] if g['cost'] != '' else g['sell']) for g in got)
+            if got and vals[len(vals) // 2] < 10: continue                 # levels or grades (1 to 6), not money
             if got and (best is None or len(got) > len(best[1])): best = (title, got)
     if not best: raise ValueError('No roles and rates found. The sheet needs a heading row with a role column and a cost (or rate) column.')
     for g in best[1]:
         if not g['unit']: g['unit'] = 'day'
     return {'sheet': best[0], 'rows': best[1][:300]}
+
+
+COUNTRIES = {'UK': 'UK', 'GB': 'UK'}
+
+
+def _cost_sell_matrix(tables, country='UK'):
+    """A pricing tool that keeps standard costs and sell prices on separate sheets, one column per country, hourly, with a
+    working-hours-per-day row above (Insight's Resource Utilisation Scheduler: StdCosts and SellPricing, by Persona).
+    Returns day rates for the country (hourly rate x hours per day), or None if the workbook is not laid out like that."""
+    def sheet(word):
+        return next(((t, r) for t, r in tables if word in t.lower()), None)
+    def read(rows):
+        txt = lambda c: str(c).strip() if c is not None else ''
+        hdr = next((i for i, r in enumerate(rows[:60]) if any(txt(c).lower() == 'persona' for c in r)), None)
+        if hdr is None: return None
+        cols = [txt(c).lower() for c in rows[hdr]]
+        pcol = cols.index('persona')
+        gcol = next((i for i, c in enumerate(cols) if 'capability' in c), None)
+        ccol = hours = None
+        for r in rows[:hdr]:
+            cells = [txt(c).upper() for c in r]
+            if ccol is None and country in cells: ccol = cells.index(country)
+        if ccol is None: return None
+        for r in rows[:hdr]:
+            v = r[ccol] if ccol < len(r) else None
+            if isinstance(v, (int, float)) and not isinstance(v, bool) and 4 <= v <= 12: hours = float(v); break
+        out = {}
+        for r in rows[hdr + 1:]:
+            r = list(r) + [None] * 60
+            name = ' '.join(txt(r[pcol]).split())[:80]
+            v = r[ccol]
+            if not name or name.lower() == '(blank)' or not isinstance(v, (int, float)) or isinstance(v, bool) or v <= 0: continue
+            out.setdefault(name, {'value': float(v), 'group': txt(r[gcol]) if gcol is not None else ''})
+        return out, hours or 7.5
+    c, s_ = sheet('cost'), sheet('sell')
+    if not c or not s_: return None
+    rc, rs = read(c[1]), read(s_[1])
+    if not rc or not rs or not rs[0]: return None
+    (costs, h1), (sells, h2) = rc, rs
+    hours = h2 or h1
+    rows = []
+    for name, sv in sells.items():
+        cv = costs.get(name)
+        rows.append({'role': name, 'unit': 'day', 'cost': round(cv['value'] * hours, 2) if cv else '', 'sell': round(sv['value'] * hours, 2)})
+    if not rows: return None
+    return {'sheet': f'{c[0]} and {s_[0]} ({country} hourly rates x {hours:g} hours = day rates)', 'rows': rows[:300]}
 
 
 def clean_settings(s):

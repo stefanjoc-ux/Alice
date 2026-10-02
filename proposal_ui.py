@@ -15,7 +15,8 @@ PE_CSS = r'''
 .pe-rtop{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 8px}.pe-rtop input[type=search]{flex:1;min-width:160px}.pe-rtop .on{background:var(--teal)!important;color:#fff!important;border-color:var(--teal)!important}
 .pe-target{display:flex!important;align-items:center;gap:6px;font-weight:600!important;font-size:14px}.pe-target input{width:64px!important;text-align:right}
 .pe-file{cursor:pointer;border:1px solid var(--line2,#b9cbd8);border-radius:8px;background:#fff;display:inline-flex;align-items:center}
-.pe-rates td:nth-child(2){width:28%}.pe-rates td:nth-child(3){width:112px}.pe-rates td:nth-child(4){width:80px}
+.pe-rwrap{overflow-x:auto;margin:0 -4px;padding:0 4px}.pe-rates{min-width:700px}.pe-rates .pe-x{font-size:16px!important;line-height:1;padding:4px 9px!important}.pe-rates td:nth-child(3) select{min-width:84px}.pe-rates td:nth-child(4) input{min-width:64px}.pe-rates td:nth-child(5) input,.pe-rates td:nth-child(6) input{min-width:84px}.pe-rates td:nth-child(2) input{min-width:150px}.pe-rates td:nth-child(2){min-width:170px}.pe-rates td:nth-child(3){width:92px}.pe-rates td:nth-child(4){width:84px}
+.pe-rates td:nth-child(5),.pe-rates td:nth-child(6){width:96px}.pe-rates td:nth-child(5) input,.pe-rates td:nth-child(6) input,.pe-rates td:nth-child(4) input{text-align:right;font-variant-numeric:tabular-nums}
 .pe-rates tr.off td{opacity:.55}.pe-rates td:first-child{width:34px;text-align:center}.pe-rates input[type=checkbox]{width:auto}
 .pe-mcell{white-space:nowrap}.pe-mwrap{display:inline-flex;align-items:center;gap:3px}.pe-mwrap input{width:64px!important;text-align:right}.pe-mwrap input.bad{color:#b3261e;border-color:#e0aaaa}.pe-mcell .pe-mini{margin-left:4px!important}
 .pe-rtotal{display:flex;gap:6px 18px;flex-wrap:wrap;align-items:center;margin-top:10px;padding:10px 12px;border-radius:10px;background:#f4f8fb;border:1px solid var(--line);font-size:14px}
@@ -80,21 +81,25 @@ const PE=(()=>{
    top.append(tl,all);
    if(opts.parse){const fl=mk('label','Load a pricing spreadsheet','secondary pe-mini pe-file');const fi=document.createElement('input');fi.type='file';fi.accept='.xlsx,.xlsm,.csv';fi.hidden=true;fl.append(fi);
     fi.onchange=async()=>{const f=fi.files[0];fi.value='';if(!f)return;const note=box.querySelector('.pe-rnote');if(note)note.textContent='Reading '+f.name+'…';
-     try{const r=await opts.parse(f);const have=new Set(list.map(x=>x.role.toLowerCase()));const add=r.rows.filter(x=>!have.has(x.role.toLowerCase())).map(x=>mk_({...x,use:false}));list=list.concat(add);showAll=true;draw();
-      box.querySelector('.pe-rnote').textContent=add.length+' role'+(add.length===1?'':'s')+' added from '+f.name+(r.sheet?' (sheet '+r.sheet+')':'')+'. Tick the ones this proposal needs.'+(r.rows.length>add.length?' '+(r.rows.length-add.length)+' already listed.':'')}
+     try{const r=await opts.parse(f);const old=new Map(list.map(x=>[x.role.toLowerCase(),x]));
+      const replace=list.length&&confirm('Replace the '+list.length+' roles on the rate card with the '+r.rows.length+' roles in '+f.name+'?\n\nOK replaces them (ticks and days are kept for roles with the same name). Cancel adds only the new roles.');
+      let msg;if(replace){list=r.rows.map(x=>{const o=old.get(x.role.toLowerCase());return mk_({...x,use:o?o.use:false,days:o?o.days:''})});msg=r.rows.length+' roles loaded from '+f.name+', replacing the old list.'}
+      else{const add=r.rows.filter(x=>!old.has(x.role.toLowerCase())).map(x=>mk_({...x,use:false}));list=list.concat(add);msg=add.length+' role'+(add.length===1?'':'s')+' added from '+f.name+'.'+(r.rows.length>add.length?' '+(r.rows.length-add.length)+' already listed.':'')}
+      showAll=true;draw();box.querySelector('.pe-rnote').textContent=msg+(r.sheet?' Read from '+r.sheet+'.':'')+' Tick the ones this proposal needs.'}
      catch(e){box.querySelector('.pe-rnote').textContent=e.message}};top.append(fl)}
+   if(list.length){const cb=btn('Clear',()=>{if(confirm('Remove all '+list.length+' roles from this rate card?')){list=[];draw()}},'Remove every role from this rate card');top.append(cb)}
    const pb=btn('Paste a table',()=>{pasteOpen=!pasteOpen;draw();box.querySelector('.pe-paste textarea')?.focus()},'Paste a rate card copied from Excel, Word or an email');top.append(pb);
    box.append(top);
    if(list.length>8){const fb=mk('div','','pe-rtop');const used=list.filter(r=>r.use).length;const c1=btn('Ticked ('+used+')',()=>{showAll=false;draw()}),c2=btn('All roles ('+list.length+')',()=>{showAll=true;draw()});(showAll?c2:c1).classList.add('on');
     const fi=document.createElement('input');fi.type='search';fi.placeholder='Find a role';fi.value=filter;fi.setAttribute('aria-label','Find a role');fi.oninput=()=>{filter=fi.value.toLowerCase();body()};fb.append(c1,c2,fi);box.append(fb)}
    const t=mk('table','','pe-rates');const h=document.createElement('thead');const hr=document.createElement('tr');
-   for(const x of ['Use','Role','Unit','Days','Cost rate','Sell rate','Margin',''])hr.append(mk('th',x));h.append(hr);t.append(h);const tb=document.createElement('tbody');t.append(tb);box.append(t);
+   for(const x of ['Use','Role','Unit','Days','Cost rate','Sell rate','Margin',''])hr.append(mk('th',x));h.append(hr);t.append(h);const tb=document.createElement('tbody');t.append(tb);const tw=mk('div','','pe-rwrap');tw.append(t);box.append(tw);
    const tf=mk('div','','pe-rtotal');box.append(tf);
    function body(){tb.replaceChildren();const shown=list.filter(r=>(showAll||r.use)&&(!filter||r.role.toLowerCase().includes(filter)));
     for(const r of shown){const i=list.indexOf(r);const tr=document.createElement('tr');if(!r.use)tr.className='off';
      const u0=document.createElement('input');u0.type='checkbox';u0.checked=r.use;u0.setAttribute('aria-label','Use '+(r.role||'this role'));u0.onchange=()=>{r.use=u0.checked;tr.className=r.use?'':'off';foot()};
      const role=document.createElement('input');role.maxLength=80;role.value=r.role;role.placeholder='e.g. Solution architect';role.setAttribute('aria-label','Role '+(i+1));role.oninput=()=>{r.role=role.value};
-     const u=document.createElement('select');u.setAttribute('aria-label','Unit for '+(r.role||'role'));for(const k of units||['day','hour']){const o=mk('option','per '+k);o.value=k;u.append(o)}u.value=r.unit;u.onchange=()=>{r.unit=u.value;foot()};
+     const u=document.createElement('select');u.setAttribute('aria-label','Unit for '+(r.role||'role'));for(const k of units||['day','hour']){const o=mk('option',k==='hour'?'Hour':'Day');o.value=k;u.append(o)}u.value=r.unit;u.onchange=()=>{r.unit=u.value;foot()};
      const inp=(k,label,ph)=>{const x=document.createElement('input');x.inputMode='decimal';x.value=r[k];x.placeholder=ph||'';x.setAttribute('aria-label',label+' for '+(r.role||'role'));return x};
      const days=inp('days','Days','optional'),cost=inp('cost','Cost rate','£'),sell=inp('sell','Sell rate','£');const mg=document.createElement('input');mg.inputMode='decimal';mg.setAttribute('aria-label','Margin for '+(r.role||'role'));
      const showM=()=>{const m=marginOf(r);if(document.activeElement!==mg)mg.value=m===null?'':m.toFixed(1);mg.classList.toggle('bad',m!==null&&(m<0||(opts.minMargin!=null&&m<opts.minMargin)));mg.title=m!==null&&opts.minMargin!=null&&m<opts.minMargin?'Below your minimum margin of '+opts.minMargin+'%':'';reset.hidden=!r.override};
@@ -105,7 +110,7 @@ const PE=(()=>{
      mg.onblur=showM;
      const reset=btn('↺',()=>{r.override=false;const c=n(r.cost);if(c!==null){r.sell=sellFor(c);sell.value=r.sell}showM();foot()},'Back to the target margin');
      const mcell=mk('td','','pe-mcell');const mw=mk('span','','pe-mwrap');mw.append(mg,mk('span','%'));mcell.append(mw,reset);
-     const rm=btn('Remove',()=>{list.splice(i,1);draw()},'Remove '+(r.role||'role'));
+     const rm=btn('\u00d7',()=>{list.splice(i,1);draw()},'Remove '+(r.role||'role'));rm.classList.add('pe-x');rm.setAttribute('aria-label','Remove '+(r.role||'role'));
      const td=x=>{const c=document.createElement('td');c.append(x);return c};tr.append(td(u0),td(role),td(u),td(days),td(cost),td(sell),mcell,td(rm));tb.append(tr);showM()}
     if(!shown.length)tb.append(Object.assign(document.createElement('tr'),{innerHTML:'<td colspan="8" class="pe-note">'+(list.length?'No roles match.':'No roles yet: load a pricing spreadsheet, paste a table or add roles.')+'</td>'}))}
    function foot(){const u=list.filter(r=>r.use&&r.role.trim());const wd=u.filter(r=>n(r.days)>0&&n(r.cost)!==null&&n(r.sell)!==null);

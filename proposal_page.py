@@ -152,7 +152,7 @@ details.panel{padding:0;gap:0}details.panel>summary{padding:18px 22px;border-rad
 details.panel>summary:hover{background:#f8fbfd}details.panel[open]>summary{border-bottom:1px solid var(--line);border-radius:14px 14px 0 0}
 details.panel>summary::after{content:'';margin-left:auto;width:9px;height:9px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg);transition:transform .15s}
 details.panel[open]>summary::after{transform:rotate(-135deg)}
-details.panel>.pbody{padding:16px 22px 20px;display:grid;gap:12px}
+details.panel>.pbody{padding:16px 22px 20px;display:grid;grid-template-columns:minmax(0,1fr);gap:12px}details.panel{min-width:0}
 details.panel>summary .hint{font-size:13px}
 .panel select{width:100%;min-width:0;max-width:100%}.panel>label,.pbody>label,.qa-only>label{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;font-weight:600;font-size:13.5px}.grid2{align-items:start}.grid2 label{gap:6px!important;font-size:13.5px}
 .panel :where(input:not([type=checkbox]):not([type=radio]):not([type=file]),select,textarea),.side select{font-weight:400;border-radius:10px;border:1px solid #c9d7e2;background:#fbfdfe;padding:9px 12px;transition:border-color .12s,box-shadow .12s,background .12s}
