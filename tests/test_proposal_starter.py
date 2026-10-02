@@ -117,6 +117,31 @@ REPLY['updates'] = {}
 A.set_status(PS.PARKER, 'paused', 'test')
 t('a paused Parker does not run', go().status_code in (409, 503))
 A.set_status(PS.PARKER, 'active')
+# ---------------- revising a proposal that has been written ----------------
+DRAFT = [{'title': 'Approach', 'body': 'The work runs in five phases over 20 consultant days.'},
+         {'title': 'About us', 'body': 'Standard company text.', 'keep': True}, {'title': 'Commercials', 'body': 'A fixed fee.'}]
+calls.clear()
+REPLY.update({'reply': 'I have added the on-site start to the approach.', 'questions': [],
+              'updates': {'draft': [{'title': 'approach', 'body': 'The work runs in five phases over 20 consultant days. The first days are on site; the rest is remote.'},
+                                    {'title': 'About us', 'body': 'Rewritten standard text.'}, {'title': 'Invented section', 'body': 'x'}],
+                          'brief': 'Background\nOn-site start, then remote.'}})
+rd = cl.post('/assistant/proposal-writer/parker', json={'message': 'Add to the approach: the first days are on site, the rest remote.',
+                                                       'form': dict(FORM, title='Fabric baseline', brief='Background', draft=DRAFT)})
+md = calls[-1]['messages'][0]['content']
+t('Parker sees the proposal as written when you revise it', rd.status_code == 200 and 'DRAFT (the proposal as written' in md and '## Approach' in md
+  and 'five phases over 20 consultant days' in md and '[standard text: do not change]' in md)
+ud = rd.json()['updates']
+t('Parker rewrites the sections you ask about; standard text and invented sections are left alone', ud['draft'] == [{'title': 'Approach',
+  'body': 'The work runs in five phases over 20 consultant days. The first days are on site; the rest is remote.'}] and 'draft sections' in rd.json()['changed'])
+with s.db() as c: last = c.execute("SELECT detail FROM activity WHERE action='parker_update' ORDER BY id DESC").fetchone()['detail']
+t('the Temple log names the sections Parker changed', 'draft sections (Approach)' in last and 'on site' not in last)
+calls.clear()
+t('secrets in the draft are refused before anything is sent', cl.post('/assistant/proposal-writer/parker', json={'message': 'tidy it', 'form': {'draft': [
+  {'title': 'Approach', 'body': 'key sk-proj-abcdefghijklmnopqrstuvwxyz0123456789ABCD'}]}}).status_code == 400 and not calls)
+REPLY['updates'] = {'draft': [{'title': 'Approach', 'body': 'Use key sk-proj-abcdefghijklmnopqrstuvwxyz0123456789ABCD.'}]}
+t('rewritten sections are checked too', cl.post('/assistant/proposal-writer/parker', json={'message': 'tidy it', 'form': {'draft': DRAFT}}).status_code == 400)
+REPLY['updates'] = {}
 page = cl.get('/assistant/proposal-writer').text
+t('a proposal can be loaded back into the form', 'Load into the form' in page and 'loadIntoForm' in page)
 t('the page has Parker\'s chat, always in view, and collapsible sections', all(x in page for x in ('Start with Parker', 'id="pk-msg"', 'id="pk-file"', 'Working with Parker', 'id="col-all"', 'id="exp-all"'))
   and 'Start with Temple' not in page)

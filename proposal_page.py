@@ -325,7 +325,19 @@ async function load(){S=await api('/setup');loadRefs();$('greeting').textContent
  if(A.paused)$('go').disabled=true;summary();recent();const q=new URLSearchParams(location.search).get('p');if(q)follow(q)}
 $('org').addEventListener('input',()=>drawRefs());
 $('org').oninput=()=>{const o=S&&S.organisations.find(x=>x.name.toLowerCase()===$('org').value.trim().toLowerCase());$('org-hint').textContent=o?(o.client?o.name+' is a client: its tagged memories and knowledge are included; other clients’ never are.':'Its approved profile is used.'):($('org').value.trim()?'Not in the list: Alice checks other names it knows (e.g. SBC); if none match, the name is used as typed.':'Its approved profile is used. Only this client’s tagged material is used, never another client’s.')};
-let mode='write';
+let mode='write',CUR=null,EDS=null;
+function formEmpty(){return !$('title').value.trim()&&!$('brief').value.trim()}
+async function loadIntoForm(p,quiet){const i=p.inputs||{};const before=snap();
+ $('title').value=p.title||'';$('org').value=p.organisation||'';$('brief').value=p.brief||'';$('notes').value=p.notes||'';$('structure').value=i.structure||'';
+ ['title','org','brief','notes','structure'].forEach(id=>$(id).dispatchEvent(new Event('input',{bubbles:true})));
+ if(i.template!=null&&i.template!==$('tplsel').value&&[...$('tplsel').options].some(o=>o.value===i.template)){$('tplsel').value=i.template;await $('tplsel').onchange()}
+ if((i.sections||[]).length){const tt=window.tplOf?window.tplOf():new Set();secEd.set(i.sections.map(x=>({...x,source:tt.has(x.title)?'template':'added'})))}
+ picked.clear();(i.references||[]).forEach(x=>picked.add(x));drawRefs();
+ if((i.rate_card||[]).length)rateEd.pick(i.rate_card);
+ for(const [id,k] of [['wm','writer'],['qm','qa']])if(i[k]&&[...$(id).options].some(o=>o.value===i[k]))$(id).value=i[k];
+ if(i.use_memory!=null)$('mem').checked=!!i.use_memory;if(window.cost)window.cost();summary();
+ pkSay('pk-p','I\u2019ve loaded \u201c'+(p.title||'this proposal')+'\u201d into the form'+((p.draft&&(p.draft.sections||[]).length)?', and I can see the draft as written. Tell me what to change, for example \u201cadd to the approach that the first days are on site\u201d, and I\u2019ll update the draft and the brief.':'.')+(quiet?'':' Undo puts the form back.'));
+ if(!quiet){const m=$('pk-log').lastChild;const un=mk('button','Undo','pk-undo');un.type='button';un.onclick=async()=>{await restore(before);un.replaceWith(mk('span','Undone.','hint'))};m.append(un)}}
 function summary(){const dl=$('sum');if(!dl||!S)return;dl.replaceChildren();const row=(k,v)=>{const d=mk('div');d.append(mk('dt',k),mk('dd',v||'Not set',v?'':'none'));dl.append(d)};
  const org=$('org').value.trim();const o=S.organisations.find(x=>x.name.toLowerCase()===org.toLowerCase());row('Client',org?(org+(o&&o.client?' (client)':'')):'');
  if(mode==='qa'){row('Document',($('qa-file').files[0]||{}).name||'');row('QA model',($('qm').selectedOptions[0]||{}).textContent||'')}
@@ -368,13 +380,14 @@ function follow(pid){clearInterval(timer);$('result').replaceChildren();$('prog'
  tick();timer=setInterval(tick,1500)}
 function table(head,rows,cls){const t=mk('table','','t');const h=document.createElement('tr');for(const x of head)h.append(mk('th',x));t.append(h);for(const r of rows){const tr=document.createElement('tr');if(r.cls)tr.className=r.cls;for(const c of r.cells){const td=document.createElement('td');if(c&&c.node)td.append(c.node);else td.textContent=c??'';if(c&&c.num)td.className='num';tr.append(td)}t.append(tr)}return t}
 const n=(v,num)=>({node:mk('span',v),num});
-function show(p){const box=$('result');box.replaceChildren();const qa=p.qa[p.qa.length-1]||{};
+function show(p){CUR=p;EDS=null;if(formEmpty()&&!p.inputs.qa_only&&S)setTimeout(()=>loadIntoForm(p,true),0);const box=$('result');box.replaceChildren();const qa=p.qa[p.qa.length-1]||{};
  const top=mk('section','','card');const v=mk('div','','verdict '+(qa.verdict==='client_ready'?'ok':(qa.issues||[]).some(i=>i.severity==='high')?'bad':'warn'));
  const sc=mk('span',qa.score!=null?String(qa.score):'—','score');sc.style.setProperty('--p',qa.score||0);sc.title=qa.score!=null?qa.score+' out of 100':'';v.append(sc);const vt=mk('div');vt.append(mk('strong',qa.verdict==='client_ready'?'Client ready, according to Proposal QA':'Needs your attention before it goes to the client'),mk('div',qa.summary||'','hint'));v.append(vt);
  if(p.document_id){const dl=document.createElement('a');dl.href='/documents/'+p.document_id+'/download';dl.className='dl';dl.textContent='Download Word document';v.append(dl)}top.append(mk('h2',p.title+(p.organisation?' · '+p.organisation:'')),v);
  if(p.qa.length>1){const rr=mk('div','','rounds');rr.append(mk('span','QA checks:'));p.qa.forEach((q,i)=>{if(i)rr.append(mk('span','→'));const b=mk('b',(q.score??'?')+'/100');b.title=(q.source||'check '+(i+1));rr.append(mk('span',(q.source||('check '+(i+1)))+' '),b)});top.append(rr)}
  if(p.error)top.append(mk('p','The last re-check did not finish: '+p.error,'err'));
  const act=mk('div','','act');
+ if(!p.inputs.qa_only){const lf=document.createElement('button');lf.type='button';lf.className='secondary';lf.textContent='Load into the form';lf.title='Put this proposal\u2019s brief, notes, template, sections, references and roles back into the form, to change it with Parker or write a new version';lf.onclick=()=>loadIntoForm(p,false);act.append(lf)}
  if(!p.inputs.qa_only&&(p.draft.sections||[]).length){const eb=document.createElement('button');eb.type='button';eb.className='secondary';eb.textContent='Edit the draft and check again';eb.onclick=()=>editDraft(p);act.append(eb)}
  const ul_=mk('label','Upload a revised version for QA','btnlike');const fi=document.createElement('input');fi.type='file';fi.accept='.docx,.pdf,.txt,.md';fi.hidden=true;ul_.append(fi);
  fi.onchange=async()=>{const f=fi.files[0];fi.value='';if(!f)return;try{await api('/proposals/'+p.id+'/qa-upload','POST',{name:f.name,data:await fileData(f)});follow(p.id)}catch(e){alertBox(e.message)}};act.append(ul_);
@@ -401,25 +414,29 @@ function show(p){const box=$('result');box.replaceChildren();const qa=p.qa[p.qa.
 
 // ---------- Parker: work on the form in conversation ----------
 const PK={history:[],doc:null,busy:false};
-function snap(){const tt=window.tplOf?window.tplOf():new Set();return {f:['title','org','brief','notes','structure'].map(id=>[id,$(id).value]),tpl:$('tplsel').value,secs:secEd.value().map(x=>({...x,source:tt.has(x.title)?'template':'added'})),refs:[...picked],rates:rateEd.value(),mem:$('mem').checked}}
+function snap(){const tt=window.tplOf?window.tplOf():new Set();return {f:['title','org','brief','notes','structure'].map(id=>[id,$(id).value]),tpl:$('tplsel').value,secs:secEd.value().map(x=>({...x,source:tt.has(x.title)?'template':'added'})),refs:[...picked],rates:rateEd.value(),mem:$('mem').checked,drafts:EDS?EDS.map(([x,t])=>[x.title,t.value]):null}}
 async function restore(u){for(const[id,v]of u.f){$(id).value=v;$(id).classList.remove('tfill');$(id).dispatchEvent(new Event('input',{bubbles:true}))}
- if($('tplsel').value!==u.tpl){$('tplsel').value=u.tpl;await $('tplsel').onchange()}secEd.set(u.secs);picked.clear();u.refs.forEach(x=>picked.add(x));drawRefs();rateEd.set(u.rates);$('mem').checked=u.mem;clearTags();summary()}
+ if($('tplsel').value!==u.tpl){$('tplsel').value=u.tpl;await $('tplsel').onchange()}secEd.set(u.secs);picked.clear();u.refs.forEach(x=>picked.add(x));drawRefs();rateEd.set(u.rates);$('mem').checked=u.mem;clearTags();
+ if(EDS&&CUR){for(const [x,t] of EDS){const old=u.drafts?(u.drafts.find(d=>d[0]===x.title)||[])[1]:x.body;if(old!=null)t.value=old;t.classList.remove('tfill')}}summary()}
 ['title','org','brief','notes','structure'].forEach(id=>$(id).addEventListener('keydown',()=>$(id).classList.remove('tfill')));
 function clearTags(){document.querySelectorAll('.pk-tag').forEach(x=>x.remove())}
 function reveal(node){const p=node.closest('.panel');if(!p)return;if(p.tagName==='DETAILS')p.open=true;else p.classList.remove('shut');
  const head=p.tagName==='DETAILS'?p.querySelector('summary>span'):p.querySelector('.ph h2,.ph .pt');if(head&&!head.querySelector('.pk-tag'))head.append(mk('span','Updated by Parker','pk-tag'));
  p.classList.remove('pk-hit');void p.offsetWidth;p.classList.add('pk-hit')}
 function fill(id,v){if(!v)return false;const e=$(id);e.value=v;e.classList.add('tfill');e.dispatchEvent(new Event('input',{bubbles:true}));reveal(e);return true}
-const WHERE={title:'title',client:'org',brief:'brief',notes:'notes',template:'tplsel',structure:'structure',references:'ref-list',roles:'rates'};
+const WHERE={'draft sections':'draft-ed',title:'title',client:'org',brief:'brief',notes:'notes',template:'tplsel',structure:'structure',references:'ref-list',roles:'rates'};
 async function applyParker(u){clearTags();
  fill('title',u.title);fill('org',u.organisation);fill('brief',u.brief);fill('notes',u.notes);
  if(u.template&&u.template!==$('tplsel').value){$('tplsel').value=u.template;await $('tplsel').onchange();reveal($('tplsel'))}
  if(u.structure)fill('structure',u.structure.map(x=>x.heading+(x.points.length?'\n'+x.points.map(p=>'- '+p).join('\n'):'')).join('\n'));
  if(u.references){picked.clear();u.references.forEach(x=>picked.add(x));drawRefs();reveal($('ref-list'))}
  if(u.roles){rateEd.merge(u.roles);reveal($('rates'))}
+ if(u.draft&&CUR){if(!EDS)editDraft(CUR);let first=null;for(const d of u.draft){const e=EDS.find(x=>x[0].title===d.title);if(!e)continue;e[1].value=d.body;e[1].classList.add('tfill');first=first||e[1]}if(first)first.scrollIntoView({behavior:'smooth',block:'center'})}
  summary()}
+function draftNow(){if(EDS&&CUR)return (CUR.draft.sections||[]).map(s=>{const e=EDS.find(x=>x[0]===s);return {title:s.title,body:e?e[1].value:s.body,keep:!!s.keep}});
+ if(CUR&&!CUR.inputs.qa_only&&CUR.draft)return (CUR.draft.sections||[]).map(s=>({title:s.title,body:s.body,keep:!!s.keep}));return []}
 function form(){return {title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value,template:$('tplsel').value,structure:$('structure').value,
- references:[...picked],sections:secEd?secEd.value().map(x=>x.title):[],roles:rateEd?rateEd.value().map(r=>({role:r.role,unit:r.unit,use:r.use,days:r.days})):[]}}
+ references:[...picked],sections:secEd?secEd.value().map(x=>x.title):[],draft:draftNow(),roles:rateEd?rateEd.value().map(r=>({role:r.role,unit:r.unit,use:r.use,days:r.days})):[]}}
 function pkScroll(){const l=$('pk-log');l.scrollTop=l.scrollHeight}
 function pkSay(cls,text){const m=mk('div',text,'pk-m '+cls);$('pk-log').append(m);pkScroll();return m}
 function pkIntro(){$('pk-log').replaceChildren();const m=pkSay('pk-p',A.paused?A.name+' is paused at the moment.':'Hi, I’m Parker. Tell me about the proposal in a sentence or two, or add the client’s brief or RFP with +. I’ll fill in the form with you and ask for anything that’s missing.');
@@ -457,7 +474,7 @@ function editDraft(p){const box=$('result');const c=mk('section','','card');c.ap
  const eds=[];for(const s of p.draft.sections||[]){const w=mk('div','','edit-sec');w.append(mk('b',s.title));if(s.keep){w.append(mk('span','(standard text from the template: not edited here)','hint'))}else{const t=document.createElement('textarea');t.value=s.body;t.maxLength=20000;t.setAttribute('aria-label','Text of '+s.title);w.append(t);eds.push([s,t])}c.append(w)}
  const go=document.createElement('button');go.type='button';go.className='primary';go.textContent='Save changes and check again';const cancel=document.createElement('button');cancel.type='button';cancel.className='secondary';cancel.textContent='Cancel';cancel.onclick=()=>show(p);
  go.onclick=async()=>{go.disabled=true;try{await api('/proposals/'+p.id+'/recheck','POST',{sections:(p.draft.sections||[]).map(s=>{const e=eds.find(x=>x[0]===s);return {title:s.title,body:e?e[1].value:''}})});follow(p.id)}catch(e){go.disabled=false;alertBox(e.message)}};
- const a=mk('div','','act');a.append(go,cancel);c.append(a);box.replaceChildren(c);document.querySelector('main').scrollTop=0}
+ const a=mk('div','','act');a.append(go,cancel);c.append(a);box.replaceChildren(c);EDS=eds;c.id='draft-ed';document.querySelector('main').scrollTop=0}
 async function recent(){try{const d=await api('/proposals');$('recent-box').hidden=!d.proposals.length;$('recent').replaceChildren(...d.proposals.map(x=>{const b=mk('button','','secondary '+(x.status==='running'?'run':x.status==='failed'?'bad':x.verdict==='client_ready'?'ok':'warn'));b.type='button';
  b.append(mk('span',x.title+(x.organisation?' · '+x.organisation:'')),mk('span',x.status==='running'?'writing…':x.status==='failed'?'failed':(x.verdict==='client_ready'?'client ready':'needs attention')+(x.score!=null?' · '+x.score+'/100':'')+' · '+new Date(x.created_at).toLocaleDateString('en-GB'),'hint'));
  b.onclick=()=>{history.replaceState(null,'','?p='+x.id);follow(x.id);window.scrollTo(0,0);document.querySelector('main').scrollTop=0};return b}))}catch{}}
