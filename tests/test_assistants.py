@@ -100,3 +100,9 @@ t('an empty question is refused without counting as a failed run', ask('   ')[0]
 listing = cl.get('/admin/api/assistants', headers=H).json()
 t('the Command centre lists assistants, packs and categories', {a['id'] for a in listing['assistants']} >= {'hr-policy', 'finance-helper'} and 'hr' in listing['packs'] and 'HR' in listing['categories'])
 t('the Assistants page is in the menu', 'data-page="assistants"' in cl.get('/admin/assistants').text)
+
+# ---------------- the staff page ----------------
+page = cl.get('/assistant/hr-policy').text
+t('the staff page lists what the assistant covers, from its approved knowledge only', 'Annual leave policy' in page and 'Flexible working policy' in page
+  and 'Example Council leave arrangements' not in page and 'Local leave note' not in page and 'Expenses policy' not in page)
+t('the staff page explains how answers work and privacy', 'How answers work' in page and 'Your privacy' in page and 'id="topics"' in page)
