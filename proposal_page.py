@@ -76,6 +76,7 @@ table.t td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}ta
 <span class="hint">Everything in the brief is checked before it goes to the AI: secrets and protective markings are refused.</span></label>
 <div class="qa-only" hidden><label>Your proposal document<input type="file" id="qa-file" accept=".docx,.pdf,.txt,.md"><span class="hint">Word, PDF or text. Proposal QA checks it against the brief above. Your document is read for the check and not kept.</span></label></div>
 <label class="w-only">Notes for the writer <span class="hint">(optional: angle to take, things to stress or avoid)</span><textarea id="notes" maxlength="4000" rows="3"></textarea></label>
+<label class="w-only">Proposal template<select id="tplsel"></select><span class="hint" id="tpl-hint"></span></label>
 <div class="grid2"><label class="w-only">Writer model<select id="wm"></select></label><label>QA model<select id="qm"></select></label></div>
 <p class="hint" id="cost"></p>
 <label class="check w-only"><input type="checkbox" id="mem" checked> Use what Alice knows: approved memories, decisions and knowledge that are general or for this client</label>
@@ -152,7 +153,15 @@ async function load(){S=await api('/setup');loadRefs();$('greeting').textContent
   const t=mode==='qa'?q.qa_cost/2:w.writer_cost+q.qa_cost;$('cost').textContent='Roughly $'+t.toFixed(2)+(mode==='qa'?' for the QA check.':' for this proposal (draft, QA, one revision and a second QA check), depending on the brief and context. Defaults are set on the Assistants page.')};
  $('wm').onchange=cost;$('qm').onchange=cost;cost();window.cost=cost;
  secEd=PE.sections($('secs'),S.sections,{include:true,empty:'No sections yet: add some, or choose a template on the Assistants page.'});rateEd=PE.rates($('rates'),S.rate_card,S.units);
- $('tpl').textContent=S.template_error?S.template_error:S.template?'Template: '+S.template:'No template set: Alice uses its own Word layout. Set a template on the Assistants page.';
+ const ts=$('tplsel');const topt=(v,txt)=>{const o=document.createElement('option');o.value=v;o.textContent=txt;return o};
+ ts.replaceChildren(...S.templates.map(x=>topt(x.path,x.name+' · '+x.source+(x.path===S.template?' (default)':''))),topt('','No template: Alice’s own Word layout'));
+ if(S.template&&!S.templates.some(x=>x.path===S.template))ts.prepend(topt(S.template,S.template+' (not found)'));ts.value=S.template||'';
+ let tplTitles=new Set(S.sections.filter(x=>x.source==='template').map(x=>x.title));
+ const tplHint=(o,err)=>{$('tpl-hint').textContent=err||(ts.value?(o&&o.sections?o.sections.filter(x=>x.source==='template').length+' sections from the template; its cover, styles, header and footer are kept.':'Sections, styles, cover, header and footer come from the template.'):'No template: the proposal uses Alice’s own Word layout with the sections below.')+(S.templates.length?'':' Put a Word template in a folder on the Documents page to choose it here.')};
+ tplHint(null,S.template_error);$('tpl').textContent='';
+ ts.onchange=async()=>{try{const o=await api('/outline?template='+encodeURIComponent(ts.value));const now=secEd.value();const fresh=new Set(o.sections.map(x=>x.title.toLowerCase()));
+   const mine=now.filter(x=>!tplTitles.has(x.title)&&!fresh.has(x.title.toLowerCase())).map(x=>({...x,source:'added'}));
+   secEd.set(o.sections.concat(mine));tplTitles=new Set(o.sections.filter(x=>x.source==='template').map(x=>x.title));tplHint(o)}catch(e){tplHint(null,e.message)}};
  if(A.paused)$('go').disabled=true;recent();const q=new URLSearchParams(location.search).get('p');if(q)follow(q)}
 $('org').addEventListener('input',()=>drawRefs());
 $('org').oninput=()=>{const o=S&&S.organisations.find(x=>x.name.toLowerCase()===$('org').value.trim().toLowerCase());$('org-hint').textContent=o?(o.client?o.name+' is a client: its tagged memories and knowledge are included; other clients’ never are.':'Its approved profile is used.'):($('org').value.trim()?'Not in the list: Alice checks other names it knows (e.g. SBC); if none match, the name is used as typed.':'Its approved profile is used. Only this client’s tagged material is used, never another client’s.')};
@@ -174,7 +183,7 @@ async function fileData(f){if(f.size>15*1024*1024)throw new Error('That file is 
 $('f').onsubmit=async e=>{e.preventDefault();$('ferr').hidden=true;$('go').disabled=true;
  if(mode==='qa'){try{const f=$('qa-file').files[0];if(!f)throw new Error('Choose your proposal document.');const r=await api('/proposals/qa-only','POST',{title:$('title').value,organisation:$('org').value,brief:$('brief').value,name:f.name,data:await fileData(f),qa_model:$('qm').value});
    history.replaceState(null,'','?p='+r.id);follow(r.id);document.querySelector('main').scrollTop=0}catch(err){$('ferr').textContent=err.message;$('ferr').hidden=false;$('go').disabled=A.paused}return}
- try{const r=await api('/proposals','POST',{structure:$('structure').value,title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value,use_memory:$('mem').checked,references:[...picked],writer_model:$('wm').value,qa_model:$('qm').value,sections:secEd.value(),rate_card:rateEd.value()});
+ try{const r=await api('/proposals','POST',{structure:$('structure').value,title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value,use_memory:$('mem').checked,references:[...picked],template:$('tplsel').value,writer_model:$('wm').value,qa_model:$('qm').value,sections:secEd.value(),rate_card:rateEd.value()});
   history.replaceState(null,'','?p='+r.id);document.querySelectorAll('details.fold').forEach(d=>d.open=false);follow(r.id);document.querySelector('main').scrollTop=0}
  catch(err){$('ferr').textContent=err.message;$('ferr').hidden=false;$('go').disabled=A.paused}};
 function follow(pid){clearInterval(timer);$('result').replaceChildren();$('prog').hidden=false;$('perr').hidden=true;$('prog-title').textContent='Working on it';drawSteps('Gathering','running');

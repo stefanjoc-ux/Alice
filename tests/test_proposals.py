@@ -301,3 +301,21 @@ if node:
     out = subprocess.run([node, str(Path(__file__).parent / 'js' / 'rate_paste_test.js'), str(js)], capture_output=True, text=True, timeout=60).stdout
     t('a pasted rate card table is read: headings, order, units, £ and commas, markdown, no headings', out.strip().endswith('7 passed 0 failed'))
 t('the rate card offers Paste a table', 'Paste a table' in proposal_ui.PE_JS and 'parseRates' in proposal_ui.PE_JS)
+
+# ---------------- choosing the template on each proposal ----------------
+cl.put('/admin/api/assistants/proposal-writer', headers=H, json=dict(body, settings=dict(body['settings'], template='Proposal Templates/Proposal-template.docx')))
+st2 = cl.get('/assistant/proposal-writer/setup').json()
+t('the page lists the templates in the document sources', any(x['path'].replace('\\', '/') == 'Proposal Templates/Proposal-template.docx' for x in st2['templates']))
+o = cl.get('/assistant/proposal-writer/outline', params={'template': 'Proposal Templates/Proposal-template.docx'}).json()
+t('picking a template gives its sections, plus your format and flow', o['sections'][0]['title'] == 'Executive summary' and o['sections'][-1]['title'] == 'Risks' and 'client' in o['placeholders'])
+t('no template: just your format and flow', [x['title'] for x in cl.get('/assistant/proposal-writer/outline', params={'template': ''}).json()['sections']] == ['Executive summary', 'Risks'])
+t('a path outside the document sources is refused', cl.get('/assistant/proposal-writer/outline', params={'template': '../../secret.docx'}).status_code == 400
+  and start(template='../x.docx').status_code == 400)
+calls.clear(); MODE['qa'] = [QA2]
+p9 = wait(start(template='', sections=[{'title': 'Summary'}, {'title': 'Pricing'}], rate_card=card).json()['id'])
+t('a proposal can skip the template: Alice\'s own layout', p9['status'] == 'done' and p9['inputs']['template'] == ''
+  and 'HEADER:' not in K.docx_to_text(D.get(p9['document_id'])['data']))
+calls.clear(); MODE['qa'] = [QA2]
+p10 = wait(start(sections=[{'title': 'Executive summary'}], rate_card=card).json()['id'])
+t('without a choice, the assistant\'s default template is used', p10['inputs']['template'].endswith('Proposal-template.docx') and 'HEADER:' in K.docx_to_text(D.get(p10['document_id'])['data']))
+t('the page has the template picker', 'id="tplsel"' in cl.get('/assistant/proposal-writer').text)

@@ -1525,6 +1525,7 @@ class ProposalIn(BaseModel):
     qa_model: str = Field(default='',max_length=20)
     references: list[Annotated[str, Field(max_length=300)]] = Field(default_factory=list,max_length=10)
     structure: str = Field(default='',max_length=6000)
+    template: str|None = Field(default=None,max_length=300)
 
 class ProposalRecheck(BaseModel):
     sections: list[dict] = Field(min_length=1,max_length=40)
@@ -1613,7 +1614,7 @@ def proposal_setup(aid: str):
 def proposal_start(aid: str, x: ProposalIn, request: Request):
     import proposals
     _same_origin(request)
-    try: return {'id':proposals.start(aid,x.title,x.organisation,x.brief,x.notes,x.sections,x.rate_card,x.use_memory,x.writer_model,x.qa_model,x.references,x.structure)}
+    try: return {'id':proposals.start(aid,x.title,x.organisation,x.brief,x.notes,x.sections,x.rate_card,x.use_memory,x.writer_model,x.qa_model,x.references,x.structure,x.template)}
     except LookupError: raise HTTPException(404,'No such proposal writer.') from None
     except Exception as e:
         code,detail=_assistant_error(e)
@@ -1665,6 +1666,13 @@ def _proposal_call(fn):
         code,detail=_assistant_error(e)
         if code==500: raise
         raise HTTPException(code,detail) from None
+
+@app.get('/assistant/{aid}/outline')
+def proposal_outline(aid: str, template: str=Query('',max_length=300)):
+    import proposals
+    try: return proposals.outline_for(aid,template)
+    except LookupError: raise HTTPException(404,'No such proposal writer.') from None
+    except ValueError as e: raise HTTPException(400,str(e)) from None
 
 @app.post('/assistant/{aid}/proposals/qa-only')
 def proposal_qa_only(aid: str, x: ProposalQAOnly, request: Request):

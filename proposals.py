@@ -116,10 +116,10 @@ def _template(path):
     return raw, proposal_docx.Template(raw)
 
 
-def outline(a):
+def outline(a, template=None):
     """The starting section list for a new proposal: the template's sections, then your format and flow."""
     st = a['settings']
-    _, t = _template(st.get('template'))
+    _, t = _template(st.get('template') if template is None else template)
     secs = [dict(s, source='template') for s in (t.outline() if t else [])]
     by = {s['title'].casefold(): s for s in secs}
     for d in st.get('sections') or []:
@@ -143,7 +143,34 @@ def setup(aid):
     return {'assistant': {k: a[k] for k in ('id', 'name', 'description', 'greeting', 'status')}, 'sections': secs,
             'rate_card': a['settings'].get('rate_card') or [], 'template': a['settings'].get('template') or '', 'template_error': err,
             'organisations': orgs, 'units': list(UNITS), 'min_margin': a['settings'].get('min_margin', 25),
-            'models': assistants.model_choices('proposal'), 'writer': a['provider'], 'qa': a['settings'].get('qa_provider') or a['provider']}
+            'models': assistants.model_choices('proposal'), 'writer': a['provider'], 'qa': a['settings'].get('qa_provider') or a['provider'],
+            'templates': _safe_templates()}
+
+
+def _safe_templates():
+    try: return templates()
+    except Exception: return []
+
+
+def check_template(path):
+    """A template path someone picked: a Word document in the document sources (or '' for Alice's own layout)."""
+    path = _clean(path, 300)
+    if not path: return ''
+    import doc_library
+    p = doc_library.resolve(path)
+    if not p or p.suffix.lower() != '.docx': raise ValueError('Choose a Word (.docx) template from the document sources.')
+    return path
+
+
+def outline_for(aid, template):
+    """The sections a template gives, merged with the assistant's format and flow (for the page when you pick a template)."""
+    import assistants
+    a = assistants.get(aid)
+    if a['kind'] != 'proposal': raise LookupError('Not a proposal writer.')
+    t = check_template(template)
+    secs = outline(a, t)
+    raw, tp = _template(t)
+    return {'template': t, 'sections': secs, 'placeholders': tp.placeholders() if tp else [], 'styled': bool(tp and tp.level)}
 
 
 # ---------------- context from Alice, under the rules ----------------
@@ -405,7 +432,7 @@ def _save(pid, **f):
 
 
 def start(aid, title, organisation, brief, notes='', sections=None, rate_card=None, use_memory=True, writer_model='', qa_model='', references=None,
-          structure=''):
+          structure='', template=None):
     """Check the request and start the background job. Returns the proposal id."""
     import assistants, organisations, rules_engine, rule_packs
     a = assistants.get(aid)
@@ -434,9 +461,10 @@ def start(aid, title, organisation, brief, notes='', sections=None, rate_card=No
     secs = clean_sections(sections) if sections is not None else outline(a)
     if not secs: raise ValueError('List at least one section (Format and flow), or choose a template on the Assistants page.')
     card = clean_rate_card(rate_card) if rate_card is not None else a['settings'].get('rate_card') or []
-    if a['settings'].get('template'): _template(a['settings']['template'])          # fail now, not in the background
+    tpl = a['settings'].get('template') or '' if template is None else check_template(template)
+    if tpl: _template(tpl)                                                          # fail now, not in the background
     pid = uuid.uuid4().hex
-    inputs = {'sections': secs, 'rate_card': card, 'use_memory': bool(use_memory), 'template': a['settings'].get('template') or '',
+    inputs = {'sections': secs, 'rate_card': card, 'use_memory': bool(use_memory), 'template': tpl,
               'writer': writer, 'qa': qa, 'references': [str(x)[:300] for x in (references or [])][:10], 'structure': structure}
     with store.db() as c:
         c.execute('INSERT INTO proposals(id,assistant_id,title,organisation,client,brief,notes,inputs,status,stage,created_by,created_at,updated_at) '
