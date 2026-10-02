@@ -319,3 +319,49 @@ calls.clear(); MODE['qa'] = [QA2]
 p10 = wait(start(sections=[{'title': 'Executive summary'}], rate_card=card).json()['id'])
 t('without a choice, the assistant\'s default template is used', p10['inputs']['template'].endswith('Proposal-template.docx') and 'HEADER:' in K.docx_to_text(D.get(p10['document_id'])['data']))
 t('the page has the template picker', 'id="tplsel"' in cl.get('/assistant/proposal-writer').text)
+
+# ---------------- price book: ticked roles, fixed days, target margin, spreadsheets ----------------
+book = [{'role': 'Solution architect', 'unit': 'day', 'cost': 650, 'sell': 1200, 'days': 4, 'use': True},
+        {'role': 'Consultant', 'unit': 'day', 'cost': 450, 'sell': 850, 'use': False},
+        {'role': 'Project manager', 'unit': 'day', 'cost': 400, 'sell': 700, 'days': '3', 'override': True}]
+cb = P.clean_rate_card(book)
+t('rate card rows keep fixed days, the tick and the override', cb[0]['days'] == 4 and cb[1]['days'] is None and not cb[1]['use']
+  and cb[2]['days'] == 3 and cb[2]['use'] and cb[2]['override'] and not cb[0]['override'])
+t('only ticked roles are used', [r['role'] for r in P.used(cb)] == ['Solution architect', 'Project manager'])
+t('older rate cards without ticks use every role', len(P.used(P.clean_rate_card(card))) == 2)
+t('sell rate from a target margin on sell', P.sell_for(700, 30) == 1000 and P.sell_for(650, 0) == 650)
+calls.clear(); MODE['qa'] = [QA2]
+pb = wait(start(sections=[{'title': 'Approach'}], rate_card=book).json()['id'])
+wp = [c for c in calls if c['system'].startswith('You are the proposal writer')][0]['messages'][0]['content']
+t('the writer sees only the ticked roles, with fixed days', '- Consultant' not in wp and 'Solution architect (per day) FIXED: 4 days' in wp and 'Project manager' in wp)
+plan = {x['role']: x['quantity'] for x in pb['draft']['resource_plan']}
+t('your fixed days beat the writer\'s plan; fixed roles it missed are added', plan.get('Solution architect') == 4 and plan.get('Project manager') == 3 and 'Consultant' not in plan)
+t('pricing uses the ticked roles and fixed days', pb['pricing']['sell'] == 4 * 1200 + 3 * 700 and pb['pricing']['cost'] == 4 * 650 + 3 * 400)
+sv = cl.put('/admin/api/assistants/proposal-writer', headers=H, json=dict(body, settings=dict(body['settings'], target_margin=35, auto_approve_references=False)))
+t('target margin and the auto-approve switch are saved', sv.status_code == 200 and sv.json()['settings']['target_margin'] == 35
+  and sv.json()['settings']['auto_approve_references'] is False)
+t('the auto-approve switch is on unless you turn it off', P.clean_settings({})['auto_approve_references'] is True and P.clean_settings({})['target_margin'] == 30)
+t('the page gets the target margin', cl.get('/assistant/proposal-writer/setup').json().get('target_margin') == 35)
+cl.put('/admin/api/assistants/proposal-writer', headers=H, json=body)
+
+import openpyxl
+wb = openpyxl.Workbook(); ws = wb.active; ws.title = 'Notes'; ws.append(['Read me'])
+ws2 = wb.create_sheet('Rates'); ws2.append(['Pricing tool 2026']); ws2.append([])
+ws2.append(['Role', 'Grade', 'Internal cost (day)', 'Day rate']); ws2.append(['Solution architect', 'SA', 650, 1200])
+ws2.append(['Data engineer', 'SC', '£550', '£1,000']); ws2.append(['Data engineer', 'SC', 1, 2]); ws2.append(['Total', '', 1200, 2200])
+bio = io.BytesIO(); wb.save(bio)
+xr = P.rates_from_sheet('pricing.xlsx', bio.getvalue())
+t('a pricing spreadsheet is read: right sheet, heading after a title, £ and commas, duplicates and totals skipped',
+  xr['sheet'] == 'Rates' and xr['rows'] == [{'role': 'Solution architect', 'unit': 'day', 'cost': 650, 'sell': 1200},
+                                            {'role': 'Data engineer', 'unit': 'day', 'cost': 550, 'sell': 1000}])
+cr = P.rates_from_sheet('p.csv', b'Resource;Cost per hour;Sell per hour\nTester;40;75\nAnalyst;45;\n')
+t('a CSV is read, with units from the headings and missing sell rates left blank',
+  cr['rows'] == [{'role': 'Tester', 'unit': 'hour', 'cost': 40, 'sell': 75}, {'role': 'Analyst', 'unit': 'hour', 'cost': 45, 'sell': ''}])
+pr_ = lambda name, raw, **h: cl.post('/assistant/proposal-writer/rates/parse', headers=h, json={'name': name, 'data': base64.b64encode(raw).decode()})
+t('the page can load a pricing spreadsheet', pr_('pricing.xlsx', bio.getvalue()).json()['rows'][1]['role'] == 'Data engineer')
+t('a sheet with no rates, a broken file and other types are refused', pr_('x.csv', b'a,b\n1,2\n').status_code == 400
+  and pr_('x.xlsx', b'not a workbook').status_code == 400 and pr_('x.pdf', b'%PDF').status_code == 400)
+t('cross-origin spreadsheet loads are refused', pr_('pricing.xlsx', bio.getvalue(), origin='http://evil.example').status_code == 403)
+t('the HR assistant has no spreadsheet loading', cl.post('/assistant/hr-policy/rates/parse', json={'name': 'p.csv', 'data': base64.b64encode(b'Role,Cost\nA,1\n').decode()}).status_code == 404)
+t('the rate card has the target margin, ticks, margin column and reference totals',
+  all(x in proposal_ui.PE_JS for x in ('pe-target', 'pe-rtotal', 'Load a pricing spreadsheet', 'Apply to every role')))

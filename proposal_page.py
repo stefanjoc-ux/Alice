@@ -82,7 +82,7 @@ table.t td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}ta
 <label class="check w-only"><input type="checkbox" id="mem" checked> Use what Alice knows: approved memories, decisions and knowledge that are general or for this client</label>
 <details class="fold w-only" id="refs-fold"><summary>Reference documents <span class="hint" id="ref-count"></span></summary>
 <p class="pe-note">Background the writer can draw on, such as Microsoft success guides or your own method papers. It reads each document's approved summary and the passages relevant to this brief, under the same rules as everything else. The documents stay in their source.</p>
-<div class="ref-tools"><input type="search" id="ref-q" placeholder="Filter by name or source" aria-label="Filter reference documents"><label class="secondary ref-upl" tabindex="0">Upload a reference document<input type="file" id="ref-file" accept=".docx,.pdf,.txt,.md,.csv" hidden></label></div>
+<div class="ref-tools"><button type="button" class="secondary" id="ref-browse">Choose documents</button><input type="search" id="ref-q" placeholder="Filter by name or source" aria-label="Filter reference documents" hidden><label class="secondary ref-upl" tabindex="0">Upload a reference document<input type="file" id="ref-file" accept=".docx,.pdf,.txt,.md,.csv" hidden></label></div>
 <div class="ref-panel" id="ref-panel" hidden></div>
 <div class="ref-list" id="ref-list"></div></details>
 <details class="fold w-only" open><summary>Format and flow</summary>
@@ -90,7 +90,7 @@ table.t td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}ta
 <div class="go"><button type="button" class="secondary" id="struct-go">Turn into sections</button><span class="hint">Headings become sections; bullet points under a heading become text to include. Or leave it here and the writer follows it as an outline.</span></div>
 <p class="pe-note">The sections in order. Template sections keep the template's formatting; add sections, rename them, reorder them, or add content suggestions for each. Standard text is copied from the template word for word.</p><div id="secs"></div><p class="pe-note" id="tpl"></p></details>
 <details class="fold w-only"><summary>Rate card</summary>
-<p class="pe-note">The writer picks the days per role; Alice prices them from the sell rates and adds the pricing table. Cost rates stay in Alice: never sent to the AI, never in the document.</p><div id="rates"></div></details>
+<p class="pe-note">Load your pricing tool or paste a rate card, set the target margin Alice applies to each cost, and tick the roles this proposal needs. Change any sell rate or margin to override it (\u21ba puts it back). Add days to fix a role's quantity; the writer suggests the rest. Cost rates stay in Alice: never sent to the AI, never in the document.</p><div id="rates"></div></details>
 <div class="go"><button class="primary" id="go" type="submit">Write proposal</button><span class="hint" id="go-note">Writing, a QA check and one revision if needed: usually two to four minutes.</span></div>
 <div class="err" id="ferr" role="alert" hidden></div>
 </form>
@@ -109,8 +109,13 @@ function drawSteps(stage,status,qa){const ol=$('steps');ol.replaceChildren();let
  STEPS.forEach(([k,l],i)=>{if(skipped&&(i===2||i===3))return;const li=mk('li',i===2&&skipped?l:l,i<idx?'done':i===idx?'now':'');ol.append(li)})}
 let R={documents:[],folders:[],clients:[],categories:[]};const picked=new Set();
 async function loadRefs(){try{R=await api('/references')}catch{R={documents:[],folders:[],clients:[],categories:[]}}drawRefs()}
+let browsing=false;
+$('ref-browse').onclick=()=>{browsing=!browsing;$('ref-q').hidden=!browsing;if(browsing)$('ref-q').focus();else $('ref-q').value='';drawRefs()};
 function drawRefs(){const q=($('ref-q').value||'').toLowerCase(),org=$('org').value.trim().toLowerCase(),box=$('ref-list');box.replaceChildren();
- const tpl=(S&&S.template||'').replace(/\\/g,'/');const docs=R.documents.filter(d=>d.path.replace(/\\/g,'/')!==tpl).filter(d=>!q||(d.name+' '+d.source+' '+d.path).toLowerCase().includes(q));
+ const tpl=(S&&S.template||'').replace(/\\/g,'/');const avail=R.documents.filter(d=>d.path.replace(/\\/g,'/')!==tpl);
+ $('ref-browse').textContent=browsing?'Done':(picked.size?'Change documents':'Choose documents')+' ('+avail.length+' available)';
+ if(!browsing&&!picked.size){box.append(mk('p','No reference documents chosen. Choose from the document sources, or upload one.','pe-note'));count();return}
+ const docs=avail.filter(d=>browsing||picked.has(d.path)).filter(d=>!q||(d.name+' '+d.source+' '+d.path).toLowerCase().includes(q));
  if(!R.documents.length)box.append(mk('p','No documents in the document sources yet. Upload one, or add files to a source on the Documents page.','pe-note'));
  for(const d of docs){const other=d.clients.length&&!d.clients.some(c=>c.toLowerCase()===org);const row=mk('label','','ref-item'+(other?' off':''));
   const cb=document.createElement('input');cb.type='checkbox';cb.checked=picked.has(d.path);cb.disabled=other&&!picked.has(d.path);cb.onchange=()=>{cb.checked?picked.add(d.path):picked.delete(d.path);count()};
@@ -139,10 +144,10 @@ function refForm(x){const pan=$('ref-panel');pan.replaceChildren();pan.append(mk
  const cat=document.createElement('select');const o0=document.createElement('option');o0.value='';o0.textContent='No category';cat.append(o0);for(const c of R.categories){const o=document.createElement('option');o.value=c;o.textContent=c;cat.append(o)}cat.value=x.category||'';
  const cl=mk('label','Category in Knowledge');cl.append(cat);
  const go=document.createElement('button');go.type='button';go.className='primary';go.textContent='Save, summarise and use it';const cancel=document.createElement('button');cancel.type='button';cancel.className='secondary';cancel.textContent='Cancel';cancel.onclick=()=>{pan.hidden=true};
- const act=mk('div','','go');act.append(go,cancel,mk('span','The summary goes to Knowledge as a draft for approval. Takes about half a minute.','hint'));
+ const act=mk('div','','go');act.append(go,cancel,mk('span','Alice summarises it into Knowledge, pointing to the document. Takes about half a minute.','hint'));
  go.onclick=async()=>{go.disabled=true;go.textContent='Saving and summarising\u2026';
   try{const r=await api('/references','POST',{token:x.token,folder:fs.value,new_folder:nf.value,title:ti.value,tag:rc.checked?'client':'general',client:rc.checked?cs.value:'',category:cat.value});
-   picked.add(r.path);await loadRefs();pan.replaceChildren(mk('div',r.note?r.note:'Saved to '+r.path.replace(/[\\\/]/g,' \u203a ')+' ('+r.where+')'+(r.client?', for '+r.client+' only':', for every client')+'. '+(r.duplicate?'Alice already had this summary.':'The summary is waiting for your approval in Knowledge; until then the writer uses the passages relevant to each brief.')+' It is selected for this proposal.','ref-ok'))}
+   picked.add(r.path);await loadRefs();pan.replaceChildren(mk('div',r.note?r.note:'Saved to '+r.path.replace(/[\\\/]/g,' \u203a ')+' ('+r.where+')'+(r.client?', for '+r.client+' only':', for every client')+'. '+(r.duplicate?'Alice already had this summary.':r.summary==='approved'?'The summary is in Knowledge (approved automatically, logged on the Temple page).':'The summary is waiting for your approval in Knowledge; until then the writer uses the passages relevant to each brief.')+' It is selected for this proposal.','ref-ok'))}
   catch(e){go.disabled=false;go.textContent='Save, summarise and use it';pan.append(mk('p',e.message,'err'))}};
  pan.append(tl,g,tg,cl,act)}
 async function load(){S=await api('/setup');loadRefs();$('greeting').textContent=A.paused?A.name+' is paused at the moment.':A.greeting;
@@ -152,7 +157,7 @@ async function load(){S=await api('/setup');loadRefs();$('greeting').textContent
  const cost=()=>{const w=S.models.find(m=>m.key===$('wm').value),q=S.models.find(m=>m.key===$('qm').value);if(!w||!q||w.writer_cost==null||q.qa_cost==null){$('cost').textContent='';return}
   const t=mode==='qa'?q.qa_cost/2:w.writer_cost+q.qa_cost;$('cost').textContent='Roughly $'+t.toFixed(2)+(mode==='qa'?' for the QA check.':' for this proposal (draft, QA, one revision and a second QA check), depending on the brief and context. Defaults are set on the Assistants page.')};
  $('wm').onchange=cost;$('qm').onchange=cost;cost();window.cost=cost;
- secEd=PE.sections($('secs'),S.sections,{include:true,empty:'No sections yet: add some, or choose a template on the Assistants page.'});rateEd=PE.rates($('rates'),S.rate_card,S.units);
+ secEd=PE.sections($('secs'),S.sections,{include:true,empty:'No sections yet: add some, or choose a template on the Assistants page.'});rateEd=PE.rates($('rates'),S.rate_card,S.units,{target:S.target_margin,minMargin:S.min_margin,parse:async f=>api('/rates/parse','POST',{name:f.name,data:await fileData(f)})});
  const ts=$('tplsel');const topt=(v,txt)=>{const o=document.createElement('option');o.value=v;o.textContent=txt;return o};
  ts.replaceChildren(...S.templates.map(x=>topt(x.path,x.name+' · '+x.source+(x.path===S.template?' (default)':''))),topt('','No template: Alice’s own Word layout'));
  if(S.template&&!S.templates.some(x=>x.path===S.template))ts.prepend(topt(S.template,S.template+' (not found)'));ts.value=S.template||'';

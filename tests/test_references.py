@@ -68,6 +68,12 @@ t('cross-origin uploads are refused', cl.post('/assistant/proposal-writer/refere
 t('the HR assistant has no reference uploads', cl.get('/assistant/hr-policy/references').status_code == 404)
 
 # ---------------- save and summarise ----------------
+def pw_setting(**kw):
+    with s.db() as c:
+        st = json.loads(c.execute("SELECT settings FROM assistants WHERE id='proposal-writer'").fetchone()[0] or '{}')
+        st.update(kw)
+        c.execute("UPDATE assistants SET settings=? WHERE id='proposal-writer'", (json.dumps(st),))
+pw_setting(auto_approve_references=False)        # these checks follow the draft path; auto-approval is checked further down
 save = lambda **k: cl.post('/assistant/proposal-writer/references', json={'token': x['token'], 'folder': 'SharePoint', **k})
 t('a folder outside the document sources is refused', save(folder='../..').status_code == 400 and save(new_folder='../escape').status_code == 400)
 r = save(new_folder='References', title='Microsoft Fabric success guide', tag='general')
@@ -110,3 +116,29 @@ w = [c for c in calls if c['system'].startswith('You are the proposal writer')][
 t('once approved, the summary is given too', 'Approved summary:' in w and 'envision, onboard and drive value' in w)
 t('the references used are listed on the result', p['context']['used']['references'] == ['Fabric-Success-Guide.docx'])
 t('the page offers reference documents', 'Reference documents' in cl.get('/assistant/proposal-writer').text and 'ref-file' in cl.get('/assistant/proposal-writer').text)
+
+# ---------------- auto-approval (the owner's setting, on by default) ----------------
+pw_setting(auto_approve_references=True)
+mg = D.get(D.create('docx', 'Copilot guide', '# Microsoft Copilot adoption guide\n\n' + 'Copilot adoption works best with champions, scenarios and measured value. ' * 15)['id'])['data']
+q = cl.post('/assistant/proposal-writer/references/inspect', json={'name': 'Copilot-Guide.docx', 'data': b64(mg)}).json()
+ra = cl.post('/assistant/proposal-writer/references', json={'token': q['token'], 'folder': 'SharePoint/References', 'tag': 'general'}).json()
+t('with auto-approval on, the summary is active straight away', ra['summary'] == 'approved' and K.meta([ra['knowledge_id']])[ra['knowledge_id']]['status'] == 'active')
+with s.db() as c:
+    rows = [dict(r) for r in c.execute("SELECT action,target,detail,actor FROM activity WHERE target=? ORDER BY id", (ra['knowledge_id'],))]
+t('the auto-approval is logged for Temple', any(r['action'] == 'reference_auto_approved' and 'approved automatically' in r['detail'] for r in rows))
+import activity_log as AL
+t('the activity log names it', 'reference_auto_approved' in AL.LABELS)
+aa = cl.get('/admin/api/temple/auto-approved').json()
+t('the Temple page lists auto-approved summaries', any(i['target'] == ra['knowledge_id'] for i in aa['items']) and aa['days'] == 30)
+docs = {d['name']: d for d in cl.get('/assistant/proposal-writer/references').json()['documents']}
+t('the list shows it as approved', docs['Copilot-Guide.docx']['summary'] == 'approved')
+pw_setting(auto_approve_references=False)
+mg2 = D.get(D.create('docx', 'Purview guide', '# Microsoft Purview deployment guide\n\n' + 'Purview labelling starts with a small set of labels and clear owners. ' * 15)['id'])['data']
+q2 = cl.post('/assistant/proposal-writer/references/inspect', json={'name': 'Purview-Guide.docx', 'data': b64(mg2)}).json()
+rb = cl.post('/assistant/proposal-writer/references', json={'token': q2['token'], 'folder': 'SharePoint/References', 'tag': 'general'}).json()
+t('with auto-approval off, it waits as a draft', rb['summary'] == 'draft' and K.meta([rb['knowledge_id']])[rb['knowledge_id']]['status'] == 'draft'
+  and not any(i['target'] == rb['knowledge_id'] for i in cl.get('/admin/api/temple/auto-approved').json()['items']))
+page = cl.get('/assistant/proposal-writer').text
+t('the page shows only the chosen documents until you browse', 'ref-browse' in page and 'No reference documents chosen' in page)
+t('the Temple page has the auto-approved panel', 't-auto' in cl.get('/admin/temple').text)
+t('the Assistants page has the auto-approve switch', 'auto_approve_references' in cl.get('/admin/assistants').text)

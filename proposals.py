@@ -13,11 +13,13 @@ Flow (one background job per proposal, two tracked agents):
   6. the Word document is built from the template (or Alice's own layout without one) and kept for download.
 Cost rates and margin stay in Alice: shown to the person on the proposal page, never sent to a model, never in the document.
 """
+import io
 import json
 import re
 import threading
 import uuid
 from datetime import date
+from pathlib import Path
 
 import agents
 import substrate_store as store
@@ -66,17 +68,82 @@ def clean_sections(items):
     return uniq
 
 
-def clean_rate_card(items):
+def clean_rate_card(items, limit=300):
+    """A price book or rate card: role, unit, cost, sell, optional fixed days, and whether it is used on this proposal."""
     out, seen = [], set()
-    for r in (items or [])[:40]:
+    for r in (items or [])[:limit]:
         if not isinstance(r, dict): continue
         role = _clean(r.get('role'), 80)
         if not role: continue
         if role.casefold() in seen: raise ValueError(f'The role "{role}" is on the rate card twice.')
         seen.add(role.casefold())
         unit = r.get('unit') if r.get('unit') in UNITS else 'day'
-        out.append({'role': role, 'unit': unit, 'cost': _num(r.get('cost'), f'Cost for {role}'), 'sell': _num(r.get('sell'), f'Sell for {role}')})
+        days = r.get('days')
+        days = None if days in (None, '') else _num(days, f'Days for {role}', 0, 10000)
+        out.append({'role': role, 'unit': unit, 'cost': _num(r.get('cost'), f'Cost for {role}'), 'sell': _num(r.get('sell'), f'Sell for {role}'),
+                    'days': days, 'use': r.get('use') is not False, 'override': bool(r.get('override'))})
     return out
+
+
+def used(card):
+    """The roles ticked for this proposal (a price book can hold many more)."""
+    return [r for r in card if r.get('use', True)][:40]
+
+
+def sell_for(cost, margin):
+    """Sell rate that gives this margin on sell: cost / (1 - margin)."""
+    return round(cost / (1 - margin / 100), 2) if margin < 100 else cost
+
+
+def rates_from_sheet(name, raw):
+    """Roles and rates from a pricing spreadsheet (.xlsx or .csv): the sheet and heading row with a role and a cost or rate column."""
+    import csv
+    ext = Path(name).suffix.lower()
+    tables = []
+    if ext in ('.xlsx', '.xlsm'):
+        import openpyxl
+        try: wb = openpyxl.load_workbook(io.BytesIO(raw), data_only=True, read_only=True)
+        except Exception: raise ValueError('Alice could not open that spreadsheet. Save it as .xlsx or .csv and try again.') from None
+        for ws in wb.worksheets:
+            tables.append((ws.title, [[c for c in row] for row in ws.iter_rows(values_only=True, max_row=2000, max_col=40)]))
+    elif ext in ('.csv', '.txt'):
+        text = raw.decode('utf-8-sig', 'replace')
+        dialect = csv.Sniffer().sniff(text[:4000], delimiters=',;\t') if text.strip() else csv.excel
+        tables.append(('CSV', list(csv.reader(io.StringIO(text), dialect))))
+    else:
+        raise ValueError('Upload the pricing tool as an Excel (.xlsx) or CSV file.')
+    def num(v):
+        if isinstance(v, (int, float)) and not isinstance(v, bool): return float(v)
+        m = re.match(r'^-?\d+(\.\d+)?$', re.sub(r'[£$€\s,]', '', str(v or '')))
+        return float(m.group(0)) if m else None
+    def unit_of(v):
+        t = str(v or '').lower()
+        return 'hour' if re.search(r'hour|hr\b|hourly', t) else 'day' if re.search(r'day|daily', t) else None
+    best = None
+    for title, rows in tables:
+        for hi, row in enumerate(rows[:40]):
+            cells = [str(c or '').strip().lower() for c in row]
+            role = next((i for i, c in enumerate(cells) if re.search(r'role|grade|resource|position|job|title|name', c)), None)
+            cost = next((i for i, c in enumerate(cells) if re.search(r'cost|internal|buy|pay', c)), None)
+            sell = next((i for i, c in enumerate(cells) if i != cost and re.search(r'sell|charge|price|client|day rate|rate', c)), None)
+            if role is None or (cost is None and sell is None): continue
+            unit_col = next((i for i, c in enumerate(cells) if re.search(r'^unit|per\b|basis', c)), None)
+            hdr_unit = unit_of(' '.join(cells[x] for x in (cost, sell) if x is not None))
+            got, seen = [], set()
+            for r in rows[hi + 1:]:
+                r = list(r) + [None] * 40
+                nm = ' '.join(str(r[role] or '').split())[:80]
+                c = num(r[cost]) if cost is not None else None
+                sv = num(r[sell]) if sell is not None else None
+                if not nm or num(nm) is not None or (c is None and sv is None) or nm.casefold() in seen or re.match(r'^(sub)?total', nm, re.I): continue
+                seen.add(nm.casefold())
+                got.append({'role': nm, 'unit': (unit_of(r[unit_col]) if unit_col is not None else None) or hdr_unit or 'day',
+                            'cost': c if c is not None else '', 'sell': sv if sv is not None else ''})
+            if got and (best is None or len(got) > len(best[1])): best = (title, got)
+    if not best: raise ValueError('No roles and rates found. The sheet needs a heading row with a role column and a cost (or rate) column.')
+    for g in best[1]:
+        if not g['unit']: g['unit'] = 'day'
+    return {'sheet': best[0], 'rows': best[1][:300]}
 
 
 def clean_settings(s):
@@ -90,6 +157,8 @@ def clean_settings(s):
     qa = s.get('qa_provider') if s.get('qa_provider') in assistants.PROVIDERS else 'claude_sonnet'
     return {'template': tpl, 'sections': clean_sections(s.get('sections')), 'rate_card': clean_rate_card(s.get('rate_card')),
             'qa_provider': qa, 'min_margin': _num(s.get('min_margin', 25), 'Minimum margin', 0, 90),
+            'target_margin': _num(s.get('target_margin', 30), 'Target margin', 0, 90),
+            'auto_approve_references': s.get('auto_approve_references', True) is not False,
             'pricing_note': _clean(s.get('pricing_note', 'All prices exclude VAT.'), 200), 'author': _clean(s.get('author'), 80)}
 
 
@@ -143,6 +212,7 @@ def setup(aid):
     return {'assistant': {k: a[k] for k in ('id', 'name', 'description', 'greeting', 'status')}, 'sections': secs,
             'rate_card': a['settings'].get('rate_card') or [], 'template': a['settings'].get('template') or '', 'template_error': err,
             'organisations': orgs, 'units': list(UNITS), 'min_margin': a['settings'].get('min_margin', 25),
+            'target_margin': a['settings'].get('target_margin', 30),
             'models': assistants.model_choices('proposal'), 'writer': a['provider'], 'qa': a['settings'].get('qa_provider') or a['provider'],
             'templates': _safe_templates()}
 
@@ -255,7 +325,8 @@ Rules you must follow:
 - Section bodies in simple markdown: paragraphs, "- " bullets, "1. " numbered lists, "### " subheadings, pipe tables. Do not
   repeat the section title and do not use "#" or "##" headings.
 - Never state prices, rates, day rates or totals: Alice adds the pricing table. You choose the resource plan: a quantity for
-  each role you need, using only roles from the RATE CARD (in its unit). Leave the plan empty if there is no rate card.
+  each role you need, using only roles from the RATE CARD (in its unit). Roles marked FIXED already have their quantity:
+  include them as given. Leave the plan empty if there is no rate card.
 - Where a section lists text to Include, work it in faithfully: tidy the wording, keep the substance and every point.
 - STRUCTURE AND POINTS FROM THE AUTHOR, if given, is the author's outline: follow it within the sections.
 - No placeholders, square-bracket notes, comments to the author or "TBC" in the text.
@@ -314,7 +385,8 @@ def write(aid, job, previous=None, feedback=None):
     secs = '\n'.join(f'- {s["title"]}' + (' [KEEP]' if s['keep'] else '') + (f'\n  Guidance: {s["guidance"]}' if s['guidance'] and not s['keep'] else '')
                      + (('\n  Include: ' + s['include'].replace('\n', '\n    ')) if s.get('include') and not s['keep'] else '')
                      for s in job['sections'])
-    roles = '\n'.join(f'- {r["role"]} (per {r["unit"]})' for r in job['rate_card']) or '(no rate card: leave the resource plan empty)'
+    roles = '\n'.join(f'- {r["role"]} (per {r["unit"]})' + (f' FIXED: {r["days"]:g} {r["unit"]}s, already agreed' if r.get('days') else '')
+                      for r in job['rate_card']) or '(no rate card: leave the resource plan empty)'
     msg = (f'TITLE: {job["title"]}\nCLIENT: {job["organisation"] or "not named"}\n\nBRIEF\n{job["brief"]}\n\n'
            + (f'NOTES FROM THE AUTHOR\n{job["notes"]}\n\n' if job['notes'] else '')
            + (f'STRUCTURE AND POINTS FROM THE AUTHOR\n{job["structure"]}\n\n' if job.get('structure') else '')
@@ -336,7 +408,10 @@ def write(aid, job, previous=None, feedback=None):
         try: q = round(float(p.get('quantity') or 0) * 2) / 2
         except (TypeError, ValueError): q = 0
         if not r: dropped.append(_clean(p.get('role'), 80)); continue
+        if r.get('days'): q = r['days']                                         # quantities you fixed always win
         if q > 0: plan.append({'role': r['role'], 'quantity': min(q, 10000), 'purpose': _clean(p.get('purpose'), 200)})
+    have = {x['role'] for x in plan}
+    plan += [{'role': r['role'], 'quantity': r['days'], 'purpose': ''} for r in job['rate_card'] if r.get('days') and r['role'] not in have]
     gaps = [_clean(g, 300) for g in (out.get('gaps') or []) if _clean(g, 300)][:20]
     return {'status': 'complete', 'sections': sections, 'resource_plan': plan, 'gaps': gaps, 'dropped_roles': dropped}
 
@@ -460,7 +535,7 @@ def start(aid, title, organisation, brief, notes='', sections=None, rate_card=No
         r = rule_packs.live_check(brief, assistants.family(writer), a['name'], packs=a['packs']); brief = r['text']
     secs = clean_sections(sections) if sections is not None else outline(a)
     if not secs: raise ValueError('List at least one section (Format and flow), or choose a template on the Assistants page.')
-    card = clean_rate_card(rate_card) if rate_card is not None else a['settings'].get('rate_card') or []
+    card = used(clean_rate_card(rate_card) if rate_card is not None else a['settings'].get('rate_card') or [])
     tpl = a['settings'].get('template') or '' if template is None else check_template(template)
     if tpl: _template(tpl)                                                          # fail now, not in the background
     pid = uuid.uuid4().hex

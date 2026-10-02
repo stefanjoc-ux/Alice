@@ -1674,6 +1674,21 @@ def proposal_outline(aid: str, template: str=Query('',max_length=300)):
     except LookupError: raise HTTPException(404,'No such proposal writer.') from None
     except ValueError as e: raise HTTPException(400,str(e)) from None
 
+@app.post('/assistant/{aid}/rates/parse')
+def proposal_rates_parse(aid: str, x: ProposalDoc, request: Request):
+    import proposals
+    _same_origin(request); _proposal_writer(aid)
+    raw=_b64(x.data)
+    try: return proposals.rates_from_sheet(x.name,raw)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+@app.get('/admin/api/temple/auto-approved')
+def admin_temple_auto_approved(days: int=Query(30,ge=1,le=365)):
+    since=(datetime.now(timezone.utc)-timedelta(days=days)).isoformat()
+    with store.db() as c:
+        rows=[dict(r) for r in c.execute("SELECT created_at,target,detail FROM activity WHERE action='reference_auto_approved' AND created_at>=? ORDER BY id DESC LIMIT 50",(since,))]
+    return {'items':rows,'days':days}
+
 @app.post('/assistant/{aid}/proposals/qa-only')
 def proposal_qa_only(aid: str, x: ProposalQAOnly, request: Request):
     import proposals

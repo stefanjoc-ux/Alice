@@ -5,8 +5,9 @@
   mapping, secrets, protective markings, client separation, both models' provider rules).
 - Upload: a new document is inspected first (nothing saved), and Alice suggests where to save it, a title, a category and a
   tag: General when it names no client (so every client's proposals can use it), or the client it names. You confirm; the
-  file is saved in the document source (outside Alice) and agent alice-reference-summariser writes a summary that lands in
-  Knowledge as a DRAFT pointing to the document, for you to approve.
+  file is saved in the document source (outside Alice) and agent alice-reference-summariser writes a summary into Knowledge
+  pointing to the document. With the Proposal writer setting auto_approve_references on (the default, the owner's choice)
+  the summary is approved automatically and logged ('reference_auto_approved', shown on the Temple page); off, it is a draft.
 """
 import hashlib
 import json
@@ -150,12 +151,20 @@ def save_and_summarise(aid, token, folder, title='', tag='general', client='', c
     k = knowledge.create('note', title, body, src, store.actor(), status='draft', category=category, client=client, client_by='human')
     agents.note('read', 'document', rel, 'summarised for knowledge')
     agents.note('wrote', 'knowledge', k['id'], 'reference summary draft')
+    auto = a['settings'].get('auto_approve_references', True) and not k.get('duplicate')
+    if auto:          # your choice on the Proposal writer: summaries of documents a person uploaded go live, and Temple's log shows it
+        with store.acting('Alice', note='Reference summary auto-approved (Proposal writer setting)'):
+            knowledge.review([k['id']], 'approved')
+        with store.db() as c:
+            store.audit(c, 'reference_auto_approved', k['id'], 'automatic_safeguard', f'{title}: summary of {p.name} approved automatically'
+                        + (f'; tagged {client}' if client else '; General'))
     with _lock: _pending.pop(token, None)
     with store.db() as c:
-        store.audit(c, 'reference_added', k['id'], 'approval_required', f'{p.name} saved to {where}; summary awaiting approval'
+        store.audit(c, 'reference_added', k['id'], 'automatic_safeguard' if auto else 'approval_required',
+                    f'{p.name} saved to {where}; summary ' + ('approved automatically' if auto else 'awaiting approval')
                     + (f'; tagged {client}' if client else '; General'))
     return {'status': 'complete', 'path': rel, 'name': p.name, 'knowledge_id': k['id'], 'duplicate': k.get('duplicate', False),
-            'summary': 'draft' if not k.get('duplicate') else k.get('status', 'draft'), 'client': client, 'where': where}
+            'summary': 'approved' if auto else ('draft' if not k.get('duplicate') else k.get('status', 'draft')), 'client': client, 'where': where}
 
 
 # ---------------- what the writer gets ----------------
