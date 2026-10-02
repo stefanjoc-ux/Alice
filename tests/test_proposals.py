@@ -432,7 +432,7 @@ t('a big price book can be sent with the proposal', cl.post('/assistant/proposal
 pg2 = cl.get('/assistant/proposal-writer').text
 t('the page has the proposals list and saves as you work', all(x in pg2 for x in ('id="wb-list"', 'id="wb-new"', 'Saves itself as you work', "api('/work'")))
 adm = cl.get('/admin').text
-t('Alice opens assistants on a stage: back to Alice or a new window', all(x in adm for x in ('id="as-stage"', 'Back to Alice', 'Open in a new window', 'embed')))
+t('Alice opens assistants on a stage: the tile grows into it, a splash while it loads, back to Alice or a new window', all(x in adm for x in ('id="as-stage"', 'Back to Alice', 'Open in a new window', 'embed', 'as-splash', 'clipPath')))
 t('assistant pages hide their own top bar on the stage', 'html.embed .topbar' in pg2 and 'html.embed .topbar' in cl.get('/assistant/hr-policy').text)
 
 # ---------------- Argus; accepting and rejecting Argus's fixes; what each proposal cost ----------------
