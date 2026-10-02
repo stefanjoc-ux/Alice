@@ -61,41 +61,124 @@ table.t td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}ta
 .ref-panel h3{margin:0;font-size:15px}.ref-panel .grid2 label,.ref-panel>label{display:grid;gap:4px;font-weight:600;font-size:14px}
 .ref-tag{display:grid;gap:6px}.ref-tag label{display:flex!important;gap:8px;align-items:center;font-weight:400!important}
 .ref-ok{background:#eef8f1;border:1px solid #9fcfaf;border-radius:10px;padding:10px 12px;font-size:14px}
-@media(max-width:760px){.grid2,.cols{grid-template-columns:1fr}}
+@media(max-width:760px){.grid2,.cols{grid-template-columns:minmax(0,1fr)}}
+
+/* ---------- look and feel ---------- */
+main{padding:0 0 40px;background:linear-gradient(180deg,#eef3f7 0,#f4f7fa 260px)}
+.wrap{max-width:1240px;padding:0 20px;gap:20px}
+.hero{position:relative;overflow:hidden;color:#e8f1f7;background:radial-gradient(900px 300px at 85% -40%,rgba(64,170,200,.35),transparent 60%),linear-gradient(120deg,#0b1626 0%,#0d2a3f 55%,#075e79 100%);padding:34px 20px 30px;margin-bottom:24px}
+.hero::after{content:'';position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);background-size:28px 28px;mask-image:linear-gradient(90deg,transparent,#000 70%);pointer-events:none}
+.hero-in{position:relative;z-index:1;max-width:1200px;margin:0 auto;display:flex;gap:24px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap}
+.eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#8fd0e3;font-weight:700;margin:0 0 6px}
+.hero h1{margin:0 0 8px;font-size:30px;line-height:1.15;color:#fff;font-weight:700;letter-spacing:-.01em}
+.hero .lead{margin:0;max-width:620px;color:#c4d6e2;font-size:15.5px}
+.flow{list-style:none;display:flex;gap:0;margin:0;padding:0;counter-reset:fl}
+.flow li{counter-increment:fl;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#dbe8f0;white-space:nowrap}
+.flow li::before{content:counter(fl);display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.28);font-size:12px}
+.flow li+li::before{margin-left:0}.flow li:not(:last-child)::after{content:'';width:26px;height:1px;background:rgba(255,255,255,.35);margin:0 10px}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px;align-items:start}
+.colmain{display:grid;gap:16px;min-width:0}
+.side{position:sticky;top:16px;display:grid;gap:16px}
+.card{border-radius:14px;border-color:#dce6ee;box-shadow:0 1px 2px rgba(16,42,67,.04),0 6px 18px -10px rgba(16,42,67,.18)}
+.card h2{font-size:17px;letter-spacing:-.005em}
+#f{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;counter-reset:panel}.colmain{grid-template-columns:minmax(0,1fr)}.panel{min-width:0}
+.panel{background:var(--panel);border:1px solid #dce6ee;border-radius:14px;padding:20px 22px;box-shadow:0 1px 2px rgba(16,42,67,.04),0 6px 18px -10px rgba(16,42,67,.18);display:grid;gap:14px}
+.panel:not([hidden]){counter-increment:panel}
+.ph{display:flex;gap:12px;align-items:center;min-width:0}.ph>div{min-width:0}.mode{min-width:0}
+.ph::before,details.panel>summary::before{content:counter(panel)!important;flex:none;display:grid;place-items:center;width:30px;height:30px;border-radius:9px;background:var(--teal2);color:var(--teal);font-weight:700;font-size:14px;border:1px solid #bcdbe6}
+.ph h2,.ph .pt{margin:0;font-size:17px;font-weight:700}.ph .ps,.psub{display:block;font-size:12.5px;color:var(--muted);font-weight:400;margin-top:1px}
+.ph .mode{flex:1}
+details.panel{padding:0;gap:0}details.panel>summary{padding:18px 22px;border-radius:14px;font-size:17px!important;gap:12px!important}
+details.panel>summary:hover{background:#f8fbfd}details.panel[open]>summary{border-bottom:1px solid var(--line);border-radius:14px 14px 0 0}
+details.panel>summary::after{content:'';margin-left:auto;width:9px;height:9px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg);transition:transform .15s}
+details.panel[open]>summary::after{transform:rotate(-135deg)}
+details.panel>.pbody{padding:16px 22px 20px;display:grid;gap:12px}
+details.panel>summary .hint{font-size:13px}
+.panel select{width:100%;min-width:0;max-width:100%}.panel>label,.pbody>label,.qa-only>label{display:grid;grid-template-columns:minmax(0,1fr);gap:6px;font-weight:600;font-size:13.5px}.grid2{align-items:start}.grid2 label{gap:6px!important;font-size:13.5px}
+.panel :where(input:not([type=checkbox]):not([type=radio]):not([type=file]),select,textarea),.side select{font-weight:400;border-radius:10px;border:1px solid #c9d7e2;background:#fbfdfe;padding:9px 12px;transition:border-color .12s,box-shadow .12s,background .12s}
+.panel :where(input,select,textarea):focus{outline:none;border-color:var(--teal);background:#fff;box-shadow:0 0 0 3px rgba(7,94,121,.14)}
+.panel ::placeholder{color:#94a7b5;font-weight:400}
+textarea#brief{min-height:210px;line-height:1.55}
+.toggle{display:flex!important;gap:12px;align-items:flex-start;padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:#f8fbfd;font-weight:400!important}
+.toggle input{margin-top:3px;accent-color:var(--teal);width:16px;height:16px}.toggle b{display:block;font-weight:600}
+.costline{display:flex;gap:8px;align-items:baseline;margin:0}.costline::before{content:'$';display:grid;place-items:center;width:20px;height:20px;border-radius:50%;background:#eef8f1;color:var(--ok);font-weight:700;font-size:11.5px;flex:none;transform:translateY(4px)}
+.costline:empty{display:none}
+.mode .chips{background:#eef3f7;padding:4px;border-radius:999px;border:1px solid var(--line)}
+.mode .chip{border:0!important;padding:7px 16px}.mode .chip:not(.on){background:transparent!important;color:var(--muted)!important}
+.mode .chip.on{box-shadow:0 2px 6px -2px rgba(7,94,121,.5)}
+.actionbar{position:sticky;bottom:0;z-index:5;display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:14px 20px;border-radius:14px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border:1px solid #dce6ee;box-shadow:0 -6px 24px -14px rgba(16,42,67,.35)}
+.actionbar .primary{padding:11px 22px;font-size:15px;border-radius:10px;box-shadow:0 6px 14px -8px rgba(7,94,121,.8)}
+.actionbar .hint{flex:1;min-width:200px}
+/* side summary */
+.sum h2{font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px}
+.sum dl{margin:0;display:grid;gap:0}.sum dl>div{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line);font-size:14px}
+.sum dl>div:last-child{border-bottom:0}.sum dt{color:var(--muted)}.sum dd{margin:0;font-weight:600;text-align:right;overflow-wrap:anywhere;min-width:0}
+.sum dd.none{color:#9aabb8;font-weight:400}
+.sum .big{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.sum .big div{background:#f4f8fb;border:1px solid var(--line);border-radius:10px;padding:8px 10px}.sum .big span{display:block;font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}.sum .big b{font-size:17px;font-variant-numeric:tabular-nums}
+.sum .safe{margin:14px 0 0;font-size:12px;color:#4b2f73;background:var(--violet2);border-radius:10px;padding:9px 11px;line-height:1.45}
+.recent{gap:8px}.recent button{border-radius:10px;padding:10px 12px;display:grid!important;gap:2px;border-left:4px solid #c1cbd3;font-weight:600;font-size:13.5px}
+.recent button.ok{border-left-color:#55b987}.recent button.warn{border-left-color:#e2a33b}.recent button.bad{border-left-color:#b3261e}.recent button.run{border-left-color:#4aa3c0}
+.recent button .hint{font-weight:400}
+/* progress stepper */
+#prog h2{margin-bottom:4px}
+.steps{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:0;margin:16px 0 4px;counter-reset:st}
+.steps li{counter-increment:st;display:grid!important;align-items:start!important;align-content:start;justify-items:center;text-align:center;gap:8px;font-size:12.5px;position:relative;padding:0 6px}
+.steps li::before{content:counter(st)!important;width:34px!important;height:34px!important;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13px;color:#8aa0b0;background:#fff;position:relative;z-index:1}
+.steps li.done::before{content:'\\2713'!important;color:#fff}.steps li.now::before{color:#9a6512}
+.steps li:not(:first-child)::after{content:'';position:absolute;top:17px;right:50%;width:100%;height:2px;background:#dbe4ea;z-index:0}
+.steps li.done:not(:first-child)::after,.steps li.now:not(:first-child)::after{background:#55b987}
+/* results */
+.verdict{padding:16px 18px;border-radius:14px;gap:18px}
+.score{--p:0;--c:#55b987;width:68px;height:68px;border-radius:50%;display:grid;place-items:center;font-size:19px!important;background:radial-gradient(closest-side,#fff 78%,transparent 80% 100%),conic-gradient(var(--c) calc(var(--p)*1%),#e3e9ee 0);flex:none}
+.verdict>div{flex:1 1 260px;min-width:0}.verdict.warn .score{--c:#e2a33b}.verdict.bad .score{--c:#b3261e}
+.dl{padding:11px 18px!important;border-radius:10px!important;box-shadow:0 6px 14px -8px rgba(7,94,121,.8)}
+.dl::before{content:'\\2193\\00a0\\00a0'}
+table.t th{text-transform:uppercase;letter-spacing:.05em;font-size:11.5px}table.t tr:nth-child(even) td{background:#fafcfd}
+.internal{border:1px solid #d9cdea;background:linear-gradient(180deg,#fbf9fe,#fff)}
+@media(max-width:1080px){.layout{grid-template-columns:minmax(0,1fr)}.side{position:static;grid-template-columns:1fr 1fr}}
+@media(max-width:760px){.wrap{padding:0 12px}.panel{padding:16px}details.panel>summary{padding:16px}details.panel>.pbody{padding:14px 16px 18px}.ph{align-items:flex-start}.side{grid-template-columns:1fr}.actionbar{padding:12px;position:static}.mode .chips{border-radius:14px}.hero h1{font-size:24px}.flow{display:none}.steps{grid-auto-flow:row}.steps li{grid-template-columns:34px 1fr;justify-items:start;text-align:left}.steps li::after{display:none}}
 </style></head><body>
 <header class="topbar"><span class="brand"><img src="/static/favicon.png" alt=""><span class="who">''' + escape(a['name']) + '''</span></span><div class="sp"></div><span class="small" style="color:#9fb8ca">Built on Alice</span></header>
-<main><div class="wrap">
-<section class="card"><h1>''' + escape(a['name']) + '''</h1><p class="lead" id="greeting"></p></section>
+<main><section class="hero"><div class="hero-in"><div><p class="eyebrow">Bid and proposal studio</p><h1>''' + escape(a['name']) + '''</h1><p class="lead" id="greeting"></p></div>
+<ol class="flow" aria-label="How it works"><li>Brief</li><li>Draft</li><li>QA check</li><li>Word document</li></ol></div></section>
+<div class="wrap"><div class="layout"><div class="colmain">
 <section class="card" id="prog" hidden aria-live="polite"><h2 id="prog-title">Working on it</h2><ol class="steps" id="steps"></ol><div class="err" id="perr" hidden></div></section>
 <div id="result"></div>
-<form class="card stack" id="f">
-<div class="mode"><h2 id="f-h">New proposal</h2><div class="chips" role="tablist" aria-label="What to do"><button type="button" class="chip on" id="m-write" role="tab" aria-selected="true">Write a proposal</button><button type="button" class="chip" id="m-qa" role="tab" aria-selected="false">Check one I already have</button></div></div>
+<form id="f">
+<section class="panel"><div class="ph"><div class="mode"><div><h2 id="f-h">New proposal</h2><span class="ps">The brief, and who it is for</span></div><div class="chips" role="tablist" aria-label="What to do"><button type="button" class="chip on" id="m-write" role="tab" aria-selected="true">Write a proposal</button><button type="button" class="chip" id="m-qa" role="tab" aria-selected="false">Check one I already have</button></div></div></div>
 <div class="grid2"><label>Proposal title<input id="title" maxlength="150" required placeholder="e.g. Data security baseline for Microsoft Fabric"></label>
 <label>Client or organisation<input id="org" maxlength="80" list="orgs" placeholder="Start typing a name"><datalist id="orgs"></datalist><span class="hint" id="org-hint">Its approved profile is used. Only this client's tagged material is used, never another client's.</span></label></div>
 <label>Brief and context<textarea id="brief" maxlength="20000" required placeholder="Paste the brief or describe what the client wants: outcomes, scope, requirements, timescales, evaluation criteria, anything they said."></textarea>
 <span class="hint">Everything in the brief is checked before it goes to the AI: secrets and protective markings are refused.</span></label>
 <div class="qa-only" hidden><label>Your proposal document<input type="file" id="qa-file" accept=".docx,.pdf,.txt,.md"><span class="hint">Word, PDF or text. Proposal QA checks it against the brief above. Your document is read for the check and not kept.</span></label></div>
-<label class="w-only">Notes for the writer <span class="hint">(optional: angle to take, things to stress or avoid)</span><textarea id="notes" maxlength="4000" rows="3"></textarea></label>
+<label class="w-only">Notes for the writer <span class="hint">(optional: angle to take, things to stress or avoid)</span><textarea id="notes" maxlength="4000" rows="3" placeholder="e.g. Lead with value for money; they were burned by a big-bang migration before."></textarea></label>
+</section>
+<section class="panel"><div class="ph"><div><span class="pt">Set-up</span><span class="ps">Template, models and what Alice may draw on</span></div></div>
 <label class="w-only">Proposal template<select id="tplsel"></select><span class="hint" id="tpl-hint"></span></label>
 <div class="grid2"><label class="w-only">Writer model<select id="wm"></select></label><label>QA model<select id="qm"></select></label></div>
-<p class="hint" id="cost"></p>
-<label class="check w-only"><input type="checkbox" id="mem" checked> Use what Alice knows: approved memories, decisions and knowledge that are general or for this client</label>
-<details class="fold w-only" id="refs-fold"><summary>Reference documents <span class="hint" id="ref-count"></span></summary>
+<p class="hint costline" id="cost"></p>
+<label class="toggle w-only"><input type="checkbox" id="mem" checked><span><b>Use what Alice knows</b><span class="hint">Approved memories, decisions and knowledge that are general or tagged to this client. Never another client’s.</span></span></label>
+</section>
+<details class="fold panel w-only" id="refs-fold"><summary><span>Reference documents <span class="hint" id="ref-count"></span><span class="psub">Background the writer can draw on</span></span></summary><div class="pbody">
 <p class="pe-note">Background the writer can draw on, such as Microsoft success guides or your own method papers. It reads each document's approved summary and the passages relevant to this brief, under the same rules as everything else. The documents stay in their source.</p>
 <div class="ref-tools"><button type="button" class="secondary" id="ref-browse">Choose documents</button><input type="search" id="ref-q" placeholder="Filter by name or source" aria-label="Filter reference documents" hidden><label class="secondary ref-upl" tabindex="0">Upload a reference document<input type="file" id="ref-file" accept=".docx,.pdf,.txt,.md,.csv" hidden></label></div>
 <div class="ref-panel" id="ref-panel" hidden></div>
-<div class="ref-list" id="ref-list"></div></details>
-<details class="fold w-only" open><summary>Format and flow</summary>
+<div class="ref-list" id="ref-list"></div></div></details>
+<details class="fold panel w-only" open><summary><span>Format and flow<span class="psub">Sections, order and what goes in each</span></span></summary><div class="pbody">
 <label>Paste a structure <span class="hint">(optional: headings, points or a rough outline, e.g. from the client's question list)</span><textarea id="structure" maxlength="6000" rows="4" placeholder="1. Executive summary&#10;- why now, value for money&#10;2. Our approach&#10;- phased, governance first&#10;3. Social value"></textarea></label>
 <div class="go"><button type="button" class="secondary" id="struct-go">Turn into sections</button><span class="hint">Headings become sections; bullet points under a heading become text to include. Or leave it here and the writer follows it as an outline.</span></div>
-<p class="pe-note">The sections in order. Template sections keep the template's formatting; add sections, rename them, reorder them, or add content suggestions for each. Standard text is copied from the template word for word.</p><div id="secs"></div><p class="pe-note" id="tpl"></p></details>
-<details class="fold w-only"><summary>Rate card</summary>
-<p class="pe-note">Load your pricing tool or paste a rate card, set the target margin Alice applies to each cost, and tick the roles this proposal needs. Change any sell rate or margin to override it (\u21ba puts it back). Add days to fix a role's quantity; the writer suggests the rest. Cost rates stay in Alice: never sent to the AI, never in the document.</p><div id="rates"></div></details>
-<div class="go"><button class="primary" id="go" type="submit">Write proposal</button><span class="hint" id="go-note">Writing, a QA check and one revision if needed: usually two to four minutes.</span></div>
+<p class="pe-note">The sections in order. Template sections keep the template's formatting; add sections, rename them, reorder them, or add content suggestions for each. Standard text is copied from the template word for word.</p><div id="secs"></div><p class="pe-note" id="tpl"></p></div></details>
+<details class="fold panel w-only"><summary><span>Rate card<span class="psub">Roles, days, cost and sell rates, margin</span></span></summary><div class="pbody">
+<p class="pe-note">Load your pricing tool or paste a rate card, set the target margin Alice applies to each cost, and tick the roles this proposal needs. Change any sell rate or margin to override it (\u21ba puts it back). Add days to fix a role's quantity; the writer suggests the rest. Cost rates stay in Alice: never sent to the AI, never in the document.</p><div id="rates"></div></div></details>
 <div class="err" id="ferr" role="alert" hidden></div>
+<div class="actionbar"><button class="primary" id="go" type="submit">Write proposal</button><span class="hint" id="go-note">Writing, a QA check and one revision if needed: usually two to four minutes.</span></div>
 </form>
+</div>
+<aside class="side">
+<section class="card sum" aria-live="polite"><h2>This proposal</h2><dl id="sum"></dl><div class="big" id="sum-big"></div><p class="safe">Cost rates and protectively marked material never reach the AI. Every piece of context is checked on the way out.</p></section>
 <section class="card" id="recent-box" hidden><h2>Recent proposals</h2><div class="recent" id="recent"></div></section>
-</div></main>
+</aside></div></div></main>
 <script>
 const A=''' + data.replace('</', '<\\/') + ''';
 ''' + PE_JS + r'''
@@ -124,7 +207,7 @@ function drawRefs(){const q=($('ref-q').value||'').toLowerCase(),org=$('org').va
   for(const c of d.clients)bd.append(mk('span','For '+c+' only','rb cl'));if(!d.clients.length&&d.summary)bd.append(mk('span','General','rb'));
   if(other)row.title='Tagged to another client: it can only be used on that client\u2019s proposals.';row.append(cb,mid,bd);box.append(row)}
  count()}
-function count(){$('ref-count').textContent=picked.size?'\u00b7 '+picked.size+' selected':''}
+function count(){$('ref-count').textContent=picked.size?'\u00b7 '+picked.size+' selected':'';summary()}
 $('ref-q').oninput=drawRefs;
 $('ref-file').onchange=async()=>{const f=$('ref-file').files[0];$('ref-file').value='';if(!f)return;const pan=$('ref-panel');pan.hidden=false;pan.replaceChildren(mk('p','Reading '+f.name+'\u2026','hint'));
  if(f.size>15*1024*1024){pan.replaceChildren(mk('p','That file is larger than 15 MB.','err'));return}
@@ -154,8 +237,8 @@ async function load(){S=await api('/setup');loadRefs();$('greeting').textContent
  $('orgs').replaceChildren(...S.organisations.map(o=>{const x=document.createElement('option');x.value=o.name;if(o.client)x.label=o.name+' (client)';return x}));
  const opt=m=>{const o=document.createElement('option');o.value=m.key;o.textContent=m.name+(m.premium?' (premium)':'');return o};
  $('wm').replaceChildren(...S.models.map(opt));$('qm').replaceChildren(...S.models.map(opt));$('wm').value=S.writer;$('qm').value=S.qa;
- const cost=()=>{const w=S.models.find(m=>m.key===$('wm').value),q=S.models.find(m=>m.key===$('qm').value);if(!w||!q||w.writer_cost==null||q.qa_cost==null){$('cost').textContent='';return}
-  const t=mode==='qa'?q.qa_cost/2:w.writer_cost+q.qa_cost;$('cost').textContent='Roughly $'+t.toFixed(2)+(mode==='qa'?' for the QA check.':' for this proposal (draft, QA, one revision and a second QA check), depending on the brief and context. Defaults are set on the Assistants page.')};
+ const cost=()=>{const w=S.models.find(m=>m.key===$('wm').value),q=S.models.find(m=>m.key===$('qm').value);if(!w||!q||w.writer_cost==null||q.qa_cost==null){$('cost').textContent='';window.estimate=null;return}
+  const t=mode==='qa'?q.qa_cost/2:w.writer_cost+q.qa_cost;window.estimate=t;$('cost').textContent='Roughly $'+t.toFixed(2)+(mode==='qa'?' for the QA check.':' for this proposal (draft, QA, one revision and a second QA check), depending on the brief and context. Defaults are set on the Assistants page.')};
  $('wm').onchange=cost;$('qm').onchange=cost;cost();window.cost=cost;
  secEd=PE.sections($('secs'),S.sections,{include:true,empty:'No sections yet: add some, or choose a template on the Assistants page.'});rateEd=PE.rates($('rates'),S.rate_card,S.units,{target:S.target_margin,minMargin:S.min_margin,parse:async f=>api('/rates/parse','POST',{name:f.name,data:await fileData(f)})});
  const ts=$('tplsel');const topt=(v,txt)=>{const o=document.createElement('option');o.value=v;o.textContent=txt;return o};
@@ -167,12 +250,24 @@ async function load(){S=await api('/setup');loadRefs();$('greeting').textContent
  ts.onchange=async()=>{try{const o=await api('/outline?template='+encodeURIComponent(ts.value));const now=secEd.value();const fresh=new Set(o.sections.map(x=>x.title.toLowerCase()));
    const mine=now.filter(x=>!tplTitles.has(x.title)&&!fresh.has(x.title.toLowerCase())).map(x=>({...x,source:'added'}));
    secEd.set(o.sections.concat(mine));tplTitles=new Set(o.sections.filter(x=>x.source==='template').map(x=>x.title));tplHint(o)}catch(e){tplHint(null,e.message)}};
- if(A.paused)$('go').disabled=true;recent();const q=new URLSearchParams(location.search).get('p');if(q)follow(q)}
+ if(A.paused)$('go').disabled=true;summary();recent();const q=new URLSearchParams(location.search).get('p');if(q)follow(q)}
 $('org').addEventListener('input',()=>drawRefs());
 $('org').oninput=()=>{const o=S&&S.organisations.find(x=>x.name.toLowerCase()===$('org').value.trim().toLowerCase());$('org-hint').textContent=o?(o.client?o.name+' is a client: its tagged memories and knowledge are included; other clients’ never are.':'Its approved profile is used.'):($('org').value.trim()?'Not in the list: Alice checks other names it knows (e.g. SBC); if none match, the name is used as typed.':'Its approved profile is used. Only this client’s tagged material is used, never another client’s.')};
 let mode='write';
+function summary(){const dl=$('sum');if(!dl||!S)return;dl.replaceChildren();const row=(k,v)=>{const d=mk('div');d.append(mk('dt',k),mk('dd',v||'Not set',v?'':'none'));dl.append(d)};
+ const org=$('org').value.trim();const o=S.organisations.find(x=>x.name.toLowerCase()===org.toLowerCase());row('Client',org?(org+(o&&o.client?' (client)':'')):'');
+ if(mode==='qa'){row('Document',($('qa-file').files[0]||{}).name||'');row('QA model',($('qm').selectedOptions[0]||{}).textContent||'')}
+ else{const ts=$('tplsel').selectedOptions[0];row('Template',ts?(ts.value?ts.textContent.split(' · ')[0].replace(/\.docx$/i,''):'Alice’s own layout'):'');
+  row('Sections',secEd?String(secEd.value().length):'');row('References',picked.size?String(picked.size):'');
+  row('Writer',($('wm').selectedOptions[0]||{}).textContent||'');row('Alice’s knowledge',$('mem').checked?'Used':'Not used')}
+ const big=$('sum-big');big.replaceChildren();const tile=(k,v)=>{const d=mk('div');d.append(mk('span',k),mk('b',v));big.append(d)};
+ if(mode!=='qa'&&rateEd){const rs=rateEd.value().filter(r=>r.use);const priced=rs.filter(r=>r.days&&r.sell!=='');const sell=priced.reduce((a,r)=>a+Number(String(r.sell).replace(/[£,]/g,''))*Number(r.days),0);
+  const cst=priced.reduce((a,r)=>a+Number(String(r.cost).replace(/[£,]/g,''))*Number(r.days),0);tile('Roles',String(rs.length));tile('Sell price',priced.length?PE.gbp(Math.round(sell)):'—');
+  if(priced.length&&sell)tile('Margin',((sell-cst)/sell*100).toFixed(1)+'%')}
+ if(window.estimate!=null)tile('AI cost','$'+window.estimate.toFixed(2))}
+$('f').addEventListener('input',()=>summary());$('f').addEventListener('change',()=>summary());$('f').addEventListener('click',()=>setTimeout(summary,0));
 function setMode(m){mode=m;$('f').classList.toggle('qa-mode',m==='qa');document.querySelector('.qa-only').hidden=m!=='qa';$('m-write').classList.toggle('on',m==='write');$('m-qa').classList.toggle('on',m==='qa');
- $('m-write').setAttribute('aria-selected',m==='write');$('m-qa').setAttribute('aria-selected',m==='qa');$('f-h').textContent=m==='qa'?'Check a proposal':'New proposal';
+ $('m-write').setAttribute('aria-selected',m==='write');setTimeout(summary,0);$('m-qa').setAttribute('aria-selected',m==='qa');$('f-h').textContent=m==='qa'?'Check a proposal':'New proposal';
  $('go').textContent=m==='qa'?'Check it against the brief':'Write proposal';$('go-note').textContent=m==='qa'?'Proposal QA reads your document and checks it against the brief: usually under a minute.':'Writing, a QA check and one revision if needed: usually two to four minutes.';if(S)cost()}
 $('m-write').onclick=()=>setMode('write');$('m-qa').onclick=()=>setMode('qa');
 function parseStructure(text){const out=[];let cur=null;const head=/^\s{0,1}(#{1,4}\s+|\d{1,2}(\.\d{1,2})*[.)]\s+|[A-Z][.)]\s+)?(.+)$/;
@@ -202,7 +297,7 @@ function table(head,rows,cls){const t=mk('table','','t');const h=document.create
 const n=(v,num)=>({node:mk('span',v),num});
 function show(p){const box=$('result');box.replaceChildren();const qa=p.qa[p.qa.length-1]||{};
  const top=mk('section','','card');const v=mk('div','','verdict '+(qa.verdict==='client_ready'?'ok':(qa.issues||[]).some(i=>i.severity==='high')?'bad':'warn'));
- v.append(mk('span',qa.score!=null?qa.score+'/100':'','score'));const vt=mk('div');vt.append(mk('strong',qa.verdict==='client_ready'?'Client ready, according to Proposal QA':'Needs your attention before it goes to the client'),mk('div',qa.summary||'','hint'));v.append(vt);
+ const sc=mk('span',qa.score!=null?String(qa.score):'—','score');sc.style.setProperty('--p',qa.score||0);sc.title=qa.score!=null?qa.score+' out of 100':'';v.append(sc);const vt=mk('div');vt.append(mk('strong',qa.verdict==='client_ready'?'Client ready, according to Proposal QA':'Needs your attention before it goes to the client'),mk('div',qa.summary||'','hint'));v.append(vt);
  if(p.document_id){const dl=document.createElement('a');dl.href='/documents/'+p.document_id+'/download';dl.className='dl';dl.textContent='Download Word document';v.append(dl)}top.append(mk('h2',p.title+(p.organisation?' · '+p.organisation:'')),v);
  if(p.qa.length>1){const rr=mk('div','','rounds');rr.append(mk('span','QA checks:'));p.qa.forEach((q,i)=>{if(i)rr.append(mk('span','→'));const b=mk('b',(q.score??'?')+'/100');b.title=(q.source||'check '+(i+1));rr.append(mk('span',(q.source||('check '+(i+1)))+' '),b)});top.append(rr)}
  if(p.error)top.append(mk('p','The last re-check did not finish: '+p.error,'err'));
@@ -236,7 +331,7 @@ function editDraft(p){const box=$('result');const c=mk('section','','card');c.ap
  const go=document.createElement('button');go.type='button';go.className='primary';go.textContent='Save changes and check again';const cancel=document.createElement('button');cancel.type='button';cancel.className='secondary';cancel.textContent='Cancel';cancel.onclick=()=>show(p);
  go.onclick=async()=>{go.disabled=true;try{await api('/proposals/'+p.id+'/recheck','POST',{sections:(p.draft.sections||[]).map(s=>{const e=eds.find(x=>x[0]===s);return {title:s.title,body:e?e[1].value:''}})});follow(p.id)}catch(e){go.disabled=false;alertBox(e.message)}};
  const a=mk('div','','act');a.append(go,cancel);c.append(a);box.replaceChildren(c);document.querySelector('main').scrollTop=0}
-async function recent(){try{const d=await api('/proposals');$('recent-box').hidden=!d.proposals.length;$('recent').replaceChildren(...d.proposals.map(x=>{const b=mk('button','','secondary');b.type='button';
+async function recent(){try{const d=await api('/proposals');$('recent-box').hidden=!d.proposals.length;$('recent').replaceChildren(...d.proposals.map(x=>{const b=mk('button','','secondary '+(x.status==='running'?'run':x.status==='failed'?'bad':x.verdict==='client_ready'?'ok':'warn'));b.type='button';
  b.append(mk('span',x.title+(x.organisation?' · '+x.organisation:'')),mk('span',x.status==='running'?'writing…':x.status==='failed'?'failed':(x.verdict==='client_ready'?'client ready':'needs attention')+(x.score!=null?' · '+x.score+'/100':'')+' · '+new Date(x.created_at).toLocaleDateString('en-GB'),'hint'));
  b.onclick=()=>{history.replaceState(null,'','?p='+x.id);follow(x.id);window.scrollTo(0,0);document.querySelector('main').scrollTop=0};return b}))}catch{}}
 load().catch(e=>{$('ferr').textContent=e.message;$('ferr').hidden=false});
