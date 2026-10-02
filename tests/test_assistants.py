@@ -45,7 +45,7 @@ s.create_category('Empty')
 t('the HR policy assistant is set up with the HR pack', A.get('hr-policy')['packs'] == ['hr'] and A.get('hr-policy')['categories'] == ['HR'])
 t('no pack is applied to Alice chat globally (the assistant uses its own)', not rule_packs.applied())
 page = cl.get('/assistant/hr-policy').text
-t('the assistant has its own page without the Command centre', 'HR policy assistant' in page and 'sidebar' not in page and '__TOKEN__' not in page and app.ADMIN_TOKEN not in page)
+t('the assistant has its own page without the Command centre', 'Alex' in page and 'sidebar' not in page and '__TOKEN__' not in page and app.ADMIN_TOKEN not in page)
 t('unknown assistant: 404', cl.get('/assistant/nope').status_code == 404 and ask('hello', aid='nope')[0].status_code == 404)
 
 r, d = ask('How many days of annual leave do I get in zanzibarq?')
@@ -106,14 +106,18 @@ page = cl.get('/assistant/hr-policy').text
 t('the staff page lists what the assistant covers, from its approved knowledge only', 'Annual leave policy' in page and 'Flexible working policy' in page
   and 'Example Council leave arrangements' not in page and 'Local leave note' not in page and 'Expenses policy' not in page)
 t('the staff page explains how answers work and privacy', 'How answers work' in page and 'Your privacy' in page and 'id="topics"' in page)
+t('the seeded HR policy assistant is called Alex', A.get('hr-policy')['name'] == 'Alex' and A.get('hr-policy')['greeting'].startswith("I'm Alex"))
 t('the seeded proposal writer is called Parker', A.get('proposal-writer')['name'] == 'Parker' and A.get('proposal-writer')['greeting'].startswith("I'm Parker"))
 import importlib
 with s.db() as c:
     c.execute("UPDATE assistants SET name='Proposal writer' WHERE id='proposal-writer'")
+    c.execute("UPDATE assistants SET name='HR policy assistant' WHERE id='hr-policy'")
     c.execute("DELETE FROM activity WHERE action='assistant_renamed'")
 importlib.reload(A)
 with s.db() as c: n_ = c.execute("SELECT count(*) FROM activity WHERE action='assistant_renamed'").fetchone()[0]
-t('an existing install with the old default name becomes Parker, logged once', A.get('proposal-writer')['name'] == 'Parker' and n_ == 1)
+t('an existing install with the old default names becomes Alex and Parker, logged once each', A.get('proposal-writer')['name'] == 'Parker' and A.get('hr-policy')['name'] == 'Alex' and n_ == 2)
 with s.db() as c: c.execute("UPDATE assistants SET name='Proposal writer' WHERE id='proposal-writer'")
 importlib.reload(A)
 t('after that, your own choice of name is kept', A.get('proposal-writer')['name'] == 'Proposal writer')
+ap = cl.get('/admin/assistants').text
+t('the Assistants page has search, filters, cards and list views and an editor panel', all(x in ap for x in ('id="as-q"', 'id="as-kinds"', 'id="as-view"', 'id="as-editor"', 'as-grid', 'as-tbl')))

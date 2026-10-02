@@ -55,8 +55,15 @@ GENERIC = set('policy policies procedure procedures guidance guide rule rules do
 
 OLD_PW_GREETING = ('Give me the brief and any context. I will write the proposal into the template, check it against the brief and '
                    'give you a Word document to review.')
+OLD_HR_GREETING = ('Ask me about HR policies: leave, absence, flexible working, expenses, conduct. I answer from the published '
+                   'policies and show where each answer comes from. For anything about your own situation, contact HR.')
+ALEX_GREETING = ('I\'m Alex. Ask me about HR policies: leave, absence, flexible working, expenses, conduct. I answer from the published '
+                 'policies and show where each answer comes from. For anything about your own situation, contact HR.')
 PARKER_GREETING = ('I\'m Parker. Give me the brief and any context: I will write the proposal into your template, check it against the brief '
                    'and give you a Word document to review.')
+
+RENAMES = [('hr-policy', 'HR policy assistant', 'Alex', OLD_HR_GREETING, ALEX_GREETING),
+           ('proposal-writer', 'Proposal writer', 'Parker', OLD_PW_GREETING, PARKER_GREETING)]
 
 with store.db() as c:
     c.execute('''CREATE TABLE IF NOT EXISTS assistants (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
@@ -66,10 +73,9 @@ with store.db() as c:
     if not c.execute("SELECT 1 FROM assistants WHERE id='hr-policy'").fetchone():
         c.execute('INSERT INTO assistants(id,name,description,greeting,packs,provider,categories,guidance,contact,status,created_at,updated_at) '
                   'VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-                  ('hr-policy', 'HR policy assistant',
+                  ('hr-policy', 'Alex',
                    'Answers staff questions from the organisation\'s HR policies. It does not handle individual cases.',
-                   'Ask me about HR policies: leave, absence, flexible working, expenses, conduct. I answer from the published '
-                   'policies and show where each answer comes from. For anything about your own situation, contact HR.',
+                   ALEX_GREETING,
                    json.dumps(['hr']), 'openai', json.dumps(['HR']),
                    'Answer questions about HR policy only. Quote the policy and say which document it comes from. Never advise '
                    'on an individual\'s case, a grievance, a disciplinary matter or someone\'s health: say that HR will help '
@@ -82,13 +88,14 @@ with store.db() as c:
         c.execute('ALTER TABLE assistants ADD COLUMN allow_documents INTEGER NOT NULL DEFAULT 1')
     if 'kind' not in _cols: c.execute("ALTER TABLE assistants ADD COLUMN kind TEXT NOT NULL DEFAULT 'qa'")
     if 'settings' not in _cols: c.execute("ALTER TABLE assistants ADD COLUMN settings TEXT NOT NULL DEFAULT '{}'")
-    # the seeded proposal writer is called Parker: rename it once if it still has the old default name (logged; your own names are kept)
-    _pw = c.execute("SELECT name,greeting FROM assistants WHERE id='proposal-writer'").fetchone()
-    if _pw and _pw['name'] == 'Proposal writer' and not c.execute(
-            "SELECT 1 FROM activity WHERE action='assistant_renamed' AND target='proposal-writer'").fetchone():
-        c.execute("UPDATE assistants SET name='Parker',greeting=CASE WHEN greeting=? THEN ? ELSE greeting END WHERE id='proposal-writer'",
-                  (OLD_PW_GREETING, PARKER_GREETING))
-        store.audit(c, 'assistant_renamed', 'proposal-writer', 'human_control', 'Proposal writer renamed Parker (owner\'s request)')
+    # the seeded assistants have names (Alex, Parker): rename each once if it still has its old default name
+    # (logged; a name you choose yourself is kept)
+    for _id, _old, _new, _og, _ng in RENAMES:
+        _r = c.execute('SELECT name FROM assistants WHERE id=?', (_id,)).fetchone()
+        if _r and _r['name'] == _old and not c.execute(
+                "SELECT 1 FROM activity WHERE action='assistant_renamed' AND target=?", (_id,)).fetchone():
+            c.execute('UPDATE assistants SET name=?,greeting=CASE WHEN greeting=? THEN ? ELSE greeting END WHERE id=?', (_new, _og, _ng, _id))
+            store.audit(c, 'assistant_renamed', _id, 'human_control', f'{_old} renamed {_new} (owner\'s request)')
     if not c.execute("SELECT 1 FROM assistants WHERE id='proposal-writer'").fetchone():
         c.execute('INSERT INTO assistants(id,name,description,greeting,packs,provider,categories,guidance,contact,status,created_at,updated_at,kind,settings) '
                   'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',

@@ -13,7 +13,7 @@ PAGES = {
  'organisations': ('Organisations','Clients and other organisations: short approved facts with a pointer to the source, opportunities, and for clients the names Alice recognises and the memories and files tagged to them. Detail stays in the source system.'),
  'archive': ('Archived chats','Inactive Alice chats (30 days) and conversations saved from Claude apps. Ask Temple to review any of them for memories and knowledge.'),
  'documents': ('Documents','Document sources: full documents that stay outside Alice. Knowledge keeps approved summaries that point to them; assistants read a section on demand only when the summaries do not answer. For now each source is a folder in the Documents folder that stands in for SharePoint, Fabric or Power Platform; in Azure each becomes a real connector.'),
- 'assistants': ('Assistants','Focused chat bots built on Alice, such as an HR policy assistant. Each has its own rule packs, model and knowledge, and staff use it on its own page without seeing the rest of Alice.'),
+ 'assistants': ('Assistants','Focused assistants built on Alice, such as Alex (HR policies) and Parker (proposals). Each has its own rule packs, model and knowledge, and staff use it on its own page without seeing the rest of Alice.'),
  'rule-packs': ('Rule packs','Ready-made safeguards for teams adopting AI. Switch each one on or off, test a message against the pack (a sandbox: no AI is called), and apply a pack to Alice\'s live rules when you want it enforced.'),
  'rules': ('Rules','Rule sets in precedence order. Enforced rules are checked in code; guidance rules are instructions to the model.'),
  'activity': ('Activity','Everything Alice and Temple did, and every decision you made: filter by type, date or words, and export for an audit trail.'),
@@ -30,8 +30,11 @@ SECTIONS = {
 <label>What it simulates<input id="ds-sim" maxlength="200" placeholder="e.g. SharePoint: Finance site, Policies library"></label><label>Description<input id="ds-desc" maxlength="300"></label>
 <div class="arc-actions"><button>Create source</button><button type="button" id="ds-cancel" class="secondary">Cancel</button></div><p class="muted small">This creates a folder in the Documents folder. Put the documents in that folder; Alice lists them here.</p></form>
 <div id="ds-list"></div></section>''',
-'assistants': r'''<section><div class="mem-head"><h2>Assistants</h2><button id="as-new" type="button" class="secondary">New assistant</button></div>
+'assistants': r'''<section><div class="mem-head"><h2>Assistants</h2><button id="as-new" type="button" class="primary">New assistant</button></div>
 <p class="muted small">Every question goes through Alice first: secrets and protective markings are blocked, the assistant's rule packs block, escalate or remove identifiers, and only knowledge in its categories is used (never client-tagged or Local only material). No transcript is kept; the Activity log records whether each question was answered, blocked or escalated, and which sources were used.</p>
+<div class="as-tiles" id="as-tiles"></div>
+<div class="as-bar"><input type="search" id="as-q" placeholder="Find an assistant" aria-label="Find an assistant"><div class="as-chips" id="as-kinds" role="group" aria-label="Type"></div><div class="as-chips" id="as-status" role="group" aria-label="Status"></div><div class="as-chips as-view" id="as-view" role="group" aria-label="View"></div></div>
+<div id="as-editor"></div>
 <div id="as-list"></div></section>''',
 'rule-packs': r'''<div id="rp-packs" class="t-tabs" role="tablist" aria-label="Rule packs"></div>
 <section id="rp-head"></section>
@@ -383,6 +386,36 @@ a.av-tile:hover{border-color:var(--teal)}.av-tile b{font-size:28px;line-height:1
 .o-mini{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--line);font-size:14px}
 #o-tagging[hidden],#o-tagged-sec[hidden],#o-aliases-wrap[hidden]{display:none}
 .as-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:12px}.as-card h3{margin:0 0 2px}
+.as-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0}
+.as-tile{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:grid;gap:2px;text-decoration:none;color:inherit}
+.as-tile span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}.as-tile b{font-size:22px;font-variant-numeric:tabular-nums}
+a.as-tile.warn{border-color:#e2bf85;background:#fdf8ee}a.as-tile.warn b{color:#8a5a0f}a.as-tile:hover{border-color:var(--teal)}
+.as-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 14px}.as-bar input[type=search]{flex:1 1 220px;min-width:0}
+.as-chips{display:flex;gap:4px;background:#eef3f7;border:1px solid var(--line);border-radius:999px;padding:3px}
+.as-chips button{border:0!important;background:transparent!important;border-radius:999px!important;padding:5px 12px!important;font-size:13px;font-weight:600;color:var(--muted)!important;box-shadow:none!important;margin:0!important}
+.as-chips button.on{background:#fff!important;color:var(--ink)!important;box-shadow:0 1px 3px rgba(16,42,67,.18)!important}
+.as-form label.r-check{display:flex;gap:8px;align-items:center}.as-foot .demo{font-size:12.5px;padding:4px 10px}.as-chips button i{font-style:normal;color:var(--faint);margin-left:4px;font-weight:600}
+.as-group{margin:18px 0 8px;display:flex;gap:10px;align-items:baseline}.as-group h3{margin:0;font-size:15px}.as-group span{color:var(--muted);font-size:13px}
+.as-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.as-c{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:10px;grid-template-rows:auto auto 1fr auto;align-content:start;box-shadow:0 1px 2px rgba(16,42,67,.04),0 6px 16px -12px rgba(16,42,67,.25);transition:border-color .12s,transform .12s}
+.as-c:hover{border-color:#9db7c6;transform:translateY(-1px)}.as-c.editing{border-color:var(--teal);box-shadow:0 0 0 3px rgba(7,94,121,.12)}
+.as-c.paused{opacity:.75}
+.as-top{display:flex;gap:12px;align-items:center;min-width:0}.as-top>div{min-width:0}.as-top h4{margin:0;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.as-kind{font-size:12px;color:var(--muted)}
+.as-logo{flex:none;display:grid;place-items:center;border-radius:12px;color:#fff;font-weight:700}
+.as-logo svg{display:block}
+.as-st{margin-left:auto;flex:none;font-size:12px;font-weight:600;display:flex;gap:5px;align-items:center;color:var(--ok)}.as-st::before{content:'';width:8px;height:8px;border-radius:50%;background:#55b987}
+.as-st.off{color:#8a5a0f}.as-st.off::before{background:#e2a33b}
+.as-desc{margin:0;font-size:13.5px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.9em}
+.as-foot{display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:10px;margin-top:2px}.as-foot .button-link{margin:0}.as-foot .sp{flex:1}
+.as-ed{background:var(--panel);border:1px solid var(--teal);border-radius:14px;padding:18px 20px;margin:0 0 16px;box-shadow:0 0 0 3px rgba(7,94,121,.10)}
+.as-ed .as-top h4{font-size:18px;white-space:normal}.as-ed .as-form{margin-top:12px}
+table.as-tbl{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:14px}
+.as-tbl th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);padding:9px 12px;border-bottom:1px solid var(--line);background:#f7fafc}
+.as-tbl td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle}.as-tbl tr:last-child td{border-bottom:0}.as-tbl tr:hover td{background:#fafcfd}
+.as-tbl .nm{display:flex;gap:10px;align-items:center;min-width:0}.as-tbl .nm b{display:block}.as-tbl .acts{white-space:nowrap;text-align:right}.as-tbl .acts>*{margin-left:6px}
+.as-empty{padding:30px;text-align:center;color:var(--muted);background:var(--panel);border:1px dashed var(--line2);border-radius:14px}
+@media(max-width:700px){.as-tbl .hide-s{display:none}}
 .as-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.as-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.as-btns{display:flex;gap:8px;align-items:center}.as-btns .button-link{margin:0}
 .as-form{display:grid;gap:12px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}.as-form label{display:grid;gap:4px}.as-two{display:grid;grid-template-columns:1fr 1fr;gap:20px}
 .k-review-row{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:4px 0 12px}.k-review-row input{width:80px}
@@ -1294,7 +1327,7 @@ if(PAGE==='assistants'){
  function sel(opts,v){const x=document.createElement('select');for(const [k,t] of opts){const o=el('option',t);o.value=k;x.append(o)}x.value=v;return x}
  function form(a,isNew){const f=el('div','','as-form');const kind=isNew?newKind:(a.kind||'qa');
   if(isNew){const ty=sel(Object.entries(L.kinds),kind);ty.onchange=()=>{newKind=ty.value;render()};f.append(field('Type',ty))}
-  const name=input(a.name,80,kind==='proposal'?'e.g. Proposal writer':'e.g. HR policy assistant'),desc=input(a.description,500,'What it is for, in one line'),greet=area(a.greeting,800,2),guide=area(a.guidance,3000,4),contact=input(a.contact,120,'e.g. your HR business partner');
+  const name=input(a.name,80,kind==='proposal'?'e.g. Proposal writer':'e.g. Alex (HR policy assistant)'),desc=input(a.description,500,'What it is for, in one line'),greet=area(a.greeting,800,2),guide=area(a.guidance,3000,4),contact=input(a.contact,120,'e.g. your HR business partner');
   const premium=new Set(L.models.filter(m=>m.premium).map(m=>m.key));
   const provOpts=keys=>keys.map(k=>[k,L.providers[k]+(premium.has(k)?' (premium)':'')]);
   const prov=sel(provOpts(kind==='proposal'?Object.keys(L.providers):L.qa_providers),a.provider||(kind==='proposal'?'claude_sonnet':'openai'));
@@ -1335,25 +1368,62 @@ if(PAGE==='assistants'){
   }
   const save=el('button',isNew?'Create assistant':'Save');save.type='button';
   save.onclick=()=>run(async()=>{const b={name:name.value,description:desc.value,greeting:greet.value,guidance:guide.value,provider:prov.value,status:st.value,...body()};
-   const x=isNew?await api('/admin/api/assistants','POST',b):await api('/admin/api/assistants/'+encodeURIComponent(a.id),'PUT',b);$('notice').textContent='Saved '+x.name+'.';open.delete('__new__');open.add(x.id);await load()});
+   const x=isNew?await api('/admin/api/assistants','POST',b):await api('/admin/api/assistants/'+encodeURIComponent(a.id),'PUT',b);$('notice').textContent='Saved '+x.name+'.';open.clear();await load()});
   const cancel=el('button','Close');cancel.type='button';cancel.className='secondary';cancel.onclick=()=>{open.delete(isNew?'__new__':a.id);render()};
   const act=el('div','','arc-actions');act.append(save,cancel);f.append(act);return f}
- function render(){const box=$('as-list');box.replaceChildren();
-  if(open.has('__new__')){const c=el('div','','as-card');c.append(el('h3','New assistant'),form({},true));box.append(c)}
-  if(!L.assistants.length)box.append(el('p','No assistants yet.','muted'));
-  for(const a of L.assistants){const c=el('div','','as-card');const h=el('div','','as-head');const t=el('div','');t.append(el('h3',a.name),el('div',a.description,'muted small'));
-   const meta=el('div','','as-meta');meta.append(el('span',a.status==='active'?'Active':'Paused','badge '+(a.status==='active'?'approved':'proposed')),el('span',L.providers[a.provider]||a.provider,'tag'));
-   if(a.kind==='proposal'){const S=a.settings||{};meta.append(el('span','Writer + QA agents','tag k-knowledge'),el('span',S.template?'Template: '+S.template.split(/[\\/]/).pop():'No template yet','tag'+(S.template?'':' flag')),el('span',(S.rate_card||[]).length+' roles on the rate card','small muted'))}
-   else{for(const p of a.packs)meta.append(el('span',(L.packs[p]||p)+' pack','tag k-knowledge'));for(const k of a.categories)meta.append(el('span',k,'tag'));if(!a.categories.length)meta.append(el('span','No knowledge yet','flag'));
-   const kn=a.knowledge||{active:0,draft:0};meta.append(el('span',kn.active+(kn.active===1?' item it can use':' items it can use'),'small muted'))}
-   const kn=a.knowledge||{active:0,draft:0};
-   if(a.kind!=='proposal'&&kn.draft){const w=document.createElement('a');w.className='flag';w.href='/admin/knowledge?status=draft'+(a.categories.length===1?'&category='+encodeURIComponent(a.categories[0]):'');w.textContent=kn.draft+' awaiting your approval: it cannot use these yet →';meta.append(w)}
-   t.append(meta);const btns=el('div','','as-btns');const go=document.createElement('a');go.href='/assistant/'+encodeURIComponent(a.id);go.target='_blank';go.rel='noopener';go.className='button-link';go.textContent='Open';
-   if(a.id==='hr-policy'){const dm=el('button','Load demo HR policy');dm.type='button';dm.className='secondary';dm.title='Adds summaries of a demonstration UK HR handbook as knowledge drafts (category HR). The full handbook stays in the policy library folder.';dm.onclick=()=>run(async()=>{const x=await api('/admin/api/assistants/demo-hr','POST',{});$('notice').textContent=x.added?x.added+' summaries of '+x.document+' added as drafts in '+x.category+'. Approve them on Knowledge (Drafts) and the assistant can use them. The full document stays at '+x.location+'.':'The demo summaries are already in Knowledge ('+x.already+').';await load()});btns.append(dm)}
-   const ed=el('button',open.has(a.id)?'Close':'Edit');ed.type='button';ed.className='secondary';ed.onclick=()=>{open.has(a.id)?open.delete(a.id):open.add(a.id);render()};btns.append(go,ed);h.append(t,btns);c.append(h);
-   if(open.has(a.id))c.append(form(a,false));box.append(c)}}
+ let Q='',KIND='all',STATUS='all',VIEW='cards',UID=0;
+ const PALETTE=[['#1d8fb0','#075e79'],['#7a5bb5','#4b2f73'],['#2f9e6e','#1e5b31'],['#d08a2e','#8a5a0f'],['#3a6fc4','#1f3f7a'],['#c2557a','#7a1f45']];
+ function logo(a,size){const w=el('span','','as-logo');w.style.width=w.style.height=size+'px';
+  if(a.kind==='proposal'){const id='pk'+(++UID);w.innerHTML='<svg width="'+size+'" height="'+size+'" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="'+id+'" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7a5bb5"/><stop offset="1" stop-color="#0a7f9f"/></linearGradient></defs><rect width="48" height="48" rx="13" fill="url(#'+id+')"/><path d="M17 8h14v5.5c0 1.6 2.2 4.2 2.2 9.2 0 2.4-.6 3.9-1.6 5.4L24 41l-7.6-12.9c-1-1.5-1.6-3-1.6-5.4 0-5 2.2-7.6 2.2-9.2z" fill="#fff"/><path d="M24 26v13" stroke="#3d72a6" stroke-width="1.9" stroke-linecap="round"/><circle cx="24" cy="23.5" r="2.9" fill="url(#'+id+')"/></svg>';return w}
+  let h=0;for(const ch of a.name||'')h=(h*31+ch.charCodeAt(0))>>>0;const p=PALETTE[h%PALETTE.length];
+  w.style.background='linear-gradient(135deg,'+p[0]+','+p[1]+')';w.style.fontSize=Math.round(size*.45)+'px';w.textContent=(a.name||'?').trim().charAt(0).toUpperCase();return w}
+ const KINDNAME={qa:'Staff assistant',proposal:'Proposal writer'};
+ function chips(box,opts,cur,set){box.replaceChildren();for(const [k,t,n] of opts){const b=el('button',t);b.type='button';if(n!=null)b.append(el('i',String(n)));b.className=k===cur?'on':'';b.setAttribute('aria-pressed',k===cur);b.onclick=()=>{set(k);render()};box.append(b)}}
+ function uses(a){if(a.kind==='proposal'){const S=a.settings||{};return [S.template?'Template: '+S.template.split(/[\\/]/).pop().replace(/\.docx$/i,''):'No template yet',(S.rate_card||[]).length+' roles']}
+  const kn=a.knowledge||{active:0,draft:0};return [(a.categories.join(', ')||'No knowledge yet'),kn.active+(kn.active===1?' item':' items')+(kn.draft?' · '+kn.draft+' waiting':'')]}
+ function openBtn(a){const go=document.createElement('a');go.href='/assistant/'+encodeURIComponent(a.id);go.target='_blank';go.rel='noopener';go.className='button-link';go.textContent='Open ↗';return go}
+ function editBtn(a){const ed=el('button',open.has(a.id)?'Close':'Edit');ed.type='button';ed.className='secondary';ed.onclick=()=>{const was=open.has(a.id);open.clear();if(!was)open.add(a.id);render();if(!was)$('as-editor').scrollIntoView({behavior:'smooth',block:'start'})};return ed}
+ function demoBtn(a){if(a.id!=='hr-policy')return null;const dm=el('button','Load demo HR policy');dm.type='button';dm.className='secondary demo';dm.title='Adds summaries of a demonstration UK HR handbook as knowledge drafts (category HR). The full handbook stays in the policy library folder.';dm.onclick=()=>run(async()=>{const x=await api('/admin/api/assistants/demo-hr','POST',{});$('notice').textContent=x.added?x.added+' summaries of '+x.document+' added as drafts in '+x.category+'. Approve them on Knowledge (Drafts) and the assistant can use them. The full document stays at '+x.location+'.':'The demo summaries are already in Knowledge ('+x.already+').';await load()});return dm}
+ function cardOf(a){const c=el('div','','as-c'+(a.status==='active'?'':' paused')+(open.has(a.id)?' editing':''));
+  const top=el('div','','as-top');const tx=el('div');tx.append(el('h4',a.name),el('div',KINDNAME[a.kind]||a.kind,'as-kind'));top.append(logo(a,42),tx,el('span',a.status==='active'?'Active':'Paused','as-st'+(a.status==='active'?'':' off')));
+  const meta=el('div','','as-meta');meta.append(el('span',L.providers[a.provider]||a.provider,'tag'));
+  if(a.kind==='proposal'){const S=a.settings||{};meta.append(el('span','Writer + QA','tag k-knowledge'),el('span',S.template?'Template: '+S.template.split(/[\\/]/).pop().replace(/\.docx$/i,''):'No template yet','tag'+(S.template?'':' flag')),el('span',(S.rate_card||[]).length+' roles','tag'))}
+  else{for(const p of a.packs)meta.append(el('span',(L.packs[p]||p)+' pack','tag k-knowledge'));for(const k of a.categories)meta.append(el('span',k,'tag'));if(!a.categories.length)meta.append(el('span','No knowledge yet','flag'));
+   const kn=a.knowledge||{active:0,draft:0};meta.append(el('span',kn.active+(kn.active===1?' item it can use':' items it can use'),'small muted'));
+   if(kn.draft){const w=document.createElement('a');w.className='flag';w.href='/admin/knowledge?status=draft'+(a.categories.length===1?'&category='+encodeURIComponent(a.categories[0]):'');w.textContent=kn.draft+' awaiting approval →';meta.append(w)}}
+  const ft=el('div','','as-foot');ft.append(openBtn(a),editBtn(a),el('span','','sp'));const dm=demoBtn(a);if(dm)ft.append(dm);
+  c.append(top,el('p',a.description||'No description yet.','as-desc'),meta,ft);return c}
+ function tableOf(list){const t=el('table','','as-tbl');const hr=document.createElement('tr');for(const [h,cls] of [['Assistant',''],['Type','hide-s'],['Model','hide-s'],['Uses','hide-s'],['Status',''],['','']]){const th=el('th',h);if(cls)th.className=cls;hr.append(th)}t.append(hr);
+  for(const a of list){const tr=document.createElement('tr');const nm=el('div','','nm');const tx=el('div');tx.append(el('b',a.name),el('span',a.description||'','small muted'));nm.append(logo(a,32),tx);
+   const td=x=>{const d=document.createElement('td');if(x instanceof Node)d.append(x);else d.textContent=x;return d};
+   const u=uses(a);const ut=td(u[0]);ut.append(el('div',u[1],'small muted'));ut.className='hide-s';const ty=td(KINDNAME[a.kind]||a.kind);ty.className='hide-s';const md=td(L.providers[a.provider]||a.provider);md.className='hide-s';
+   const ac=td('');ac.className='acts';ac.append(openBtn(a),editBtn(a));
+   tr.append(td(nm),ty,md,ut,td(el('span',a.status==='active'?'Active':'Paused','as-st'+(a.status==='active'?'':' off'))),ac);t.append(tr)}return t}
+ function render(){const all=L.assistants;
+  const kn=all.reduce((n,a)=>n+((a.kind!=='proposal'&&a.knowledge)?a.knowledge.draft:0),0);
+  const tiles=$('as-tiles');tiles.replaceChildren();const tile=(k,v,href,warn)=>{const d=document.createElement(href?'a':'div');d.className='as-tile'+(warn?' warn':'');if(href)d.href=href;d.append(el('span',k),el('b',String(v)));tiles.append(d)};
+  tile('Assistants',all.length);tile('Active',all.filter(a=>a.status==='active').length);tile('Staff assistants',all.filter(a=>a.kind!=='proposal').length);tile('Proposal writers',all.filter(a=>a.kind==='proposal').length);
+  if(kn)tile('Summaries to approve',kn,'/admin/knowledge?status=draft',true);
+  chips($('as-kinds'),[['all','All',all.length],['qa','Staff assistants',all.filter(a=>a.kind!=='proposal').length],['proposal','Proposal writers',all.filter(a=>a.kind==='proposal').length]],KIND,k=>KIND=k);
+  chips($('as-status'),[['all','Any status'],['active','Active'],['paused','Paused']],STATUS,k=>STATUS=k);
+  chips($('as-view'),[['cards','Cards'],['list','List']],VIEW,k=>{VIEW=k;try{localStorage.setItem('alice.as.view',k)}catch{}});
+  const ed=$('as-editor');ed.replaceChildren();const eid=[...open][0];
+  if(eid){const isNew=eid==='__new__';const a=isNew?{}:all.find(x=>x.id===eid);if(a){const c=el('div','','as-ed');const top=el('div','','as-top');const tx=el('div');
+   tx.append(el('h4',isNew?'New assistant':'Edit '+a.name),el('div',isNew?'Choose the type first: a staff assistant answers questions from knowledge; a proposal writer writes proposals.':(KINDNAME[a.kind]||a.kind),'as-kind'));
+   top.append(logo(isNew?{name:'+',kind:newKind}:a,42),tx);c.append(top,form(a,isNew));ed.append(c)}}
+  const q=Q.trim().toLowerCase();const list=all.filter(a=>(KIND==='all'||(KIND==='proposal')===(a.kind==='proposal'))&&(STATUS==='all'||a.status===STATUS)
+   &&(!q||(a.name+' '+(a.description||'')+' '+(a.categories||[]).join(' ')).toLowerCase().includes(q)));
+  const box=$('as-list');box.replaceChildren();
+  if(!all.length){box.append(el('div','No assistants yet. Create one with New assistant.','as-empty'));return}
+  if(!list.length){box.append(el('div','No assistants match.','as-empty'));return}
+  if(VIEW==='list'){box.append(tableOf(list));return}
+  const groups=KIND==='all'?[['qa','Staff assistants','Answer staff questions from approved knowledge'],['proposal','Proposal writers','Write proposals into your template, checked by the QA agent']]:[[KIND,'','']];
+  for(const [k,h,sub] of groups){const g=list.filter(a=>(k==='proposal')===(a.kind==='proposal'));if(!g.length)continue;
+   if(h){const gh=el('div','','as-group');gh.append(el('h3',h),el('span',sub));box.append(gh)}const grid=el('div','','as-grid');g.forEach(a=>grid.append(cardOf(a)));box.append(grid)}}
  async function load(){L=await api('/admin/api/assistants');try{T=(await api('/admin/api/proposal-templates')).templates}catch{T=[]}render()}
- $('as-new').onclick=()=>{newKind='qa';open.add('__new__');render()};
+ try{VIEW=localStorage.getItem('alice.as.view')||'cards'}catch{}
+ $('as-q').oninput=()=>{Q=$('as-q').value;render()};
+ $('as-new').onclick=()=>{newKind='qa';open.clear();open.add('__new__');render();$('as-editor').scrollIntoView({behavior:'smooth',block:'start'})};
  run(load);
 }
 """
