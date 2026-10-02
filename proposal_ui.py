@@ -15,10 +15,11 @@ PE_CSS = r'''
 .pe-rtop{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 8px}.pe-rtop input[type=search]{flex:1;min-width:160px}.pe-rtop .on{background:var(--teal)!important;color:#fff!important;border-color:var(--teal)!important}
 .pe-target{display:flex!important;align-items:center;gap:6px;font-weight:600!important;font-size:14px}.pe-target input{width:64px!important;text-align:right}
 .pe-file{cursor:pointer;border:1px solid var(--line2,#b9cbd8);border-radius:8px;background:#fff;display:inline-flex;align-items:center}
-.pe-rwrap{overflow-x:auto;margin:0 -4px;padding:0 4px}.pe-rates{min-width:700px}.pe-rates .pe-x{font-size:16px!important;line-height:1;padding:4px 9px!important}.pe-rates td:nth-child(3) select{min-width:84px}.pe-rates td:nth-child(4) input{min-width:64px}.pe-rates td:nth-child(5) input,.pe-rates td:nth-child(6) input{min-width:84px}.pe-rates td:nth-child(2) input{min-width:150px}.pe-rates td:nth-child(2){min-width:170px}.pe-rates td:nth-child(3){width:92px}.pe-rates td:nth-child(4){width:84px}
-.pe-rates td:nth-child(5),.pe-rates td:nth-child(6){width:96px}.pe-rates td:nth-child(5) input,.pe-rates td:nth-child(6) input,.pe-rates td:nth-child(4) input{text-align:right;font-variant-numeric:tabular-nums}
+.pe-rwrap{overflow-x:auto;margin:0 -4px;padding:0 4px}.pe-rates{min-width:900px}.pe-rates .pe-x{font-size:16px!important;line-height:1;padding:4px 9px!important}.pe-rates td:nth-child(3) select{min-width:84px}.pe-rates td:nth-child(4) input{min-width:64px}.pe-rates td:nth-child(5) input,.pe-rates td:nth-child(7) input{min-width:84px}.pe-rates td:nth-child(2) input{min-width:150px}.pe-rates td:nth-child(2){min-width:170px}.pe-rates td:nth-child(3){width:92px}.pe-rates td:nth-child(4){width:84px}
+.pe-rates td:nth-child(5),.pe-rates td:nth-child(7){width:96px}.pe-rates td.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}.pe-pb{color:var(--muted);width:90px}
+.pe-dl{width:120px;font-size:12.5px;font-weight:600}.pe-dl.up{color:#1e5b31}.pe-dl.down{color:#b3261e}.pe-dl.same{color:var(--muted);font-weight:400}.pe-rates td:nth-child(5) input,.pe-rates td:nth-child(7) input,.pe-rates td:nth-child(4) input{text-align:right;font-variant-numeric:tabular-nums}
 .pe-rates tr.off td{opacity:.55}.pe-rates td:first-child{width:34px;text-align:center}.pe-rates input[type=checkbox]{width:auto}.pe-rates th:first-child{text-align:center;width:34px}
-.pe-mcell{white-space:nowrap}.pe-mwrap{display:inline-flex;align-items:center;gap:3px}.pe-mwrap input{width:64px!important;text-align:right}.pe-mwrap input.bad{color:#b3261e;border-color:#e0aaaa}.pe-mcell .pe-mini{margin-left:4px!important}
+.pe-mcell{white-space:nowrap;width:132px}.pe-mwrap{display:inline-flex;align-items:center;gap:3px}.pe-mwrap input{width:64px!important;text-align:right}.pe-mwrap input.bad{color:#b3261e;border-color:#e0aaaa}.pe-mcell .pe-mini{margin-left:4px!important}
 .pe-rtotal{display:flex;gap:6px 18px;flex-wrap:wrap;align-items:center;margin-top:10px;padding:10px 12px;border-radius:10px;background:#f4f8fb;border:1px solid var(--line);font-size:14px}
 .pe-rsum{display:flex;gap:6px 14px;flex-wrap:wrap;align-items:baseline}.pe-rsum span{color:var(--muted);font-size:12.5px}.pe-rsum b{font-variant-numeric:tabular-nums;margin-right:6px}.pe-bad{color:#b3261e;font-weight:600}
 .pe-paste{display:grid;gap:6px;margin-top:10px;padding:10px 12px;border:1px dashed var(--line2,#b9cbd8);border-radius:10px;background:#fbfcfd}.pe-paste textarea{width:100%;font-family:ui-monospace,Consolas,monospace;font-size:13px}
@@ -70,7 +71,7 @@ const PE=(()=>{
  function rates(box,items,units,opts={}){let pasteOpen=false,showAll=true,filter='';let target=Number(opts.target??30);
   const n=v=>{const x=parseFloat(String(v??'').replace(/[£,\s]/g,''));return isNaN(x)?null:x};
   const sellFor=c=>target<100?Math.round(c/(1-target/100)*100)/100:c;
-  const mk_=r=>{const c=n(r.cost),sv=n(r.sell);const o={role:r.role||'',unit:r.unit||'day',cost:r.cost??'',sell:r.sell??'',days:r.days??'',use:r.use!==false,override:!!r.override};
+  const mk_=r=>{const c=n(r.cost),sv=n(r.sell);const o={role:r.role||'',unit:r.unit||'day',cost:r.cost??'',sell:r.sell??'',days:r.days??'',use:r.use!==false,override:!!r.override,list:(r.list!=null&&r.list!=='')?r.list:(sv!==null?sv:'')};
    if(c!==null&&(sv===null)){o.sell=sellFor(c);o.override=false}else if(c!==null&&sv!==null)o.override=!!r.override||Math.abs(sv-sellFor(c))>0.01;return o};
   let list=(items||[]).map(mk_);
   const marginOf=r=>{const c=n(r.cost),sv=n(r.sell);return c!==null&&sv?(sv-c)/sv*100:null};
@@ -93,7 +94,7 @@ const PE=(()=>{
    if(list.length>8){const fb=mk('div','','pe-rtop');const used=list.filter(r=>r.use).length;const c1=btn('Ticked ('+used+')',()=>{showAll=false;draw()}),c2=btn('All roles ('+list.length+')',()=>{showAll=true;draw()});(showAll?c2:c1).classList.add('on');
     const fi=document.createElement('input');fi.type='search';fi.placeholder='Find a role';fi.value=filter;fi.setAttribute('aria-label','Find a role');fi.oninput=()=>{filter=fi.value.toLowerCase();body();syncAll()};fb.append(c1,c2,fi);box.append(fb)}
    const t=mk('table','','pe-rates');const h=document.createElement('thead');const hr=document.createElement('tr');
-   const ua=document.createElement('input');ua.type='checkbox';ua.className='pe-all';ua.title='Tick or untick every role shown';ua.setAttribute('aria-label','Tick or untick every role shown');const uth=mk('th');uth.append(ua);hr.append(uth);for(const x of ['Role','Unit','Days','Cost rate','Sell rate','Margin',''])hr.append(mk('th',x));h.append(hr);t.append(h);const tb=document.createElement('tbody');t.append(tb);const tw=mk('div','','pe-rwrap');tw.append(t);box.append(tw);
+   const ua=document.createElement('input');ua.type='checkbox';ua.className='pe-all';ua.title='Tick or untick every role shown';ua.setAttribute('aria-label','Tick or untick every role shown');const uth=mk('th');uth.append(ua);hr.append(uth);for(const [x,t] of [['Role'],['Unit'],['Days'],['Cost rate'],['Price book','The sell rate from your pricing tool or rate card, before any change'],['Sell rate','The rate this proposal uses: the price book rate, your own, or set from the target margin'],['Margin'],['Change','Sell rate against the price book'],['']]){const th=mk('th',x);if(t)th.title=t;hr.append(th)}h.append(hr);t.append(h);const tb=document.createElement('tbody');t.append(tb);const tw=mk('div','','pe-rwrap');tw.append(t);box.append(tw);
    const tf=mk('div','','pe-rtotal');box.append(tf);
    const syncAll=()=>{const sh=list.filter(r=>(showAll||r.use)&&(!filter||r.role.toLowerCase().includes(filter)));const n=sh.filter(r=>r.use).length;ua.checked=!!sh.length&&n===sh.length;ua.indeterminate=n>0&&n<sh.length};
    ua.onchange=()=>{const on=ua.checked;for(const r of list.filter(r=>(showAll||r.use)&&(!filter||r.role.toLowerCase().includes(filter))))r.use=on;if(!on)showAll=true;draw()};
@@ -104,7 +105,11 @@ const PE=(()=>{
      const u=document.createElement('select');u.setAttribute('aria-label','Unit for '+(r.role||'role'));for(const k of units||['day','hour']){const o=mk('option',k==='hour'?'Hour':'Day');o.value=k;u.append(o)}u.value=r.unit;u.onchange=()=>{r.unit=u.value;foot()};
      const inp=(k,label,ph)=>{const x=document.createElement('input');x.inputMode='decimal';x.value=r[k];x.placeholder=ph||'';x.setAttribute('aria-label',label+' for '+(r.role||'role'));return x};
      const days=inp('days','Days','optional'),cost=inp('cost','Cost rate','£'),sell=inp('sell','Sell rate','£');const mg=document.createElement('input');mg.inputMode='decimal';mg.setAttribute('aria-label','Margin for '+(r.role||'role'));
-     const showM=()=>{const m=marginOf(r);if(document.activeElement!==mg)mg.value=m===null?'':m.toFixed(1);mg.classList.toggle('bad',m!==null&&(m<0||(opts.minMargin!=null&&m<opts.minMargin)));mg.title=m!==null&&opts.minMargin!=null&&m<opts.minMargin?'Below your minimum margin of '+opts.minMargin+'%':'';reset.hidden=!r.override};
+     const pb=mk('td','','pe-pb num');const dl=mk('td','','pe-dl num');
+     const showD=()=>{const L=n(r.list),v=n(r.sell);pb.textContent=L===null?'—':gbp(L);dl.className='pe-dl num';
+      if(L===null||v===null){dl.textContent='';return}const d=Math.round((v-L)*100)/100;if(Math.abs(d)<0.005){dl.textContent='same';dl.classList.add('same');return}
+      dl.textContent=(d>0?'+':'−')+gbp(Math.abs(d))+' ('+(d>0?'+':'−')+Math.abs(d/L*100).toFixed(1)+'%)';dl.classList.add(d>0?'up':'down')};
+     const showM=()=>{showD();const m=marginOf(r);if(document.activeElement!==mg)mg.value=m===null?'':m.toFixed(1);mg.classList.toggle('bad',m!==null&&(m<0||(opts.minMargin!=null&&m<opts.minMargin)));mg.title=m!==null&&opts.minMargin!=null&&m<opts.minMargin?'Below your minimum margin of '+opts.minMargin+'%':'';reset.hidden=!r.override};
      days.oninput=()=>{r.days=days.value;foot()};
      cost.oninput=()=>{r.cost=cost.value;const c=n(cost.value);if(!r.override&&c!==null){r.sell=sellFor(c);sell.value=r.sell}showM();foot()};
      sell.oninput=()=>{r.sell=sell.value;r.override=true;showM();foot()};
@@ -113,12 +118,13 @@ const PE=(()=>{
      const reset=btn('↺',()=>{r.override=false;const c=n(r.cost);if(c!==null){r.sell=sellFor(c);sell.value=r.sell}showM();foot()},'Back to the target margin');
      const mcell=mk('td','','pe-mcell');const mw=mk('span','','pe-mwrap');mw.append(mg,mk('span','%'));mcell.append(mw,reset);
      const rm=btn('\u00d7',()=>{list.splice(i,1);draw()},'Remove '+(r.role||'role'));rm.classList.add('pe-x');rm.setAttribute('aria-label','Remove '+(r.role||'role'));
-     const td=x=>{const c=document.createElement('td');c.append(x);return c};tr.append(td(u0),td(role),td(u),td(days),td(cost),td(sell),mcell,td(rm));tb.append(tr);showM()}
-    if(!shown.length)tb.append(Object.assign(document.createElement('tr'),{innerHTML:'<td colspan="8" class="pe-note">'+(list.length?'No roles match.':'No roles yet: load a pricing spreadsheet, paste a table or add roles.')+'</td>'}))}
+     const td=x=>{const c=document.createElement('td');c.append(x);return c};tr.append(td(u0),td(role),td(u),td(days),td(cost),pb,td(sell),mcell,dl,td(rm));tb.append(tr);showM()}
+    if(!shown.length)tb.append(Object.assign(document.createElement('tr'),{innerHTML:'<td colspan="10" class="pe-note">'+(list.length?'No roles match.':'No roles yet: load a pricing spreadsheet, paste a table or add roles.')+'</td>'}))}
    function foot(){const u=list.filter(r=>r.use&&r.role.trim());const wd=u.filter(r=>n(r.days)>0&&n(r.cost)!==null&&n(r.sell)!==null);
-    const c=wd.reduce((a,r)=>a+n(r.days)*n(r.cost),0),sv=wd.reduce((a,r)=>a+n(r.days)*n(r.sell),0);tf.replaceChildren();
+    const c=wd.reduce((a,r)=>a+n(r.days)*n(r.cost),0),sv=wd.reduce((a,r)=>a+n(r.days)*n(r.sell),0);const lp=wd.every(r=>n(r.list)!==null)?wd.reduce((a,r)=>a+n(r.days)*n(r.list),0):null;tf.replaceChildren();
     tf.append(mk('b','For reference'),mk('span',u.length+' role'+(u.length===1?'':'s')+' ticked'+(wd.length?', '+wd.length+' with days':'')));
-    if(wd.length){const g=mk('div','','pe-rsum');for(const [l,v] of [['Cost',gbp(c)],['Sell price',gbp(sv)],['Margin',sv?((sv-c)/sv*100).toFixed(1)+'%':'—']])g.append(mk('span',l),mk('b',v));tf.append(g);
+    if(wd.length){const g=mk('div','','pe-rsum');const rows_=[['Cost',gbp(c)]];if(lp!==null&&Math.abs(lp-sv)>=0.005){rows_.push(['At price book',gbp(lp)+(lp?' ('+((lp-c)/lp*100).toFixed(1)+'%)':'')]);rows_.push(['Adjusted sell price',gbp(sv)]);rows_.push(['Difference',(sv>=lp?'+':'−')+gbp(Math.abs(sv-lp))])}else rows_.push(['Sell price',gbp(sv)]);rows_.push(['Margin',sv?((sv-c)/sv*100).toFixed(1)+'%':'—']);
+     for(const [l,v] of rows_)g.append(mk('span',l),mk('b',v));tf.append(g);
      const m=sv?(sv-c)/sv*100:0;if(opts.minMargin!=null&&sv&&m<opts.minMargin)tf.append(mk('span','⚠ Below your minimum margin of '+opts.minMargin+'%','pe-bad'))}
     else tf.append(mk('span','Add days to the ticked roles to see the cost, sell price and margin. Roles without days: the writer suggests the days.','pe-note'))}
    body();foot();syncAll();
@@ -129,7 +135,7 @@ const PE=(()=>{
     const show=()=>{const r=parseRates(ta.value);msg.textContent=ta.value.trim()?(r.rows.length?r.rows.length+' role'+(r.rows.length===1?'':'s')+' found: '+r.rows.slice(0,4).map(x=>x.role+' ('+(x.cost!==''?'cost '+x.cost+', ':'')+'sell '+x.sell+' per '+x.unit+')').join('; ')+(r.rows.length>4?'…':'')+'.':'No roles found yet.')+(r.notes.length?' '+r.notes.join(' '):''):'Columns are read by their headings (role, unit, cost, sell); without headings, the first text is the role, the first number the cost and the second the sell rate.'};
     const apply=replace=>{const r=parseRates(ta.value);if(!r.rows.length){show();return}const add=r.rows.map(x=>mk_({...x,override:true}));list=replace?add:list.filter(x=>x.role.trim()).concat(add);pasteOpen=false;draw()};
     ta.oninput=show;const act=mk('div','','pe-addbar');act.append(use,more,cancel);pp.append(ta,msg,act);box.append(pp);show()}}
-  draw();return {value:()=>list.filter(r=>r.role.trim()).map(r=>({role:r.role.trim(),unit:r.unit,cost:String(r.cost).trim()||'0',sell:String(r.sell).trim()||'0',days:String(r.days??'').trim(),use:r.use,override:r.override})),
+  draw();return {value:()=>list.filter(r=>r.role.trim()).map(r=>({role:r.role.trim(),unit:r.unit,cost:String(r.cost).trim()||'0',sell:String(r.sell).trim()||'0',days:String(r.days??'').trim(),use:r.use,override:r.override,list:String(r.list??'').trim()})),
    target:()=>target,set:x=>{list=(x||[]).map(mk_);draw()},
    merge:roles=>{for(const g of roles||[]){const r=list.find(x=>x.role.trim().toLowerCase()===String(g.role).toLowerCase());if(!r)continue;r.use=g.use!==false;if(g.days)r.days=g.days}if(list.some(r=>r.use))showAll=false;draw()},
    pick:roles=>{const m=new Map((roles||[]).map(r=>[String(r.role).toLowerCase(),r]));for(const r of list){const g=m.get(r.role.trim().toLowerCase());r.use=!!g;if(g&&g.days)r.days=g.days}showAll=false;draw()}}}

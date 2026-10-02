@@ -81,7 +81,8 @@ def clean_rate_card(items, limit=300):
         days = r.get('days')
         days = None if days in (None, '') else _num(days, f'Days for {role}', 0, 10000)
         out.append({'role': role, 'unit': unit, 'cost': _num(r.get('cost'), f'Cost for {role}'), 'sell': _num(r.get('sell'), f'Sell for {role}'),
-                    'days': days, 'use': r.get('use') is not False, 'override': bool(r.get('override'))})
+                    'days': days, 'use': r.get('use') is not False, 'override': bool(r.get('override')),
+                    'list': None if r.get('list') in (None, '') else _num(r.get('list'), f'Price book rate for {role}')})
     return out
 
 

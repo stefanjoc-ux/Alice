@@ -141,7 +141,8 @@ main{padding:20px 0 40px;background:linear-gradient(180deg,#eef3f7 0,#f4f7fa 260
 .side{position:sticky;top:0;height:calc(100vh - 52px - 40px);display:flex;flex-direction:column;gap:12px;min-height:0}
 .card{border-radius:14px;border-color:#dce6ee;box-shadow:0 1px 2px rgba(16,42,67,.04),0 6px 18px -10px rgba(16,42,67,.18)}
 .card h2{font-size:17px;letter-spacing:-.005em}
-#f{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;counter-reset:panel}.colmain{grid-template-columns:minmax(0,1fr)}.panel{min-width:0}
+#f{display:grid;grid-template-columns:minmax(0,1fr);gap:16px}.wrap{counter-reset:panel}
+.full{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;margin-top:16px}.colmain{grid-template-columns:minmax(0,1fr)}.panel{min-width:0}
 .panel{background:var(--panel);border:1px solid #dce6ee;border-radius:14px;padding:20px 22px;box-shadow:0 1px 2px rgba(16,42,67,.04),0 6px 18px -10px rgba(16,42,67,.18);display:grid;gap:14px}
 .panel:not([hidden]){counter-increment:panel}
 .ph{display:flex;gap:12px;align-items:center;min-width:0}.ph>div{min-width:0}.mode{min-width:0}
@@ -234,12 +235,8 @@ table.t th{text-transform:uppercase;letter-spacing:.05em;font-size:11.5px}table.
 <label>Paste a structure <span class="hint">(optional: headings, points or a rough outline, e.g. from the client's question list)</span><textarea id="structure" maxlength="6000" rows="4" placeholder="1. Executive summary&#10;- why now, value for money&#10;2. Our approach&#10;- phased, governance first&#10;3. Social value"></textarea></label>
 <div class="go"><button type="button" class="secondary" id="struct-go">Turn into sections</button><span class="hint">Headings become sections; bullet points under a heading become text to include. Or leave it here and the writer follows it as an outline.</span></div>
 <p class="pe-note">The sections in order. Template sections keep the template's formatting; add sections, rename them, reorder them, or add content suggestions for each. Standard text is copied from the template word for word.</p><div id="secs"></div><p class="pe-note" id="tpl"></p></div></details>
-<details class="fold panel w-only"><summary><span>Rate card<span class="psub">Roles, days, cost and sell rates, margin</span></span></summary><div class="pbody">
-<p class="pe-note">Load your pricing tool or paste a rate card, set the target margin Alice applies to each cost, and tick the roles this proposal needs. Change any sell rate or margin to override it (\u21ba puts it back). Add days to fix a role's quantity; the writer suggests the rest. Cost rates stay in Alice: never sent to the AI, never in the document.</p><div id="rates"></div></div></details>
 <div class="err" id="ferr" role="alert" hidden></div>
-<div class="actionbar"><button class="primary" id="go" type="submit">Write proposal</button><span class="hint" id="go-note">Writing, a QA check and one revision if needed: usually two to four minutes.</span></div>
 </form>
-<section class="card" id="recent-box" hidden><h2>Recent proposals</h2><div class="recent" id="recent"></div></section>
 </div>
 <aside class="side">
 <section class="pk" id="pk" aria-label="Work with Parker"><div class="pk-head">''' + parker_logo(34, 'ch') + '''<div><b id="pk-title">Start with Parker</b><span class="s">Your proposal assistant</span></div><button type="button" class="secondary pk-new" id="pk-wide" title="Make Parker’s panel wider" aria-pressed="false">Wider</button><button type="button" class="secondary pk-new" id="pk-new" title="Start a new conversation (the form stays as it is)" style="margin-left:6px">New chat</button></div>
@@ -247,7 +244,13 @@ table.t th{text-transform:uppercase;letter-spacing:.05em;font-size:11.5px}table.
 <div class="pk-in"><div id="pk-docs"></div><div class="pk-box"><label class="pk-att" title="Add the client’s brief or RFP" tabindex="0">+<input type="file" id="pk-file" accept=".docx,.pdf,.txt,.md" hidden></label><textarea id="pk-msg" maxlength="4000" placeholder="Tell Parker about the proposal, or answer its question…" aria-label="Message to Parker" rows="3"></textarea><button type="button" class="pk-send" id="pk-send">Send</button></div>
 <p class="pk-foot"><b>Working with Parker:</b> it fills in the form as you talk and asks for what’s missing. Its changes are outlined, and you can undo any of them. Nothing is saved until you write the proposal.</p></div></section>
 <details class="sumbar sum" id="sum-box"><summary><b>This proposal</b><span id="sum-line"></span></summary><dl id="sum"></dl><div class="big" id="sum-big"></div><p class="safe">Cost rates and protectively marked material never reach the AI. Every piece of context is checked on the way out.</p></details><button type="button" class="primary go2" id="go2" style="flex:none">Write proposal</button>
-</aside></div></div></main>
+</aside></div>
+<div class="full" id="full">
+<details class="fold panel w-only"><summary><span>Rate card<span class="psub">Roles, days, cost and sell rates, margin</span></span></summary><div class="pbody">
+<p class="pe-note">Load your pricing tool or paste a rate card, set the target margin Alice applies to each cost, and tick the roles this proposal needs. Change any sell rate or margin to override it (\u21ba puts it back); Price book keeps the rate from your pricing tool and Change shows the difference, so you can see what applying the target margin does. Add days to fix a role's quantity; the writer suggests the rest. Cost rates stay in Alice: never sent to the AI, never in the document.</p><div id="rates"></div></div></details>
+<div class="actionbar"><button class="primary" id="go" type="submit" form="f">Write proposal</button><span class="hint" id="go-note">Writing, a QA check and one revision if needed: usually two to four minutes.</span></div>
+<section class="card" id="recent-box" hidden><h2>Recent proposals</h2><div class="recent" id="recent"></div></section>
+</div></div></main>
 <script>
 const A=''' + data.replace('</', '<\\/') + ''';
 ''' + PE_JS + r'''
@@ -336,7 +339,7 @@ function summary(){const dl=$('sum');if(!dl||!S)return;dl.replaceChildren();cons
  if(window.estimate!=null)tile('AI cost','$'+window.estimate.toFixed(2));
  const ln=[...big.children].filter(d=>d.firstChild.textContent!=='AI cost').map(d=>d.lastChild.textContent+(d.firstChild.textContent==='Roles'?' roles':'')).filter(x=>x&&x!=='—');$('sum-line').textContent=ln.join(' \u00b7 ')||(org||'')}
 $('f').addEventListener('input',()=>summary());$('f').addEventListener('change',()=>summary());$('f').addEventListener('click',()=>setTimeout(summary,0));
-function setMode(m){mode=m;$('pk').hidden=m==='qa';$('f').classList.toggle('qa-mode',m==='qa');document.querySelector('.qa-only').hidden=m!=='qa';$('m-write').classList.toggle('on',m==='write');$('m-qa').classList.toggle('on',m==='qa');
+function setMode(m){mode=m;$('pk').hidden=m==='qa';$('f').classList.toggle('qa-mode',m==='qa');$('full').classList.toggle('qa-mode',m==='qa');document.querySelector('.qa-only').hidden=m!=='qa';$('m-write').classList.toggle('on',m==='write');$('m-qa').classList.toggle('on',m==='qa');
  $('m-write').setAttribute('aria-selected',m==='write');setTimeout(summary,0);$('m-qa').setAttribute('aria-selected',m==='qa');$('f-h').textContent=m==='qa'?'Check a proposal':'New proposal';
  $('go').textContent=m==='qa'?'Check it against the brief':'Write proposal';$('go-note').textContent=m==='qa'?'Proposal QA reads your document and checks it against the brief: usually under a minute.':'Writing, a QA check and one revision if needed: usually two to four minutes.';if(S)cost()}
 $('m-write').onclick=()=>setMode('write');$('go2').onclick=()=>{if(!$('go').disabled)$('f').requestSubmit($('go'))};new MutationObserver(()=>{$('go2').disabled=$('go').disabled;$('go2').textContent=$('go').textContent}).observe($('go'),{attributes:true,childList:true});$('m-qa').onclick=()=>setMode('qa');
@@ -447,8 +450,8 @@ if(A.paused){$('pk-send').disabled=true;$('pk-msg').disabled=true}
 pkIntro();
 // ---------- collapsible sections ----------
 document.querySelectorAll('section.panel>.ph').forEach(h=>h.addEventListener('click',e=>{if(e.target.closest('button,input,select,a,label,textarea'))return;h.parentElement.classList.toggle('shut')}));
-$('exp-all').onclick=()=>{document.querySelectorAll('#f section.panel').forEach(p=>p.classList.remove('shut'));document.querySelectorAll('#f details.panel').forEach(d=>d.open=true)};
-$('col-all').onclick=()=>{document.querySelectorAll('#f section.panel').forEach(p=>p.classList.add('shut'));document.querySelectorAll('#f details.panel').forEach(d=>d.open=false)};
+$('exp-all').onclick=()=>{document.querySelectorAll('main section.panel').forEach(p=>p.classList.remove('shut'));document.querySelectorAll('main details.panel').forEach(d=>d.open=true)};
+$('col-all').onclick=()=>{document.querySelectorAll('main section.panel').forEach(p=>p.classList.add('shut'));document.querySelectorAll('main details.panel').forEach(d=>d.open=false)};
 function alertBox(msg){const e=mk('div',msg,'err');$('result').prepend(e);setTimeout(()=>e.remove(),8000)}
 function editDraft(p){const box=$('result');const c=mk('section','','card');c.append(mk('h2','Edit the draft'),mk('p','Change any section, then send it back: Proposal QA checks your version against the brief and the Word document is rebuilt from the template. The headings stay as they are.','hint'));
  const eds=[];for(const s of p.draft.sections||[]){const w=mk('div','','edit-sec');w.append(mk('b',s.title));if(s.keep){w.append(mk('span','(standard text from the template: not edited here)','hint'))}else{const t=document.createElement('textarea');t.value=s.body;t.maxLength=20000;t.setAttribute('aria-label','Text of '+s.title);w.append(t);eds.push([s,t])}c.append(w)}
