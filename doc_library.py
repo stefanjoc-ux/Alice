@@ -229,3 +229,62 @@ def extracts(pointers, question, provider, target='assistant'):
         except rules_engine.RuleViolation as e: skipped.append(f'{p.name}: {e}'); continue
         out.append({'path': str(p.relative_to(ROOT)), 'name': p.name, 'section': sec or '', 'title': title, 'text': part, 'where': describe(p)})
     return out, skipped
+
+
+# ---------------- adding documents (reference uploads) ----------------
+MAX_UPLOAD = 15 * 1024 * 1024
+
+
+def text_of(name, raw):
+    """Plain text of an uploaded document before it is saved (same readers as _read)."""
+    ext = Path(name).suffix.lower()
+    if ext not in TYPES: raise ValueError('Upload a Word, PDF, text, markdown or CSV file.')
+    if ext == '.docx':
+        import knowledge
+        return knowledge.docx_to_text(raw)
+    if ext == '.pdf':
+        from pypdf import PdfReader
+        return '\n'.join(pg.extract_text() or '' for pg in PdfReader(io.BytesIO(raw)).pages)
+    return raw.decode('utf-8', 'replace')
+
+
+def folders(depth=2):
+    """Where a document can be saved: every source and its subfolders, as paths relative to the Documents folder."""
+    out = []
+    if not ROOT.is_dir(): return out
+    for src in sources():
+        if not src['id']: continue
+        base = ROOT / src['id']
+        out.append({'path': src['id'], 'source': src['name'], 'type_name': src['type_name']})
+        for p in sorted(base.rglob('*'), key=lambda x: str(x).lower()):
+            rel = p.relative_to(ROOT)
+            if p.is_dir() and len(rel.parts) <= depth + 1 and not any(x.startswith(('.', '_')) for x in rel.parts):
+                out.append({'path': '/'.join(rel.parts), 'source': src['name'], 'type_name': src['type_name']})
+    return out
+
+
+def _safe_name(name):
+    stem = re.sub(r'[^A-Za-z0-9 ()&_.,-]+', '', Path(name).stem).strip(' .')[:100] or 'document'
+    return stem + Path(name).suffix.lower()
+
+
+def save(folder, name, raw, new_folder=''):
+    """Save an uploaded document into a source folder (never outside the Documents folder; never overwrites)."""
+    if len(raw) > MAX_UPLOAD: raise ValueError('That file is larger than 15 MB.')
+    folder = (folder or '').replace('\\', '/').strip('/')
+    base = (ROOT / folder).resolve() if folder else None
+    if not base or ROOT not in base.parents or not base.is_dir() or not folder.split('/')[0] in {s['id'] for s in sources() if s['id']}:
+        raise ValueError('Choose where to save it: one of the document sources or a folder inside one.')
+    nf = ' '.join((new_folder or '').split())
+    if nf:
+        if len(nf) > 60 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 &'()_.,-]*", nf) or nf.endswith('.'):
+            raise ValueError('Give the new folder a plain name (letters, numbers, spaces).')
+        base = (base / nf).resolve()
+        if ROOT not in base.parents: raise ValueError('Give the new folder a plain name.')
+        base.mkdir(exist_ok=True)
+    target = base / _safe_name(name)
+    n = 2
+    while target.exists():
+        target = base / f'{Path(_safe_name(name)).stem} ({n}){target.suffix}'; n += 1
+    target.write_bytes(raw)
+    return target

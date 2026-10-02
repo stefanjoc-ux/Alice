@@ -44,6 +44,18 @@ table.t td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}ta
 .err{background:#fbeaea;border:1px solid #e0aaaa;border-radius:10px;padding:10px 12px}
 .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 [hidden]{display:none!important}
+.ref-tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px}.ref-tools input{flex:1;min-width:200px}
+.ref-upl{cursor:pointer;border:1px solid var(--line2,#b9cbd8);border-radius:8px;padding:8px 14px;font-weight:600;font-size:14px;background:#fff}.ref-upl:hover{border-color:var(--teal)}
+.ref-list{display:grid;gap:6px;max-height:320px;overflow:auto;padding-right:4px}
+.ref-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-weight:400!important}
+.ref-item.off{opacity:.55}.ref-item b{font-weight:600;overflow-wrap:anywhere}.ref-item .hint{display:block}
+.ref-badges{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.rb{font-size:11.5px;padding:1px 8px;border-radius:999px;border:1px solid var(--line);background:#f4f6f8;color:#4b5a66;white-space:nowrap}
+.rb.ok{background:#eef8f1;color:#1e5b31;border-color:#9fcfaf}.rb.wait{background:#fdf3e1;color:#6b4406;border-color:#e2bf85}.rb.cl{background:#ede7f6;color:#4b2f73;border-color:#c7b8dd}
+.ref-panel{border:1px solid #c7b8dd;background:#faf7fd;border-radius:12px;padding:14px 16px;margin-bottom:10px;display:grid;gap:10px}
+.ref-panel h3{margin:0;font-size:15px}.ref-panel .grid2 label,.ref-panel>label{display:grid;gap:4px;font-weight:600;font-size:14px}
+.ref-tag{display:grid;gap:6px}.ref-tag label{display:flex!important;gap:8px;align-items:center;font-weight:400!important}
+.ref-ok{background:#eef8f1;border:1px solid #9fcfaf;border-radius:10px;padding:10px 12px;font-size:14px}
 @media(max-width:760px){.grid2,.cols{grid-template-columns:1fr}}
 </style></head><body>
 <header class="topbar"><span class="brand"><img src="/static/favicon.png" alt=""><span class="who">''' + escape(a['name']) + '''</span></span><div class="sp"></div><span class="small" style="color:#9fb8ca">Built on Alice</span></header>
@@ -61,6 +73,11 @@ table.t td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}ta
 <div class="grid2"><label>Writer model<select id="wm"></select></label><label>QA model<select id="qm"></select></label></div>
 <p class="hint" id="cost"></p>
 <label class="check"><input type="checkbox" id="mem" checked> Use what Alice knows: approved memories, decisions and knowledge that are general or for this client</label>
+<details class="fold" id="refs-fold"><summary>Reference documents <span class="hint" id="ref-count"></span></summary>
+<p class="pe-note">Background the writer can draw on, such as Microsoft success guides or your own method papers. It reads each document's approved summary and the passages relevant to this brief, under the same rules as everything else. The documents stay in their source.</p>
+<div class="ref-tools"><input type="search" id="ref-q" placeholder="Filter by name or source" aria-label="Filter reference documents"><label class="secondary ref-upl" tabindex="0">Upload a reference document<input type="file" id="ref-file" accept=".docx,.pdf,.txt,.md,.csv" hidden></label></div>
+<div class="ref-panel" id="ref-panel" hidden></div>
+<div class="ref-list" id="ref-list"></div></details>
 <details class="fold" open><summary>Format and flow</summary>
 <p class="pe-note">The sections in order. Template sections keep the template's formatting; add sections, rename them, reorder them, or add content suggestions for each. Standard text is copied from the template word for word.</p><div id="secs"></div><p class="pe-note" id="tpl"></p></details>
 <details class="fold"><summary>Rate card</summary>
@@ -80,7 +97,45 @@ const STEPS=[['Gathering','Gathering what Alice knows and writing the draft'],['
 function drawSteps(stage,status,qa){const ol=$('steps');ol.replaceChildren();let idx=STEPS.findIndex(s=>stage&&stage.includes(s[0]));if(status==='done')idx=STEPS.length;
  const skipped=status==='done'&&qa&&qa.length===1;
  STEPS.forEach(([k,l],i)=>{if(skipped&&(i===2||i===3))return;const li=mk('li',i===2&&skipped?l:l,i<idx?'done':i===idx?'now':'');ol.append(li)})}
-async function load(){S=await api('/setup');$('greeting').textContent=A.paused?A.name+' is paused at the moment.':A.greeting;
+let R={documents:[],folders:[],clients:[],categories:[]};const picked=new Set();
+async function loadRefs(){try{R=await api('/references')}catch{R={documents:[],folders:[],clients:[],categories:[]}}drawRefs()}
+function drawRefs(){const q=($('ref-q').value||'').toLowerCase(),org=$('org').value.trim().toLowerCase(),box=$('ref-list');box.replaceChildren();
+ const tpl=(S&&S.template||'').replace(/\\/g,'/');const docs=R.documents.filter(d=>d.path.replace(/\\/g,'/')!==tpl).filter(d=>!q||(d.name+' '+d.source+' '+d.path).toLowerCase().includes(q));
+ if(!R.documents.length)box.append(mk('p','No documents in the document sources yet. Upload one, or add files to a source on the Documents page.','pe-note'));
+ for(const d of docs){const other=d.clients.length&&!d.clients.some(c=>c.toLowerCase()===org);const row=mk('label','','ref-item'+(other?' off':''));
+  const cb=document.createElement('input');cb.type='checkbox';cb.checked=picked.has(d.path);cb.disabled=other&&!picked.has(d.path);cb.onchange=()=>{cb.checked?picked.add(d.path):picked.delete(d.path);count()};
+  const mid=mk('span');mid.append(mk('b',d.name),mk('span',d.source+' · '+d.path,'hint'));
+  const bd=mk('span','','ref-badges');bd.append(mk('span',d.summary==='approved'?'Summary approved':d.summary==='draft'?'Summary awaiting approval':'No summary yet','rb'+(d.summary==='approved'?' ok':d.summary==='draft'?' wait':'')));
+  for(const c of d.clients)bd.append(mk('span','For '+c+' only','rb cl'));if(!d.clients.length&&d.summary)bd.append(mk('span','General','rb'));
+  if(other)row.title='Tagged to another client: it can only be used on that client\u2019s proposals.';row.append(cb,mid,bd);box.append(row)}
+ count()}
+function count(){$('ref-count').textContent=picked.size?'\u00b7 '+picked.size+' selected':''}
+$('ref-q').oninput=drawRefs;
+$('ref-file').onchange=async()=>{const f=$('ref-file').files[0];$('ref-file').value='';if(!f)return;const pan=$('ref-panel');pan.hidden=false;pan.replaceChildren(mk('p','Reading '+f.name+'\u2026','hint'));
+ if(f.size>15*1024*1024){pan.replaceChildren(mk('p','That file is larger than 15 MB.','err'));return}
+ const data=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]);r.onerror=no;r.readAsDataURL(f)});
+ let x;try{x=await api('/references/inspect','POST',{name:f.name,data,organisation:$('org').value})}catch(e){pan.replaceChildren(mk('p',e.message,'err'));return}
+ refForm(x)};
+function refForm(x){const pan=$('ref-panel');pan.replaceChildren();pan.append(mk('h3','Add '+x.name+' as a reference'));
+ if(x.purview)pan.append(mk('p','Purview label: '+x.purview+'. Alice checks its mapping before anything is sent to the AI.','hint'));
+ const ti=document.createElement('input');ti.maxLength=200;ti.value=x.title;const tl=mk('label','Title');tl.append(ti);
+ const fs=document.createElement('select');for(const f of R.folders){const o=document.createElement('option');o.value=f.path;o.textContent=f.path.replace(/\//g,' \u203a ')+' ('+f.type_name+')';fs.append(o)}fs.value=x.folder;
+ const nf=document.createElement('input');nf.maxLength=60;nf.value=x.new_folder||'';nf.placeholder='Optional';
+ const g=mk('div','','grid2');const l1=mk('label','Save to');l1.append(fs,mk('span','Saved in the document source, not in Alice.','hint'));const l2=mk('label','New folder inside it');l2.append(nf);g.append(l1,l2);
+ const tg=mk('div','','ref-tag');tg.append(mk('b','Who can use it'));const mkr=(v,txt)=>{const l=mk('label');const r=document.createElement('input');r.type='radio';r.name='reftag';r.value=v;r.checked=x.tag===v;l.append(r,document.createTextNode(txt));return [l,r]};
+ const [lg,rg]=mkr('general','General: every client\u2019s proposals can use it');const [lc,rc]=mkr('client','One client only:');
+ const cs=document.createElement('select');for(const c of R.clients){const o=document.createElement('option');o.value=c;o.textContent=c;cs.append(o)}if(x.client)cs.value=x.client;lc.append(cs);cs.onchange=()=>{rc.checked=true};
+ tg.append(lg,lc,mk('span','Suggested: '+x.reason,'hint'));
+ const cat=document.createElement('select');const o0=document.createElement('option');o0.value='';o0.textContent='No category';cat.append(o0);for(const c of R.categories){const o=document.createElement('option');o.value=c;o.textContent=c;cat.append(o)}cat.value=x.category||'';
+ const cl=mk('label','Category in Knowledge');cl.append(cat);
+ const go=document.createElement('button');go.type='button';go.className='primary';go.textContent='Save, summarise and use it';const cancel=document.createElement('button');cancel.type='button';cancel.className='secondary';cancel.textContent='Cancel';cancel.onclick=()=>{pan.hidden=true};
+ const act=mk('div','','go');act.append(go,cancel,mk('span','The summary goes to Knowledge as a draft for approval. Takes about half a minute.','hint'));
+ go.onclick=async()=>{go.disabled=true;go.textContent='Saving and summarising\u2026';
+  try{const r=await api('/references','POST',{token:x.token,folder:fs.value,new_folder:nf.value,title:ti.value,tag:rc.checked?'client':'general',client:rc.checked?cs.value:'',category:cat.value});
+   picked.add(r.path);await loadRefs();pan.replaceChildren(mk('div',r.note?r.note:'Saved to '+r.path.replace(/[\\\/]/g,' \u203a ')+' ('+r.where+')'+(r.client?', for '+r.client+' only':', for every client')+'. '+(r.duplicate?'Alice already had this summary.':'The summary is waiting for your approval in Knowledge; until then the writer uses the passages relevant to each brief.')+' It is selected for this proposal.','ref-ok'))}
+  catch(e){go.disabled=false;go.textContent='Save, summarise and use it';pan.append(mk('p',e.message,'err'))}};
+ pan.append(tl,g,tg,cl,act)}
+async function load(){S=await api('/setup');loadRefs();$('greeting').textContent=A.paused?A.name+' is paused at the moment.':A.greeting;
  $('orgs').replaceChildren(...S.organisations.map(o=>{const x=document.createElement('option');x.value=o.name;if(o.client)x.label=o.name+' (client)';return x}));
  const opt=m=>{const o=document.createElement('option');o.value=m.key;o.textContent=m.name+(m.premium?' (premium)':'');return o};
  $('wm').replaceChildren(...S.models.map(opt));$('qm').replaceChildren(...S.models.map(opt));$('wm').value=S.writer;$('qm').value=S.qa;
@@ -90,9 +145,10 @@ async function load(){S=await api('/setup');$('greeting').textContent=A.paused?A
  secEd=PE.sections($('secs'),S.sections,{empty:'No sections yet: add some, or choose a template on the Assistants page.'});rateEd=PE.rates($('rates'),S.rate_card,S.units);
  $('tpl').textContent=S.template_error?S.template_error:S.template?'Template: '+S.template:'No template set: Alice uses its own Word layout. Set a template on the Assistants page.';
  if(A.paused)$('go').disabled=true;recent();const q=new URLSearchParams(location.search).get('p');if(q)follow(q)}
+$('org').addEventListener('input',()=>drawRefs());
 $('org').oninput=()=>{const o=S&&S.organisations.find(x=>x.name.toLowerCase()===$('org').value.trim().toLowerCase());$('org-hint').textContent=o?(o.client?o.name+' is a client: its tagged memories and knowledge are included; other clients’ never are.':'Its approved profile is used.'):($('org').value.trim()?'Not in the list: Alice checks other names it knows (e.g. SBC); if none match, the name is used as typed.':'Its approved profile is used. Only this client’s tagged material is used, never another client’s.')};
 $('f').onsubmit=async e=>{e.preventDefault();$('ferr').hidden=true;$('go').disabled=true;
- try{const r=await api('/proposals','POST',{title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value,use_memory:$('mem').checked,writer_model:$('wm').value,qa_model:$('qm').value,sections:secEd.value(),rate_card:rateEd.value()});
+ try{const r=await api('/proposals','POST',{title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value,use_memory:$('mem').checked,references:[...picked],writer_model:$('wm').value,qa_model:$('qm').value,sections:secEd.value(),rate_card:rateEd.value()});
   history.replaceState(null,'','?p='+r.id);document.querySelectorAll('details.fold').forEach(d=>d.open=false);follow(r.id);document.querySelector('main').scrollTop=0}
  catch(err){$('ferr').textContent=err.message;$('ferr').hidden=false;$('go').disabled=A.paused}};
 function follow(pid){clearInterval(timer);$('result').replaceChildren();$('prog').hidden=false;$('perr').hidden=true;$('prog-title').textContent='Working on it';drawSteps('Gathering','running');
@@ -124,6 +180,7 @@ function show(p){const box=$('result');box.replaceChildren();const qa=p.qa[p.qa.
  if((d.dropped_roles||[]).length)more.append(mk('p','Roles the writer wanted that are not on the rate card (left out): '+d.dropped_roles.join(', '),'hint'));
  const u=(p.context||{}).used||{};more.append(mk('h2','What Alice used'));const ul2=mk('ul');
  ul2.append(mk('li',u.organisation?'Organisation profile: '+u.organisation:'No organisation profile.'));ul2.append(mk('li',(u.memories||[]).length?'Memories: '+u.memories.join('; '):'No memories.'));ul2.append(mk('li',(u.knowledge||[]).length?'Knowledge: '+u.knowledge.join('; '):'No knowledge.'));
+ if((u.references||[]).length)ul2.append(mk('li','Reference documents: '+u.references.join('; ')));for(const x of u.references_skipped||[])ul2.append(mk('li','Reference left out: '+x));
  if((p.context||{}).skipped)ul2.append(mk('li',p.context.skipped+' item(s) left out by the rules.'));more.append(ul2);
  const dr=document.createElement('details');dr.className='fold draft';dr.append(mk('summary','Read the draft here'));for(const s of d.sections||[]){dr.append(mk('h3',s.title),mk('div',s.keep?'(standard text from the template)':s.body,'body'))}more.append(dr);box.append(more)}
 async function recent(){try{const d=await api('/proposals');$('recent-box').hidden=!d.proposals.length;$('recent').replaceChildren(...d.proposals.map(x=>{const b=mk('button','','secondary');b.type='button';

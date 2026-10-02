@@ -79,6 +79,11 @@ BUILTIN = [
      'When someone starts a proposal on the Proposal writer page', ['Proposal writer'],
      'The brief; the template\'s sections and guidance; the client profile, memories and knowledge for that client or general',
      'A draft proposal and a Word document for download (never knowledge)', True),
+    ('alice-reference-summariser', 'Reference summariser', 'internal',
+     'Summarises a reference document uploaded on the Proposal writer page; the summary lands in Knowledge as a draft '
+     'pointing to the document, which stays in its document source.',
+     'When someone uploads a reference document', ['Reference summary'],
+     'The uploaded document (checked for secrets, markings and its Purview label first)', 'A knowledge draft awaiting your approval', True),
     ('alice-proposal-qa', 'Proposal QA', 'internal',
      'Checks each proposal draft against the brief and for client-ready quality: every requirement met, nothing invented, '
      'no placeholders, the right client, a consistent price. Advisory: the person decides.',
@@ -157,6 +162,14 @@ ANATOMY = {
                               'guardrails': ['secret_detection', 'protective_marking', 'client_separation', 'provider_allow', 'data_minimisation', 'spend_cap'],
                               'outputs': ['Draft proposal sections', 'Resource plan (days per role)', 'Gaps it could not fill'],
                               'gate': 'You review the QA report and the Word document before anything goes to a client'},
+    'alice-reference-summariser': {'model': 'The Proposal writer\'s QA model (Claude Sonnet 5.5 by default)',
+                                   'instructions': 'Summarise the document for a proposal team: what it is, the main points and frameworks, '
+                                                   'key points and what it is useful for. Nothing that is not in it.',
+                                   'tools': ['Suggests save location, title, category and tag in code (General when it names no client)'],
+                                   'data': ['input', 'documents'],
+                                   'guardrails': ['secret_detection', 'protective_marking', 'client_separation', 'spend_cap'],
+                                   'outputs': ['Knowledge draft pointing to the document'],
+                                   'gate': 'You approve the summary on the Knowledge page'},
     'alice-proposal-qa': {'model': 'Chosen on the Proposal writer assistant (Claude Sonnet 5.5 by default)',
                           'instructions': 'Check the draft against the brief requirement by requirement and for client-ready quality; '
                                           'return a verdict, a score and specific fixes.',

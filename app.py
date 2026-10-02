@@ -1523,6 +1523,21 @@ class ProposalIn(BaseModel):
     use_memory: bool = True
     writer_model: str = Field(default='',max_length=20)
     qa_model: str = Field(default='',max_length=20)
+    references: list[Annotated[str, Field(max_length=300)]] = Field(default_factory=list,max_length=10)
+
+class ReferenceUpload(BaseModel):
+    name: str = Field(min_length=1,max_length=150)
+    data: str = Field(min_length=1,max_length=21_000_000)
+    organisation: str = Field(default='',max_length=80)
+
+class ReferenceSave(BaseModel):
+    token: str = Field(min_length=8,max_length=64)
+    folder: str = Field(min_length=1,max_length=300)
+    new_folder: str = Field(default='',max_length=60)
+    title: str = Field(default='',max_length=200)
+    tag: Literal['general','client'] = 'general'
+    client: str = Field(default='',max_length=80)
+    category: str = Field(default='',max_length=40)
 
 class AssistantQuestion(BaseModel):
     question: str = Field(min_length=1,max_length=2000)
@@ -1582,8 +1597,40 @@ def proposal_setup(aid: str):
 def proposal_start(aid: str, x: ProposalIn, request: Request):
     import proposals
     _same_origin(request)
-    try: return {'id':proposals.start(aid,x.title,x.organisation,x.brief,x.notes,x.sections,x.rate_card,x.use_memory,x.writer_model,x.qa_model)}
+    try: return {'id':proposals.start(aid,x.title,x.organisation,x.brief,x.notes,x.sections,x.rate_card,x.use_memory,x.writer_model,x.qa_model,x.references)}
     except LookupError: raise HTTPException(404,'No such proposal writer.') from None
+    except Exception as e:
+        code,detail=_assistant_error(e)
+        if code==500: raise
+        raise HTTPException(code,detail) from None
+
+def _proposal_writer(aid):
+    try: a=assistants.get(aid)
+    except LookupError: raise HTTPException(404,'No such proposal writer.') from None
+    if a['kind']!='proposal': raise HTTPException(404,'No such proposal writer.')
+    return a
+
+@app.get('/assistant/{aid}/references')
+def reference_list(aid: str):
+    import references, doc_library, clients
+    _proposal_writer(aid)
+    return {'documents':references.listing(),'folders':doc_library.folders(),'clients':clients.names(),
+            'categories':[c['name'] for c in store.list_categories()['categories']]}
+
+@app.post('/assistant/{aid}/references/inspect')
+def reference_inspect(aid: str, x: ReferenceUpload, request: Request):
+    import references
+    _same_origin(request); _proposal_writer(aid)
+    try: raw=base64.b64decode(x.data,validate=True)
+    except ValueError: raise HTTPException(400,'The file did not arrive intact. Try again.') from None
+    try: return references.inspect(x.name,raw,x.organisation)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+@app.post('/assistant/{aid}/references')
+def reference_save(aid: str, x: ReferenceSave, request: Request):
+    import references
+    _same_origin(request); _proposal_writer(aid)
+    try: return references.save_and_summarise(aid,x.token,x.folder,x.title,x.tag,x.client,x.category,x.new_folder)
     except Exception as e:
         code,detail=_assistant_error(e)
         if code==500: raise
