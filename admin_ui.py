@@ -64,9 +64,8 @@ SECTIONS = {
 'agents': r'''<div id="ag-list"><div id="ag-view" class="mem-tabs ag-view"></div>
 <section id="ag-map-wrap" hidden><div class="mem-head"><h2>System map</h2><span id="ag-map-note" class="muted small"></span></div><div id="ag-map"></div></section>
 <div id="ag-cards-wrap"><div class="ag-tools"><input id="ag-search" type="search" placeholder="Find an agent by name or what it does" aria-label="Find an agent"><span id="ag-summary" class="muted small"></span></div>
-<p class="muted small">Agents only propose; nothing they do is approved without you, and the rules apply on top of their limits. An agent pauses itself after 3 failed runs in a row or at its monthly budget. Click a section heading to collapse it; ones needing attention are listed first.</p>
-<details class="ag-group" id="ag-g-auto" open><summary><h2>Alice automations</h2><span class="ag-count"></span><span class="ag-attn"></span></summary><div id="ag-auto" class="ag-cards"></div></details>
-<details class="ag-group" id="ag-g-apps" open><summary><h2>Connected apps</h2><span class="ag-count"></span><span class="ag-attn"></span></summary><p class="muted small">Every tool call is checked against the app's permissions. New apps appear here when they first connect.</p><div id="ag-apps" class="ag-cards"></div></details></div></div>
+<p class="muted small">Agents only propose; nothing they do is approved without you, and the rules apply on top of their limits. An agent pauses itself after 3 failed runs in a row or at its monthly budget. Agents are grouped by the job they share; ones needing attention are listed first.</p>
+<div id="ag-groups"></div><div id="ag-table-wrap" class="table-wrap" hidden></div></div></div>
 <div id="ag-detail" hidden></div>''',
 'organisations': r'''<button id="opp-open" type="button" class="opp-tab" aria-controls="opp-drawer" aria-expanded="false">Opportunities<span id="opp-badge" class="badge-count" hidden></span></button>
 <aside id="opp-drawer" class="opp-drawer" aria-label="Opportunity tracker" aria-hidden="true"><div class="opp-head"><h2>Opportunity tracker</h2><button id="opp-close" type="button" class="secondary">Close</button></div>
@@ -257,6 +256,9 @@ nav{display:flex;gap:20px;flex-wrap:wrap}.sidebar nav{display:contents}
 .ag-group>summary::before{content:'▸';color:var(--muted);transition:transform .15s}.ag-group[open]>summary::before{transform:rotate(90deg)}
 .ag-group>summary h2{margin:0;font-size:17px}.ag-count{background:var(--teal2);color:var(--teal);border-radius:999px;padding:0 9px;font-size:12px;font-weight:700;line-height:20px}
 .ag-attn{font-size:12px;color:#8a5a00;font-weight:600}.ag-empty{color:var(--muted);font-size:14px;padding:4px 0}
+.ag-gabout{margin:-6px 0 12px}.ag-table{width:100%;table-layout:fixed}.ag-table th:nth-child(1){width:44%}.ag-table th:nth-child(2){width:10%}.ag-table th:nth-child(3){width:19%}.ag-table th:nth-child(5){width:13%;text-align:right}.ag-trow{cursor:pointer}.ag-trow:hover td{background:#f4f8fb}.ag-trow:focus-visible{outline:2px solid var(--teal)}.ag-trow.off td{background:#fffbf3}
+.ag-trow-g td{background:var(--bg);padding-top:14px!important}.ag-trow-g strong{font-size:14px;margin-right:6px}.ag-tpurpose{max-width:640px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical}.ag-tattn{color:#8a4b00;margin-top:2px}
+@media(max-width:800px){.ag-table th:nth-child(4),.ag-table td:nth-child(4),.ag-table th:nth-child(5),.ag-table td:nth-child(5){display:none}}
 .ag-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
 .ag-card{all:unset;box-sizing:border-box;cursor:pointer;display:flex;flex-direction:column;gap:8px;border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:#fff;min-width:0}
 .ag-card:hover{border-color:#89b1bf;box-shadow:0 2px 10px #0b162612}.ag-card:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
@@ -1312,20 +1314,33 @@ if(PAGE==='agents'){
   c.append(foot);
   const flags=el('div','','ag-card-flags');if(a.status_reason&&a.status!=='active')flags.append(el('span',a.status_reason,'small'));if(a.external_content)flags.append(el('span','Reads outside content','tag'));if(a.review_overdue)flags.append(el('span','⚑ Review overdue','flag'));if(a.waiting)flags.append(el('span',a.waiting+' waiting for you','flag'));if(flags.childElementCount)c.append(flags);
   return c}
- function list(){$('ag-view').replaceChildren(...[['cards','Cards'],['map','System map']].map(([k,l])=>{const b=el('button',l,'chip'+(st.view===k?' on':''));b.type='button';b.onclick=()=>{st.view=k;try{localStorage.setItem('alice-agents-view',k)}catch{}list()};return b}));
+ function list(){$('ag-view').replaceChildren(...[['cards','Cards'],['list','List'],['map','System map']].map(([k,l])=>{const b=el('button',l,'chip'+(st.view===k?' on':''));b.type='button';b.onclick=()=>{st.view=k;try{localStorage.setItem('alice-agents-view',k)}catch{}list()};return b}));
   $('ag-cards-wrap').hidden=st.view==='map';$('ag-map-wrap').hidden=st.view!=='map';if(st.view==='map'){drawMap();return}
   const L=st.L,internal=L.agents.filter(a=>a.kind!=='app'),apps=L.agents.filter(a=>a.kind==='app'),off=L.agents.filter(a=>a.status!=='active').length;
   $('ag-summary').textContent=internal.length+' automations · '+apps.length+' connected apps'+(off?' · '+off+' paused or stopped':'');
   const q=($('ag-search').value||'').trim().toLowerCase();
   const attn=a=>a.status!=='active'||a.review_overdue||a.waiting>0||(a.last_run&&a.last_run.status==='failed');
-  const match=a=>!q||(a.name+' '+a.purpose+' '+a.id).toLowerCase().includes(q);
+  const gname=Object.fromEntries((L.groups||[]).map(g=>[g.id,g.name]));
+  const match=a=>!q||(a.name+' '+a.purpose+' '+a.id+' '+(gname[a.group]||'')).toLowerCase().includes(q);
   const closed=(()=>{try{return JSON.parse(localStorage.getItem('alice-agents-closed')||'[]')}catch{return []}})();
-  for(const [gid,box,rows] of [['ag-g-auto','ag-auto',internal],['ag-g-apps','ag-apps',apps]]){const g=$(gid),shown=rows.filter(match).sort((a,b)=>attn(b)-attn(a)||a.name.localeCompare(b.name)),n=rows.filter(attn).length;
-   g.querySelector('.ag-count').textContent=q?shown.length+' of '+rows.length:String(rows.length);
-   g.querySelector('.ag-attn').textContent=n?'⚑ '+n+' need'+(n===1?'s':'')+' attention':'';
-   $(box).replaceChildren(...(shown.length?shown.map(card):[el('div',q?'No match.':'None yet.','ag-empty')]));
-   g.open=q?shown.length>0:!closed.includes(gid);
-   g.ontoggle=()=>{if(q)return;try{const c=new Set(JSON.parse(localStorage.getItem('alice-agents-closed')||'[]'));g.open?c.delete(gid):c.add(gid);localStorage.setItem('alice-agents-closed',JSON.stringify([...c]))}catch{}}}}
+  const groups=(L.groups||[]).map(g=>({...g,rows:L.agents.filter(a=>(a.group||(a.kind==='app'?'apps':'other'))===g.id)})).filter(g=>g.rows.length);
+  const sorted=rows=>rows.filter(match).sort((a,b)=>attn(b)-attn(a)||(a.group_order??99)-(b.group_order??99)||a.name.localeCompare(b.name));
+  $('ag-groups').hidden=st.view!=='cards';$('ag-table-wrap').hidden=st.view!=='list';
+  if(st.view==='list'){const t=el('table','','mem-table ag-table');const h=document.createElement('tr');for(const x of ['Agent','Status','Last run','This month','Cost'])h.append(el('th',x));const th=document.createElement('thead');th.append(h);t.append(th);const tb=document.createElement('tbody');let any=false;
+   for(const g of groups){const rows=sorted(g.rows);if(!rows.length)continue;any=true;const gr=document.createElement('tr');gr.className='ag-trow-g';const gc=el('td','');gc.colSpan=5;gc.append(el('strong',g.name),el('span',' '+rows.length,'ag-count'));gr.append(gc);tb.append(gr);
+    for(const a of rows){const tr=document.createElement('tr');tr.className='ag-trow'+(a.status!=='active'?' off':'');tr.tabIndex=0;tr.onclick=()=>go(a.id);tr.onkeydown=e=>{if(e.key==='Enter')go(a.id)};
+     const c1=document.createElement('td');c1.append(el('strong',a.name),el('div',a.purpose,'muted small ag-tpurpose'));if(attn(a))c1.append(el('div','⚑ needs attention'+(a.status_reason&&a.status!=='active'?': '+a.status_reason:a.waiting?': '+a.waiting+' waiting for you':''),'small ag-tattn'));
+     const c2=document.createElement('td');c2.append(pill(a));const lr=a.last_run;const c3=document.createElement('td');c3.className='small';if(lr){c3.append(document.createTextNode(when(lr.started_at)+' '),badge(a.kind==='app'&&lr.status==='running'?'today':lr.status,RUNST[lr.status]||'v-none'))}else c3.append(el('span',a.kind==='app'?'No calls yet':'Not run yet','muted'));
+     tr.append(c1,c2,c3,el('td',a.kind==='app'?plural('call',a.calls_month):plural('run',a.runs_month)+(a.failed_month?' · '+a.failed_month+' failed':''),'small'),el('td',DEMO?'—':usd(a.cost_month),'num'));tb.append(tr)}}
+   if(!any){const tr=document.createElement('tr');const td=el('td',q?'No match.':'No agents yet.','muted');td.colSpan=5;tr.append(td);tb.append(tr)}
+   t.append(tb);$('ag-table-wrap').replaceChildren(t);return}
+  const box=$('ag-groups');box.replaceChildren();
+  for(const g of groups){const rows=sorted(g.rows),n=g.rows.filter(attn).length,gid='ag-g-'+g.id;
+   const d=document.createElement('details');d.className='ag-group';d.id=gid;const sm=document.createElement('summary');sm.append(el('h2',g.name),el('span',q?rows.length+' of '+g.rows.length:String(g.rows.length),'ag-count'),el('span',n?'⚑ '+n+' need'+(n===1?'s':'')+' attention':'','ag-attn'));d.append(sm);
+   d.append(el('p',g.about,'muted small ag-gabout'));const cards=el('div','','ag-cards');cards.append(...(rows.length?rows.map(card):[el('div','No match.','ag-empty')]));d.append(cards);
+   d.open=q?rows.length>0:!closed.includes(gid);
+   d.ontoggle=()=>{if(q)return;try{const c=new Set(JSON.parse(localStorage.getItem('alice-agents-closed')||'[]'));d.open?c.delete(gid):c.add(gid);localStorage.setItem('alice-agents-closed',JSON.stringify([...c]))}catch{}};
+   box.append(d)}}
  $('ag-search').oninput=()=>list();
  // ---- detail: header, tabs, one tab at a time
  function detail(a){const box=$('ag-detail');box.replaceChildren();

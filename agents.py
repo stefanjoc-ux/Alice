@@ -181,6 +181,26 @@ ANATOMY = {
     'claude-desktop': dict(_APP_ANATOMY, model='Claude (your Claude Desktop model)', identity='Caller name on this computer (stdio)'),
     'microsoft-copilot': dict(_APP_ANATOMY, model='Microsoft 365 Copilot', identity='Entra ID token from the Tuduma tenant'),
 }
+# How the Agents page groups agents: (id, name, what the group is for, member agent ids). Apps form their own group.
+GROUPS = [
+    ('proposals', 'Proposals', 'Write proposals into your template, check them against the brief, and summarise reference documents.',
+     ['alice-proposal-writer', 'alice-proposal-qa', 'alice-reference-summariser']),
+    ('clients', 'Clients and opportunities', 'Research organisations on the public web and look for opportunities in the news.',
+     ['temple-org-research', 'temple-opportunities']),
+    ('conversations', 'Learning from conversations', 'Suggest memories, decisions and knowledge from chats, saved conversations and meetings.',
+     ['temple-chat', 'temple-chat-review', 'temple-meeting']),
+    ('stewardship', 'Keeping memory and knowledge tidy', 'Review proposed memories, categorise, tag clients and spot replaced knowledge.',
+     ['temple-review', 'temple-categorise', 'temple-tagging', 'temple-replacements']),
+    ('answers', 'Answering questions', 'Staff assistants that answer from approved knowledge, and Ask Temple for your own questions.',
+     ['alice-assistants', 'temple-ask']),
+]
+_AGENT_GROUP = {aid: g for g, _, _, ids in GROUPS for aid in ids}
+
+
+def group_of(a):
+    return 'apps' if a['kind'] == 'app' else _AGENT_GROUP.get(a['id'], 'other')
+
+
 _ANATOMY_KEYS = ('model', 'identity', 'instructions', 'tools', 'data', 'guardrails', 'outputs', 'gate')
 _current = contextvars.ContextVar('alice_agent_run', default=None)
 
@@ -311,13 +331,17 @@ def listing():
         a.update(runs_month=s.get('runs') or 0, failed_month=s.get('failed') or 0, cost_month=round(s.get('cost') or 0, 4),
                  calls_month=s.get('calls') or 0, last_run=last.get(a['id']), waiting=proposals.get(a['id'], 0),
                  review_overdue=bool(a['review_by'] and a['review_by'] < today))
-    for a in agents: a['anatomy_live'] = live_anatomy(a)
+    order = {aid: n for _, _, _, ids in GROUPS for n, aid in enumerate(ids)}
+    for a in agents: a['anatomy_live'] = live_anatomy(a); a['group'] = group_of(a); a['group_order'] = order.get(a['id'], 99)
     try:
         import rules_engine
         rule_list = [{'id': r['id'], 'name': r['name'], 'enabled': r['enabled']} for r in rules_engine.all_rules() if r['kind'] == 'enforced']
     except Exception:
         rule_list = []
-    return {'agents': agents, 'tools': TOOLS, 'write_tools': sorted(WRITE_TOOLS), 'labels': LABELS, 'data_sources': DATA_SOURCES, 'rules': rule_list}
+    groups = [{'id': g, 'name': n, 'about': d} for g, n, d, _ in GROUPS] + [
+        {'id': 'other', 'name': 'Other automations', 'about': 'Automations not in a group yet.'},
+        {'id': 'apps', 'name': 'Connected apps', 'about': 'Every tool call is checked against the app\'s permissions. New apps appear here when they first connect.'}]
+    return {'agents': agents, 'groups': groups, 'tools': TOOLS, 'write_tools': sorted(WRITE_TOOLS), 'labels': LABELS, 'data_sources': DATA_SOURCES, 'rules': rule_list}
 
 
 def runs(aid, limit=50, offset=0):

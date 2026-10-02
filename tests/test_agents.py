@@ -119,7 +119,7 @@ t('Alice web chat is not an agent (no gating)', M._app('list_files') == (None, N
 
 # 8. the page and activity
 page = cl.get('/admin/agents').text
-t('Agents page renders with cards, system map and demo switch', all(f'id="{i}"' in page for i in ('ag-auto', 'ag-map', 'demo-toggle')))
+t('Agents page renders with cards, system map and demo switch', all(f'id="{i}"' in page for i in ('ag-groups', 'ag-map', 'demo-toggle')))
 with s.db() as c: acts = {r[0] for r in c.execute('SELECT DISTINCT action FROM activity')}
 t('pauses, stops and changes are in the activity log', {'agent_paused', 'agent_stopped', 'agent_updated', 'agent_registered'} <= acts)
 
@@ -149,3 +149,12 @@ t('demo: no real names leak', not any('Carport' in json.dumps(i) for i in mitems
 rid0 = A.runs('temple-review')['runs'][-1]['id']
 dm = cl.get(f'/admin/api/agent-runs/{rid0}?demo=1', headers=H).json()
 t('demo: run detail masked', 'Carport' not in json.dumps(dm['events']) and all(e['target_id'] == '' for e in dm['events'] if e.get('target_type')))
+
+# grouping on the Agents page
+lst = cl.get('/admin/api/agents', headers=H).json()
+grp = {a['id']: a['group'] for a in lst['agents']}
+t('agents are grouped by the job they share', grp.get('alice-proposal-writer') == grp.get('alice-proposal-qa') == grp.get('alice-reference-summariser') == 'proposals'
+  and grp.get('temple-org-research') == 'clients' and all(g == 'apps' for a, g in grp.items() if next(x for x in lst['agents'] if x['id'] == a)['kind'] == 'app'))
+t('every built-in automation has a group', not [a for a, g in grp.items() if g == 'other'])
+t('groups have names and descriptions, in order', [g['id'] for g in lst['groups']][:2] == ['proposals', 'clients'] and all(g['about'] for g in lst['groups']))
+t('the page offers cards, a list and the map', all(x in cl.get('/admin/agents', headers=H).text for x in ("['list','List']", 'ag-table-wrap', 'ag-groups')))
