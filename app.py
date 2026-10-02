@@ -1504,12 +1504,23 @@ class AssistantIn(BaseModel):
     description: str = Field(default='',max_length=500)
     greeting: str = Field(default='',max_length=800)
     packs: list[Annotated[str, Field(max_length=10)]] = Field(default_factory=list,max_length=10)
-    provider: Literal['openai','claude'] = 'openai'
+    provider: Literal['openai','claude','claude_sonnet'] = 'openai'
     categories: list[Annotated[str, Field(max_length=40)]] = Field(default_factory=list,max_length=20)
     guidance: str = Field(default='',max_length=3000)
     contact: str = Field(default='',max_length=120)
     status: Literal['active','paused'] = 'active'
     allow_documents: bool = True
+    kind: Literal['qa','proposal'] = 'qa'
+    settings: dict|None = None
+
+class ProposalIn(BaseModel):
+    title: str = Field(min_length=1,max_length=150)
+    organisation: str = Field(default='',max_length=80)
+    brief: str = Field(min_length=1,max_length=20000)
+    notes: str = Field(default='',max_length=4000)
+    sections: list[dict]|None = Field(default=None,max_length=30)
+    rate_card: list[dict]|None = Field(default=None,max_length=40)
+    use_memory: bool = True
 
 class AssistantQuestion(BaseModel):
     question: str = Field(min_length=1,max_length=2000)
@@ -1547,8 +1558,60 @@ def admin_review_days_set(r: ReviewDays):
 
 @app.get('/assistant/{aid}', response_class=HTMLResponse)
 def assistant_view(aid: str):
-    try: return assistant_page.render(assistants.get(aid))
+    try: a=assistants.get(aid)
     except LookupError: raise HTTPException(404,'No such assistant.') from None
+    if a['kind']=='proposal':
+        import proposal_page
+        return proposal_page.render(a)
+    return assistant_page.render(a)
+
+def _same_origin(request):
+    from urllib.parse import urlsplit
+    origin=request.headers.get('origin')
+    if origin and urlsplit(origin).netloc!=request.url.netloc: raise HTTPException(403,'Cross-origin requests are not allowed.')
+
+@app.get('/assistant/{aid}/setup')
+def proposal_setup(aid: str):
+    import proposals
+    try: return proposals.setup(aid)
+    except LookupError: raise HTTPException(404,'No such proposal writer.') from None
+
+@app.post('/assistant/{aid}/proposals')
+def proposal_start(aid: str, x: ProposalIn, request: Request):
+    import proposals
+    _same_origin(request)
+    try: return {'id':proposals.start(aid,x.title,x.organisation,x.brief,x.notes,x.sections,x.rate_card,x.use_memory)}
+    except LookupError: raise HTTPException(404,'No such proposal writer.') from None
+    except Exception as e:
+        code,detail=_assistant_error(e)
+        if code==500: raise
+        raise HTTPException(code,detail) from None
+
+@app.get('/assistant/{aid}/proposals')
+def proposal_list(aid: str):
+    import proposals
+    return {'proposals':[proposals.summary_row(r) for r in proposals.listing(aid)]}
+
+@app.get('/assistant/{aid}/proposals/{pid}')
+def proposal_get(aid: str, pid: str):
+    import proposals
+    try: p=proposals.get(pid)
+    except LookupError: raise HTTPException(404,'No such proposal.') from None
+    if p['assistant_id']!=aid: raise HTTPException(404,'No such proposal.')
+    return p
+
+@app.get('/admin/api/proposal-templates')
+def admin_proposal_templates():
+    import proposals
+    return {'templates':proposals.templates()}
+
+@app.get('/admin/api/proposal-templates/outline')
+def admin_proposal_template_outline(path: str=Query(...,max_length=300)):
+    import proposals
+    try:
+        raw,t=proposals._template(path)
+        return {'sections':t.outline(),'placeholders':t.placeholders(),'styled':bool(t.level)}
+    except ValueError as e: raise HTTPException(400,str(e)) from None
 
 @app.post('/assistant/{aid}/ask')
 async def assistant_ask(aid: str, q: AssistantQuestion, request: Request):

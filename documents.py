@@ -359,6 +359,11 @@ def create(fmt, title, content='', sheets=None, chat_id=''):
     name = _slug(title, '.' + fmt)
     rules_engine.check_file(text, name)              # secrets and protective markings are never written to a document
     data = to_docx(title, content) if fmt == 'docx' else to_xlsx(title, sheets) if fmt == 'xlsx' else to_pdf(title, content)
+    return keep(fmt, name, data, text, chat_id)
+
+
+def keep(fmt, name, data, text, chat_id=''):
+    """Keep a finished document for download (callers have already run check_file on its text)."""
     did = uuid.uuid4().hex
     with store.db() as c:
         c.execute('INSERT INTO generated_documents(id,chat_id,name,format,size,original,text,created_at) VALUES (?,?,?,?,?,?,?,?)',

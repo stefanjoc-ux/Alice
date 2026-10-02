@@ -17,7 +17,14 @@ import uuid
 import agents
 import substrate_store as store
 
-PROVIDERS = {'openai': ('gpt-6-luna', 'GPT-6 Luna'), 'claude': ('claude-haiku-4-5-20251001', 'Claude Haiku 4.5')}
+PROVIDERS = {'openai': ('gpt-6-luna', 'GPT-6 Luna'), 'claude': ('claude-haiku-4-5-20251001', 'Claude Haiku 4.5'),
+             'claude_sonnet': ('claude-sonnet-5-5', 'Claude Sonnet 5.5')}
+KINDS = {'qa': 'Answers questions from knowledge', 'proposal': 'Writes proposals (writer and QA agents)'}
+
+
+def family(provider):
+    """The provider name Alice's rules use (labels and allow-lists are per provider, not per model)."""
+    return 'claude' if (provider or '').startswith('claude') else provider
 MAX_SOURCES, CHUNK, MAX_CONTEXT = 6, 900, 7000
 HISTORY_TURNS = 6
 MARKER = 'NOT_IN_SOURCES'
@@ -48,14 +55,34 @@ with store.db() as c:
                    'your HR business partner', 'active', store.now(), store.now()))
 
 
-    if 'allow_documents' not in {r['name'] for r in c.execute('PRAGMA table_info(assistants)')}:
+    _cols = {r['name'] for r in c.execute('PRAGMA table_info(assistants)')}
+    if 'allow_documents' not in _cols:
         c.execute('ALTER TABLE assistants ADD COLUMN allow_documents INTEGER NOT NULL DEFAULT 1')
+    if 'kind' not in _cols: c.execute("ALTER TABLE assistants ADD COLUMN kind TEXT NOT NULL DEFAULT 'qa'")
+    if 'settings' not in _cols: c.execute("ALTER TABLE assistants ADD COLUMN settings TEXT NOT NULL DEFAULT '{}'")
+    if not c.execute("SELECT 1 FROM assistants WHERE id='proposal-writer'").fetchone():
+        c.execute('INSERT INTO assistants(id,name,description,greeting,packs,provider,categories,guidance,contact,status,created_at,updated_at,kind,settings) '
+                  'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                  ('proposal-writer', 'Proposal writer',
+                   'Writes client proposals into your proposal template from a brief, using what Alice knows; the Proposal QA agent '
+                   'checks each draft against the brief before you see it.',
+                   'Give me the brief and any context. I will write the proposal into the template, check it against the brief and '
+                   'give you a Word document to review.',
+                   '[]', 'claude_sonnet', '[]',
+                   'Write in plain, confident UK English for a public sector reader. Lead with the client\'s outcomes, not with us. '
+                   'Be specific; avoid jargon and superlatives.',
+                   '', 'active', store.now(), store.now(), 'proposal',
+                   json.dumps({'template': '', 'sections': [], 'rate_card': [], 'qa_provider': 'claude_sonnet', 'min_margin': 25,
+                               'pricing_note': 'All prices exclude VAT.'})))
 
 
 def _row(r):
     d = dict(r)
     d['packs'], d['categories'] = json.loads(d['packs'] or '[]'), json.loads(d['categories'] or '[]')
     d['allow_documents'] = bool(d.get('allow_documents', 1))
+    d['kind'] = d.get('kind') or 'qa'
+    try: d['settings'] = json.loads(d.get('settings') or '{}')
+    except ValueError: d['settings'] = {}
     return d
 
 
@@ -67,7 +94,7 @@ def listing():
     import knowledge
     for r in rows:                      # what each assistant can use now, and what is still waiting for approval
         r['knowledge'] = {st: sum(knowledge.listing(status=st, category=c, limit=1)['total'] for c in r['categories']) for st in ('active', 'draft')}
-    return {'assistants': rows, 'providers': {k: v[1] for k, v in PROVIDERS.items()},
+    return {'assistants': rows, 'providers': {k: v[1] for k, v in PROVIDERS.items()}, 'kinds': KINDS,
             'packs': {pid: p['name'] for pid, p in rule_packs.PACKS.items()}, 'categories': cats}
 
 
@@ -79,14 +106,23 @@ def get(aid):
 
 
 def save(aid=None, name='', description='', greeting='', packs=(), provider='openai', categories=(), guidance='',
-         contact='', status='active', allow_documents=True):
+         contact='', status='active', allow_documents=True, kind='qa', settings=None):
     import rule_packs
     name = ' '.join((name or '').split())[:80]
     if len(name) < 3: raise ValueError('Give the assistant a name.')
     packs = [p for p in dict.fromkeys(packs or []) if p]
     bad = [p for p in packs if p not in rule_packs.PACKS]
     if bad: raise ValueError('Unknown rule pack: ' + ', '.join(bad) + '.')
-    if provider not in PROVIDERS: raise ValueError('Choose GPT-6 Luna or Claude Haiku 4.5.')
+    if provider not in PROVIDERS: raise ValueError('Choose one of: ' + ', '.join(v[1] for v in PROVIDERS.values()) + '.')
+    if kind not in KINDS: raise ValueError('Unknown assistant type.')
+    if aid:
+        try: kind = get(aid)['kind']             # the type is fixed once created
+        except LookupError: pass
+    if kind == 'proposal':
+        import proposals
+        settings = proposals.clean_settings(settings or {})
+    else:
+        settings = {}
     known = {x['name'] for x in store.list_categories()['categories']}
     categories = [x for x in dict.fromkeys(categories or []) if x]
     missing = [x for x in categories if x not in known]
@@ -94,17 +130,17 @@ def save(aid=None, name='', description='', greeting='', packs=(), provider='ope
     if status not in ('active', 'paused'): raise ValueError('Status is active or paused.')
     vals = (name, ' '.join((description or '').split())[:500], (greeting or '').strip()[:800], json.dumps(packs), provider,
             json.dumps(categories), (guidance or '').strip()[:3000], ' '.join((contact or '').split())[:120], status, store.now(),
-            1 if allow_documents else 0)
+            1 if allow_documents else 0, kind, json.dumps(settings))
     with store.db() as c:
         if aid:
             if not c.execute('UPDATE assistants SET name=?,description=?,greeting=?,packs=?,provider=?,categories=?,guidance=?,contact=?,'
-                             'status=?,updated_at=?,allow_documents=? WHERE id=?', vals + (aid,)).rowcount:
+                             'status=?,updated_at=?,allow_documents=?,kind=?,settings=? WHERE id=?', vals + (aid,)).rowcount:
                 raise LookupError('No such assistant.')
         else:
             aid = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')[:40] or uuid.uuid4().hex[:8]
             if c.execute('SELECT 1 FROM assistants WHERE id=?', (aid,)).fetchone(): aid += '-' + uuid.uuid4().hex[:4]
-            c.execute('INSERT INTO assistants(name,description,greeting,packs,provider,categories,guidance,contact,status,updated_at,allow_documents,id,created_at) '
-                      'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', vals + (aid, store.now()))
+            c.execute('INSERT INTO assistants(name,description,greeting,packs,provider,categories,guidance,contact,status,updated_at,allow_documents,kind,settings,id,created_at) '
+                      'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', vals + (aid, store.now()))
         store.audit(c, 'assistant_saved', aid, 'human_control', f'{name}: packs {", ".join(packs) or "none"}, {provider}, '
                     f'categories {", ".join(categories) or "none"}, {status}')
     return get(aid)
@@ -122,7 +158,7 @@ def scope(a):
     for cat in a['categories']:
         items += knowledge.listing(status='active', category=cat, limit=100000)['items']
     return [i for i in {i['id']: i for i in items}.values()
-            if not i.get('client') and i['label'] != 'local' and not knowledge.model_block(i['id'], a['provider'])]
+            if not i.get('client') and i['label'] != 'local' and not knowledge.model_block(i['id'], family(a['provider']))]
 
 
 def sources(a, question, items=None):
@@ -166,22 +202,22 @@ Rules you must follow:
 {pack_guidance}'''
 
 
-def _call(provider, system, messages):
+def _call(provider, system, messages, max_tokens=1500, timeout=60, workload='Assistant'):
     import os, usage_meter
     model = PROVIDERS[provider][0]
     if provider == 'openai':
         if not os.getenv('OPENAI_API_KEY'): raise ValueError('Missing OPENAI_API_KEY.')
         from openai import OpenAI
-        with OpenAI(timeout=60, max_retries=0) as client:
-            r = client.responses.create(model=model, instructions=system, input=messages, max_output_tokens=1500,
+        with OpenAI(timeout=timeout, max_retries=0) as client:
+            r = client.responses.create(model=model, instructions=system, input=messages, max_output_tokens=max_tokens,
                                         reasoning={'effort': 'none'}, store=False)
-        usage_meter.log(r, provider, model, 'Assistant')
+        usage_meter.log(r, provider, model, workload)
         return r.output_text
     if not os.getenv('ANTHROPIC_API_KEY'): raise ValueError('Missing ANTHROPIC_API_KEY.')
     from anthropic import Anthropic
-    with Anthropic(timeout=60, max_retries=0) as client:
-        r = client.messages.create(model=model, system=system, max_tokens=1500, messages=messages)
-    usage_meter.log(r, 'claude', model, 'Assistant')
+    with Anthropic(timeout=timeout, max_retries=0) as client:
+        r = client.messages.create(model=model, system=system, max_tokens=max_tokens, messages=messages)
+    usage_meter.log(r, 'claude', model, workload)
     return '\n'.join(b.text for b in r.content if b.type == 'text')
 
 
@@ -202,6 +238,7 @@ def ask(aid, question, history=(), progress=None):
     import rules_engine, rule_packs
     a = get(aid)
     question = (question or '').strip()
+    if a.get('kind') == 'proposal': raise ValueError('This assistant writes proposals: use its page to start one.')
     if not question: raise ValueError('Type a question.')
     if len(question) > 2000: raise ValueError('Keep the question under 2,000 characters.')
     if a['status'] != 'active':
@@ -220,7 +257,7 @@ def ask(aid, question, history=(), progress=None):
                 raise rules_engine.RuleViolation('Not sent: this looks like it is about your own health or other personal details. '
                                                  'This assistant does not take personal information. This goes to a person, not to an AI.')
             if t['role'] == 'user':                                          # the assistant's packs, every user turn
-                r = rule_packs.live_check(text, a['provider'], a['name'], packs=a['packs'])
+                r = rule_packs.live_check(text, family(a['provider']), a['name'], packs=a['packs'])
                 text = r['text']
                 if n == len(seq) - 1: notes = r['notes']
             sendable.append({'role': t['role'], 'content': text})
@@ -266,7 +303,7 @@ def ask(aid, question, history=(), progress=None):
         except Exception: pass
     wanted = [doc_library.pointer(x['item']) + (x['title'],) for x in found]
     wanted += [(rel, None, rel) for rel in dict.fromkeys(r for r, _, _ in docs_in_scope)]       # best passages anywhere in each document
-    ex, skipped = doc_library.extracts(wanted, question, a['provider'], a['name'])
+    ex, skipped = doc_library.extracts(wanted, question, family(a['provider']), a['name'])
     used, total = [], 0
     for e in ex:
         if total + len(e['text']) > DOC_CONTEXT: break

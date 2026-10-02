@@ -293,6 +293,7 @@ nav{display:flex;gap:20px;flex-wrap:wrap}.sidebar nav{display:contents}
 .ds-how{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:10px 0 14px}.ds-how div{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:grid;gap:4px}.ds-how span{font-size:13px;color:var(--muted)}
 .ds-kind.ds-sharepoint{background:#e3f1f6;color:#064b63;border-color:#89b1bf}.ds-kind.ds-fabric{background:#e6f4ea;color:#1e5b31;border-color:#9fcfaf}.ds-kind.ds-power_platform{background:#ede7f6;color:#4b2f73;border-color:#c7b8dd}.ds-files{margin-top:12px}.ds-table td{vertical-align:top}
 @media(max-width:800px){.ds-how{grid-template-columns:1fr}}
+''' + __import__('proposal_ui').PE_CSS + r'''
 .dt-loc .mini-act{margin-left:6px!important;padding:1px 8px!important}.dt-bar .chips{display:flex;flex-wrap:wrap;gap:6px}
 .ag-events{max-height:320px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:6px;padding:8px 10px;line-height:1.7}
 @media(max-width:900px){.ag-stats{grid-template-columns:1fr 1fr}.ag-facts{grid-template-columns:1fr}.ag-mini{grid-template-columns:1fr 1fr}}
@@ -1119,27 +1120,52 @@ if(PAGE==='documents'){
 """
 
 SCRIPT += r"""
+""" + __import__('proposal_ui').PE_JS + r"""
 if(PAGE==='assistants'){
- let L=null;const open=new Set();
+ let L=null,T=[];const open=new Set();let newKind='qa';
  function field(label,node){const l=el('label',label);l.append(node);return l}
  function input(v,max,ph){const i=document.createElement('input');i.value=v||'';i.maxLength=max;if(ph)i.placeholder=ph;return i}
  function area(v,max,rows){const t=document.createElement('textarea');t.value=v||'';t.maxLength=max;t.rows=rows;return t}
  function checks(all,picked){const box=el('div','','as-checks');const get=[];for(const [k,t] of all){const l=el('label','','r-check');const c=document.createElement('input');c.type='checkbox';c.value=k;c.checked=picked.includes(k);l.append(c,document.createTextNode(' '+t));box.append(l);get.push(c)}box.value=()=>get.filter(c=>c.checked).map(c=>c.value);return box}
- function form(a,isNew){const f=el('div','','as-form');
-  const name=input(a.name,80,'e.g. HR policy assistant'),desc=input(a.description,500,'What it is for, in one line'),greet=area(a.greeting,800,2),guide=area(a.guidance,3000,4),contact=input(a.contact,120,'e.g. your HR business partner');
-  const prov=document.createElement('select');for(const [k,t] of Object.entries(L.providers)){const o=el('option',t);o.value=k;prov.append(o)}prov.value=a.provider||'openai';
-  const st=document.createElement('select');for(const [k,t] of [['active','Active'],['paused','Paused']]){const o=el('option',t);o.value=k;st.append(o)}st.value=a.status||'active';
+ function sel(opts,v){const x=document.createElement('select');for(const [k,t] of opts){const o=el('option',t);o.value=k;x.append(o)}x.value=v;return x}
+ function form(a,isNew){const f=el('div','','as-form');const kind=isNew?newKind:(a.kind||'qa');
+  if(isNew){const ty=sel(Object.entries(L.kinds),kind);ty.onchange=()=>{newKind=ty.value;render()};f.append(field('Type',ty))}
+  const name=input(a.name,80,kind==='proposal'?'e.g. Proposal writer':'e.g. HR policy assistant'),desc=input(a.description,500,'What it is for, in one line'),greet=area(a.greeting,800,2),guide=area(a.guidance,3000,4),contact=input(a.contact,120,'e.g. your HR business partner');
+  const prov=sel(Object.entries(L.providers),a.provider||(kind==='proposal'?'claude_sonnet':'openai'));
+  const st=sel([['active','Active'],['paused','Paused']],a.status||'active');
+  const S=a.settings||{};let body=()=>({});
+  if(kind==='proposal'){
+   const qap=sel(Object.entries(L.providers),S.qa_provider||'claude_sonnet');
+   const r1=el('div','','k-meta-row');r1.append(field('Name',name),field('Writer model',prov),field('QA model',qap),field('Status',st));
+   f.append(r1,field('Description',desc),field('Greeting shown on its page',greet),field('Tone and style for the writer',guide));
+   const tpl=sel([['','No template: Alice’s own Word layout']].concat(T.map(x=>[x.path,x.name+' ('+x.source+')'])),S.template||'');
+   if(S.template&&!T.some(x=>x.path===S.template)){const o=el('option',S.template+' (not found)');o.value=S.template;tpl.append(o);tpl.value=S.template}
+   const prev=el('div','','muted small as-tpl');
+   const showTpl=()=>{prev.textContent='';if(!tpl.value){prev.textContent=T.length?'':'No Word documents in the document sources yet. Put your template in a folder on the Documents page.';return}
+    run(async()=>{try{const o=await api('/admin/api/proposal-templates/outline?path='+encodeURIComponent(tpl.value));prev.textContent=o.sections.length?'Template sections: '+o.sections.map(x=>x.title+(x.keep?' (standard text)':'')).join(' · ')+'.'+(o.placeholders.length?' Placeholders filled in: '+o.placeholders.map(x=>'{{'+x+'}}').join(' ')+'.':''):'The template has no Heading 1 sections: your format and flow sections are added after its cover, in its styles.'}catch(e){prev.textContent=e.message}})};
+   tpl.onchange=showTpl;const tf=field('Proposal template',tpl);tf.append(prev,el('span','Use Heading 1 for each section. Text under a heading is guidance for the writer; a section containing [keep] is copied word for word. Placeholders: {{title}} {{client}} {{date}} {{author}} {{reference}} {{total}}.','muted small'));f.append(tf);showTpl();
+   const fb=el('div','');fb.append(el('strong','Format and flow'),el('p','Default sections for new proposals, added after the template’s own sections. A section with the same title as a template section adds your guidance to it. People can change all of this on each proposal.','muted small'));
+   const sbox=el('div');fb.append(sbox);const secEd=PE.sections(sbox,(S.sections||[]).map(x=>({...x,source:'format and flow'})),{allowKeep:false,empty:'None: new proposals start from the template sections.'});
+   const rb=el('div','');rb.append(el('strong','Rate card'),el('p','Default roles and rates. Cost rates stay in Alice: never sent to the AI, never in the document. The writer picks quantities; Alice prices them from the sell rates.','muted small'));
+   const rbox=el('div');rb.append(rbox);const rateEd=PE.rates(rbox,S.rate_card||[],['day','hour']);
+   f.append(fb,rb);
+   const mm=input(S.min_margin??25,5);mm.inputMode='decimal';const pn=input(S.pricing_note??'All prices exclude VAT.',200);const au=input(S.author||'',80,'Your name, on the cover');
+   const r2=el('div','','k-meta-row');r2.append(field('Minimum margin (%)',mm),field('Note under the pricing table',pn),field('Author ({{author}})',au));f.append(r2);
+   body=()=>({kind:'proposal',settings:{template:tpl.value,sections:secEd.value(),rate_card:rateEd.value(),qa_provider:qap.value,min_margin:mm.value||0,pricing_note:pn.value,author:au.value}});
+  } else {
   const packs=checks(Object.entries(L.packs),a.packs||[]);const cats=checks(L.categories.map(c=>[c,c]),a.categories||[]);
   const r1=el('div','','k-meta-row');r1.append(field('Name',name),field('Model',prov),field('Status',st));
   f.append(r1,field('Description',desc),field('Greeting shown to staff',greet),field('Guidance (how it should answer)',guide),field('Who to contact when it cannot help',contact));
   const pk=el('div','');pk.append(el('strong','Rule packs'),el('p','Applied to every question in code, whatever the global Rules settings say.','muted small'),packs);
   const ct=el('div','');ct.append(el('strong','Knowledge it may use'),el('p',L.categories.length?'Active knowledge in these categories. Client-tagged and Local only items are never used.':'No categories yet: create one (e.g. HR) on the Memories page and put the policies in it on the Knowledge page.','muted small'),cats);
   const two=el('div','','as-two');two.append(pk,ct);f.append(two);
-  const dl=el('label','','r-check');const dc=document.createElement('input');dc.type='checkbox';dc.checked=a.allow_documents!==false;dl.append(dc,document.createTextNode(' Check the full documents when the summaries don\u2019t answer'));
-  f.append(dl,el('p','Answers come from the approved summaries first. Only if they don\u2019t cover the question is the relevant section of the full document read from the document library for that one answer; nothing from it is stored in Alice.','muted small'));
+  const dl=el('label','','r-check');const dc=document.createElement('input');dc.type='checkbox';dc.checked=a.allow_documents!==false;dl.append(dc,document.createTextNode(' Check the full documents when the summaries don’t answer'));
+  f.append(dl,el('p','Answers come from the approved summaries first. Only if they don’t cover the question is the relevant section of the full document read from the document library for that one answer; nothing from it is stored in Alice.','muted small'));
+  body=()=>({kind:'qa',packs:packs.value(),categories:cats.value(),allow_documents:dc.checked,contact:contact.value});
+  }
   const save=el('button',isNew?'Create assistant':'Save');save.type='button';
-  save.onclick=()=>run(async()=>{const body={name:name.value,description:desc.value,greeting:greet.value,guidance:guide.value,contact:contact.value,provider:prov.value,status:st.value,packs:packs.value(),categories:cats.value(),allow_documents:dc.checked};
-   const x=isNew?await api('/admin/api/assistants','POST',body):await api('/admin/api/assistants/'+encodeURIComponent(a.id),'PUT',body);$('notice').textContent='Saved '+x.name+'.';open.delete('__new__');open.add(x.id);await load()});
+  save.onclick=()=>run(async()=>{const b={name:name.value,description:desc.value,greeting:greet.value,guidance:guide.value,provider:prov.value,status:st.value,...body()};
+   const x=isNew?await api('/admin/api/assistants','POST',b):await api('/admin/api/assistants/'+encodeURIComponent(a.id),'PUT',b);$('notice').textContent='Saved '+x.name+'.';open.delete('__new__');open.add(x.id);await load()});
   const cancel=el('button','Close');cancel.type='button';cancel.className='secondary';cancel.onclick=()=>{open.delete(isNew?'__new__':a.id);render()};
   const act=el('div','','arc-actions');act.append(save,cancel);f.append(act);return f}
  function render(){const box=$('as-list');box.replaceChildren();
@@ -1147,15 +1173,17 @@ if(PAGE==='assistants'){
   if(!L.assistants.length)box.append(el('p','No assistants yet.','muted'));
   for(const a of L.assistants){const c=el('div','','as-card');const h=el('div','','as-head');const t=el('div','');t.append(el('h3',a.name),el('div',a.description,'muted small'));
    const meta=el('div','','as-meta');meta.append(el('span',a.status==='active'?'Active':'Paused','badge '+(a.status==='active'?'approved':'proposed')),el('span',L.providers[a.provider]||a.provider,'tag'));
-   for(const p of a.packs)meta.append(el('span',(L.packs[p]||p)+' pack','tag k-knowledge'));for(const k of a.categories)meta.append(el('span',k,'tag'));if(!a.categories.length)meta.append(el('span','No knowledge yet','flag'));
-   const kn=a.knowledge||{active:0,draft:0};meta.append(el('span',kn.active+(kn.active===1?' item it can use':' items it can use'),'small muted'));
-   if(kn.draft){const w=document.createElement('a');w.className='flag';w.href='/admin/knowledge?status=draft'+(a.categories.length===1?'&category='+encodeURIComponent(a.categories[0]):'');w.textContent=kn.draft+' awaiting your approval: it cannot use these yet →';meta.append(w)}
+   if(a.kind==='proposal'){const S=a.settings||{};meta.append(el('span','Writer + QA agents','tag k-knowledge'),el('span',S.template?'Template: '+S.template.split(/[\\/]/).pop():'No template yet','tag'+(S.template?'':' flag')),el('span',(S.rate_card||[]).length+' roles on the rate card','small muted'))}
+   else{for(const p of a.packs)meta.append(el('span',(L.packs[p]||p)+' pack','tag k-knowledge'));for(const k of a.categories)meta.append(el('span',k,'tag'));if(!a.categories.length)meta.append(el('span','No knowledge yet','flag'));
+   const kn=a.knowledge||{active:0,draft:0};meta.append(el('span',kn.active+(kn.active===1?' item it can use':' items it can use'),'small muted'))}
+   const kn=a.knowledge||{active:0,draft:0};
+   if(a.kind!=='proposal'&&kn.draft){const w=document.createElement('a');w.className='flag';w.href='/admin/knowledge?status=draft'+(a.categories.length===1?'&category='+encodeURIComponent(a.categories[0]):'');w.textContent=kn.draft+' awaiting your approval: it cannot use these yet →';meta.append(w)}
    t.append(meta);const btns=el('div','','as-btns');const go=document.createElement('a');go.href='/assistant/'+encodeURIComponent(a.id);go.target='_blank';go.rel='noopener';go.className='button-link';go.textContent='Open';
    if(a.id==='hr-policy'){const dm=el('button','Load demo HR policy');dm.type='button';dm.className='secondary';dm.title='Adds summaries of a demonstration UK HR handbook as knowledge drafts (category HR). The full handbook stays in the policy library folder.';dm.onclick=()=>run(async()=>{const x=await api('/admin/api/assistants/demo-hr','POST',{});$('notice').textContent=x.added?x.added+' summaries of '+x.document+' added as drafts in '+x.category+'. Approve them on Knowledge (Drafts) and the assistant can use them. The full document stays at '+x.location+'.':'The demo summaries are already in Knowledge ('+x.already+').';await load()});btns.append(dm)}
    const ed=el('button',open.has(a.id)?'Close':'Edit');ed.type='button';ed.className='secondary';ed.onclick=()=>{open.has(a.id)?open.delete(a.id):open.add(a.id);render()};btns.append(go,ed);h.append(t,btns);c.append(h);
    if(open.has(a.id))c.append(form(a,false));box.append(c)}}
- async function load(){L=await api('/admin/api/assistants');render()}
- $('as-new').onclick=()=>{open.add('__new__');render()};
+ async function load(){L=await api('/admin/api/assistants');try{T=(await api('/admin/api/proposal-templates')).templates}catch{T=[]}render()}
+ $('as-new').onclick=()=>{newKind='qa';open.add('__new__');render()};
  run(load);
 }
 """

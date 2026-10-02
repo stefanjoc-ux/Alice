@@ -73,6 +73,17 @@ BUILTIN = [
      'Focused chat bots built on Alice: each answers only from knowledge in its scope, with its own rule packs applied in code.',
      'When someone asks an assistant', ['Assistant'],
      'Knowledge in the assistant\'s categories; the question (checked by its rule packs first)', 'Nothing: answers only, no transcript kept', True),
+    ('alice-proposal-writer', 'Proposal writer', 'internal',
+     'Writes a proposal into your template from a brief, using the client\'s profile and relevant memories and knowledge; '
+     'chooses the days per role from the rate card (Alice prices them). Revises once if the QA agent finds problems.',
+     'When someone starts a proposal on the Proposal writer page', ['Proposal writer'],
+     'The brief; the template\'s sections and guidance; the client profile, memories and knowledge for that client or general',
+     'A draft proposal and a Word document for download (never knowledge)', True),
+    ('alice-proposal-qa', 'Proposal QA', 'internal',
+     'Checks each proposal draft against the brief and for client-ready quality: every requirement met, nothing invented, '
+     'no placeholders, the right client, a consistent price. Advisory: the person decides.',
+     'After every proposal draft and revision', ['Proposal QA'],
+     'The brief, the draft, the sell-price summary and Alice\'s own checks (never cost rates)', 'A QA report with a verdict', False),
     ('claude-desktop', 'Claude Desktop', 'app', 'Claude Desktop connected through the alice connector (stdio).',
      'When you use Claude Desktop', [], 'Files, memories and organisation profiles allowed to external apps',
      'Proposals, knowledge drafts, saved conversations', True),
@@ -137,6 +148,23 @@ ANATOMY = {
                          'data': ['knowledge', 'documents', 'input'],
                          'guardrails': ['secret_detection', 'protective_marking', 'provider_allow', 'client_separation', 'data_minimisation', 'spend_cap'],
                          'outputs': ['Answers with cited sources'], 'gate': 'Rule packs block or escalate before any model sees the question'},
+    'alice-proposal-writer': {'model': 'Chosen on the Proposal writer assistant (Claude Sonnet 5.5 by default)',
+                              'instructions': 'Write every section of the template in order, only from the brief and the context given; '
+                                              'never invent facts, figures, names or case studies; no prices (Alice adds the table); '
+                                              'resource plan from the rate card roles only.',
+                              'tools': ['Template reader (document sources)', 'Context gathering in code: client profile, memories, knowledge'],
+                              'data': ['input', 'documents', 'organisations', 'memories', 'knowledge'],
+                              'guardrails': ['secret_detection', 'protective_marking', 'client_separation', 'provider_allow', 'data_minimisation', 'spend_cap'],
+                              'outputs': ['Draft proposal sections', 'Resource plan (days per role)', 'Gaps it could not fill'],
+                              'gate': 'You review the QA report and the Word document before anything goes to a client'},
+    'alice-proposal-qa': {'model': 'Chosen on the Proposal writer assistant (Claude Sonnet 5.5 by default)',
+                          'instructions': 'Check the draft against the brief requirement by requirement and for client-ready quality; '
+                                          'return a verdict, a score and specific fixes.',
+                          'tools': ['Alice checks in code: placeholders, other clients named, prices in text, empty sections'],
+                          'data': ['input'],
+                          'guardrails': ['secret_detection', 'protective_marking', 'spend_cap'],
+                          'outputs': ['QA report: verdict, score, requirements met, issues with fixes'],
+                          'gate': 'Advisory: one automatic revision, then you decide'},
     'claude-desktop': dict(_APP_ANATOMY, model='Claude (your Claude Desktop model)', identity='Caller name on this computer (stdio)'),
     'microsoft-copilot': dict(_APP_ANATOMY, model='Microsoft 365 Copilot', identity='Entra ID token from the Tuduma tenant'),
 }
