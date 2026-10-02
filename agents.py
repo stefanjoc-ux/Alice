@@ -84,6 +84,12 @@ BUILTIN = [
      'pointing to the document, which stays in its document source.',
      'When someone uploads a reference document', ['Reference summary'],
      'The uploaded document (checked for secrets, markings and its Purview label first)', 'A knowledge draft awaiting your approval', True),
+    ('temple-proposal-starter', 'Temple: proposal starter', 'internal',
+     'Suggests how to fill the Proposal writer form from a sentence or two (and the client\'s brief, if given): title, client, a '
+     'structured brief, notes, template, structure, reference documents and roles with days. Advisory: you edit it, nothing is saved.',
+     'When someone asks for a starter on the Proposal writer page', ['Temple proposal starter'],
+     'What you type and any brief you add; the client profile, memories and knowledge for that client or general; names of templates, reference documents and rate card roles (never rates)',
+     'Nothing: suggestions for the form only', True),
     ('alice-proposal-qa', 'Proposal QA', 'internal',
      'Checks each proposal draft against the brief and for client-ready quality: every requirement met, nothing invented, '
      'no placeholders, the right client, a consistent price. Advisory: the person decides.',
@@ -170,6 +176,14 @@ ANATOMY = {
                                    'guardrails': ['secret_detection', 'protective_marking', 'client_separation', 'spend_cap'],
                                    'outputs': ['Knowledge draft pointing to the document'],
                                    'gate': 'You approve the summary on the Knowledge page'},
+    'temple-proposal-starter': {'model': 'temple', 'instructions': 'Suggest the proposal form from the request, the client\'s document and what Alice '
+                                                                'knows; never invent facts; choose only templates, documents and roles on offer; list questions to confirm.',
+                                'tools': ['Context gathering in code: client profile, memories, knowledge (same rules as the writer)',
+                                          'Checks in code: anything not on offer is dropped'],
+                                'data': ['input', 'documents', 'organisations', 'memories', 'knowledge'],
+                                'guardrails': ['secret_detection', 'protective_marking', 'client_separation', 'provider_allow', 'data_minimisation', 'spend_cap'],
+                                'outputs': ['Suggested form: title, client, brief, notes, template, structure, references, roles and days, questions'],
+                                'gate': 'Advisory: it only fills the form; you check it, change it or undo it before anything is written'},
     'alice-proposal-qa': {'model': 'Chosen on the Proposal writer assistant (Claude Sonnet 5.5 by default)',
                           'instructions': 'Check the draft against the brief requirement by requirement and for client-ready quality; '
                                           'return a verdict, a score and specific fixes.',
@@ -183,8 +197,8 @@ ANATOMY = {
 }
 # How the Agents page groups agents: (id, name, what the group is for, member agent ids). Apps form their own group.
 GROUPS = [
-    ('proposals', 'Proposals', 'Write proposals into your template, check them against the brief, and summarise reference documents.',
-     ['alice-proposal-writer', 'alice-proposal-qa', 'alice-reference-summariser']),
+    ('proposals', 'Proposals', 'Suggest a starter, write proposals into your template, check them against the brief, and summarise reference documents.',
+     ['temple-proposal-starter', 'alice-proposal-writer', 'alice-proposal-qa', 'alice-reference-summariser']),
     ('clients', 'Clients and opportunities', 'Research organisations on the public web and look for opportunities in the news.',
      ['temple-org-research', 'temple-opportunities']),
     ('conversations', 'Learning from conversations', 'Suggest memories, decisions and knowledge from chats, saved conversations and meetings.',

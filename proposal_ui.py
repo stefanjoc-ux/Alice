@@ -123,6 +123,7 @@ const PE=(()=>{
     const apply=replace=>{const r=parseRates(ta.value);if(!r.rows.length){show();return}const add=r.rows.map(x=>mk_({...x,override:true}));list=replace?add:list.filter(x=>x.role.trim()).concat(add);pasteOpen=false;draw()};
     ta.oninput=show;const act=mk('div','','pe-addbar');act.append(use,more,cancel);pp.append(ta,msg,act);box.append(pp);show()}}
   draw();return {value:()=>list.filter(r=>r.role.trim()).map(r=>({role:r.role.trim(),unit:r.unit,cost:String(r.cost).trim()||'0',sell:String(r.sell).trim()||'0',days:String(r.days??'').trim(),use:r.use,override:r.override})),
-   target:()=>target,set:x=>{list=(x||[]).map(mk_);draw()}}}
+   target:()=>target,set:x=>{list=(x||[]).map(mk_);draw()},
+   pick:roles=>{const m=new Map((roles||[]).map(r=>[String(r.role).toLowerCase(),r]));for(const r of list){const g=m.get(r.role.trim().toLowerCase());r.use=!!g;if(g&&g.days)r.days=g.days}showAll=false;draw()}}}
  return {sections,rates,parseRates,gbp,mk}})();
 '''

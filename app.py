@@ -1682,6 +1682,20 @@ def proposal_rates_parse(aid: str, x: ProposalDoc, request: Request):
     try: return proposals.rates_from_sheet(x.name,raw)
     except ValueError as e: raise HTTPException(400,str(e)) from None
 
+class ProposalStarter(BaseModel):
+    ask: str = Field(default='',max_length=6000)
+    organisation: str = Field(default='',max_length=80)
+    name: str = Field(default='',max_length=150)
+    data: str = Field(default='',max_length=21_000_000)
+
+@app.post('/assistant/{aid}/starter')
+def proposal_starter_route(aid: str, x: ProposalStarter, request: Request):
+    import proposal_starter
+    _same_origin(request); _proposal_writer(aid)
+    raw=_b64(x.data) if x.data else None
+    if raw is not None and not x.name: raise HTTPException(400,'Name the file.')
+    return _proposal_call(lambda: proposal_starter.suggest(aid,x.ask,x.organisation,x.name,raw))
+
 @app.get('/admin/api/temple/auto-approved')
 def admin_temple_auto_approved(days: int=Query(30,ge=1,le=365)):
     since=(datetime.now(timezone.utc)-timedelta(days=days)).isoformat()

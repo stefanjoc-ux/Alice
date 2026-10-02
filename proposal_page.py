@@ -63,6 +63,30 @@ table.t td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}ta
 .ref-ok{background:#eef8f1;border:1px solid #9fcfaf;border-radius:10px;padding:10px 12px;font-size:14px}
 @media(max-width:760px){.grid2,.cols{grid-template-columns:minmax(0,1fr)}}
 
+
+/* Start with Temple */
+.temple{position:relative;border:1px solid #d6c8ea;background:linear-gradient(135deg,#fbf9fe 0%,#fff 55%,#f3f9fb 100%);display:grid;gap:14px}
+.temple::before{content:'';position:absolute;inset:0 auto 0 0;width:4px;border-radius:14px 0 0 14px;background:linear-gradient(180deg,#634394,#075e79)}
+.tp-head{display:flex;gap:12px;align-items:flex-start}.tp-head h2{margin:0}
+.tp-badge{flex:none;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:#fff;font-weight:700;background:linear-gradient(135deg,#634394,#075e79);box-shadow:0 4px 12px -6px rgba(99,67,148,.8)}
+.tp-head .ps{display:block;font-size:13px;color:var(--muted);margin-top:2px;max-width:680px}
+.temple textarea{width:100%;border-radius:12px;border:1px solid #cdbfe3;background:#fff;padding:11px 13px;font-weight:400;line-height:1.5;min-height:84px}
+.temple textarea:focus{outline:none;border-color:#634394;box-shadow:0 0 0 3px rgba(99,67,148,.14)}
+.tp-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.tp-file{cursor:pointer;border:1px dashed #b9a6d6;border-radius:10px;padding:8px 14px;font-weight:600;font-size:13.5px;background:#fff;color:#4b2f73}.tp-file:hover{border-color:#634394;background:#faf7fd}
+.tp-fname{display:inline-flex;gap:6px;align-items:center;background:#ede7f6;color:#4b2f73;border-radius:999px;padding:3px 6px 3px 12px;font-size:13px;font-weight:600}.tp-fname button{border:0;background:transparent;padding:0 6px;color:#4b2f73;font-size:15px;line-height:1}
+.tp-go{margin-left:auto;border:0!important;color:#fff!important;font-weight:700;padding:10px 20px!important;border-radius:10px!important;background:linear-gradient(135deg,#634394,#075e79)!important;box-shadow:0 6px 16px -8px rgba(99,67,148,.9)}
+.tp-go:hover:not(:disabled){filter:brightness(1.08)}.tp-go:disabled{opacity:.6}
+.tp-out{border-top:1px solid #e4dbf0;padding-top:14px;display:grid;gap:12px}
+.tp-work{display:grid;gap:8px}.tp-work div{display:flex;gap:10px;align-items:center;color:var(--muted);font-size:14px}
+.tp-work div::before{content:'';width:14px;height:14px;border-radius:50%;border:2px solid #cdbfe3;border-top-color:#634394;animation:spin .9s linear infinite}
+.tp-work div.wait::before{animation:none;border-color:#e4dbf0}.tp-work div.done{color:var(--ink)}.tp-work div.done::before{animation:none;border-color:#55b987;background:#55b987}
+@keyframes spin{to{transform:rotate(360deg)}}
+.tp-filled{display:flex;flex-wrap:wrap;gap:6px}.tp-filled span{background:#fff;border:1px solid #cdbfe3;color:#4b2f73;border-radius:999px;padding:3px 10px;font-size:12.5px;font-weight:600}
+.tp-q{margin:0;padding:12px 14px 12px 32px;background:#fdf7ea;border:1px solid #ecd6a8;border-radius:12px;font-size:14px;display:grid;gap:4px}
+.tp-qh{font-weight:700;font-size:14px;margin:0}
+.tp-acts{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.tfill{border-color:#a98fd0!important;background:#fbf8ff!important;box-shadow:0 0 0 3px rgba(99,67,148,.10)!important}
 /* ---------- look and feel ---------- */
 main{padding:0 0 40px;background:linear-gradient(180deg,#eef3f7 0,#f4f7fa 260px)}
 .wrap{max-width:1240px;padding:0 20px;gap:20px}
@@ -143,6 +167,10 @@ table.t th{text-transform:uppercase;letter-spacing:.05em;font-size:11.5px}table.
 <main><section class="hero"><div class="hero-in"><div><p class="eyebrow">Bid and proposal studio</p><h1>''' + escape(a['name']) + '''</h1><p class="lead" id="greeting"></p></div>
 <ol class="flow" aria-label="How it works"><li>Brief</li><li>Draft</li><li>QA check</li><li>Word document</li></ol></div></section>
 <div class="wrap"><div class="layout"><div class="colmain">
+<section class="card temple" id="tp"><div class="tp-head"><span class="tp-badge" aria-hidden="true">T</span><div><h2>Start with Temple</h2><span class="ps">Describe the proposal in a sentence or two, and add the client’s brief or RFP if you have it. Temple fills the form below from what Alice knows: client profile, memories, knowledge, your templates, reference documents and roles. You check everything before anything is written.</span></div></div>
+<div><textarea id="tp-ask" maxlength="6000" aria-label="What is the proposal for?" placeholder="e.g. Six-week Fabric data security baseline for Scottish Borders Council: discovery, Purview labelling and a roadmap to their 2027 pilot. Architect and PM, around 30 days."></textarea>
+<div class="tp-row"><label class="tp-file" tabindex="0">Add the client’s brief or RFP<input type="file" id="tp-file" accept=".docx,.pdf,.txt,.md" hidden></label><span id="tp-fname"></span><button type="button" class="tp-go" id="tp-go">Fill the form</button></div></div>
+<div class="tp-out" id="tp-out" hidden aria-live="polite"></div></section>
 <section class="card" id="prog" hidden aria-live="polite"><h2 id="prog-title">Working on it</h2><ol class="steps" id="steps"></ol><div class="err" id="perr" hidden></div></section>
 <div id="result"></div>
 <form id="f">
@@ -244,7 +272,7 @@ async function load(){S=await api('/setup');loadRefs();$('greeting').textContent
  const ts=$('tplsel');const topt=(v,txt)=>{const o=document.createElement('option');o.value=v;o.textContent=txt;return o};
  ts.replaceChildren(...S.templates.map(x=>topt(x.path,x.name+' · '+x.source+(x.path===S.template?' (default)':''))),topt('','No template: Alice’s own Word layout'));
  if(S.template&&!S.templates.some(x=>x.path===S.template))ts.prepend(topt(S.template,S.template+' (not found)'));ts.value=S.template||'';
- let tplTitles=new Set(S.sections.filter(x=>x.source==='template').map(x=>x.title));
+ let tplTitles=new Set(S.sections.filter(x=>x.source==='template').map(x=>x.title));window.tplOf=()=>tplTitles;
  const tplHint=(o,err)=>{$('tpl-hint').textContent=err||(ts.value?(o&&o.sections?o.sections.filter(x=>x.source==='template').length+' sections from the template; its cover, styles, header and footer are kept.':'Sections, styles, cover, header and footer come from the template.'):'No template: the proposal uses Alice’s own Word layout with the sections below.')+(S.templates.length?'':' Put a Word template in a folder on the Documents page to choose it here.')};
  tplHint(null,S.template_error);$('tpl').textContent='';
  ts.onchange=async()=>{try{const o=await api('/outline?template='+encodeURIComponent(ts.value));const now=secEd.value();const fresh=new Set(o.sections.map(x=>x.title.toLowerCase()));
@@ -266,7 +294,7 @@ function summary(){const dl=$('sum');if(!dl||!S)return;dl.replaceChildren();cons
   if(priced.length&&sell)tile('Margin',((sell-cst)/sell*100).toFixed(1)+'%')}
  if(window.estimate!=null)tile('AI cost','$'+window.estimate.toFixed(2))}
 $('f').addEventListener('input',()=>summary());$('f').addEventListener('change',()=>summary());$('f').addEventListener('click',()=>setTimeout(summary,0));
-function setMode(m){mode=m;$('f').classList.toggle('qa-mode',m==='qa');document.querySelector('.qa-only').hidden=m!=='qa';$('m-write').classList.toggle('on',m==='write');$('m-qa').classList.toggle('on',m==='qa');
+function setMode(m){mode=m;$('tp').hidden=m==='qa';$('f').classList.toggle('qa-mode',m==='qa');document.querySelector('.qa-only').hidden=m!=='qa';$('m-write').classList.toggle('on',m==='write');$('m-qa').classList.toggle('on',m==='qa');
  $('m-write').setAttribute('aria-selected',m==='write');setTimeout(summary,0);$('m-qa').setAttribute('aria-selected',m==='qa');$('f-h').textContent=m==='qa'?'Check a proposal':'New proposal';
  $('go').textContent=m==='qa'?'Check it against the brief':'Write proposal';$('go-note').textContent=m==='qa'?'Proposal QA reads your document and checks it against the brief: usually under a minute.':'Writing, a QA check and one revision if needed: usually two to four minutes.';if(S)cost()}
 $('m-write').onclick=()=>setMode('write');$('m-qa').onclick=()=>setMode('qa');
@@ -325,6 +353,42 @@ function show(p){const box=$('result');box.replaceChildren();const qa=p.qa[p.qa.
  if((u.references||[]).length)ul2.append(mk('li','Reference documents: '+u.references.join('; ')));for(const x of u.references_skipped||[])ul2.append(mk('li','Reference left out: '+x));
  if((p.context||{}).skipped)ul2.append(mk('li',p.context.skipped+' item(s) left out by the rules.'));more.append(ul2)}
  const dr=document.createElement('details');dr.className='fold draft';dr.append(mk('summary','Read the draft here'));for(const s of d.sections||[]){dr.append(mk('h3',s.title),mk('div',s.keep?'(standard text from the template)':s.body,'body'))}more.append(dr);box.append(more)}
+
+// ---------- Start with Temple ----------
+let tpFile=null,tpUndo=null;
+function tpName(){const b=$('tp-fname');b.replaceChildren();if(!tpFile)return;const s=mk('span',tpFile.name,'tp-fname');const x=document.createElement('button');x.type='button';x.textContent='×';x.setAttribute('aria-label','Remove '+tpFile.name);x.onclick=()=>{tpFile=null;tpName()};s.append(x);b.append(s)}
+$('tp-file').onchange=()=>{tpFile=$('tp-file').files[0]||null;$('tp-file').value='';tpName()};
+document.querySelector('.tp-file').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();$('tp-file').click()}};
+function tpSnap(){const tt=window.tplOf?window.tplOf():new Set();return {f:['title','org','brief','notes','structure'].map(id=>[id,$(id).value]),tpl:$('tplsel').value,secs:secEd.value().map(x=>({...x,source:tt.has(x.title)?'template':'added'})),refs:[...picked],rates:rateEd.value(),mem:$('mem').checked}}
+async function tpRestore(u){for(const[id,v]of u.f){$(id).value=v;$(id).classList.remove('tfill');$(id).dispatchEvent(new Event('input',{bubbles:true}))}
+ if($('tplsel').value!==u.tpl){$('tplsel').value=u.tpl;await $('tplsel').onchange()}secEd.set(u.secs);picked.clear();u.refs.forEach(x=>picked.add(x));drawRefs();rateEd.set(u.rates);$('mem').checked=u.mem;summary()}
+function tpFill(id,v){if(!v)return false;const e=$(id);e.value=v;e.classList.add('tfill');e.dispatchEvent(new Event('input',{bubbles:true}));return true}
+['title','org','brief','notes','structure'].forEach(id=>$(id).addEventListener('keydown',()=>$(id).classList.remove('tfill')));
+$('tp-go').onclick=async()=>{const ask=$('tp-ask').value.trim();const out=$('tp-out');
+ if(ask.split(/\s+/).length<4&&!tpFile){out.hidden=false;out.replaceChildren(mk('p','Tell Temple what the proposal is for in a sentence or two, or add the client’s brief.','err'));return}
+ $('tp-go').disabled=true;$('tp-go').textContent='Temple is working…';out.hidden=false;const w=mk('div','','tp-work');
+ const steps=[tpFile?'Reading '+tpFile.name:'Reading your request','Checking what Alice knows'+($('org').value.trim()?' about '+$('org').value.trim():''),'Choosing the template, reference documents and roles','Drafting the brief'];
+ const els=steps.map((t,j)=>mk('div',t,j?'wait':''));w.append(...els);out.replaceChildren(w);let i=0;const tk=setInterval(()=>{if(i<els.length-1){els[i].className='done';i++;els[i].className=''}},2200);
+ try{const body={ask,organisation:$('org').value};if(tpFile){body.name=tpFile.name;body.data=await fileData(tpFile)}
+  const r=await api('/starter','POST',body);clearInterval(tk);tpUndo=tpSnap();await tpApply(r)}
+ catch(e){clearInterval(tk);out.replaceChildren(mk('p',e.message,'err'))}
+ finally{$('tp-go').disabled=false;$('tp-go').textContent='Fill the form'}};
+async function tpApply(r){const got=[];
+ if(tpFill('title',r.title))got.push('Title');if(tpFill('org',r.organisation))got.push(r.client?'Client':'Organisation');
+ if(tpFill('brief',r.brief))got.push('Brief');if(tpFill('notes',r.notes))got.push('Notes for the writer');
+ if(r.template&&r.template!==$('tplsel').value){$('tplsel').value=r.template;await $('tplsel').onchange();got.push('Template: '+r.template.split(/[\\/]/).pop().replace(/\.docx$/i,''))}
+ if(r.structure.length){tpFill('structure',r.structure.map(s=>s.heading+(s.points.length?'\n'+s.points.map(p=>'- '+p).join('\n'):'')).join('\n'));got.push('Structure: '+r.structure.length+' headings');document.querySelector('#structure').closest('details').open=true}
+ if(r.references.length){r.references.forEach(x=>picked.add(x));drawRefs();$('refs-fold').open=true;got.push(r.references.length+' reference document'+(r.references.length>1?'s':''))}
+ if(r.roles.length){rateEd.pick(r.roles);$('rates').closest('details').open=true;got.push(r.roles.length+' role'+(r.roles.length>1?'s':'')+(r.roles.some(x=>x.days)?' with days':''))}
+ $('mem').checked=true;summary();
+ const out=$('tp-out');out.replaceChildren();out.append(mk('p','Temple filled the form'+(got.length?':':' with nothing it could stand behind. Add more detail and try again.'),'tp-qh'));
+ if(got.length){const f=mk('div','','tp-filled');got.forEach(g=>f.append(mk('span',g)));out.append(f)}
+ if(r.questions.length){const q=mk('div');q.append(mk('p','Check before you write','tp-qh'));const ul=mk('ul','','tp-q');r.questions.forEach(x=>ul.append(mk('li',x)));q.append(ul);out.append(q)}
+ const u=r.used||{};const bits=[];if(u.organisation)bits.push(u.organisation+'’s profile');if((u.memories||[]).length)bits.push(u.memories.length+' memor'+(u.memories.length>1?'ies':'y'));if((u.knowledge||[]).length)bits.push(u.knowledge.length+' knowledge item'+(u.knowledge.length>1?'s':''));
+ out.append(mk('p',(r.why?r.why+' ':'')+'Drew on '+(bits.length?bits.join(', '):'your request only')+'. Suggested by Temple ('+r.model+'); nothing has been saved.'+(r.document_cut?' Only the first part of a long document was read.':''),'hint'));
+ const a=mk('div','','tp-acts');const go=document.createElement('button');go.type='button';go.className='primary';go.textContent='Review the form';go.onclick=()=>{$('title').scrollIntoView({behavior:'smooth',block:'center'});$('title').focus()};
+ const un=document.createElement('button');un.type='button';un.className='secondary';un.textContent='Undo';un.onclick=async()=>{if(!tpUndo)return;await tpRestore(tpUndo);tpUndo=null;out.replaceChildren(mk('p','Undone: the form is back as it was.','hint'))};
+ a.append(go,un);out.append(a)}
 function alertBox(msg){const e=mk('div',msg,'err');$('result').prepend(e);setTimeout(()=>e.remove(),8000)}
 function editDraft(p){const box=$('result');const c=mk('section','','card');c.append(mk('h2','Edit the draft'),mk('p','Change any section, then send it back: Proposal QA checks your version against the brief and the Word document is rebuilt from the template. The headings stay as they are.','hint'));
  const eds=[];for(const s of p.draft.sections||[]){const w=mk('div','','edit-sec');w.append(mk('b',s.title));if(s.keep){w.append(mk('span','(standard text from the template: not edited here)','hint'))}else{const t=document.createElement('textarea');t.value=s.body;t.maxLength=20000;t.setAttribute('aria-label','Text of '+s.title);w.append(t);eds.push([s,t])}c.append(w)}
