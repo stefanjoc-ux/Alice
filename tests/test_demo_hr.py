@@ -56,11 +56,15 @@ t('the full handbook is not stored in Alice: summaries only', not any(n.lower().
   and all('Summary only' in x for x in texts) and not any('Agency workers, contractors and volunteers' in x for x in texts))
 t('loading again adds nothing', cl.post('/admin/api/assistants/demo-hr', headers=H).json()['added'] == 0)
 
+hr = next(a for a in cl.get('/admin/api/assistants', headers=H).json()['assistants'] if a['id'] == 'hr-policy')
+t('the Assistants page shows how many items are waiting for approval', hr['knowledge'] == {'active': 0, 'draft': 12})
 seen.clear()
 d = cl.post('/assistant/hr-policy/ask', json={'question': 'How many days of annual leave can I carry over?'}).json()
 t('drafts are not used until approved', d['status'] == 'answered' and not d['sources'] and not [k for k in seen if 'SOURCES' in (k.get('instructions') or '')])
 cl.post('/admin/api/knowledge/review', headers=H, json={'ids': [i['id'] for i in drafts], 'decision': 'approved'})
 approved = K.listing(status='active', category='HR', limit=100)['items']
+hr = next(a for a in cl.get('/admin/api/assistants', headers=H).json()['assistants'] if a['id'] == 'hr-policy')
+t('after approval the assistant can use all 12', hr['knowledge'] == {'active': 12, 'draft': 0})
 t('approved summaries get the 30-day review date', len(approved) == 12 and all(i['review_by'] == day(30) for i in approved))
 seen.clear()
 d = cl.post('/assistant/hr-policy/ask', json={'question': 'How many days of annual leave can I carry over?'}).json()

@@ -54,6 +54,9 @@ def listing():
     with store.db() as c:
         rows = [_row(r) for r in c.execute('SELECT * FROM assistants ORDER BY lower(name)')]
     cats = [x['name'] for x in store.list_categories()['categories']]
+    import knowledge
+    for r in rows:                      # what each assistant can use now, and what is still waiting for approval
+        r['knowledge'] = {st: sum(knowledge.listing(status=st, category=c, limit=1)['total'] for c in r['categories']) for st in ('active', 'draft')}
     return {'assistants': rows, 'providers': {k: v[1] for k, v in PROVIDERS.items()},
             'packs': {pid: p['name'] for pid, p in rule_packs.PACKS.items()}, 'categories': cats}
 

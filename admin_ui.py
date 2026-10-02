@@ -509,7 +509,8 @@ if(PAGE==='overview')run(async()=>{const d=await api('/admin/api/overview');for(
 
 SCRIPT += r"""
 if(PAGE==='knowledge'){
- const st={status:'active',kind:'',label:'',category:'',client:'',owner:new URLSearchParams(location.search).get('owner')||'',query:'',offset:0,rows:[],open:new Set(),picked:new Set(),cache:{}};let D=null,timer=null;
+ const KQ=new URLSearchParams(location.search);
+ const st={status:['active','draft','rejected','archived','replaced','all'].includes(KQ.get('status'))?KQ.get('status'):'active',kind:'',label:'',category:KQ.get('category')||'',client:'',owner:KQ.get('owner')||'',query:'',offset:0,rows:[],open:new Set(),picked:new Set(),cache:{}};let D=null,timer=null;
  const KL={general:'General',internal:'Internal',client:'Client-confidential',local:'Local only'};
  const KIND={file:'File',note:'Note',meeting:'Meeting'};const STAT=[['active','Active'],['draft','Drafts'],['archived','Archived'],['replaced','Replaced'],['rejected','Rejected']];
  const WHO=p=>p.source==='temple'?'Temple':'The proposer';
@@ -1099,6 +1100,8 @@ if(PAGE==='assistants'){
   for(const a of L.assistants){const c=el('div','','as-card');const h=el('div','','as-head');const t=el('div','');t.append(el('h3',a.name),el('div',a.description,'muted small'));
    const meta=el('div','','as-meta');meta.append(el('span',a.status==='active'?'Active':'Paused','badge '+(a.status==='active'?'approved':'proposed')),el('span',L.providers[a.provider]||a.provider,'tag'));
    for(const p of a.packs)meta.append(el('span',(L.packs[p]||p)+' pack','tag k-knowledge'));for(const k of a.categories)meta.append(el('span',k,'tag'));if(!a.categories.length)meta.append(el('span','No knowledge yet','flag'));
+   const kn=a.knowledge||{active:0,draft:0};meta.append(el('span',kn.active+(kn.active===1?' item it can use':' items it can use'),'small muted'));
+   if(kn.draft){const w=document.createElement('a');w.className='flag';w.href='/admin/knowledge?status=draft'+(a.categories.length===1?'&category='+encodeURIComponent(a.categories[0]):'');w.textContent=kn.draft+' awaiting your approval: it cannot use these yet →';meta.append(w)}
    t.append(meta);const btns=el('div','','as-btns');const go=document.createElement('a');go.href='/assistant/'+encodeURIComponent(a.id);go.target='_blank';go.rel='noopener';go.className='button-link';go.textContent='Open';
    if(a.id==='hr-policy'){const dm=el('button','Load demo HR policy');dm.type='button';dm.className='secondary';dm.title='Adds summaries of a demonstration UK HR handbook as knowledge drafts (category HR). The full handbook stays in the policy library folder.';dm.onclick=()=>run(async()=>{const x=await api('/admin/api/assistants/demo-hr','POST',{});$('notice').textContent=x.added?x.added+' summaries of '+x.document+' added as drafts in '+x.category+'. Approve them on Knowledge (Drafts) and the assistant can use them. The full document stays at '+x.location+'.':'The demo summaries are already in Knowledge ('+x.already+').';await load()});btns.append(dm)}
    const ed=el('button',open.has(a.id)?'Close':'Edit');ed.type='button';ed.className='secondary';ed.onclick=()=>{open.has(a.id)?open.delete(a.id):open.add(a.id);render()};btns.append(go,ed);h.append(t,btns);c.append(h);
