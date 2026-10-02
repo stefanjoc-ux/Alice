@@ -1507,6 +1507,7 @@ class AssistantIn(BaseModel):
     guidance: str = Field(default='',max_length=3000)
     contact: str = Field(default='',max_length=120)
     status: Literal['active','paused'] = 'active'
+    allow_documents: bool = True
 
 class AssistantQuestion(BaseModel):
     question: str = Field(min_length=1,max_length=2000)

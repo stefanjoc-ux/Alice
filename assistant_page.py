@@ -51,7 +51,9 @@ $('ask').onsubmit=async e=>{e.preventDefault();const q=$('q').value.trim();if(!q
   if(!r.ok){add('bot stop',(d&&d.detail)||'Something went wrong. Try again in a moment.');return}
   const m=add('bot'+(d.status==='answered'?'':' stop'),d.reply);
   if(d.sources&&d.sources.length){const s=document.createElement('div');s.className='src';const b=document.createElement('b');b.textContent='Sources: ';s.append(b,document.createTextNode(d.sources.map(x=>'['+x.ref+'] '+x.title+(x.part>1?' (part '+x.part+')':'')).join(' · ')));m.append(s)}
-  const docs=[...new Set((d.sources||[]).map(x=>x.source).filter(Boolean))];if(docs.length){const f=document.createElement('div');f.className='src';f.textContent='Full policy: '+docs.map(x=>x.split(' (full document')[0]).join(' · ')+'. Alice keeps summaries only; the full document stays in the policy library.';m.append(f)}
+  const checked=(d.sources||[]).filter(x=>x.type==='document');
+  if(checked.length){const f=document.createElement('div');f.className='src';f.textContent='Checked the full document: '+[...new Set(checked.map(x=>x.name+(x.section?', section '+x.section:'')))].join(' · ')+'. Read for this answer only; not stored in Alice.';m.append(f)}
+  const docs=[...new Set((d.sources||[]).filter(x=>x.type!=='document').map(x=>x.source).filter(Boolean))];if(docs.length){const f=document.createElement('div');f.className='src';f.textContent='Full policy: '+docs.map(x=>x.split(' (full document')[0]).join(' · ')+'. Alice keeps summaries only; the full document stays in the policy library.';m.append(f)}
   if(d.notes&&d.notes.length){const n=document.createElement('div');n.className='note';n.textContent=d.notes.join(' ');m.append(n)}
   if(d.status==='answered'){turns.push({role:'user',text:q},{role:'assistant',text:d.reply});while(turns.length>6)turns.shift()}}
  catch{busy.remove();add('bot stop','Could not reach the assistant. Check your connection and try again.')}

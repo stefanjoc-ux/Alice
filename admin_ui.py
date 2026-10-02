@@ -1089,8 +1089,10 @@ if(PAGE==='assistants'){
   const pk=el('div','');pk.append(el('strong','Rule packs'),el('p','Applied to every question in code, whatever the global Rules settings say.','muted small'),packs);
   const ct=el('div','');ct.append(el('strong','Knowledge it may use'),el('p',L.categories.length?'Active knowledge in these categories. Client-tagged and Local only items are never used.':'No categories yet: create one (e.g. HR) on the Memories page and put the policies in it on the Knowledge page.','muted small'),cats);
   const two=el('div','','as-two');two.append(pk,ct);f.append(two);
+  const dl=el('label','','r-check');const dc=document.createElement('input');dc.type='checkbox';dc.checked=a.allow_documents!==false;dl.append(dc,document.createTextNode(' Check the full documents when the summaries don\u2019t answer'));
+  f.append(dl,el('p','Answers come from the approved summaries first. Only if they don\u2019t cover the question is the relevant section of the full document read from the document library for that one answer; nothing from it is stored in Alice.','muted small'));
   const save=el('button',isNew?'Create assistant':'Save');save.type='button';
-  save.onclick=()=>run(async()=>{const body={name:name.value,description:desc.value,greeting:greet.value,guidance:guide.value,contact:contact.value,provider:prov.value,status:st.value,packs:packs.value(),categories:cats.value()};
+  save.onclick=()=>run(async()=>{const body={name:name.value,description:desc.value,greeting:greet.value,guidance:guide.value,contact:contact.value,provider:prov.value,status:st.value,packs:packs.value(),categories:cats.value(),allow_documents:dc.checked};
    const x=isNew?await api('/admin/api/assistants','POST',body):await api('/admin/api/assistants/'+encodeURIComponent(a.id),'PUT',body);$('notice').textContent='Saved '+x.name+'.';open.delete('__new__');open.add(x.id);await load()});
   const cancel=el('button','Close');cancel.type='button';cancel.className='secondary';cancel.onclick=()=>{open.delete(isNew?'__new__':a.id);render()};
   const act=el('div','','arc-actions');act.append(save,cancel);f.append(act);return f}
