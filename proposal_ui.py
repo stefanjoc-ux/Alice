@@ -12,6 +12,7 @@ PE_CSS = r'''
 .pe-rates{width:100%;border-collapse:collapse;font-size:14px}.pe-rates th{text-align:left;font-size:12.5px;color:var(--muted);font-weight:600;padding:4px 6px}
 .pe-rates td{padding:4px 6px;vertical-align:middle}.pe-rates input,.pe-rates select{width:100%;min-width:0}.pe-rates td.num{text-align:right;white-space:nowrap}
 .pe-rates .bad{color:#b3261e;font-weight:600}.pe-add{margin-top:8px}
+.pe-sec textarea.pe-inc{grid-column:1/-1;background:#fbfaf6;border-color:#e2d6b0}.pe-incbtn{margin-left:auto!important}
 .pe-note{font-size:12.5px;color:var(--muted);margin:6px 0 10px}
 @media(max-width:700px){.pe-rates thead{display:none}.pe-rates tr{display:grid;grid-template-columns:1fr 1fr;gap:4px;border-top:1px solid var(--line);padding:6px 0}.pe-rates td:first-child{grid-column:1/-1}}
 '''
@@ -20,7 +21,7 @@ PE_JS = r'''
 const PE=(()=>{
  const mk=(tag,text,cls)=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e};
  const btn=(label,fn,title)=>{const b=mk('button',label,'secondary pe-mini');b.type='button';if(title){b.title=title;b.setAttribute('aria-label',title)}b.onclick=fn;return b};
- function sections(box,items,opts={}){let list=(items||[]).map(s=>({title:s.title||'',guidance:s.guidance||'',keep:!!s.keep,source:s.source||''}));
+ function sections(box,items,opts={}){let list=(items||[]).map(s=>({title:s.title||'',guidance:s.guidance||'',include:s.include||'',keep:!!s.keep,source:s.source||''}));
   function draw(){box.replaceChildren();const wrap=mk('div','','pe-list');
    list.forEach((s,i)=>{const row=mk('div','','pe-sec');const t=document.createElement('input');t.type='text';t.maxLength=120;t.value=s.title;t.placeholder='Section title';t.setAttribute('aria-label','Section '+(i+1)+' title');t.oninput=()=>{s.title=t.value};
     const tools=mk('div','','pe-tools');tools.append(btn('↑',()=>{if(i){[list[i-1],list[i]]=[list[i],list[i-1]];draw()}},'Move up'),btn('↓',()=>{if(i<list.length-1){[list[i+1],list[i]]=[list[i],list[i+1]];draw()}},'Move down'),btn('Remove',()=>{list.splice(i,1);draw()},'Remove section '+(s.title||(i+1))));
@@ -28,11 +29,14 @@ const PE=(()=>{
     const meta=mk('div','','pe-meta');if(s.source)meta.append(mk('span',s.source==='template'?'From the template':s.source==='format and flow'?'Format and flow':'Added','pe-tag'+(s.source==='template'?' template':'')));
     const kl=mk('label');const kc=document.createElement('input');kc.type='checkbox';kc.checked=s.keep;kc.onchange=()=>{s.keep=kc.checked;draw()};kl.append(kc,document.createTextNode(' Standard text (keep as written)'));if(s.source==='template'||opts.allowKeep)meta.append(kl);
     if(s.keep)meta.append(mk('span','Kept word for word','pe-tag keep'));
-    row.append(t,tools,g,meta);wrap.append(row)});
+    row.append(t,tools,g);
+    if(opts.include&&!s.keep){const inc=document.createElement('textarea');inc.maxLength=4000;inc.rows=3;inc.value=s.include;inc.placeholder='Paste points or wording to include in this section: the writer works them in, keeping every point.';inc.setAttribute('aria-label','Text to include in '+(s.title||'section '+(i+1)));inc.className='pe-inc';inc.oninput=()=>{s.include=inc.value};
+     if(s.include||s.showInc)row.append(inc);else{const b=btn('+ Text to include',()=>{s.showInc=true;draw();box.querySelectorAll('.pe-sec')[i]?.querySelector('.pe-inc')?.focus()},'Add text to include in '+(s.title||'this section'));b.classList.add('pe-incbtn');meta.append(b)}}
+    row.append(meta);wrap.append(row)});
    if(!list.length)wrap.append(mk('p',opts.empty||'No sections yet.','pe-note'));
    const add=btn('Add section',()=>{list.push({title:'',guidance:'',keep:false,source:'added'});draw();const ins=box.querySelectorAll('.pe-sec input[type=text]');ins[ins.length-1]?.focus()});add.classList.add('pe-add');
    box.append(wrap,add)}
-  draw();return {value:()=>list.filter(s=>s.title.trim()).map(s=>({title:s.title.trim(),guidance:s.guidance.trim(),keep:s.keep})),set:x=>{list=(x||[]).map(s=>({...s}));draw()}}}
+  draw();return {value:()=>list.filter(s=>s.title.trim()).map(s=>({title:s.title.trim(),guidance:s.guidance.trim(),include:(s.include||'').trim(),keep:s.keep})),set:x=>{list=(x||[]).map(s=>({...s}));draw()},add:x=>{list=list.concat((x||[]).map(s=>({...s})));draw()}}}
  const gbp=v=>'£'+Number(v||0).toLocaleString('en-GB',{maximumFractionDigits:2});
  function rates(box,items,units){let list=(items||[]).map(r=>({role:r.role||'',unit:r.unit||'day',cost:r.cost??'',sell:r.sell??''}));
   function draw(){box.replaceChildren();const t=mk('table','','pe-rates');const h=document.createElement('thead');const hr=document.createElement('tr');

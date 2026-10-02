@@ -1524,6 +1524,22 @@ class ProposalIn(BaseModel):
     writer_model: str = Field(default='',max_length=20)
     qa_model: str = Field(default='',max_length=20)
     references: list[Annotated[str, Field(max_length=300)]] = Field(default_factory=list,max_length=10)
+    structure: str = Field(default='',max_length=6000)
+
+class ProposalRecheck(BaseModel):
+    sections: list[dict] = Field(min_length=1,max_length=40)
+
+class ProposalQAOnly(BaseModel):
+    title: str = Field(min_length=1,max_length=150)
+    organisation: str = Field(default='',max_length=80)
+    brief: str = Field(min_length=1,max_length=20000)
+    name: str = Field(min_length=1,max_length=150)
+    data: str = Field(min_length=1,max_length=21_000_000)
+    qa_model: str = Field(default='',max_length=20)
+
+class ProposalDoc(BaseModel):
+    name: str = Field(min_length=1,max_length=150)
+    data: str = Field(min_length=1,max_length=21_000_000)
 
 class ReferenceUpload(BaseModel):
     name: str = Field(min_length=1,max_length=150)
@@ -1597,7 +1613,7 @@ def proposal_setup(aid: str):
 def proposal_start(aid: str, x: ProposalIn, request: Request):
     import proposals
     _same_origin(request)
-    try: return {'id':proposals.start(aid,x.title,x.organisation,x.brief,x.notes,x.sections,x.rate_card,x.use_memory,x.writer_model,x.qa_model,x.references)}
+    try: return {'id':proposals.start(aid,x.title,x.organisation,x.brief,x.notes,x.sections,x.rate_card,x.use_memory,x.writer_model,x.qa_model,x.references,x.structure)}
     except LookupError: raise HTTPException(404,'No such proposal writer.') from None
     except Exception as e:
         code,detail=_assistant_error(e)
@@ -1635,6 +1651,40 @@ def reference_save(aid: str, x: ReferenceSave, request: Request):
         code,detail=_assistant_error(e)
         if code==500: raise
         raise HTTPException(code,detail) from None
+
+def _b64(data):
+    try: raw=base64.b64decode(data,validate=True)
+    except ValueError: raise HTTPException(400,'The file did not arrive intact. Try again.') from None
+    if len(raw)>15*1024*1024: raise HTTPException(400,'That file is larger than 15 MB.')
+    return raw
+
+def _proposal_call(fn):
+    try: return fn()
+    except LookupError: raise HTTPException(404,'No such proposal.') from None
+    except Exception as e:
+        code,detail=_assistant_error(e)
+        if code==500: raise
+        raise HTTPException(code,detail) from None
+
+@app.post('/assistant/{aid}/proposals/qa-only')
+def proposal_qa_only(aid: str, x: ProposalQAOnly, request: Request):
+    import proposals
+    _same_origin(request); _proposal_writer(aid)
+    raw=_b64(x.data)
+    return _proposal_call(lambda: {'id':proposals.qa_only(aid,x.title,x.organisation,x.brief,x.name,raw,x.qa_model)})
+
+@app.post('/assistant/{aid}/proposals/{pid}/recheck')
+def proposal_recheck(aid: str, pid: str, x: ProposalRecheck, request: Request):
+    import proposals
+    _same_origin(request)
+    return _proposal_call(lambda: proposals.recheck(aid,pid,x.sections))
+
+@app.post('/assistant/{aid}/proposals/{pid}/qa-upload')
+def proposal_qa_upload(aid: str, pid: str, x: ProposalDoc, request: Request):
+    import proposals
+    _same_origin(request)
+    raw=_b64(x.data)
+    return _proposal_call(lambda: proposals.qa_upload(aid,pid,x.name,raw))
 
 @app.get('/assistant/{aid}/proposals')
 def proposal_list(aid: str):

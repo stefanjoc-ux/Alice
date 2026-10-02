@@ -2,7 +2,7 @@
 pricing from the rate card (cost never sent or printed), the Word document built from the template."""
 import _util  # first: throwaway data folder, dummy keys, no real model calls
 from _util import t
-import io, json, shutil, tempfile, time, zipfile
+import base64, io, json, shutil, tempfile, time, zipfile
 from pathlib import Path
 from types import SimpleNamespace as NS
 import substrate_store as s
@@ -240,3 +240,54 @@ class OAI:
 openai.OpenAI = OAI
 AS._call('openai_astra', 'sys', [{'role': 'user', 'content': 'x'}])
 t('GPT-6 Astra is called with reasoning on (it has no "none" setting)', seen_o[-1]['model'] == 'gpt-6-astra' and seen_o[-1]['reasoning']['effort'] == 'medium')
+
+# ---------------- structure, text to include, re-checks and QA of your own document ----------------
+anthropic.Anthropic = Anth
+calls.clear(); MODE['qa'] = [QA2]
+r = start(structure='1. Why now\n- budget pressure\n2. Approach', sections=[{'title': 'Summary', 'include': '- Fixed price\n- Starts in January'}, {'title': 'Pricing'}], rate_card=card)
+p5 = wait(r.json()['id'])
+wmsg = [c for c in calls if c['system'].startswith('You are the proposal writer')][0]['messages'][0]['content']
+t('a pasted structure reaches the writer as the author\'s outline', 'STRUCTURE AND POINTS FROM THE AUTHOR\n1. Why now\n- budget pressure' in wmsg)
+t('text to include is given per section', 'Include: - Fixed price' in wmsg and 'Starts in January' in wmsg and p5['inputs']['sections'][0]['include'].startswith('- Fixed'))
+t('a structure with a secret is refused', start(structure='key sk-proj-abcdefghijklmnopqrstuvwxyz0123456789ABCD').status_code == 400)
+
+calls.clear(); MODE['qa'] = [QA2]
+edited = [{'title': x['title'], 'body': ('My edited summary with the January start date and a fixed price for the council. ' * 3) if x['title'] == 'Summary' else x['body']}
+          for x in p5['draft']['sections']]
+r = cl.post(f'/assistant/proposal-writer/proposals/{p5["id"]}/recheck', json={'sections': edited})
+p6 = wait(p5['id'])
+q6 = [c for c in calls if c['system'].startswith('You are the Proposal QA')]
+t('your edits go back to QA and the document is rebuilt', r.status_code == 200 and p6['status'] == 'done' and len(p6['qa']) == len(p5['qa']) + 1
+  and p6['qa'][-1]['source'] == 'your edits' and len(q6) == 1 and 'My edited summary' in q6[0]['messages'][0]['content']
+  and p6['document_id'] != p5['document_id'] and 'My edited summary' in K.docx_to_text(D.get(p6['document_id'])['data']))
+t('no writer run for a re-check', not [c for c in calls if c['system'].startswith('You are the proposal writer')])
+t('every section must come back, titles unchanged', cl.post(f'/assistant/proposal-writer/proposals/{p5["id"]}/recheck', json={'sections': edited[:1]}).status_code == 400)
+t('another assistant cannot re-check it', cl.post(f'/assistant/hr-policy/proposals/{p5["id"]}/recheck', json={'sections': edited}).status_code == 404)
+
+mine = D.get(D.create('docx', 'My version', '# Summary\nOur own words for the council: fixed price, January start, governance first. ' * 2
+                      + '\n\n# Approach\nThree phases over six weeks with workshops and a roadmap at the end of it all.')['id'])['data']
+calls.clear(); MODE['qa'] = [QA1]
+r = cl.post(f'/assistant/proposal-writer/proposals/{p5["id"]}/qa-upload', json={'name': 'Fabric-v2.docx', 'data': base64.b64encode(mine).decode()})
+p7 = wait(p5['id'])
+q7 = [c for c in calls if c['system'].startswith('You are the Proposal QA')]
+t('a revised version uploaded from Word is checked against the brief', r.status_code == 200 and p7['qa'][-1]['source'] == 'uploaded: Fabric-v2.docx'
+  and 'Our own words for the council' in q7[0]['messages'][0]['content'] and [x['title'] for x in p7['qa'][-1]['sections']] == ['Summary', 'Approach'])
+t('the uploaded document is not kept, and the draft is unchanged', p7['draft'] == p6['draft'] and p7['document_id'] == p6['document_id'])
+t('a secret in an uploaded version is refused', cl.post(f'/assistant/proposal-writer/proposals/{p5["id"]}/qa-upload',
+  json={'name': 'k.txt', 'data': base64.b64encode(('# A\nkey sk-proj-abcdefghijklmnopqrstuvwxyz0123456789ABCD ' + 'x ' * 200).encode()).decode()}).status_code == 400)
+
+calls.clear(); MODE['qa'] = [QA2]
+r = cl.post('/assistant/proposal-writer/proposals/qa-only', json={'title': 'Existing bid', 'organisation': 'NSC', 'brief': brief, 'name': 'bid.docx',
+                                                                    'data': base64.b64encode(mine).decode(), 'qa_model': 'claude_sonnet'})
+p8 = wait(r.json()['id'])
+t('QA only: a proposal you already have is checked without writing anything', r.status_code == 200 and p8['status'] == 'done' and len(p8['qa']) == 1
+  and not p8['document_id'] and p8['inputs']['qa_only'] and p8['organisation'] == 'Northshire Council'
+  and not [c for c in calls if c['system'].startswith('You are the proposal writer')] and [x['title'] for x in p8['draft']['sections']] == ['Summary', 'Approach'])
+t('QA only needs a brief', cl.post('/assistant/proposal-writer/proposals/qa-only', json={'title': 'X bid', 'brief': 'too short', 'name': 'a.docx',
+                                                                                           'data': base64.b64encode(mine).decode()}).status_code == 400)
+t('a QA-only proposal cannot be "edited and re-checked"', cl.post(f'/assistant/proposal-writer/proposals/{p8["id"]}/recheck',
+  json={'sections': [{'title': 'Summary', 'body': 'x'}, {'title': 'Approach', 'body': 'y'}]}).status_code == 400)
+secs = P.document_sections('t.docx', PD.fill(raw, [{'title': 'Executive summary', 'body': 'A ' * 150}, {'title': 'Proposed approach', 'body': 'B ' * 150}], {'title': 'T', 'client': 'C'}))
+t('a document is split at its main headings', [x['title'] for x in secs][-2:] == ['Executive summary', 'Proposed approach'])
+page = cl.get('/assistant/proposal-writer').text
+t('the page offers the structure box, QA-only mode and re-checks', all(x in page for x in ('id="structure"', 'Turn into sections', 'Check one I already have', 'Edit the draft and check again', 'Upload a revised version for QA')))

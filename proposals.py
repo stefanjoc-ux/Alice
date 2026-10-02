@@ -57,7 +57,8 @@ def clean_sections(items):
         if not isinstance(s, dict): continue
         title = _clean(s.get('title'), 120)
         if not title: continue
-        out.append({'title': title, 'guidance': str(s.get('guidance') or '').strip()[:1500], 'keep': bool(s.get('keep'))})
+        out.append({'title': title, 'guidance': str(s.get('guidance') or '').strip()[:1500], 'keep': bool(s.get('keep')),
+                    'include': str(s.get('include') or '').strip()[:4000]})
     seen, uniq = set(), []
     for s in out:
         if s['title'].casefold() in seen: raise ValueError(f'The section "{s["title"]}" is listed twice.')
@@ -228,6 +229,8 @@ Rules you must follow:
   repeat the section title and do not use "#" or "##" headings.
 - Never state prices, rates, day rates or totals: Alice adds the pricing table. You choose the resource plan: a quantity for
   each role you need, using only roles from the RATE CARD (in its unit). Leave the plan empty if there is no rate card.
+- Where a section lists text to Include, work it in faithfully: tidy the wording, keep the substance and every point.
+- STRUCTURE AND POINTS FROM THE AUTHOR, if given, is the author's outline: follow it within the sections.
 - No placeholders, square-bracket notes, comments to the author or "TBC" in the text.
 {guidance}
 Reply with JSON only, no other text:
@@ -282,10 +285,12 @@ def write(aid, job, previous=None, feedback=None):
             used['references'], used['references_skipped'] = rused, rskipped
         job['context'], job['context_used'], job['context_skipped'] = ctx, used, skipped
     secs = '\n'.join(f'- {s["title"]}' + (' [KEEP]' if s['keep'] else '') + (f'\n  Guidance: {s["guidance"]}' if s['guidance'] and not s['keep'] else '')
+                     + (('\n  Include: ' + s['include'].replace('\n', '\n    ')) if s.get('include') and not s['keep'] else '')
                      for s in job['sections'])
     roles = '\n'.join(f'- {r["role"]} (per {r["unit"]})' for r in job['rate_card']) or '(no rate card: leave the resource plan empty)'
     msg = (f'TITLE: {job["title"]}\nCLIENT: {job["organisation"] or "not named"}\n\nBRIEF\n{job["brief"]}\n\n'
            + (f'NOTES FROM THE AUTHOR\n{job["notes"]}\n\n' if job['notes'] else '')
+           + (f'STRUCTURE AND POINTS FROM THE AUTHOR\n{job["structure"]}\n\n' if job.get('structure') else '')
            + f'SECTIONS\n{secs}\n\nRATE CARD ROLES\n{roles}\n\nCONTEXT\n{job["context"] or "(none)"}')
     if previous is not None:
         msg += ('\n\nPREVIOUS DRAFT (JSON)\n' + json.dumps(previous)[:40000] + '\n\nQA FEEDBACK: fix every issue and every requirement not fully met; '
@@ -368,7 +373,8 @@ def review(aid, job, draft, pricing):
     summary = '\n'.join(f'- {l["role"]}: {l["quantity"]:g} {l["unit"]}s, {money(l["sell"])}' for l in pricing['lines'])
     msg = (f'CLIENT: {job["organisation"] or "not named"}\nTITLE: {job["title"]}\n\nBRIEF\n{job["brief"]}\n\n'
            + 'REQUIRED SECTIONS\n' + '\n'.join('- ' + s['title'] for s in job['sections'])
-           + f'\n\nPRICE SUMMARY (sell)\n{summary or "(no pricing)"}\nTotal: {money(pricing["sell"])}\n\nDRAFT\n{_sections_text(draft["sections"])}'
+           + (f'\n\nPRICE SUMMARY (sell)\n{summary}\nTotal: {money(pricing["sell"])}' if summary else '\n\nPRICE SUMMARY\n(as written in the draft, if any)')
+           + f'\n\nDRAFT\n{_sections_text(draft["sections"])}'
            + '\n\nALICE CHECKS\n' + (json.dumps(checks) if checks else '(none)'))
     rules_engine.check_outbound(msg, 'Proposal QA', packs=False)
     qa_provider = job.get('qa') or a['settings'].get('qa_provider') or a['provider']
@@ -398,7 +404,8 @@ def _save(pid, **f):
         c.execute(f'UPDATE proposals SET {",".join(k + "=?" for k in f)} WHERE id=?', list(f.values()) + [pid])
 
 
-def start(aid, title, organisation, brief, notes='', sections=None, rate_card=None, use_memory=True, writer_model='', qa_model='', references=None):
+def start(aid, title, organisation, brief, notes='', sections=None, rate_card=None, use_memory=True, writer_model='', qa_model='', references=None,
+          structure=''):
     """Check the request and start the background job. Returns the proposal id."""
     import assistants, organisations, rules_engine, rule_packs
     a = assistants.get(aid)
@@ -415,7 +422,8 @@ def start(aid, title, organisation, brief, notes='', sections=None, rate_card=No
         except ValueError: org = _clean(organisation, 80)                 # not on the Organisations page: use the name as typed
     client = _client_for(org)
     rules_engine.check_spend('chat')
-    for text in (title, brief, notes):
+    structure = (structure or '').strip()[:6000]
+    for text in (title, brief, notes, structure):
         if text: rules_engine.check_outbound(text, 'Proposal writer', packs=False)
     writer = writer_model or a['provider']
     qa = qa_model or a['settings'].get('qa_provider') or a['provider']
@@ -429,7 +437,7 @@ def start(aid, title, organisation, brief, notes='', sections=None, rate_card=No
     if a['settings'].get('template'): _template(a['settings']['template'])          # fail now, not in the background
     pid = uuid.uuid4().hex
     inputs = {'sections': secs, 'rate_card': card, 'use_memory': bool(use_memory), 'template': a['settings'].get('template') or '',
-              'writer': writer, 'qa': qa, 'references': [str(x)[:300] for x in (references or [])][:10]}
+              'writer': writer, 'qa': qa, 'references': [str(x)[:300] for x in (references or [])][:10], 'structure': structure}
     with store.db() as c:
         c.execute('INSERT INTO proposals(id,assistant_id,title,organisation,client,brief,notes,inputs,status,stage,created_by,created_at,updated_at) '
                   'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', (pid, aid, title, org, client, brief, notes, json.dumps(inputs), 'running',
@@ -464,32 +472,185 @@ def _job(pid):
     pricing = price(draft['resource_plan'], job['rate_card'], a['settings'].get('min_margin', 25))
     _save(pid, stage='Proposal QA is checking the draft against the brief', draft=draft, pricing=pricing,
           context={'used': job['context_used'], 'skipped': job['context_skipped']})
-    reports = [dict(review(p['assistant_id'], job, draft, pricing), round=1)]
+    reports = [dict(review(p['assistant_id'], job, draft, pricing), round=1, source='first draft')]
     if reports[-1]['verdict'] != 'client_ready':
         _save(pid, stage='Revising the draft using the QA feedback', qa=reports)
         fb = {k: reports[-1][k] for k in ('requirements', 'issues', 'summary')}
         draft = write(p['assistant_id'], job, previous={'sections': draft['sections'], 'resource_plan': draft['resource_plan']}, feedback=fb)
         pricing = price(draft['resource_plan'], job['rate_card'], a['settings'].get('min_margin', 25))
         _save(pid, stage='Proposal QA is checking the revision', draft=draft, pricing=pricing, qa=reports)
-        reports.append(dict(review(p['assistant_id'], job, draft, pricing), round=2))
+        reports.append(dict(review(p['assistant_id'], job, draft, pricing), round=2, source='automatic revision'))
     _save(pid, stage='Building the Word document', qa=reports)
+    doc = _build(p, a, job, draft, pricing)
+    _save(pid, status='done', stage='', document_id=doc['id'])
+    with store.db() as c:
+        store.audit(c, 'proposal_written', pid, 'assistant', f'{p["title"]}: QA {reports[-1]["verdict"]}'
+                    + (f' ({reports[-1]["score"]}/100)' if reports[-1]['score'] is not None else '') + f', {len(reports)} QA round(s)')
+
+
+def _build(p, a, job, draft, pricing):
+    """The Word document for a draft: the template filled in, or Alice's own layout."""
+    import documents, knowledge, proposal_docx, rules_engine
     d = date.today()
     values = {'title': p['title'], 'client': p['organisation'] or '', 'date': f'{d.day} {d:%B %Y}',
-              'author': a['settings'].get('author') or store.owner_name(), 'reference': 'P-' + pid[:6].upper(), 'total': money(pricing['sell'])}
+              'author': a['settings'].get('author') or store.owner_name(), 'reference': 'P-' + p['id'][:6].upper(), 'total': money(pricing['sell'])}
     note = a['settings'].get('pricing_note', '')
     raw, _ = _template(job.get('template'))
     secs = draft['sections']
     data = (proposal_docx.fill(raw, secs, values, pricing['rows'] or None, note) if raw
             else proposal_docx.plain_docx(p['title'], secs, pricing['rows'] or None, note))
-    import knowledge
     text = knowledge.docx_to_text(data)
     name = documents._slug(p['title'], '.docx')
     rules_engine.check_file(text, name)
-    doc = documents.keep('docx', name, data, text)
+    return documents.keep('docx', name, data, text)
+
+
+# ---------------- after the first draft: your edits, or a document of yours, checked again ----------------
+def _job_of(p):
+    return {'title': p['title'], 'organisation': p['organisation'], 'client': p['client'], 'brief': p['brief'], 'notes': p['notes'], **p['inputs']}
+
+
+def _background(pid, fn, *args):
+    who = store.actor()
+    def go():
+        with store.acting(who):
+            try:
+                fn(pid, *args)
+            except Exception as e:
+                import rules_engine, logging
+                known = isinstance(e, (ValueError, LookupError, agents.AgentBlocked)) or isinstance(e, rules_engine.RuleViolation)
+                if not known: logging.exception('Proposal re-check failed')
+                _save(pid, status='done' if get(pid)['document_id'] or get(pid)['inputs'].get('qa_only') else 'failed', stage='',
+                      error=(str(e) if known else 'The AI service did not answer (' + type(e).__name__ + '). Try again.')[:500])
+    threading.Thread(target=go, daemon=True, name='proposal-recheck-' + pid[:6]).start()
+
+
+def _owned(aid, pid):
+    p = get(pid)
+    if p['assistant_id'] != aid: raise LookupError('No such proposal.')
+    if p['status'] == 'running': raise ValueError('This proposal is still being worked on. Wait for it to finish.')
+    return p
+
+
+def recheck(aid, pid, sections):
+    """Your edits to the draft: saved, checked by QA again, and the Word document rebuilt."""
+    import rules_engine
+    p = _owned(aid, pid)
+    if p['inputs'].get('qa_only'): raise ValueError('This was a QA of your own document: upload a new version to check it again.')
+    old = {x['title']: x for x in (p['draft'].get('sections') or [])}
+    secs = []
+    for x in sections or []:
+        if not isinstance(x, dict): continue
+        t = _clean(x.get('title'), 120)
+        if t not in old: continue
+        secs.append({'title': t, 'body': '' if old[t].get('keep') else str(x.get('body') or '').strip()[:20000], 'keep': old[t].get('keep', False)})
+    if len(secs) != len(old): raise ValueError('Send every section of the draft back, with its title unchanged.')
+    rules_engine.check_outbound(_sections_text(secs), 'Proposal QA', packs=False)
+    _save(pid, status='running', stage='Proposal QA is checking your changes', error='')
+    _background(pid, _recheck_job, secs)
+    with store.db() as c: store.audit(c, 'proposal_rechecked', pid, 'human_review', f'{p["title"]}: your edits sent to QA')
+    return {'id': pid}
+
+
+def _recheck_job(pid, secs):
+    import assistants
+    p = get(pid); a = assistants.get(p['assistant_id']); job = _job_of(p)
+    draft = dict(p['draft'], sections=secs)
+    pricing = p['pricing'] or price([], [], 0)
+    rep = dict(review(p['assistant_id'], job, draft, pricing), round=len(p['qa']) + 1, source='your edits')
+    _save(pid, draft=draft, qa=p['qa'] + [rep], stage='Building the Word document')
+    doc = _build(p, a, job, draft, pricing)
     _save(pid, status='done', stage='', document_id=doc['id'])
+
+
+def document_sections(name, raw):
+    """A Word, PDF or text document split into sections at its main headings (one section if it has none)."""
+    import doc_library, rules_engine
+    try: text = doc_library.text_of(name, raw)
+    except ValueError: raise
+    except Exception: raise ValueError('Alice could not read that file. Is it a working Word, PDF or text file?') from None
+    rules_engine.check_file(text, name)
+    lines = [l for l in text.splitlines() if not l.startswith(('HEADER:', 'FOOTER:'))]
+    levels = [len(m.group(1)) for l in lines for m in [re.match(r'^(#+)\s+\S', l)] if m]
+    lvl = next((n for n in sorted(set(levels)) if levels.count(n) >= 2), None)
+    secs, cur = [], None
+    for l in lines:
+        m = re.match(r'^(#+)\s+(.*)', l)
+        if lvl and m and len(m.group(1)) == lvl:
+            cur = {'title': _clean(m.group(2), 120) or 'Section', 'body': [], 'keep': False}; secs.append(cur); continue
+        if cur is None:
+            if l.strip(): secs.append(cur := {'title': 'Opening', 'body': [], 'keep': False})
+            else: continue
+        cur['body'].append(re.sub(r'^#+\s+', '### ', l))
+    out = [{'title': x['title'], 'body': '\n'.join(x['body']).strip()[:20000], 'keep': False} for x in secs
+           if not (x['title'] == 'Opening' and len(' '.join(x['body']).split()) < 20)]      # a cover title is not a section
+    if not out or sum(len(x['body']) for x in out) < 200: raise ValueError('There is almost no readable text in that file.')
+    return out[:40]
+
+
+def _label_ok(name, raw):
+    import purview_labels
+    lbl = purview_labels.read_label(name, raw) if name.lower().endswith(('.docx', '.pdf')) else None
+    if not lbl: return
     with store.db() as c:
-        store.audit(c, 'proposal_written', pid, 'assistant', f'{p["title"]}: QA {reports[-1]["verdict"]}'
-                    + (f' ({reports[-1]["score"]}/100)' if reports[-1]['score'] is not None else '') + f', {len(reports)} QA round(s)')
+        row = c.execute('SELECT action FROM purview_labels WHERE label_id=?', (lbl['id'],)).fetchone()
+    if row and row['action'] in ('block', 'local'):
+        raise ValueError(f'Its Purview label ({lbl.get("name") or lbl["id"]}) means it cannot be sent to an AI model.')
+
+
+def qa_upload(aid, pid, name, raw):
+    """A revised version of the proposal (edited in Word, say): QA checks it against the brief. Your document is not kept."""
+    import rules_engine
+    p = _owned(aid, pid)
+    _label_ok(name, raw)
+    secs = document_sections(name, raw)
+    rules_engine.check_outbound(_sections_text(secs), 'Proposal QA', packs=False)
+    _save(pid, status='running', stage=f'Proposal QA is checking {name}', error='')
+    _background(pid, _upload_job, secs, name)
+    with store.db() as c: store.audit(c, 'proposal_rechecked', pid, 'human_review', f'{p["title"]}: {name} uploaded for QA')
+    return {'id': pid}
+
+
+def _upload_job(pid, secs, name):
+    p = get(pid); job = _job_of(p)
+    if not job.get('sections'): job['sections'] = [{'title': x['title'], 'guidance': '', 'keep': False} for x in secs]
+    pricing = p['pricing'] if (p['pricing'] or {}).get('lines') else {'lines': [], 'sell': 0}
+    rep = dict(review(p['assistant_id'], job, {'sections': secs}, pricing), round=len(p['qa']) + 1, source='uploaded: ' + name[:120],
+               sections=[{'title': x['title'], 'words': len(x['body'].split())} for x in secs])
+    upd = {'qa': p['qa'] + [rep], 'status': 'done', 'stage': ''}
+    if p['inputs'].get('qa_only'): upd['draft'] = {'sections': secs, 'resource_plan': [], 'gaps': []}
+    _save(pid, **upd)
+
+
+def qa_only(aid, title, organisation, brief, name, raw, qa_model=''):
+    """Check a proposal you already have against its brief, without writing anything."""
+    import assistants, organisations, rules_engine
+    a = assistants.get(aid)
+    if a['kind'] != 'proposal': raise ValueError('This assistant does not check proposals.')
+    agents._gate(agents.get(QA))
+    title, brief = _clean(title, 150), (brief or '').strip()
+    if len(title) < 3: raise ValueError('Give the proposal a title.')
+    if len(brief.split()) < 10: raise ValueError('Paste the brief so QA can check the document against it.')
+    if len(brief) > MAX_BRIEF: raise ValueError('Keep the brief under 20,000 characters.')
+    for text in (title, brief): rules_engine.check_outbound(text, 'Proposal QA', packs=False)
+    org = ''
+    if _clean(organisation, 80):
+        try: org = organisations.canonical(organisation)
+        except ValueError: org = _clean(organisation, 80)
+    _label_ok(name, raw)
+    secs = document_sections(name, raw)
+    qa = qa_model or a['settings'].get('qa_provider') or a['provider']
+    if qa not in assistants.PROVIDERS: raise ValueError('Choose a model from the list.')
+    pid = uuid.uuid4().hex
+    inputs = {'sections': [{'title': x['title'], 'guidance': '', 'keep': False} for x in secs], 'rate_card': [], 'use_memory': False,
+              'template': '', 'writer': '', 'qa': qa, 'references': [], 'structure': '', 'qa_only': True, 'file': name[:150]}
+    with store.db() as c:
+        c.execute('INSERT INTO proposals(id,assistant_id,title,organisation,client,brief,notes,inputs,status,stage,created_by,created_at,updated_at) '
+                  'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', (pid, aid, title, org, _client_for(org), brief, '', json.dumps(inputs), 'running',
+                                                         f'Proposal QA is checking {name}', store.actor(), store.now(), store.now()))
+        store.audit(c, 'proposal_started', pid, 'human_review', f'QA only: {title}' + (f' for {org}' if org else ''))
+    _background(pid, _upload_job, secs, name)
+    return pid
 
 
 def get(pid, internal=False):
