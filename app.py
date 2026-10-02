@@ -1682,19 +1682,32 @@ def proposal_rates_parse(aid: str, x: ProposalDoc, request: Request):
     try: return proposals.rates_from_sheet(x.name,raw)
     except ValueError as e: raise HTTPException(400,str(e)) from None
 
-class ProposalStarter(BaseModel):
-    ask: str = Field(default='',max_length=6000)
+class ParkerTurn(BaseModel):
+    message: str = Field(default='',max_length=4000)
+    history: list = Field(default_factory=list,max_length=40)
+    form: dict = Field(default_factory=dict)
     organisation: str = Field(default='',max_length=80)
-    name: str = Field(default='',max_length=150)
-    data: str = Field(default='',max_length=21_000_000)
+    doc_token: str = Field(default='',max_length=64)
 
-@app.post('/assistant/{aid}/starter')
-def proposal_starter_route(aid: str, x: ProposalStarter, request: Request):
+@app.post('/assistant/{aid}/parker')
+def parker_turn(aid: str, x: ParkerTurn, request: Request):
     import proposal_starter
     _same_origin(request); _proposal_writer(aid)
-    raw=_b64(x.data) if x.data else None
-    if raw is not None and not x.name: raise HTTPException(400,'Name the file.')
-    return _proposal_call(lambda: proposal_starter.suggest(aid,x.ask,x.organisation,x.name,raw))
+    return _proposal_call(lambda: proposal_starter.chat(aid,x.message,x.history,x.form,x.organisation,x.doc_token))
+
+@app.post('/assistant/{aid}/parker/document')
+def parker_document(aid: str, x: ProposalDoc, request: Request):
+    import proposal_starter
+    _same_origin(request); _proposal_writer(aid)
+    raw=_b64(x.data)
+    return _proposal_call(lambda: proposal_starter.read_doc(x.name,raw))
+
+@app.get('/admin/api/temple/parker')
+def admin_temple_parker(days: int=Query(30,ge=1,le=365)):
+    since=(datetime.now(timezone.utc)-timedelta(days=days)).isoformat()
+    with store.db() as c:
+        rows=[dict(r) for r in c.execute("SELECT created_at,target,detail,actor FROM activity WHERE action='parker_update' AND created_at>=? ORDER BY id DESC LIMIT 50",(since,))]
+    return {'items':rows,'days':days}
 
 @app.get('/admin/api/temple/auto-approved')
 def admin_temple_auto_approved(days: int=Query(30,ge=1,le=365)):

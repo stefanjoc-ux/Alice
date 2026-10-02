@@ -55,6 +55,7 @@ SECTIONS = {
 <section><details><summary>Grok connection check and estimate notes</summary><p>Add XAI_API_KEY to your local .env and restart both servers. The check makes one small billable API request; it does not send your saved files or memories.</p><button id="grok-check" type="button">Check Grok connection</button><p id="grok-check-result" role="status"></p><p>Counts include every returned model response, including tool rounds, Temple and the routing classifier. Failed requests without usage data are not included. This is not a spending cap or a provider invoice; provider billing is authoritative. Luna estimates are conservative: when write details are missing, all uncached input is priced at the cache-write rate. Grok images are priced at $0.04 each (xAI Imagine 2.0, 1K low quality) unless IMAGE_PRICE_GROK is set in .env; OpenAI images stay unpriced until IMAGE_PRICE_OPENAI is set. Standard global rates checked 29 September 2026, in USD; taxes, regional premiums and Azure costs are excluded.</p></details></section>''',
 'temple': r'''<section class="t-head"><div class="mem-head"><h2>Temple review</h2><span id="t-summary" class="muted small"></span></div>
 <details id="t-settings-panel"><summary>Temple settings</summary><form id="temple-settings"><label>Reviewer <select id="temple-provider"><option value="openai">OpenAI · GPT-6 Luna</option><option value="claude">Claude · Haiku 4.5</option></select></label><label><input type="checkbox" id="temple-enabled"> Automatically review new memory proposals</label><p class="muted small">Temple checks proposals for duplicates, conflicts and unclear sources. It is advisory: it cannot approve or change memories. Each review sends the proposal and a selection of approved memories to the reviewer and costs API usage. Source descriptions are not independently verified.</p><button>Save Temple settings</button></form></details>
+<details id="t-parker" class="t-auto t-parker" hidden><summary></summary><ul id="t-parker-list"></ul><p class="muted small">Parker works through proposal forms with people on the Parker page. Each turn is logged here: what it changed and what it asked for, never the conversation. Nothing Parker does is saved until someone writes the proposal.</p></details>
 <details id="t-auto" class="t-auto" hidden><summary></summary><ul id="t-auto-list"></ul><p class="muted small">Reference summaries are approved automatically because the Proposal writer is set to do so (Assistants page). Each one is in Knowledge, where you can retire it.</p></details>
 <div class="t-tabs" role="tablist"><button id="tab-reviews" type="button" role="tab" class="chip on">Memory reviews</button><button id="tab-suggestions" type="button" role="tab" class="chip">Chat suggestions</button><button id="tab-ask" type="button" role="tab" class="chip">Ask Temple</button></div></section>
 <section id="pane-reviews"><div id="t-views" class="mem-tabs"></div><div class="mem-tools"><input id="t-query" type="search" maxlength="200" placeholder="Search proposals" aria-label="Search proposals"></div><div id="t-verdicts" class="mem-cats"></div>
@@ -297,6 +298,7 @@ nav{display:flex;gap:20px;flex-wrap:wrap}.sidebar nav{display:contents}
 .ag-anat-edit{border-top:1px solid var(--line);margin-top:16px;padding-top:4px}.ag-anat-edit input,.ag-anat-edit textarea{width:100%}
 @media(max-width:1100px){.anat{grid-template-columns:repeat(3,minmax(0,1fr))}.anat-stage:nth-child(3):after{display:none}}
 .ag-perms{display:grid;gap:10px;margin:6px 0 10px}.ag-perm strong{margin-right:6px}
+.t-parker{background:#f6f2fb!important;border-color:#d6c8ea!important}.t-parker summary{color:#4b2f73!important}
 .t-auto{margin:10px 0;background:#eef8f1;border:1px solid #9fcfaf;border-radius:10px;padding:8px 12px}.t-auto summary{cursor:pointer;font-weight:600;color:#1e5b31}.t-auto ul{margin:8px 0;padding-left:18px}
 .hm-hero{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;background:linear-gradient(120deg,#0b3d5c,#075e79 60%,#1f6f8b);color:#fff;border:0!important;border-radius:14px!important;padding:22px 26px!important}
 .hm-hero h2{margin:0 0 4px;font-size:24px;color:#fff}.hm-hero p{margin:0;color:#cfe3ee!important}
@@ -1282,6 +1284,10 @@ if(PAGE==='home'){
 '''
 
 SCRIPT += r'''
+if(PAGE==='temple')run(async()=>{const d=await api('/admin/api/temple/parker');if(!d.items.length)return;const box=$('t-parker');box.hidden=false;
+ const forms=new Set(d.items.map(x=>(x.detail||'').split(':')[0])).size;
+ box.querySelector('summary').textContent='\u270e Parker: '+d.items.length+' update'+(d.items.length===1?'':'s')+' on '+forms+' proposal form'+(forms===1?'':'s')+' in the last '+d.days+' days';
+ $('t-parker-list').replaceChildren(...d.items.slice(0,20).map(x=>{const li=document.createElement('li');li.append(document.createTextNode(x.detail),el('span',' · '+(x.actor?x.actor+' · ':'')+new Date(x.created_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),'muted small'));return li}))});
 if(PAGE==='temple')run(async()=>{const d=await api('/admin/api/temple/auto-approved');if(!d.items.length)return;const box=$('t-auto');box.hidden=false;
  box.querySelector('summary').textContent='✓ '+d.items.length+' reference summar'+(d.items.length===1?'y':'ies')+' auto-approved in the last '+d.days+' days';
  $('t-auto-list').replaceChildren(...d.items.map(x=>{const li=document.createElement('li');const a=document.createElement('a');const t=(x.detail||'').split(': summary of')[0];a.href='/admin/knowledge?status=all&q='+encodeURIComponent(t.slice(0,80));a.textContent=x.detail;li.append(a,el('span',' · '+new Date(x.created_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),'muted small'));return li}))});
@@ -1336,7 +1342,8 @@ if(PAGE==='assistants'){
   if(kind==='proposal'){
    const qap=sel(provOpts(Object.keys(L.providers)),S.qa_provider||'claude_sonnet');
    const est=el('p','','muted small');const upd=()=>{const w=L.models.find(m=>m.key===prov.value),q=L.models.find(m=>m.key===qap.value);est.textContent=w&&q&&w.writer_cost!=null&&q.qa_cost!=null?'Roughly $'+(w.writer_cost+q.qa_cost).toFixed(2)+' per proposal with these defaults. Premium models write better and cost more; people can choose another model on each proposal.':''};prov.onchange=upd;qap.onchange=upd;
-   const r1=el('div','','k-meta-row');r1.append(field('Name',name),field('Writer model',prov),field('QA model',qap),field('Status',st));
+   const chp=sel(provOpts(Object.keys(L.providers)),S.chat_provider||'claude_sonnet');
+   const r1=el('div','','k-meta-row');r1.append(field('Name',name),field('Writer model',prov),field('QA model',qap),field('Chat model (working with you on the form)',chp),field('Status',st));
    upd();f.append(r1,est,field('Description',desc),field('Greeting shown on its page',greet),field('Tone and style for the writer',guide));
    const tpl=sel([['','No template: Alice’s own Word layout']].concat(T.map(x=>[x.path,x.name+' ('+x.source+')'])),S.template||'');
    if(S.template&&!T.some(x=>x.path===S.template)){const o=el('option',S.template+' (not found)');o.value=S.template;tpl.append(o);tpl.value=S.template}
@@ -1354,7 +1361,7 @@ if(PAGE==='assistants'){
    const r2=el('div','','k-meta-row');r2.append(field('Minimum margin (%)',mm),field('Note under the pricing table',pn),field('Author ({{author}})',au));f.append(r2);
    const aal=el('label','','r-check');const aac=document.createElement('input');aac.type='checkbox';aac.checked=S.auto_approve_references!==false;aal.append(aac,document.createTextNode(' Approve reference document summaries automatically'));
    f.append(aal,el('p','Summaries of documents someone uploads on the proposal page go straight into Knowledge; each one is logged on the Temple page and in Activity. Untick to review them first.','muted small'));
-   body=()=>({kind:'proposal',settings:{template:tpl.value,sections:secEd.value(),rate_card:rateEd.value(),target_margin:rateEd.target(),qa_provider:qap.value,min_margin:mm.value||0,pricing_note:pn.value,author:au.value,auto_approve_references:aac.checked}});
+   body=()=>({kind:'proposal',settings:{template:tpl.value,sections:secEd.value(),rate_card:rateEd.value(),target_margin:rateEd.target(),qa_provider:qap.value,chat_provider:chp.value,min_margin:mm.value||0,pricing_note:pn.value,author:au.value,auto_approve_references:aac.checked}});
   } else {
   const packs=checks(Object.entries(L.packs),a.packs||[]);const cats=checks(L.categories.map(c=>[c,c]),a.categories||[]);
   const r1=el('div','','k-meta-row');r1.append(field('Name',name),field('Model',prov),field('Status',st));

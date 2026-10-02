@@ -155,8 +155,9 @@ def clean_settings(s):
         p = doc_library.resolve(tpl)
         if not p or p.suffix.lower() != '.docx': raise ValueError('Choose a Word (.docx) template from the document sources.')
     qa = s.get('qa_provider') if s.get('qa_provider') in assistants.PROVIDERS else 'claude_sonnet'
+    chat = s.get('chat_provider') if s.get('chat_provider') in assistants.PROVIDERS else 'claude_sonnet'
     return {'template': tpl, 'sections': clean_sections(s.get('sections')), 'rate_card': clean_rate_card(s.get('rate_card')),
-            'qa_provider': qa, 'min_margin': _num(s.get('min_margin', 25), 'Minimum margin', 0, 90),
+            'qa_provider': qa, 'chat_provider': chat, 'min_margin': _num(s.get('min_margin', 25), 'Minimum margin', 0, 90),
             'target_margin': _num(s.get('target_margin', 30), 'Target margin', 0, 90),
             'auto_approve_references': s.get('auto_approve_references', True) is not False,
             'pricing_note': _clean(s.get('pricing_note', 'All prices exclude VAT.'), 200), 'author': _clean(s.get('author'), 80)}
