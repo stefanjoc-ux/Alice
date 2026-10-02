@@ -291,3 +291,13 @@ secs = P.document_sections('t.docx', PD.fill(raw, [{'title': 'Executive summary'
 t('a document is split at its main headings', [x['title'] for x in secs][-2:] == ['Executive summary', 'Proposed approach'])
 page = cl.get('/assistant/proposal-writer').text
 t('the page offers the structure box, QA-only mode and re-checks', all(x in page for x in ('id="structure"', 'Turn into sections', 'Check one I already have', 'Edit the draft and check again', 'Upload a revised version for QA')))
+
+# pasting a rate card table (the parser runs in the browser; checked with Node when it is installed)
+import shutil, subprocess, proposal_ui
+node = shutil.which('node')
+if node:
+    js = Path(tempfile.mkdtemp()) / 'pe.js'
+    js.write_text('const document={};' + proposal_ui.PE_JS + 'module.exports=PE;', encoding='utf-8')
+    out = subprocess.run([node, str(Path(__file__).parent / 'js' / 'rate_paste_test.js'), str(js)], capture_output=True, text=True, timeout=60).stdout
+    t('a pasted rate card table is read: headings, order, units, £ and commas, markdown, no headings', out.strip().endswith('7 passed 0 failed'))
+t('the rate card offers Paste a table', 'Paste a table' in proposal_ui.PE_JS and 'parseRates' in proposal_ui.PE_JS)

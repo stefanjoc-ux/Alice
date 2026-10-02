@@ -1,0 +1,11 @@
+const PE=require(process.argv[2]);const P=PE.parseRates;let ok=0,bad=0;const t=(n,c)=>{if(c){ok++}else{bad++;console.log('FAIL',n)}};
+let r=P('Role\tCost\tSell\nSolution architect\t£650\t£1,200\nConsultant\t450\t850');
+t('excel with headings',r.rows.length===2&&r.rows[0].role==='Solution architect'&&r.rows[0].cost==='650'&&r.rows[0].sell==='1200'&&r.rows[1].unit==='day');
+r=P('Grade\tUnit\tDay rate\tInternal cost\nArchitect\tper day\t1200\t600\nDeveloper\thourly\t95\t50');
+t('headings in another order with units',r.rows[0].sell==='1200'&&r.rows[0].cost==='600'&&r.rows[1].unit==='hour'&&r.rows[1].sell==='95');
+r=P('| Role | Cost | Sell |\n|---|---|---|\n| PM | 450 | 800 |');t('markdown table',r.rows.length===1&&r.rows[0].role==='PM'&&r.rows[0].sell==='800');
+r=P('Solution architect  650  1200\nConsultant  450  850');t('no headings, spaced',r.rows.length===2&&r.rows[0].cost==='650'&&r.rows[0].sell==='1200');
+r=P('Architect, 1200');t('one number is the sell rate, cost flagged',r.rows[0].sell==='1200'&&r.rows[0].cost===''&&r.notes.join(' ').includes('no cost'));
+r=P('Hourly rate card\nRole\tHourly rate\nSupport analyst\t65');t('unit from the heading',r.rows.length===1&&r.rows[0].unit==='hour'&&r.rows[0].sell==='65');
+r=P('Total\t\t\nRole\tCost\tSell');t('rows without a rate are skipped',r.rows.length===0);
+console.log(ok,'passed',bad,'failed');

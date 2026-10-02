@@ -11,7 +11,8 @@ PE_CSS = r'''
 .pe-mini{padding:3px 9px!important;font-size:12px!important;margin:0!important;min-height:0!important}
 .pe-rates{width:100%;border-collapse:collapse;font-size:14px}.pe-rates th{text-align:left;font-size:12.5px;color:var(--muted);font-weight:600;padding:4px 6px}
 .pe-rates td{padding:4px 6px;vertical-align:middle}.pe-rates input,.pe-rates select{width:100%;min-width:0}.pe-rates td.num{text-align:right;white-space:nowrap}
-.pe-rates .bad{color:#b3261e;font-weight:600}.pe-add{margin-top:8px}
+.pe-rates .bad{color:#b3261e;font-weight:600}.pe-add{margin-top:8px}.pe-addbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pe-paste{display:grid;gap:6px;margin-top:10px;padding:10px 12px;border:1px dashed var(--line2,#b9cbd8);border-radius:10px;background:#fbfcfd}.pe-paste textarea{width:100%;font-family:ui-monospace,Consolas,monospace;font-size:13px}
 .pe-sec textarea.pe-inc{grid-column:1/-1;background:#fbfaf6;border-color:#e2d6b0}.pe-incbtn{margin-left:auto!important}
 .pe-note{font-size:12.5px;color:var(--muted);margin:6px 0 10px}
 @media(max-width:700px){.pe-rates thead{display:none}.pe-rates tr{display:grid;grid-template-columns:1fr 1fr;gap:4px;border-top:1px solid var(--line);padding:6px 0}.pe-rates td:first-child{grid-column:1/-1}}
@@ -38,7 +39,26 @@ const PE=(()=>{
    box.append(wrap,add)}
   draw();return {value:()=>list.filter(s=>s.title.trim()).map(s=>({title:s.title.trim(),guidance:s.guidance.trim(),include:(s.include||'').trim(),keep:s.keep})),set:x=>{list=(x||[]).map(s=>({...s}));draw()},add:x=>{list=list.concat((x||[]).map(s=>({...s})));draw()}}}
  const gbp=v=>'£'+Number(v||0).toLocaleString('en-GB',{maximumFractionDigits:2});
- function rates(box,items,units){let list=(items||[]).map(r=>({role:r.role||'',unit:r.unit||'day',cost:r.cost??'',sell:r.sell??''}));
+ function parseRates(text){const lines=String(text||'').split(/\r?\n/).map(l=>l.replace(/\s+$/,'')).filter(l=>l.trim()&&!/^\s*\|?\s*:?-{2,}/.test(l));const notes=[];
+  const split=l=>(/\t/.test(l)?l.split('\t'):/\|/.test(l)?l.replace(/^\s*\||\|\s*$/g,'').split('|'):/;/.test(l)&&!/,\d{3}/.test(l)?l.split(';'):/ {2,}/.test(l)?l.split(/ {2,}/):l.split(',')).map(c=>c.trim());
+  const num=c=>{const m=String(c).replace(/[£$€\s]/g,'').replace(/,(?=\d{3}\b)/g,'').match(/^-?\d+(\.\d+)?/);return m?m[0]:null};
+  const unitOf=c=>/hour|hr\b|hourly|\/h\b/i.test(c)?'hour':/day|daily|\/d\b/i.test(c)?'day':null;
+  let rows=lines.map(split).filter(r=>r.some(c=>c));if(!rows.length)return {rows:[],notes};
+  let map=null;const hi=rows.findIndex(r=>r.filter(c=>c).length>=2&&r.every(c=>num(c)===null)&&r.some(c=>/role|grade|resource|position|title|name|cost|sell|rate|price|charge|unit/i.test(c)));
+  const pre=hi>0?rows.slice(0,hi).flat().map(unitOf).find(Boolean):null;const h=hi>=0?rows[hi]:[];
+  if(hi>=0){map={hdrUnit:pre};rows=rows.slice(hi);
+   h.forEach((c,i)=>{const x=c.toLowerCase();if(map.role==null&&/role|grade|resource|position|title|name|job/.test(x))map.role=i;else if(map.cost==null&&/cost|internal|buy|pay/.test(x))map.cost=i;else if(map.sell==null&&/sell|charge|price|client|rate/.test(x))map.sell=i;else if(map.unit==null&&/unit|per|basis/.test(x))map.unit=i;
+    if(!map.hdrUnit)map.hdrUnit=unitOf(c)});rows=rows.slice(1)}
+  const out=[];for(const r of rows){let role,cost,sell,unit;
+   if(map){role=r[map.role??0]||'';cost=map.cost!=null?num(r[map.cost]):null;sell=map.sell!=null?num(r[map.sell]):null;unit=(map.unit!=null&&unitOf(r[map.unit]||''))||map.hdrUnit||null;
+    if(sell===null&&cost!==null&&map.sell==null){sell=cost;cost=null}}
+   else{role=r.find(c=>c&&num(c)===null&&!unitOf(c))||'';const ns=r.map(num).filter(x=>x!==null);if(ns.length>=2){cost=ns[0];sell=ns[1]}else{cost=null;sell=ns[0]??null}unit=r.map(unitOf).find(Boolean)||null}
+   role=role.replace(/\s+/g,' ').trim().slice(0,80);if(!role||sell===null)continue;
+   out.push({role,unit:unit||'day',cost:cost??'',sell})}
+  if(out.some(x=>x.cost===''))notes.push('Some rows have no cost rate: add it so Alice can work out the margin.');
+  if(rows.length>out.length)notes.push((rows.length-out.length)+' row'+(rows.length-out.length===1?'':'s')+' skipped (no role or no rate).');
+  return {rows:out.slice(0,40),notes}}
+ function rates(box,items,units){let pasteOpen=false;let list=(items||[]).map(r=>({role:r.role||'',unit:r.unit||'day',cost:r.cost??'',sell:r.sell??''}));
   function draw(){box.replaceChildren();const t=mk('table','','pe-rates');const h=document.createElement('thead');const hr=document.createElement('tr');
    for(const x of ['Role','Unit','Cost rate','Sell rate','Margin',''])hr.append(mk('th',x));h.append(hr);t.append(h);const tb=document.createElement('tbody');
    list.forEach((r,i)=>{const tr=document.createElement('tr');const role=document.createElement('input');role.maxLength=80;role.value=r.role;role.placeholder='e.g. Solution architect';role.setAttribute('aria-label','Role '+(i+1));role.oninput=()=>{r.role=role.value};
@@ -48,7 +68,14 @@ const PE=(()=>{
     const c1=document.createElement('td');c1.append(role);const c2=document.createElement('td');c2.append(u);const c3=document.createElement('td');c3.append(num('cost','Cost rate'));const c4=document.createElement('td');c4.append(num('sell','Sell rate'));
     const c6=document.createElement('td');c6.append(btn('Remove',()=>{list.splice(i,1);draw()},'Remove '+(r.role||'role')));upd();tr.append(c1,c2,c3,c4,m,c6);tb.append(tr)});
    t.append(tb);box.append(t);if(!list.length)box.append(mk('p','No roles yet: the proposal will have no pricing table.','pe-note'));
-   const add=btn('Add role',()=>{list.push({role:'',unit:'day',cost:'',sell:''});draw();const ins=box.querySelectorAll('.pe-rates tbody input');ins[ins.length-4]?.focus()});add.classList.add('pe-add');box.append(add)}
+   const add=btn('Add role',()=>{list.push({role:'',unit:'day',cost:'',sell:''});draw();const ins=box.querySelectorAll('.pe-rates tbody input');ins[ins.length-4]?.focus()});add.classList.add('pe-add');
+   const pb=btn('Paste a table',()=>{pasteOpen=!pasteOpen;draw();box.querySelector('.pe-paste textarea')?.focus()},'Paste a rate card copied from Excel, Word or an email');pb.classList.add('pe-add');
+   const bar=mk('div','','pe-addbar');bar.append(add,pb);box.append(bar);
+   if(pasteOpen){const pp=mk('div','','pe-paste');const ta=document.createElement('textarea');ta.rows=5;ta.placeholder='Copy the rows from Excel, Word or an email and paste them here, for example:\nRole\tCost\tSell\nSolution architect\t650\t1200\nConsultant\t450\t850';ta.setAttribute('aria-label','Pasted rate card');
+    const msg=mk('p','','pe-note');const use=btn('Replace the rate card',()=>apply(true)),more=btn('Add to the rate card',()=>apply(false)),cancel=btn('Cancel',()=>{pasteOpen=false;draw()});
+    const show=()=>{const r=parseRates(ta.value);msg.textContent=ta.value.trim()?(r.rows.length?r.rows.length+' role'+(r.rows.length===1?'':'s')+' found: '+r.rows.slice(0,4).map(x=>x.role+' ('+(x.cost!==''?'cost '+x.cost+', ':'')+'sell '+x.sell+' per '+x.unit+')').join('; ')+(r.rows.length>4?'\u2026':'')+'.':'No roles found yet.')+(r.notes.length?' '+r.notes.join(' '):''):'Columns are read by their headings (role, unit, cost, sell); without headings, the first text is the role, the first number the cost and the second the sell rate.'};
+    const apply=replace=>{const r=parseRates(ta.value);if(!r.rows.length){show();return}list=replace?r.rows:list.filter(x=>x.role.trim()).concat(r.rows);pasteOpen=false;draw()};
+    ta.oninput=show;const act=mk('div','','pe-addbar');act.append(use,more,cancel);pp.append(ta,msg,act);box.append(pp);show()}}
   draw();return {value:()=>list.filter(r=>r.role.trim()).map(r=>({role:r.role.trim(),unit:r.unit,cost:String(r.cost).trim()||'0',sell:String(r.sell).trim()||'0'})),set:x=>{list=(x||[]).map(r=>({...r}));draw()}}}
- return {sections,rates,gbp,mk}})();
+ return {sections,rates,parseRates,gbp,mk}})();
 '''
