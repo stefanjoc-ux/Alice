@@ -83,9 +83,9 @@ table.t td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}ta
 .pk{flex:1 1 auto;min-height:0;display:flex;flex-direction:column;background:var(--panel);border:1px solid #d6c8ea;border-radius:16px;overflow:hidden;box-shadow:0 1px 2px rgba(16,42,67,.04),0 10px 26px -16px rgba(75,47,115,.45)}
 .pk-head{display:flex;gap:10px;align-items:center;padding:12px 14px;background:linear-gradient(135deg,#f6f2fb,#eef6f9);border-bottom:1px solid #e4dbf0}
 .pk-head b{display:block;font-size:15.5px}.pk-head span.s{font-size:12px;color:var(--muted)}.pk-head .parker{flex:none;border-radius:10px}
-.pk-head .pk-new{margin-left:auto;font-size:12px;padding:4px 10px;border-radius:999px}
+.pk-head #pk-wide{margin-left:auto}.pk-head .pk-new{font-size:12px;padding:4px 10px;border-radius:999px}
 .pk-log{flex:1 1 auto;min-height:0;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:#fcfbfe}
-.pk-m{max-width:92%;padding:10px 12px;border-radius:14px;font-size:14px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
+.pk-m{max-width:92%;padding:11px 14px;border-radius:14px;font-size:15px;line-height:1.5;white-space:pre-wrap;overflow-wrap:anywhere}
 .pk-m.you{align-self:flex-end;background:linear-gradient(135deg,#0a6d8b,#075e79);color:#fff;border-bottom-right-radius:4px}
 .pk-m.pk-p{align-self:flex-start;background:#fff;border:1px solid #e4dbf0;border-bottom-left-radius:4px}
 .pk-m.err{background:#fbeaea;border-color:#e0aaaa}
@@ -100,7 +100,7 @@ table.t td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}ta
 .pk-in{border-top:1px solid #e4dbf0;padding:10px 12px 8px;background:#fff}
 .pk-box{display:flex;gap:8px;align-items:flex-end;border:1px solid #cdbfe3;border-radius:12px;padding:6px 6px 6px 10px;background:#fff}
 .pk-box:focus-within{border-color:#634394;box-shadow:0 0 0 3px rgba(99,67,148,.12)}
-.pk-box textarea{flex:1;border:0!important;outline:none;box-shadow:none!important;background:transparent!important;resize:none;min-height:38px;max-height:140px;padding:8px 0!important;font-size:14px;line-height:1.45;font-weight:400}
+.pk-box textarea{flex:1;border:0!important;outline:none;box-shadow:none!important;background:transparent!important;resize:none;min-height:76px;max-height:300px;padding:8px 0!important;font-size:15px;line-height:1.5;font-weight:400}
 .pk-att{cursor:pointer;flex:none;width:34px;height:34px;border-radius:9px;display:grid;place-items:center;color:#4b2f73;border:1px dashed #b9a6d6;font-size:17px}.pk-att:hover{background:#faf7fd}
 .pk-send{flex:none;border:0!important;color:#fff!important;font-weight:700;padding:9px 14px!important;border-radius:9px!important;background:linear-gradient(135deg,#634394,#075e79)!important}
 .pk-send:disabled{opacity:.55}
@@ -123,7 +123,7 @@ section.panel.shut>:not(.ph){display:none!important}
 .tfill{border-color:#a98fd0!important;background:#fbf8ff!important;box-shadow:0 0 0 3px rgba(99,67,148,.10)!important}
 /* ---------- look and feel ---------- */
 main{padding:20px 0 40px;background:linear-gradient(180deg,#eef3f7 0,#f4f7fa 260px)}
-.wrap{max-width:1240px;padding:0 20px;gap:20px}
+.wrap{max-width:1500px;padding:0 20px;gap:20px}
 .hero{position:relative;overflow:hidden;border-radius:16px;color:#e8f1f7;background:radial-gradient(900px 300px at 85% -40%,rgba(64,170,200,.35),transparent 60%),linear-gradient(120deg,#0b1626 0%,#0d2a3f 55%,#075e79 100%);padding:24px 26px 22px;margin:0}
 .hero::after{content:'';position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.04) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.04) 1px,transparent 1px);background-size:28px 28px;mask-image:linear-gradient(90deg,transparent,#000 70%);pointer-events:none}
 .hero-in{position:relative;z-index:1;display:flex;gap:24px;align-items:flex-end;justify-content:space-between;flex-wrap:wrap}
@@ -134,7 +134,9 @@ main{padding:20px 0 40px;background:linear-gradient(180deg,#eef3f7 0,#f4f7fa 260
 .flow li{counter-increment:fl;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#dbe8f0;white-space:nowrap}
 .flow li::before{content:counter(fl);display:grid;place-items:center;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.28);font-size:12px}
 .flow li+li::before{margin-left:0}.flow li:not(:last-child)::after{content:'';width:26px;height:1px;background:rgba(255,255,255,.35);margin:0 10px}
-.layout{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:20px;align-items:start}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 470px;gap:20px;align-items:start}
+@media(min-width:1600px){.layout{grid-template-columns:minmax(0,1fr) 540px}}
+.layout.pk-wide{grid-template-columns:minmax(0,1fr) min(760px,55%)}
 .colmain{display:grid;gap:16px;min-width:0}
 .side{position:sticky;top:0;height:calc(100vh - 52px - 40px);display:flex;flex-direction:column;gap:12px;min-height:0}
 .card{border-radius:14px;border-color:#dce6ee;box-shadow:0 1px 2px rgba(16,42,67,.04),0 6px 18px -10px rgba(16,42,67,.18)}
@@ -240,9 +242,9 @@ table.t th{text-transform:uppercase;letter-spacing:.05em;font-size:11.5px}table.
 <section class="card" id="recent-box" hidden><h2>Recent proposals</h2><div class="recent" id="recent"></div></section>
 </div>
 <aside class="side">
-<section class="pk" id="pk" aria-label="Work with Parker"><div class="pk-head">''' + parker_logo(34, 'ch') + '''<div><b id="pk-title">Start with Parker</b><span class="s">Your proposal assistant</span></div><button type="button" class="secondary pk-new" id="pk-new" title="Start a new conversation (the form stays as it is)">New chat</button></div>
+<section class="pk" id="pk" aria-label="Work with Parker"><div class="pk-head">''' + parker_logo(34, 'ch') + '''<div><b id="pk-title">Start with Parker</b><span class="s">Your proposal assistant</span></div><button type="button" class="secondary pk-new" id="pk-wide" title="Make Parker’s panel wider" aria-pressed="false">Wider</button><button type="button" class="secondary pk-new" id="pk-new" title="Start a new conversation (the form stays as it is)" style="margin-left:6px">New chat</button></div>
 <div class="pk-log" id="pk-log" aria-live="polite"></div>
-<div class="pk-in"><div id="pk-docs"></div><div class="pk-box"><label class="pk-att" title="Add the client’s brief or RFP" tabindex="0">+<input type="file" id="pk-file" accept=".docx,.pdf,.txt,.md" hidden></label><textarea id="pk-msg" rows="1" maxlength="4000" placeholder="Tell Parker about the proposal, or answer its question…" aria-label="Message to Parker"></textarea><button type="button" class="pk-send" id="pk-send">Send</button></div>
+<div class="pk-in"><div id="pk-docs"></div><div class="pk-box"><label class="pk-att" title="Add the client’s brief or RFP" tabindex="0">+<input type="file" id="pk-file" accept=".docx,.pdf,.txt,.md" hidden></label><textarea id="pk-msg" maxlength="4000" placeholder="Tell Parker about the proposal, or answer its question…" aria-label="Message to Parker" rows="3"></textarea><button type="button" class="pk-send" id="pk-send">Send</button></div>
 <p class="pk-foot"><b>Working with Parker:</b> it fills in the form as you talk and asks for what’s missing. Its changes are outlined, and you can undo any of them. Nothing is saved until you write the proposal.</p></div></section>
 <details class="sumbar sum" id="sum-box"><summary><b>This proposal</b><span id="sum-line"></span></summary><dl id="sum"></dl><div class="big" id="sum-big"></div><p class="safe">Cost rates and protectively marked material never reach the AI. Every piece of context is checked on the way out.</p></details><button type="button" class="primary go2" id="go2" style="flex:none">Write proposal</button>
 </aside></div></div></main>
@@ -420,7 +422,9 @@ function pkSay(cls,text){const m=mk('div',text,'pk-m '+cls);$('pk-log').append(m
 function pkIntro(){$('pk-log').replaceChildren();const m=pkSay('pk-p',A.paused?A.name+' is paused at the moment.':'Hi, I’m Parker. Tell me about the proposal in a sentence or two, or add the client’s brief or RFP with +. I’ll fill in the form with you and ask for anything that’s missing.');
  if(A.paused)return;const st=mk('div','','pk-starts');for(const [t,fn] of [['Add the client’s brief',()=>$('pk-file').click()],['What’s still missing?',()=>pkSend('What is still missing from the form?')],['Tighten the brief',()=>pkSend('Tighten the brief: clear headings, nothing invented.')]]){const b=mk('button',t);b.type='button';b.onclick=fn;st.append(b)}m.append(st)}
 function pkDocs(){const b=$('pk-docs');b.replaceChildren();if(!PK.doc)return;const c=mk('span','📄 '+PK.doc.name,'pk-doc');const x=mk('button','×');x.type='button';x.setAttribute('aria-label','Stop using '+PK.doc.name);x.onclick=()=>{PK.doc=null;pkDocs()};c.append(x);b.append(c)}
-function pkGrow(){const t=$('pk-msg');t.style.height='auto';t.style.height=Math.min(t.scrollHeight,140)+'px'}
+function pkGrow(){const t=$('pk-msg');t.style.height='auto';t.style.height=Math.max(76,Math.min(t.scrollHeight,300))+'px'}
+function pkWide(on){document.querySelector('.layout').classList.toggle('pk-wide',on);$('pk-wide').textContent=on?'Narrower':'Wider';$('pk-wide').setAttribute('aria-pressed',on);try{localStorage.setItem('alice.parker.wide',on?'1':'')}catch{}}
+$('pk-wide').onclick=()=>pkWide(!document.querySelector('.layout').classList.contains('pk-wide'));try{if(localStorage.getItem('alice.parker.wide'))pkWide(true)}catch{}
 async function pkSend(text){if(PK.busy||A.paused)return;text=(text||'').trim();if(!text&&!PK.doc)return;PK.busy=true;$('pk-send').disabled=true;$('pk-title').textContent='Parker';
  if(text)pkSay('you',text);const ty=mk('div','','pk-typing');ty.append(mk('i'),mk('i'),mk('i'));$('pk-log').append(ty);pkScroll();
  try{const before=snap();const r=await api('/parker','POST',{message:text,history:PK.history,form:form(),organisation:$('org').value,doc_token:PK.doc?PK.doc.token:''});ty.remove();
