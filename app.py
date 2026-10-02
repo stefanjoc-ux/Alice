@@ -14,6 +14,7 @@ import clients
 import knowledge
 import conversations
 import organisations
+import purview_labels
 import agents
 import actions
 import activity_log
@@ -290,6 +291,8 @@ def save_file(upload: Upload):
             return {"id": existing["id"], "duplicate": True}
         text, summary = extract_text(name, raw)
         rules_engine.check_file(text, name)     # secrets and protective markings never get saved
+        purview = purview_labels.read_label(name, raw)
+        purview_label, purview_note = purview_labels.decide(purview)   # a blocked Purview label raises: not saved
     except (ValueError, binascii.Error) as error:
         raise HTTPException(400, str(error)) from None
     except Exception:
@@ -304,7 +307,13 @@ def save_file(upload: Upload):
     owner = clients.chat_client(upload.chat_id) if upload.chat_id else ""
     if owner: clients.tag('file', [stored["id"]], owner, 'chat')
     knowledge.register_upload(stored["id"], owner)   # also schedules categorising and client tagging
-    return {"id": stored["id"], "duplicate": stored["id"] != file_id}
+    if purview:
+        current = knowledge.meta([stored["id"]])[stored["id"]]["label"]
+        knowledge.update(stored["id"], label=purview_labels.stricter(current, purview_label), audit_it=False)
+        with connect_db() as connection:
+            connection.execute("UPDATE knowledge_meta SET purview_label=? WHERE file_id=?", (purview.get("name") or purview["id"], stored["id"]))
+            store.audit(connection, "purview_label_applied", stored["id"], "purview_labels", purview_note)
+    return {"id": stored["id"], "duplicate": stored["id"] != file_id, **({"purview": purview_note} if purview else {})}
 
 
 @app.get("/files/{file_id}/download")
@@ -835,6 +844,16 @@ def admin_demo_reset():
     import demo_data; return demo_data.reset()
 
 @app.middleware("http")
+async def who_is_acting(request: Request, call_next):
+    """Who did it, for the activity log: the signed-in person when Alice runs behind Entra (Container Apps sign-in sets
+    X-MS-CLIENT-PRINCIPAL-NAME; trusted only with ALICE_TRUST_EASYAUTH=1), otherwise the owner (ALICE_OWNER_NAME)."""
+    who = request.headers.get('x-ms-client-principal-name', '') if os.environ.get('ALICE_TRUST_EASYAUTH') == '1' else ''
+    token = store.ACTOR.set(' '.join(who.split())[:120]) if who else None
+    try: return await call_next(request)
+    finally:
+        if token is not None: store.ACTOR.reset(token)
+
+@app.middleware("http")
 async def protect_admin(request: Request, call_next):
     if request.url.path.startswith('/admin/api') and request.method != 'GET':
         if not secrets.compare_digest(request.headers.get('x-admin-token',''), ADMIN_TOKEN):
@@ -861,6 +880,10 @@ class BulkIds(BaseModel):
 
 class BulkReview(BulkIds):
     decision: Literal['approved','rejected']
+    note: str = Field(default='',max_length=500)
+
+class OwnerChange(BulkIds):
+    owner: str = Field(default='',max_length=80)
 
 class BulkCategory(BulkIds):
     category: str = Field(default='',max_length=40)
@@ -869,12 +892,18 @@ class BulkCategory(BulkIds):
 def admin_memories(status: Literal['all','proposed','approved','rejected','superseded','retired']='approved',
                    query: str=Query('',max_length=200), category: str=Query('',max_length=40),
                    sort: Literal['newest','oldest','title','category','reviewed']='newest', offset: int=Query(0,ge=0),
-                   kind: Literal['','fact','decision']=''):
-    return store.organised_records(status,query,category,sort,offset,kind=kind)
+                   kind: Literal['','fact','decision']='', owner: str=Query('',max_length=80)):
+    return store.organised_records(status,query,category,sort,offset,kind=kind,owner=owner)
 
 @app.post('/admin/api/memories/review')
 def admin_bulk_review(change: BulkReview):
-    try: return store.bulk_review(change.ids,change.decision)
+    try:
+        with store.acting(note=change.note): return store.bulk_review(change.ids,change.decision)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+@app.post('/admin/api/memories/owner')
+def admin_memory_owner(change: OwnerChange):
+    try: return store.set_owner(change.ids,change.owner)
     except ValueError as e: raise HTTPException(400,str(e)) from None
 
 class CategoryIn(BaseModel):
@@ -1042,10 +1071,12 @@ class KnowledgeChange(BaseModel):
     label: Literal['general','internal','client','local']|None = None
     review_by: str|None = Field(default=None,max_length=10)
     status: Literal['active','archived']|None = None
+    owner: str|None = Field(default=None,max_length=80)
 
 class KnowledgeReview(BulkIds):
     decision: Literal['approved','rejected']
     retire_replaced: bool = False
+    note: str = Field(default='',max_length=500)
 
 class KnowledgeSupersede(BaseModel):
     old_id: str = Field(min_length=32,max_length=32)
@@ -1058,8 +1089,8 @@ class ReplacementAction(BulkIds):
 @app.get('/admin/api/knowledge')
 def admin_knowledge(kind: str=Query('',max_length=10), status: Literal['active','draft','rejected','archived','replaced','all']='active',
                     category: str=Query('',max_length=40), client: str=Query('',max_length=60), label: str=Query('',max_length=10),
-                    query: str=Query('',max_length=200), offset: int=Query(0,ge=0)):
-    d=knowledge.listing(kind,status,category,client,label,query,offset)
+                    query: str=Query('',max_length=200), offset: int=Query(0,ge=0), owner: str=Query('',max_length=80)):
+    d=knowledge.listing(kind,status,category,client,label,query,offset,owner=owner)
     d['categories']=[c['name'] for c in store.list_categories()['categories']];d['clients']=clients.names()
     return d
 
@@ -1251,6 +1282,7 @@ class OrgFactIn(BaseModel):
 
 class OrgFactReview(BulkIds):
     decision: Literal['approved','rejected']
+    note: str = Field(default='',max_length=500)
 
 class OrgFactChange(BaseModel):
     review_by: str|None = Field(default=None,max_length=10)
@@ -1341,7 +1373,8 @@ def admin_org_fact_add(f: OrgFactIn):
     except ValueError as e: raise HTTPException(400,str(e)) from None
 
 @app.post('/admin/api/organisations/facts/review')
-def admin_org_fact_review(r: OrgFactReview): return organisations.review_facts(r.ids,r.decision)
+def admin_org_fact_review(r: OrgFactReview):
+    with store.acting(note=r.note): return organisations.review_facts(r.ids,r.decision)
 
 @app.put('/admin/api/organisations/facts/{fid}')
 def admin_org_fact_change(fid: str, ch: OrgFactChange):
@@ -1368,7 +1401,8 @@ def admin_org_remove_source(r: OrgSourceRemoval):
     except ValueError as e: raise HTTPException(400,str(e)) from None
 
 @app.post('/admin/api/knowledge/review')
-def admin_knowledge_review(r: KnowledgeReview): return knowledge.review(r.ids,r.decision,r.retire_replaced)
+def admin_knowledge_review(r: KnowledgeReview):
+    with store.acting(note=r.note): return knowledge.review(r.ids,r.decision,r.retire_replaced)
 
 @app.get('/admin/api/knowledge/{fid}/history')
 def admin_knowledge_history(fid: str):
@@ -1411,9 +1445,26 @@ def admin_bulk_category(change: BulkCategory):
 
 class Review(BaseModel):
     decision: Literal['approved','rejected']
+    note: str = Field(default='',max_length=500)
 
 @app.get('/admin/api/rules')
 def admin_rules(): return rules_engine.overview()
+
+class PurviewMapping(BaseModel):
+    label_id: str = Field(min_length=1,max_length=40)
+    action: Literal['general','internal','client','local','block','']
+    name: str|None = Field(default=None,max_length=120)
+
+@app.get('/admin/api/purview-labels')
+def admin_purview_labels(): return purview_labels.listing()
+
+@app.put('/admin/api/purview-labels')
+def admin_purview_mapping(m: PurviewMapping):
+    try: return purview_labels.set_mapping(m.label_id,m.action,m.name)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+@app.get('/admin/api/owners')
+def admin_owners(): return {'owners':store.owners(),'you':store.actor()}
 
 class RuleChange(BaseModel):
     enabled: bool|None = None
@@ -1469,7 +1520,8 @@ def admin_propose(record: RecordProposal):
 
 @app.post('/admin/api/records/{rid}/review')
 def admin_review(rid: str, review: Review):
-    try: return store.review(rid,review.decision)
+    try:
+        with store.acting(note=review.note): return store.review(rid,review.decision)
     except ValueError as e: raise HTTPException(409,str(e)) from None
 
 class FrictionResolution(BaseModel):

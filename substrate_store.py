@@ -802,3 +802,144 @@ def quote_found(quote, texts):
         p = _plain(t)
         if all(f in p for f in fragments): return i
     return -1
+
+
+# ---- Accountability: who did each thing, why, and who owns each item.
+# ACTOR is set per request (app.py middleware): the signed-in person once Alice runs behind Entra
+# (ALICE_TRUST_EASYAUTH=1), otherwise the owner's name (ALICE_OWNER_NAME). NOTE is an optional reason
+# given with a decision (approve, reject). Both are written on every activity row by audit().
+# Owners are people's names for your own tracking: never sent to a model.
+import logging as _logging
+import re as _re_acc
+
+ACTOR = contextvars.ContextVar('alice_actor', default='')
+NOTE = contextvars.ContextVar('alice_note', default='')
+_audit_log = _logging.getLogger('alice.audit')
+PERSON = _re_acc.compile(r"[A-Za-z][A-Za-z .'\-]{1,79}")
+
+
+def owner_name():
+    return ' '.join((os.environ.get('ALICE_OWNER_NAME') or 'Owner').split())[:80] or 'Owner'
+
+
+def actor():
+    return ACTOR.get() or owner_name()
+
+
+@contextmanager
+def acting(who=None, note=None):
+    t1 = ACTOR.set(' '.join(str(who).split())[:120]) if who else None
+    t2 = NOTE.set(' '.join(str(note).split())[:500]) if note is not None else None
+    try: yield
+    finally:
+        if t2 is not None: NOTE.reset(t2)
+        if t1 is not None: ACTOR.reset(t1)
+
+
+def clean_person(name, what='Owner'):
+    name = ' '.join((name or '').split())[:80]
+    if name and not PERSON.fullmatch(name):
+        raise ValueError(f"{what}: a person's name (letters, spaces, hyphens and apostrophes).")
+    return name
+
+
+def _accountability_schema():
+    with db() as c:
+        acols = {r['name'] for r in c.execute('PRAGMA table_info(activity)')}
+        if acols and 'actor' not in acols: c.execute("ALTER TABLE activity ADD COLUMN actor TEXT NOT NULL DEFAULT ''")
+        if acols and 'note' not in acols: c.execute("ALTER TABLE activity ADD COLUMN note TEXT NOT NULL DEFAULT ''")
+        c.execute("CREATE TABLE IF NOT EXISTS record_meta (record_id TEXT PRIMARY KEY, category TEXT NOT NULL DEFAULT '')")
+        if 'owner' not in {r['name'] for r in c.execute('PRAGMA table_info(record_meta)')}:
+            c.execute("ALTER TABLE record_meta ADD COLUMN owner TEXT NOT NULL DEFAULT ''")
+
+
+_accountability_schema()
+_init_before_accountability = init
+
+
+def init():
+    _init_before_accountability()
+    _accountability_schema()
+
+
+def audit(c, action, target, rule, detail=''):
+    """Every activity row records who (actor) and, for decisions, why (note). With ALICE_AUDIT_STDOUT=1 (Azure) each
+    row is also written as one JSON line to the 'alice.audit' log, which Container Apps sends to Log Analytics."""
+    at, who, note = now(), actor(), NOTE.get()
+    c.execute('INSERT INTO activity(created_at,action,target,rule,detail,actor,note) VALUES (?,?,?,?,?,?,?)',
+              (at, action, target, rule, detail, who, note))
+    if os.environ.get('ALICE_AUDIT_STDOUT') == '1':
+        _audit_log.info(json.dumps({'type': 'alice.audit', 'at': at, 'action': action, 'target': target, 'rule': rule,
+                                    'detail': detail[:2000], 'actor': who, 'note': note}, ensure_ascii=False))
+
+
+DECISION_ACTIONS = ('record_approved', 'record_rejected', 'friction_resolved', 'knowledge_approved', 'knowledge_rejected',
+                    'org_fact_approved', 'org_fact_rejected', 'org_fact_added', 'memory_retired', 'memory_superseded')
+
+
+def decisions_for(ids):
+    """Latest approval-type decision per item: {id: {action, at, actor, note}} (actor '' = recorded before approvers were kept)."""
+    ids = [i for i in dict.fromkeys(ids) if i]
+    if not ids: return {}
+    out = {}
+    with db() as c:
+        for i in range(0, len(ids), 500):
+            chunk = ids[i:i + 500]
+            q = (f"SELECT target,action,created_at,actor,note FROM activity WHERE target IN ({','.join('?' * len(chunk))}) "
+                 f"AND action IN ({','.join('?' * len(DECISION_ACTIONS))}) ORDER BY id")
+            for r in c.execute(q, chunk + list(DECISION_ACTIONS)):
+                out[r['target']] = {'action': r['action'], 'at': r['created_at'], 'actor': r['actor'], 'note': r['note']}
+    return out
+
+
+def set_owner(ids, owner):
+    """Owner of memories and decisions (records)."""
+    owner = clean_person(owner)
+    ids = [i for i in dict.fromkeys(ids) if isinstance(i, str) and i][:500]
+    done = 0
+    with db() as c:
+        for rid in ids:
+            if not c.execute('SELECT 1 FROM records WHERE id=?', (rid,)).fetchone(): continue
+            c.execute('INSERT OR IGNORE INTO record_meta(record_id) VALUES (?)', (rid,))
+            c.execute('UPDATE record_meta SET owner=? WHERE record_id=?', (owner, rid))
+            done += 1
+        if done: audit(c, 'owner_set', ids[0] if done == 1 else f'{done} memories', 'human_review', owner or '(no owner)')
+    return {'updated': done, 'owner': owner}
+
+
+def owners():
+    """Names already used as owners (memories and knowledge), for suggestions."""
+    names = set()
+    with db() as c:
+        names |= {r[0] for r in c.execute("SELECT DISTINCT owner FROM record_meta WHERE owner<>''")}
+        try: names |= {r[0] for r in c.execute("SELECT DISTINCT owner FROM knowledge_meta WHERE owner<>''")}
+        except sqlite3.OperationalError: pass
+    return sorted(names, key=str.lower)
+
+
+_organised_before_owners = organised_records
+
+
+def organised_records(status='approved', query='', category='', sort='newest', offset=0, limit=50, kind='', owner=''):
+    """owner: '' any, '__none__' no owner, or a name."""
+    if not owner:
+        d = _organised_before_owners(status, query, category, sort, offset, limit, kind)
+    else:
+        full = _organised_before_owners(status, query, category, sort, 0, 100000, kind)
+        with db() as c:
+            om = {r[0]: r[1] for r in c.execute("SELECT record_id,owner FROM record_meta")}
+        rows = [r for r in full['records'] if (om.get(r['id'], '') == '' if owner == '__none__' else om.get(r['id'], '').lower() == owner.lower())]
+        d = full | {'records': rows[offset:offset + limit], 'total': len(rows),
+                    'next_offset': offset + limit if offset + limit < len(rows) else None}
+    ids = [r['id'] for r in d['records']]
+    om = {}
+    if ids:
+        marks = ','.join('?' * len(ids))
+        with db() as c:
+            om = {r[0]: r[1] for r in c.execute(f'SELECT record_id,owner FROM record_meta WHERE record_id IN ({marks})', ids)}
+    dec = decisions_for(ids)
+    for r in d['records']:
+        r['owner'] = om.get(r['id'], '')
+        r['decided'] = dec.get(r['id'])
+    d['owners'] = owners()
+    return d

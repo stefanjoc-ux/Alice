@@ -107,6 +107,7 @@ A browser refresh is not enough: the old server process keeps running the old co
 | `opportunities.py` | Client opportunity scans (profile brief + news via web search), on each organisation's schedule (background thread, `start_scheduler`; off when `ALICE_NO_SCHEDULER` is set) or Run now; suggestions with evidence; the tracker; agent `temple-opportunities` |
 | `organisations.py` | Organisation profiles: short approved facts with source pointers and review dates, the compiled brief, removal by source, account manager (typed now; `account_manager_oid` reserved for Entra ID), the Client switch and other names (`set_client`; unticking makes tagged material General) |
 | `demo_data.py` | Fictional demo data for the Organisations page and tracker, in a separate store (data\demo\substrate-demo.db, or schema `alice_demo` on PostgreSQL); rebuilt when the live schema changes |
+| `purview_labels.py` | Microsoft Purview sensitivity labels on uploaded Office files and PDFs: read (never changed), recorded, and mapped on the Rules page to an Alice label or Block; unmapped protective-marking labels are blocked, others treated as Internal; never lowers a label |
 | `clients.py` | Clients (the separation list), tagging, alias detection, separation enforcement. There is no Clients page: a client is an organisation with Client ticked (`organisations.set_client` writes the clients table), and tagging lives in Organisations → Tag memories and files; `/admin/clients` redirects |
 | `actions.py` | Everything awaiting a decision (Actions page) |
 | `activity_log.py` | Activity log labels, types, filters, CSV |
@@ -141,6 +142,17 @@ Run the suites against a test PostgreSQL server too (`ALICE_TEST_DATABASE_URL`, 
 its Demo data box is ticked, or in global demo mode). Research and opportunity scans are refused in demo: they would
 call real AI services. Never read the demo store anywhere else, and never let a scheduler or agent run against it.
 `CREATE`/`ALTER` statements skip the LIKE→ILIKE translation so `CREATE TABLE … (LIKE …)` works.
+
+## Accountability (who, why, owners)
+
+- `store.audit()` writes `actor` (who) and `note` (why) on every activity row. `store.ACTOR` is set per request by the
+  `who_is_acting` middleware: the signed-in person from Container Apps sign-in (`X-MS-CLIENT-PRINCIPAL-NAME`, trusted only
+  with `ALICE_TRUST_EASYAUTH=1`), otherwise `ALICE_OWNER_NAME` (default "Owner"). Give a reason with
+  `with store.acting(note=...)` around a decision; review routes accept an optional `note`.
+- `ALICE_AUDIT_STDOUT=1` also writes each activity row as one JSON line to the `alice.audit` logger (stdout in Azure, so
+  Container Apps sends it to Log Analytics).
+- Owners (`record_meta.owner`, `knowledge_meta.owner`) are people's names for tracking (shown on overdue reviews in
+  Actions). Validate with `store.clean_person()`. Never return owners or account managers in MCP tool output.
 
 ## Lessons already learned (don't relearn them)
 

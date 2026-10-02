@@ -50,10 +50,13 @@ LABELS = {
     'chat_restored': ('chats', 'Chat restored from archive'),
     'model_routed': ('routing', 'Auto routing choice'), 'model_escalated': ('routing', 'Retried on another model'),
     'tool_completed': ('tools', 'Tool used'), 'tool_failed': ('tools', 'Tool failed'),
+    'owner_set': ('memories', 'Owner set'), 'purview_label_seen': ('rules', 'New Purview label seen'),
+    'purview_label_mapped': ('rules', 'Purview label mapping changed'), 'purview_label_applied': ('knowledge', 'Purview label applied to an upload'),
 }
 RULE_NAMES = {'secret_detection': 'Secret detection', 'protective_marking': 'Protective marking guard', 'pii': 'Personal identifiers',
               'provider_allow': 'Provider allow-list', 'external_scope': 'External client scope', 'client_separation': 'Client separation',
-              'quality': 'Quality check', 'duplicates': 'Duplicate block', 'spend_cap': 'Spending caps', 'retention': 'Chat retention'}
+              'quality': 'Quality check', 'duplicates': 'Duplicate block', 'spend_cap': 'Spending caps', 'retention': 'Chat retention',
+              'purview_labels': 'Purview sensitivity labels'}
 HEX = re.compile(r'^[0-9a-f]{32}$')
 
 
@@ -149,8 +152,8 @@ def to_csv(**filters):
     data = query(everything=True, **filters)
     out = io.StringIO()
     w = csv.writer(out)
-    w.writerow(['Time (UTC)', 'Type', 'What happened', 'Item', 'Rule', 'Details', 'Code', 'Target ID'])
+    w.writerow(['Time (UTC)', 'Type', 'What happened', 'Item', 'Rule', 'Details', 'By', 'Reason given', 'Code', 'Target ID'])
     for r in data['rows'][:50000]:
         w.writerow([r['created_at'][:19].replace('T', ' '), r['type_name'], r['label'], r['target_name'], r['rule_name'] or RULE_NAMES.get(r['rule'], r['rule']),
-                    r['detail'], r['action'], r['target']])
+                    r['detail'], r.get('actor') or '', r.get('note') or '', r['action'], r['target']])
     return out.getvalue()

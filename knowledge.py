@@ -38,7 +38,8 @@ with store.db() as c:
     # Replacement tracking (additive): an archived item may point at the newer item that replaced it.
     _kcols = {r['name'] for r in c.execute('PRAGMA table_info(knowledge_meta)')}
     for _col, _ddl in (('superseded_by', 'TEXT'), ('superseded_at', 'TEXT'), ('supersede_reason', "TEXT NOT NULL DEFAULT ''"),
-                       ('supersedes_hint', "TEXT NOT NULL DEFAULT ''"), ('supersede_checked_at', 'TEXT')):
+                       ('supersedes_hint', "TEXT NOT NULL DEFAULT ''"), ('supersede_checked_at', 'TEXT'),
+                       ('owner', "TEXT NOT NULL DEFAULT ''"), ('purview_label', "TEXT NOT NULL DEFAULT ''")):
         if _col not in _kcols: c.execute(f'ALTER TABLE knowledge_meta ADD COLUMN {_col} {_ddl}')
     # Suggested replacements: from the proposer ("this supersedes X") or from Temple. Nothing is retired until you accept.
     c.execute('''CREATE TABLE IF NOT EXISTS knowledge_replacements (
@@ -54,7 +55,8 @@ def _default(row):
             'label': 'general', 'source': 'Accepted from a Temple chat suggestion' if note else 'Uploaded',
             'added_by': 'you', 'meeting': {}, 'category': '', 'category_by': '', 'category_confidence': None,
             'category_suggestion': '', 'category_reason': '', 'review_by': None, 'created_at': row['created_at'],
-            'superseded_by': None, 'superseded_at': None, 'supersede_reason': '', 'supersedes_hint': '', 'supersede_checked_at': None}
+            'superseded_by': None, 'superseded_at': None, 'supersede_reason': '', 'supersedes_hint': '', 'supersede_checked_at': None,
+            'owner': '', 'purview_label': ''}
 
 
 def meta(ids=None):
@@ -209,8 +211,10 @@ def _ensure_row(c, fid):
     return True
 
 
-def update(fid, title=None, category=None, label=None, review_by=None, status=None, audit_it=True):
+def update(fid, title=None, category=None, label=None, review_by=None, status=None, audit_it=True, owner=None):
     fields, args = [], []
+    if owner is not None:
+        fields.append('owner=?'); args.append(store.clean_person(owner))
     if title is not None:
         title = ' '.join(title.split())[:200]
         if not title: raise ValueError('Enter a title.')
@@ -405,7 +409,7 @@ def history(fid):
 
 
 # ---------------- listing ----------------
-def listing(kind='', status='active', category='', client='', label='', query='', offset=0, limit=50):
+def listing(kind='', status='active', category='', client='', label='', query='', offset=0, limit=50, owner=''):
     import clients
     with store.db() as c:
         files = {r['id']: dict(r) for r in c.execute('SELECT id,name,size,summary,created_at FROM files')}
@@ -443,9 +447,12 @@ def listing(kind='', status='active', category='', client='', label='', query=''
            if (not kind or r['kind'] == kind) and (not label or r['label'] == label)
            and (not category or (category == '__none__' and not r['category']) or (category == '__suggested__' and r['category_suggestion']) or r['category'] == category)
            and (not client or (client == '__general__' and not r['client']) or r['client'] == client)
+           and (not owner or (owner == '__none__' and not r.get('owner')) or (r.get('owner') or '').lower() == owner.lower())
            and (not q or q in (r['title'] + ' ' + r['name'] + ' ' + r['source'] + ' ' + (r['summary'] or '')).lower())]
     page = out[offset:offset + limit]
-    return {'items': page, 'total': len(out), 'counts': counts, 'labels': LABELS, 'kinds': KINDS,
+    dec = store.decisions_for([r['id'] for r in page])
+    for r in page: r['decided'] = dec.get(r['id'])
+    return {'items': page, 'total': len(out), 'counts': counts, 'labels': LABELS, 'kinds': KINDS, 'owners': store.owners(),
             'next_offset': offset + len(page) if offset + len(page) < len(out) else None}
 
 

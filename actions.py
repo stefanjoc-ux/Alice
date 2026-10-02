@@ -91,11 +91,11 @@ def summary():
     # 5. Past their review-by date (memories, decisions to revisit, knowledge)
     due_mem = store.organised_records('approved', category='__expired__', limit=TOP)
     with store.db() as c:
-        due_kn = [dict(r) for r in c.execute("SELECT file_id AS id,title,review_by FROM knowledge_meta WHERE status='active' "
+        due_kn = [dict(r) for r in c.execute("SELECT file_id AS id,title,review_by,owner FROM knowledge_meta WHERE status='active' "
                                              "AND review_by IS NOT NULL AND review_by<? ORDER BY review_by", (today,))]
     due_items = ([{'type': 'link', 'id': r['id'], 'title': r['title'], 'detail': ('Decision to revisit' if r.get('kind') == 'decision' else 'Memory')
-                   + ' · review by ' + (r['review_by'] or ''), 'href': '/admin/memories?status=approved'} for r in due_mem['records']]
-                 + [{'type': 'link', 'id': r['id'], 'title': r['title'], 'detail': 'Knowledge · review by ' + r['review_by'], 'href': '/admin/knowledge'} for r in due_kn])
+                   + ' · review by ' + (r['review_by'] or '') + (' · owner ' + r['owner'] if r.get('owner') else ''), 'href': '/admin/memories?status=approved'} for r in due_mem['records']]
+                 + [{'type': 'link', 'id': r['id'], 'title': r['title'], 'detail': 'Knowledge · review by ' + r['review_by'] + (' · owner ' + r['owner'] if r.get('owner') else ''), 'href': '/admin/knowledge'} for r in due_kn])
     out.append(_section('due', 'Past their review date', due_mem['total'] + len(due_kn), '/admin/memories?status=approved', due_items,
                         'Filter Memories by “⚑ Past review date” to see them all.' if due_mem['total'] else ''))
 
