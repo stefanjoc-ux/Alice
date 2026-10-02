@@ -26,3 +26,4 @@ t('the chat page opens a new (or the empty) chat unless one is asked for', "cons
 import desktop
 t('the desktop app opens Alice on the Command centre home', desktop.open_window.__defaults__ == ('admin',))
 t('the chat page clears ?new=1 with window.history (history is a chat variable there)', 'window.history.replaceState' in chat)
+t('long chat titles shrink with an ellipsis instead of spilling out', '.hm-list b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto;min-width:0}' in page)
