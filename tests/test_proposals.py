@@ -455,3 +455,24 @@ t('accepted fixes go to the writer, Argus checks again, the document is rebuilt'
 t('the revision adds to the proposal\'s AI cost', P.get(pw2)['context']['ai_cost']['writing'] > done_['context']['ai_cost']['writing'])
 t('no accepted fixes: refused', cl.post(f'/assistant/proposal-writer/proposals/{pw2}/revise', json={'fixes': [{'x': 1}]}).status_code == 400)
 t('the page offers accept, reject and revise for each fix', all(x in cl.get('/assistant/proposal-writer').text for x in ("'Accept'", "'Reject'", 'accepted fix', '/revise')))
+
+# ---------------- rejected fixes stay rejected; accepted ones are checked ----------------
+QA3 = dict(QA2, issues=[{'severity': 'medium', 'section': 'Commercials', 'issue': 'Expenses terms are not stated in the commercials', 'fix': 'State the expenses policy'},
+                        {'severity': 'low', 'section': 'Next steps', 'issue': 'Next steps have no named owners', 'fix': 'Name an owner for each step'}])
+QA4 = dict(QA2, issues=[{'severity': 'medium', 'section': 'Commercials', 'issue': 'The commercials do not state expenses terms', 'fix': 'State how expenses are charged'},
+                        {'severity': 'low', 'section': 'Next steps', 'issue': 'Next steps still have no named owners', 'fix': 'Name an owner for each step'},
+                        {'severity': 'low', 'section': 'Approach', 'issue': 'Phase two has no exit criteria', 'fix': 'Add exit criteria'}])
+calls.clear(); MODE['qa'] = [QA4]
+rv2 = cl.post(f'/assistant/proposal-writer/proposals/{pw2}/revise', json={'fixes': [QA3['issues'][1]], 'rejected': [QA3['issues'][0]]})
+d4 = wait(pw2)
+qmsg = [c for c in calls if c['system'].startswith('You are Argus')][-1]['messages'][0]['content']
+t('Argus is told what you accepted and what you rejected', rv2.status_code == 200 and "AUTHOR'S DECISIONS ON EARLIER FIXES" in qmsg
+  and 'REJECTED (do not raise again)' in qmsg and 'Expenses terms are not stated' in qmsg and 'ACCEPTED (applied; check them)' in qmsg)
+iss = [i['issue'] for i in d4['qa'][-1]['issues']]
+t('a rejected point raised again in other words is left out', not any('expenses' in x.lower() for x in iss) and d4['qa'][-1]['rejected_not_raised'] == 1)
+t('an accepted fix Argus says is still not done, and new points, are kept', 'Next steps still have no named owners' in iss and 'Phase two has no exit criteria' in iss)
+t('your decisions are kept with the proposal for later checks', [d['decision'] for d in P.get(pw2)['context']['fix_decisions'] if 'xpenses' in d['issue']] == ['rejected'])
+calls.clear(); MODE['qa'] = [QA4]
+cl.post(f'/assistant/proposal-writer/proposals/{pw2}/recheck', json={'sections': [{'title': x['title'], 'body': x['body']} for x in P.get(pw2)['draft']['sections']]})
+d5 = wait(pw2)
+t('rejections still stand when you re-check your own edits', not any('expenses' in i['issue'].lower() for i in d5['qa'][-1]['issues']))

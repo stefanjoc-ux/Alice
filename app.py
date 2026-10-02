@@ -1761,12 +1761,13 @@ def proposal_qa_upload(aid: str, pid: str, x: ProposalDoc, request: Request):
 
 class ProposalFixes(BaseModel):
     fixes: list[dict] = Field(min_length=1,max_length=30)
+    rejected: list[dict] = Field(default_factory=list,max_length=30)
 
 @app.post('/assistant/{aid}/proposals/{pid}/revise')
 def proposal_revise(aid: str, pid: str, x: ProposalFixes, request: Request):
     import proposals
     _same_origin(request); _proposal_writer(aid)
-    return _proposal_call(lambda: proposals.revise(aid,pid,x.fixes))
+    return _proposal_call(lambda: proposals.revise(aid,pid,x.fixes,x.rejected))
 
 @app.post('/assistant/{aid}/work')
 def proposal_work_save(aid: str, x: ProposalWork, request: Request):
