@@ -50,6 +50,9 @@ LABELS = {
     'chat_restored': ('chats', 'Chat restored from archive'),
     'model_routed': ('routing', 'Auto routing choice'), 'model_escalated': ('routing', 'Retried on another model'),
     'tool_completed': ('tools', 'Tool used'), 'tool_failed': ('tools', 'Tool failed'),
+    'document_created': ('chats', 'Document created'), 'assistant_answered': ('chats', 'Assistant answered'),
+    'assistant_blocked': ('blocks', 'Assistant question blocked'), 'assistant_escalated': ('blocks', 'Assistant question sent to a person'),
+    'assistant_saved': ('rules', 'Assistant changed'), 'demo_hr_loaded': ('knowledge', 'Demo HR policy loaded'), 'knowledge_review_days': ('rules', 'Knowledge review period changed'),
     'owner_set': ('memories', 'Owner set'), 'purview_label_seen': ('rules', 'New Purview label seen'),
     'purview_label_mapped': ('rules', 'Purview label mapping changed'), 'purview_label_applied': ('knowledge', 'Purview label applied to an upload'),
 }

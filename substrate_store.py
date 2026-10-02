@@ -219,6 +219,8 @@ with db() as c:
     # Additive: generated image file paths per turn (the images themselves live in data/images).
     if 'images' not in {r['name'] for r in c.execute('PRAGMA table_info(chat_turns)')}:
         c.execute("ALTER TABLE chat_turns ADD COLUMN images TEXT NOT NULL DEFAULT '[]'")
+    if 'documents' not in {r['name'] for r in c.execute('PRAGMA table_info(chat_turns)')}:   # documents made in the turn
+        c.execute("ALTER TABLE chat_turns ADD COLUMN documents TEXT NOT NULL DEFAULT '[]'")
 
 def recover_chats():
     with db() as c:
@@ -238,7 +240,7 @@ def get_chat(cid):
         if row is None: raise ValueError('Chat not found.')
         turns=[dict(r) for r in c.execute('SELECT * FROM chat_turns WHERE chat_id=? ORDER BY created_at,rowid',(cid,))]
     result=dict(row);result['file_ids']=json.loads(result['file_ids'])
-    for t in turns: t['activity']=json.loads(t['activity']); t['images']=json.loads(t.get('images') or '[]')
+    for t in turns: t['activity']=json.loads(t['activity']); t['images']=json.loads(t.get('images') or '[]'); t['documents']=json.loads(t.get('documents') or '[]')
     return result|{'turns':turns}
 
 def rename_chat(cid,title):
@@ -293,6 +295,8 @@ def turn_event(tid,event):
         elif event['type']=='answer':
             c.execute("UPDATE chat_turns SET reply=?,model=?,images=?,status='complete' WHERE id=?",
                       (event['reply'],event['model'],json.dumps(event.get('images',[])),tid))
+            if event.get('documents'):
+                c.execute("UPDATE chat_turns SET documents=? WHERE id=?",(json.dumps(event['documents']),tid))
         elif event['type']=='error':
             c.execute("UPDATE chat_turns SET error=?,status='failed' WHERE id=?",(event['message'],tid))
         c.execute('UPDATE chats SET updated_at=? WHERE id=?',(now(),row['chat_id']))
