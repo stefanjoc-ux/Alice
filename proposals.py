@@ -101,7 +101,7 @@ def templates():
         try: files = doc_library.files(src['id'])
         except ValueError: continue
         out += [{'path': f['path'], 'name': f['name'], 'source': src['name']} for f in files if f['name'].lower().endswith('.docx')]
-    return out
+    return sorted(out, key=lambda x: ('template' not in x['path'].lower(), x['name'].lower()))    # template folders first
 
 
 def _template(path):
