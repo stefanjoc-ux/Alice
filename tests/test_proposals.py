@@ -365,3 +365,5 @@ t('cross-origin spreadsheet loads are refused', pr_('pricing.xlsx', bio.getvalue
 t('the HR assistant has no spreadsheet loading', cl.post('/assistant/hr-policy/rates/parse', json={'name': 'p.csv', 'data': base64.b64encode(b'Role,Cost\nA,1\n').decode()}).status_code == 404)
 t('the rate card has the target margin, ticks, margin column and reference totals',
   all(x in proposal_ui.PE_JS for x in ('pe-target', 'pe-rtotal', 'Load a pricing spreadsheet', 'Apply to every role')))
+pg_ = cl.get('/assistant/proposal-writer').text
+t("Parker's logo is on the page and as the tab icon", 'class="parker"' in pg_ and 'image/svg+xml' in pg_ and 'id="go2"' in pg_)

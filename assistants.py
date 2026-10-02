@@ -53,6 +53,11 @@ STOP = set('a an and are as at be but by can do does for from has have how i if 
            'so than that the their them there this to was we what when where which who why will with you your'.split())
 GENERIC = set('policy policies procedure procedures guidance guide rule rules document information'.split())   # too common to count
 
+OLD_PW_GREETING = ('Give me the brief and any context. I will write the proposal into the template, check it against the brief and '
+                   'give you a Word document to review.')
+PARKER_GREETING = ('I\'m Parker. Give me the brief and any context: I will write the proposal into your template, check it against the brief '
+                   'and give you a Word document to review.')
+
 with store.db() as c:
     c.execute('''CREATE TABLE IF NOT EXISTS assistants (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
         greeting TEXT NOT NULL DEFAULT '', packs TEXT NOT NULL DEFAULT '[]', provider TEXT NOT NULL DEFAULT 'openai',
@@ -77,14 +82,20 @@ with store.db() as c:
         c.execute('ALTER TABLE assistants ADD COLUMN allow_documents INTEGER NOT NULL DEFAULT 1')
     if 'kind' not in _cols: c.execute("ALTER TABLE assistants ADD COLUMN kind TEXT NOT NULL DEFAULT 'qa'")
     if 'settings' not in _cols: c.execute("ALTER TABLE assistants ADD COLUMN settings TEXT NOT NULL DEFAULT '{}'")
+    # the seeded proposal writer is called Parker: rename it once if it still has the old default name (logged; your own names are kept)
+    _pw = c.execute("SELECT name,greeting FROM assistants WHERE id='proposal-writer'").fetchone()
+    if _pw and _pw['name'] == 'Proposal writer' and not c.execute(
+            "SELECT 1 FROM activity WHERE action='assistant_renamed' AND target='proposal-writer'").fetchone():
+        c.execute("UPDATE assistants SET name='Parker',greeting=CASE WHEN greeting=? THEN ? ELSE greeting END WHERE id='proposal-writer'",
+                  (OLD_PW_GREETING, PARKER_GREETING))
+        store.audit(c, 'assistant_renamed', 'proposal-writer', 'human_control', 'Proposal writer renamed Parker (owner\'s request)')
     if not c.execute("SELECT 1 FROM assistants WHERE id='proposal-writer'").fetchone():
         c.execute('INSERT INTO assistants(id,name,description,greeting,packs,provider,categories,guidance,contact,status,created_at,updated_at,kind,settings) '
                   'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-                  ('proposal-writer', 'Proposal writer',
+                  ('proposal-writer', 'Parker',
                    'Writes client proposals into your proposal template from a brief, using what Alice knows; the Proposal QA agent '
                    'checks each draft against the brief before you see it.',
-                   'Give me the brief and any context. I will write the proposal into the template, check it against the brief and '
-                   'give you a Word document to review.',
+                   PARKER_GREETING,
                    '[]', 'claude_sonnet', '[]',
                    'Write in plain, confident UK English for a public sector reader. Lead with the client\'s outcomes, not with us. '
                    'Be specific; avoid jargon and superlatives.',

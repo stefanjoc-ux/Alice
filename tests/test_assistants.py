@@ -106,3 +106,14 @@ page = cl.get('/assistant/hr-policy').text
 t('the staff page lists what the assistant covers, from its approved knowledge only', 'Annual leave policy' in page and 'Flexible working policy' in page
   and 'Example Council leave arrangements' not in page and 'Local leave note' not in page and 'Expenses policy' not in page)
 t('the staff page explains how answers work and privacy', 'How answers work' in page and 'Your privacy' in page and 'id="topics"' in page)
+t('the seeded proposal writer is called Parker', A.get('proposal-writer')['name'] == 'Parker' and A.get('proposal-writer')['greeting'].startswith("I'm Parker"))
+import importlib
+with s.db() as c:
+    c.execute("UPDATE assistants SET name='Proposal writer' WHERE id='proposal-writer'")
+    c.execute("DELETE FROM activity WHERE action='assistant_renamed'")
+importlib.reload(A)
+with s.db() as c: n_ = c.execute("SELECT count(*) FROM activity WHERE action='assistant_renamed'").fetchone()[0]
+t('an existing install with the old default name becomes Parker, logged once', A.get('proposal-writer')['name'] == 'Parker' and n_ == 1)
+with s.db() as c: c.execute("UPDATE assistants SET name='Proposal writer' WHERE id='proposal-writer'")
+importlib.reload(A)
+t('after that, your own choice of name is kept', A.get('proposal-writer')['name'] == 'Proposal writer')

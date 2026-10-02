@@ -1,6 +1,20 @@
 """The Proposal writer page: a brief in; a QA-checked Word proposal out. No menus and no access to the rest of Alice."""
 import json
 from html import escape
+from urllib.parse import quote
+
+
+def parker_logo(size=40, uid='pk'):
+    """Parker's mark: a pen nib on a violet-to-teal tile."""
+    return (f'<svg class="parker" width="{size}" height="{size}" viewBox="0 0 48 48" role="img" aria-label="Parker">'
+            f'<defs><linearGradient id="{uid}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#7a5bb5"/>'
+            f'<stop offset="1" stop-color="#0a7f9f"/></linearGradient></defs>'
+            f'<rect width="48" height="48" rx="13" fill="url(#{uid})"/>'
+            f'<path d="M17 8h14v5.5c0 1.6 2.2 4.2 2.2 9.2 0 2.4-.6 3.9-1.6 5.4L24 41l-7.6-12.9c-1-1.5-1.6-3-1.6-5.4 0-5 2.2-7.6 2.2-9.2z" fill="#fff"/>'
+            f'<path d="M17 13.5h14" stroke="#4a6fae" stroke-opacity=".35" stroke-width="1.4"/>'
+            f'<path d="M24 26v13" stroke="#3d72a6" stroke-width="1.9" stroke-linecap="round"/>'
+            f'<circle cx="24" cy="23.5" r="2.9" fill="url(#{uid})"/>'
+            f'<path d="M12.5 41.5h7" stroke="#fff" stroke-opacity=".55" stroke-width="2" stroke-linecap="round"/></svg>')
 
 
 def render(a):
@@ -9,7 +23,7 @@ def render(a):
     data = json.dumps({'id': a['id'], 'name': a['name'], 'greeting': a['greeting'], 'paused': a['status'] != 'active'})
     return ('''<!doctype html>
 <html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>''' + escape(a['name']) + '''</title><link rel="icon" href="/static/favicon.png" type="image/png">
+<title>''' + escape(a['name']) + '''</title><link rel="icon" type="image/svg+xml" href="data:image/svg+xml,''' + quote(parker_logo(48, 'fv')) + '''">
 <style>''' + SHARED_CSS + PE_CSS + '''
 body{display:grid;grid-template-rows:52px minmax(0,1fr);overflow:hidden}
 .topbar .brand{width:auto}.topbar .who{font-size:15px;font-weight:600;color:#fff;letter-spacing:0}
@@ -130,9 +144,13 @@ textarea#brief{min-height:210px;line-height:1.55}
 .mode .chips{background:#eef3f7;padding:4px;border-radius:999px;border:1px solid var(--line)}
 .mode .chip{border:0!important;padding:7px 16px}.mode .chip:not(.on){background:transparent!important;color:var(--muted)!important}
 .mode .chip.on{box-shadow:0 2px 6px -2px rgba(7,94,121,.5)}
-.actionbar{position:sticky;bottom:0;z-index:5;display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:14px 20px;border-radius:14px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border:1px solid #dce6ee;box-shadow:0 -6px 24px -14px rgba(16,42,67,.35)}
+.actionbar{position:static;display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:14px 20px;border-radius:14px;background:linear-gradient(135deg,#f3f9fb,#faf7fd);border:1px solid #dce6ee;box-shadow:0 0 0 0 rgba(16,42,67,.35)}
 .actionbar .primary{padding:11px 22px;font-size:15px;border-radius:10px;box-shadow:0 6px 14px -8px rgba(7,94,121,.8)}
 .actionbar .hint{flex:1;min-width:200px}
+.ptitle{display:flex;gap:16px;align-items:center;margin-bottom:10px}.ptitle h1{margin:0}.ptitle .eyebrow{margin:0 0 4px}
+.hero .parker{flex:none;filter:drop-shadow(0 8px 18px rgba(0,0,0,.35));border-radius:16px}
+.topbar .parker{border-radius:8px}
+.sum .go2{width:100%;margin-top:14px;padding:11px 16px;font-size:15px;border-radius:10px}
 /* side summary */
 .sum h2{font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 10px}
 .sum dl{margin:0;display:grid;gap:0}.sum dl>div{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line);font-size:14px}
@@ -163,8 +181,8 @@ table.t th{text-transform:uppercase;letter-spacing:.05em;font-size:11.5px}table.
 @media(max-width:1080px){.layout{grid-template-columns:minmax(0,1fr)}.side{position:static;grid-template-columns:1fr 1fr}}
 @media(max-width:760px){.wrap{padding:0 12px}.panel{padding:16px}details.panel>summary{padding:16px}details.panel>.pbody{padding:14px 16px 18px}.ph{align-items:flex-start}.side{grid-template-columns:1fr}.actionbar{padding:12px;position:static}.mode .chips{border-radius:14px}.hero h1{font-size:24px}.flow{display:none}.steps{grid-auto-flow:row}.steps li{grid-template-columns:34px 1fr;justify-items:start;text-align:left}.steps li::after{display:none}}
 </style></head><body>
-<header class="topbar"><span class="brand"><img src="/static/favicon.png" alt=""><span class="who">''' + escape(a['name']) + '''</span></span><div class="sp"></div><span class="small" style="color:#9fb8ca">Built on Alice</span></header>
-<main><section class="hero"><div class="hero-in"><div><p class="eyebrow">Bid and proposal studio</p><h1>''' + escape(a['name']) + '''</h1><p class="lead" id="greeting"></p></div>
+<header class="topbar"><span class="brand">''' + parker_logo(26, 'tb') + '''<span class="who">''' + escape(a['name']) + '''</span></span><div class="sp"></div><span class="small" style="color:#9fb8ca">Built on Alice</span></header>
+<main><section class="hero"><div class="hero-in"><div><div class="ptitle">''' + parker_logo(58, 'hr') + '''<div><p class="eyebrow">Proposal writer \u00b7 bid and proposal studio</p><h1>''' + escape(a['name']) + '''</h1></div></div><p class="lead" id="greeting"></p></div>
 <ol class="flow" aria-label="How it works"><li>Brief</li><li>Draft</li><li>QA check</li><li>Word document</li></ol></div></section>
 <div class="wrap"><div class="layout"><div class="colmain">
 <section class="card temple" id="tp"><div class="tp-head"><span class="tp-badge" aria-hidden="true">T</span><div><h2>Start with Temple</h2><span class="ps">Describe the proposal in a sentence or two, and add the client’s brief or RFP if you have it. Temple fills the form below from what Alice knows: client profile, memories, knowledge, your templates, reference documents and roles. You check everything before anything is written.</span></div></div>
@@ -204,7 +222,7 @@ table.t th{text-transform:uppercase;letter-spacing:.05em;font-size:11.5px}table.
 </form>
 </div>
 <aside class="side">
-<section class="card sum" aria-live="polite"><h2>This proposal</h2><dl id="sum"></dl><div class="big" id="sum-big"></div><p class="safe">Cost rates and protectively marked material never reach the AI. Every piece of context is checked on the way out.</p></section>
+<section class="card sum" aria-live="polite"><h2>This proposal</h2><dl id="sum"></dl><div class="big" id="sum-big"></div><button type="button" class="primary go2" id="go2">Write proposal</button><p class="safe">Cost rates and protectively marked material never reach the AI. Every piece of context is checked on the way out.</p></section>
 <section class="card" id="recent-box" hidden><h2>Recent proposals</h2><div class="recent" id="recent"></div></section>
 </aside></div></div></main>
 <script>
@@ -297,7 +315,7 @@ $('f').addEventListener('input',()=>summary());$('f').addEventListener('change',
 function setMode(m){mode=m;$('tp').hidden=m==='qa';$('f').classList.toggle('qa-mode',m==='qa');document.querySelector('.qa-only').hidden=m!=='qa';$('m-write').classList.toggle('on',m==='write');$('m-qa').classList.toggle('on',m==='qa');
  $('m-write').setAttribute('aria-selected',m==='write');setTimeout(summary,0);$('m-qa').setAttribute('aria-selected',m==='qa');$('f-h').textContent=m==='qa'?'Check a proposal':'New proposal';
  $('go').textContent=m==='qa'?'Check it against the brief':'Write proposal';$('go-note').textContent=m==='qa'?'Proposal QA reads your document and checks it against the brief: usually under a minute.':'Writing, a QA check and one revision if needed: usually two to four minutes.';if(S)cost()}
-$('m-write').onclick=()=>setMode('write');$('m-qa').onclick=()=>setMode('qa');
+$('m-write').onclick=()=>setMode('write');$('go2').onclick=()=>{if(!$('go').disabled)$('f').requestSubmit($('go'))};new MutationObserver(()=>{$('go2').disabled=$('go').disabled;$('go2').textContent=$('go').textContent}).observe($('go'),{attributes:true,childList:true});$('m-qa').onclick=()=>setMode('qa');
 function parseStructure(text){const out=[];let cur=null;const head=/^\s{0,1}(#{1,4}\s+|\d{1,2}(\.\d{1,2})*[.)]\s+|[A-Z][.)]\s+)?(.+)$/;
  for(const raw of text.split(/\r?\n/)){if(!raw.trim())continue;const bullet=/^\s*([-*•▪–]|\(?[a-z]\))\s+/.test(raw)||/^\s{2,}\S/.test(raw);
   if(bullet&&cur){cur.include+=(cur.include?'\n':'')+'- '+raw.replace(/^\s*([-*•▪–]|\(?[a-z]\))\s*/,'').trim();continue}
