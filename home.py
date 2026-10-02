@@ -21,13 +21,15 @@ def summary(tz=0):
             'SELECT c.id,c.title,c.updated_at,c.client,(SELECT count(*) FROM chat_turns t WHERE t.chat_id=c.id) AS turns FROM chats c '
             'ORDER BY c.updated_at DESC LIMIT 25')]
         props = [dict(r) for r in _safe(lambda: list(c.execute(
-            "SELECT id,assistant_id,title,organisation,status,qa,created_at FROM proposals WHERE status!='discarded' ORDER BY updated_at DESC LIMIT 4")), [])]
+            "SELECT id,assistant_id,title,organisation,status,qa,context,created_at FROM proposals WHERE status!='discarded' ORDER BY updated_at DESC LIMIT 4")), [])]
     for p in props:
         try:
             import json
             qa = json.loads(p.pop('qa') or '[]')
         except ValueError:
             qa = []
+        try: p['ai_cost'] = (json.loads(p.pop('context') or '{}').get('ai_cost') or {}).get('total', 0)
+        except ValueError: p['ai_cost'] = 0
         p['verdict'] = qa[-1]['verdict'] if qa else ''
         p['score'] = qa[-1].get('score') if qa else None
     kn = _safe(lambda: knowledge.listing(status='active', limit=1)['total'], 0)

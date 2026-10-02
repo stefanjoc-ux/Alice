@@ -82,7 +82,7 @@ class Msgs:
             want = [ln[2:].split(' [KEEP]')[0] for ln in kw['messages'][0]['content'].split('SECTIONS\n')[1].split('\n\nRATE CARD')[0].split('\n') if ln.startswith('- ')]
             client = kw['messages'][0]['content'].split('CLIENT: ')[1].split('\n')[0]
             text = writer_json(want, 'PREVIOUS DRAFT' in kw['messages'][0]['content'], client)
-        elif kw['system'].startswith('You are the Proposal QA'):
+        elif kw['system'].startswith('You are Argus'):
             text = json.dumps(MODE['qa'].pop(0) if MODE['qa'] else QA2)
         else:
             text = '{}'
@@ -110,7 +110,7 @@ p = wait(r.json()['id'])
 t('it finishes with a Word document', p['status'] == 'done' and p['document_id'] and not print(p.get('error') or ''))
 t('the organisation is recognised by its other name and marked as a client', p['organisation'] == 'Northshire Council' and p['client'] == 'Northshire Council')
 w = [c for c in calls if c['system'].startswith('You are the proposal writer')]
-q = [c for c in calls if c['system'].startswith('You are the Proposal QA')]
+q = [c for c in calls if c['system'].startswith('You are Argus')]
 t('writer, QA, one automatic revision, QA again', len(w) == 2 and len(q) == 2 and 'PREVIOUS DRAFT' in w[1]['messages'][0]['content']
   and 'Discovery length not stated' in w[1]['messages'][0]['content'])
 t('the QA reports are kept: needs revision, then client ready', [x['verdict'] for x in p['qa']] == ['needs_revision', 'client_ready'] and p['qa'][1]['score'] == 88)
@@ -221,7 +221,7 @@ cl.put('/admin/api/assistants/proposal-writer', headers=H, json=dict(body, setti
 calls.clear(); MODE['qa'] = [QA2]
 p4 = wait(start(writer_model='claude_opus', qa_model='claude_sonnet', sections=[{'title': 'Summary'}], rate_card=card).json()['id'])
 wm = [c['model'] for c in calls if c['system'].startswith('You are the proposal writer')]
-qm = [c['model'] for c in calls if c['system'].startswith('You are the Proposal QA')]
+qm = [c['model'] for c in calls if c['system'].startswith('You are Argus')]
 t('each proposal can use another writer and QA model', p4['status'] == 'done' and wm == ['claude-opus-5-5'] and qm == ['claude-sonnet-5-5']
   and p4['inputs']['writer'] == 'claude_opus')
 t('unknown models are refused', start(writer_model='gpt-99').status_code == 400)
@@ -256,7 +256,7 @@ edited = [{'title': x['title'], 'body': ('My edited summary with the January sta
           for x in p5['draft']['sections']]
 r = cl.post(f'/assistant/proposal-writer/proposals/{p5["id"]}/recheck', json={'sections': edited})
 p6 = wait(p5['id'])
-q6 = [c for c in calls if c['system'].startswith('You are the Proposal QA')]
+q6 = [c for c in calls if c['system'].startswith('You are Argus')]
 t('your edits go back to QA and the document is rebuilt', r.status_code == 200 and p6['status'] == 'done' and len(p6['qa']) == len(p5['qa']) + 1
   and p6['qa'][-1]['source'] == 'your edits' and len(q6) == 1 and 'My edited summary' in q6[0]['messages'][0]['content']
   and p6['document_id'] != p5['document_id'] and 'My edited summary' in K.docx_to_text(D.get(p6['document_id'])['data']))
@@ -269,7 +269,7 @@ mine = D.get(D.create('docx', 'My version', '# Summary\nOur own words for the co
 calls.clear(); MODE['qa'] = [QA1]
 r = cl.post(f'/assistant/proposal-writer/proposals/{p5["id"]}/qa-upload', json={'name': 'Fabric-v2.docx', 'data': base64.b64encode(mine).decode()})
 p7 = wait(p5['id'])
-q7 = [c for c in calls if c['system'].startswith('You are the Proposal QA')]
+q7 = [c for c in calls if c['system'].startswith('You are Argus')]
 t('a revised version uploaded from Word is checked against the brief', r.status_code == 200 and p7['qa'][-1]['source'] == 'uploaded: Fabric-v2.docx'
   and 'Our own words for the council' in q7[0]['messages'][0]['content'] and [x['title'] for x in p7['qa'][-1]['sections']] == ['Summary', 'Approach'])
 t('the uploaded document is not kept, and the draft is unchanged', p7['draft'] == p6['draft'] and p7['document_id'] == p6['document_id'])
@@ -434,3 +434,24 @@ t('the page has the proposals list and saves as you work', all(x in pg2 for x in
 adm = cl.get('/admin').text
 t('Alice opens assistants on a stage: back to Alice or a new window', all(x in adm for x in ('id="as-stage"', 'Back to Alice', 'Open in a new window', 'embed')))
 t('assistant pages hide their own top bar on the stage', 'html.embed .topbar' in pg2 and 'html.embed .topbar' in cl.get('/assistant/hr-policy').text)
+
+# ---------------- Argus; accepting and rejecting Argus's fixes; what each proposal cost ----------------
+t('the QA agent is Argus', A.get(P.QA)['name'] == 'Argus: proposal QA' and P.QA_PROMPT.startswith('You are Argus'))
+with s.db() as c:
+    c.execute("UPDATE agents SET name='Proposal QA' WHERE id=?", (P.QA,)); c.execute("DELETE FROM activity WHERE action='agent_renamed'")
+import importlib; importlib.reload(A)
+t('an existing QA agent is renamed Argus once, logged', A.get(P.QA)['name'] == 'Argus: proposal QA')
+done_ = P.get(pw2)
+t('each written proposal carries what its AI calls cost', done_['context']['ai_cost']['writing'] > 0
+  and any(x['ai_cost'] > 0 for x in cl.get('/assistant/proposal-writer/proposals').json()['proposals']))
+calls.clear(); MODE['qa'] = [QA2]
+fixes = [{'section': 'Approach', 'issue': 'No owners against next steps', 'fix': 'Add a role to each step', 'severity': 'low'}]
+rv = cl.post(f'/assistant/proposal-writer/proposals/{pw2}/revise', json={'fixes': fixes})
+d3 = wait(pw2)
+wr = [c for c in calls if c['system'].startswith('You are the proposal writer')]
+t('accepted fixes go to the writer, Argus checks again, the document is rebuilt', rv.status_code == 200 and d3['status'] == 'done'
+  and 'Add a role to each step' in wr[0]['messages'][0]['content'] and 'Apply ONLY these fixes' in wr[0]['messages'][0]['content']
+  and d3['qa'][-1]['source'] == 'your 1 accepted fix' and d3['document_id'])
+t('the revision adds to the proposal\'s AI cost', P.get(pw2)['context']['ai_cost']['writing'] > done_['context']['ai_cost']['writing'])
+t('no accepted fixes: refused', cl.post(f'/assistant/proposal-writer/proposals/{pw2}/revise', json={'fixes': [{'x': 1}]}).status_code == 400)
+t('the page offers accept, reject and revise for each fix', all(x in cl.get('/assistant/proposal-writer').text for x in ("'Accept'", "'Reject'", 'accepted fix', '/revise')))

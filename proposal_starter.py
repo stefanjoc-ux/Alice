@@ -38,7 +38,9 @@ Choose only from the lists given, using the exact path or role name.
 If a DRAFT is given, the colleague is revising a proposal that has already been written: when they ask for a change to the
 proposal (e.g. "add to the approach..."), rewrite the affected DRAFT sections and return them in "draft" (whole sections, in the
 same style and format, keeping everything that is still right); keep the brief in line when the change is a fact about the work.
-Never put prices or day rates in the draft: Alice adds the pricing table.
+Never put prices or day rates in the draft: Alice adds the pricing table. You never see cost rates, sell rates or margins; when the
+colleague tells you the rate to charge the client (e.g. "a 1050 day rate"), set "sell" on the roles it applies to (the ticked roles
+unless they say otherwise) and say that the page shows the margin. Keep your reply short and always return valid JSON.
 Reply with JSON only:
 {"reply": "what you say: 1 to 4 short sentences; say what you changed, then ask your next question",
  "updates": {ONLY the fields you are changing, from:
@@ -49,7 +51,7 @@ Reply with JSON only:
    "template": "a path from TEMPLATES",
    "structure": [{"heading": "a section the client asks for", "points": ["what to cover"]}],
    "references": ["the full list of paths from REFERENCE DOCUMENTS to use"],
-   "roles": [{"role": "a role from ROLES", "use": true or false, "days": number of days if stated, else null}],
+   "roles": [{"role": "a role from ROLES", "use": true or false, "days": number of days if stated, else null, "sell": the day (or hour) rate to charge the client ONLY if the colleague states it, else null}],
    "draft": [{"title": "the exact title of a DRAFT section", "body": "the WHOLE new text of that section"}]},
  "questions": ["what is still missing, most important first, up to 5"]}'''
 
@@ -166,7 +168,10 @@ def _validate(out, tpl_paths, ref_paths, roles_known, org='', draft=()):
             seen.add(name)
             try: d = round(float(r.get('days')) * 2) / 2 if r.get('days') not in (None, '') else None
             except (TypeError, ValueError): d = None
-            plan.append({'role': name, 'use': r.get('use') is not False, 'days': d if d and 0 < d <= 1000 else None})
+            try: sv = float(str(r.get('sell')).replace(',', '').replace('£', '')) if r.get('sell') not in (None, '') else None
+            except (TypeError, ValueError): sv = None
+            plan.append({'role': name, 'use': r.get('use') is not False, 'days': d if d and 0 < d <= 1000 else None,
+                         'sell': round(sv, 2) if sv and 0 < sv <= 100000 else None})
         if plan: res['roles'] = plan[:40]
     titles = {d['title'].casefold(): d['title'] for d in draft if not d.get('keep')}       # only sections that exist and are not standard text
     if isinstance(up.get('draft'), list) and titles:
@@ -185,7 +190,17 @@ NAMES = {'title': 'title', 'organisation': 'client', 'brief': 'brief', 'notes': 
 
 
 @agents.tracked(PARKER, trigger='when someone chats with Parker on the Parker page')
-def chat(aid, message, history=(), form=None, organisation='', doc_token=''):
+def chat(aid, message, history=(), form=None, organisation='', doc_token='', work_id=''):
+    import agents as _ag
+    with _ag.cost_box() as box:
+        res = _chat(aid, message, history, form, organisation, doc_token)
+    import proposals
+    res['cost_usd'] = round(box.usd, 6)
+    res['saved_to'] = work_id if work_id and proposals.parker_turn(aid, work_id, message or '(added a document)', res['reply'], box.usd) else ''
+    return res
+
+
+def _chat(aid, message, history=(), form=None, organisation='', doc_token=''):
     import assistants, proposals, rule_packs, rules_engine
     a = assistants.get(aid)
     if a['kind'] != 'proposal': raise ValueError('Only a proposal writer has Parker.')
@@ -234,8 +249,16 @@ def chat(aid, message, history=(), form=None, organisation='', doc_token=''):
            + (f'CONVERSATION\n{convo}\n\n' if convo else '')
            + f'MESSAGE\n{message or "(I have added the client document: fill in the form from it.)"}')
     rules_engine.check_outbound(msg, 'Parker', packs=False)
-    out = proposals._json(assistants._call(provider, PROMPT, [{'role': 'user', 'content': msg}], max_tokens=12000 if f['draft'] else 5000, timeout=240,
-                                           workload='Parker'))
+    call = lambda extra='': assistants._call(provider, PROMPT, [{'role': 'user', 'content': msg + extra}], max_tokens=16000 if f['draft'] else 6000,
+                                             timeout=240, workload='Parker')
+    raw = call()
+    try: out = proposals._json(raw)
+    except ValueError:
+        if '{' not in (raw or ''):                         # plain words, no JSON: keep them as the reply, change nothing
+            out = {'reply': (raw or '').strip()[:2000], 'updates': {}, 'questions': []}
+        else:                                              # cut short or malformed: ask once more, briefly
+            out = proposals._json(call('\n\nYour last reply was not valid JSON (probably too long). Reply again with valid JSON only: '
+                                       'return just the fields and sections that change, and keep the reply short.'))
     reply = str(out.get('reply') or '').strip()[:2000] or 'Done.'
     updates = _validate(out, tpl_paths, ref_paths, roles_known, org, f['draft'])
     for text in [reply] + [updates.get(k, '') for k in ('brief', 'notes')] + [d['body'] for d in updates.get('draft', [])]:           # what comes back is checked too

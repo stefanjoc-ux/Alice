@@ -137,7 +137,7 @@ const PE=(()=>{
     ta.oninput=show;const act=mk('div','','pe-addbar');act.append(use,more,cancel);pp.append(ta,msg,act);box.append(pp);show()}}
   draw();return {value:()=>list.filter(r=>r.role.trim()).map(r=>({role:r.role.trim(),unit:r.unit,cost:String(r.cost).trim()||'0',sell:String(r.sell).trim()||'0',days:String(r.days??'').trim(),use:r.use,override:r.override,list:String(r.list??'').trim()})),
    target:()=>target,set:x=>{list=(x||[]).map(mk_);draw()},
-   merge:roles=>{for(const g of roles||[]){const r=list.find(x=>x.role.trim().toLowerCase()===String(g.role).toLowerCase());if(!r)continue;r.use=g.use!==false;if(g.days)r.days=g.days}if(list.some(r=>r.use))showAll=false;draw()},
+   merge:roles=>{for(const g of roles||[]){const r=list.find(x=>x.role.trim().toLowerCase()===String(g.role).toLowerCase());if(!r)continue;r.use=g.use!==false;if(g.days)r.days=g.days;if(g.sell){r.sell=g.sell;r.override=true}}if(list.some(r=>r.use))showAll=false;draw()},
    pick:roles=>{const m=new Map((roles||[]).map(r=>[String(r.role).toLowerCase(),r]));for(const r of list){const g=m.get(r.role.trim().toLowerCase());r.use=!!g;if(g){m.delete(r.role.trim().toLowerCase());if(g.days)r.days=g.days;
     if(g.sell!=null&&g.sell!==''&&n(g.sell)!==n(r.sell)){r.sell=g.sell;r.override=true}}}for(const g of m.values())if(g.role)list.push(mk_({...g,use:true}));showAll=false;draw()}}}
  return {sections,rates,parseRates,gbp,mk}})();

@@ -68,7 +68,7 @@ t('Parker replies and fills in the form', r.status_code == 200 and x['reply'].st
 t('the client is recognised by its other name', u['organisation'] == 'Northshire Council' and x['client'] is True)
 t('only templates on offer are kept', u['template'].replace('\\', '/') == 'Proposal Templates/Insight-template.docx')
 t('invented documents and another client\'s are dropped', [p.replace('\\', '/') for p in u['references']] == ['SharePoint/References/Fabric-guide.docx'])
-t('only rate card roles, once each, days rounded to half days, ticks kept', u['roles'] == [{'role': 'Solution architect', 'use': True, 'days': 10.0}, {'role': 'Project manager', 'use': False, 'days': None}])
+t('only rate card roles, once each, days rounded to half days, ticks kept', u['roles'] == [{'role': 'Solution architect', 'use': True, 'days': 10.0, 'sell': None}, {'role': 'Project manager', 'use': False, 'days': None, 'sell': None}])
 t('empty headings and points are dropped; unknown fields ignored', u['structure'] == [{'heading': 'Approach', 'points': ['governance first']}] and 'bogus' not in u)
 t('questions and what changed are passed on', x['questions'] == ['Who is the named sponsor?', 'What is the budget?'] and x['changed'][:3] == ['title', 'client', 'brief'] and x['model'] == 'Claude Haiku 4.5')
 msg = calls[-1]['messages'][0]['content']
@@ -141,6 +141,44 @@ t('secrets in the draft are refused before anything is sent', cl.post('/assistan
 REPLY['updates'] = {'draft': [{'title': 'Approach', 'body': 'Use key sk-proj-abcdefghijklmnopqrstuvwxyz0123456789ABCD.'}]}
 t('rewritten sections are checked too', cl.post('/assistant/proposal-writer/parker', json={'message': 'tidy it', 'form': {'draft': DRAFT}}).status_code == 400)
 REPLY['updates'] = {}
+# ---------------- sell rates you state; replies that are not JSON; the conversation kept with the proposal ----------------
+REPLY.update({'reply': 'Set the sell rate to 1050 a day on the ticked roles; the page shows the margin.', 'questions': [],
+              'updates': {'roles': [{'role': 'Solution architect', 'use': True, 'sell': '1,050'}, {'role': 'Project manager', 'use': True, 'days': 3, 'sell': -5}]}})
+rs = go(message='Change the sell rate to a 1050 day rate. The PM can stay, light touch.').json()
+t('Parker sets the sell rate you give it (never sees rates itself)', rs['updates']['roles'] == [{'role': 'Solution architect', 'use': True, 'days': None, 'sell': 1050.0},
+  {'role': 'Project manager', 'use': True, 'days': 3.0, 'sell': None}] and 'sell rates or margins' in PS.PROMPT)
+class Plain:
+    def __init__(s_, texts): s_.texts = texts
+real_create = Msgs.create
+seq = []
+def create(self, **kw):
+    calls.append(kw)
+    txt = seq.pop(0)
+    return NS(content=[NS(type='text', text=txt)], usage=NS(model_dump=lambda: {'input_tokens': 100, 'output_tokens': 50}))
+Msgs.create = create
+seq[:] = ['Happy to help: tell me the client first.']
+rp = go(message='hello there Parker')
+t('a reply in plain words is shown as it is, with no changes', rp.status_code == 200 and rp.json()['reply'] == 'Happy to help: tell me the client first.' and rp.json()['updates'] == {})
+calls.clear(); seq[:] = ['{"reply": "Done", "updates": {"brief": "cut sho', json.dumps({'reply': 'Done, briefly.', 'updates': {'title': 'Short title'}, 'questions': []})]
+rr = go(message='Rewrite the whole brief please')
+t('a reply cut short is asked for again, once', rr.status_code == 200 and rr.json()['updates'] == {'title': 'Short title'} and len(calls) == 2
+  and 'not valid JSON' in calls[1]['messages'][0]['content'])
+seq[:] = ['{"broken', '{"also broken']
+t('two broken replies: a clear error', go(message='Rewrite it again').status_code == 400)
+Msgs.create = real_create
+import proposals as PR
+wf = PR.save_form('proposal-writer', {'title': 'Fabric baseline', 'brief': 'Six weeks.'})
+REPLY.update({'reply': 'Noted the sponsor.', 'updates': {}, 'questions': []})
+rw = cl.post('/assistant/proposal-writer/parker', json={'message': 'The sponsor is the Director of Finance.', 'form': {'title': 'Fabric baseline'}, 'work_id': wf['id']}).json()
+ctx = PR.get(wf['id'])['context']
+t('Parker\'s conversation is kept with the proposal, so it follows you to another device', rw['saved_to'] == wf['id']
+  and ctx['parker_chat'][-2:] == [{'role': 'you', 'text': 'The sponsor is the Director of Finance.'}, {'role': 'parker', 'text': 'Noted the sponsor.'}])
+t('the turn\'s AI cost is added to the proposal', ctx['ai_cost']['parker'] > 0 and ctx['ai_cost']['total'] == ctx['ai_cost']['parker'])
+with s.db() as c: t('the activity log still never holds the conversation', not c.execute("SELECT 1 FROM activity WHERE detail LIKE '%Director of Finance%'").fetchone())
+nf = PR.save_form('proposal-writer', {'title': 'New one', 'parker_chat': [{'role': 'you', 'text': 'hi'}, {'role': 'parker', 'text': 'hello'}], 'parker_cost': 0.02})
+t('a new proposal brings the conversation so far, and its cost, when it is first saved', PR.get(nf['id'])['context']['parker_chat'][1]['text'] == 'hello'
+  and PR.get(nf['id'])['context']['ai_cost']['parker'] == 0.02)
+t('a secret in the conversation is not saved', cl.post('/assistant/proposal-writer/work', json={'form': {'title': 'x', 'parker_chat': [{'role': 'you', 'text': 'sk-proj-abcdefghijklmnopqrstuvwxyz0123456789ABCD'}]}}).status_code == 400)
 page = cl.get('/assistant/proposal-writer').text
 t('a proposal can be loaded back into the form', 'Load into the form' in page and 'loadIntoForm' in page)
 t('the page has Parker\'s chat, always in view, and collapsible sections', all(x in page for x in ('Start with Parker', 'id="pk-msg"', 'id="pk-file"', 'Working with Parker', 'id="col-all"', 'id="exp-all"'))

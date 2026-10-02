@@ -133,6 +133,9 @@ section.panel.shut>:not(.ph){display:none!important}
 .wb-pill{font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 9px;white-space:nowrap;background:#eef3f7;color:#4b5a66}
 .wb-pill.form{background:#f1ebf7;color:#4b2f73}.wb-pill.run{background:#e3f1f6;color:#064b63}.wb-pill.ok{background:#eef8f1;color:#1e5b31}.wb-pill.warn{background:#fdf3e1;color:#6b4406}.wb-pill.bad{background:#fbeaea;color:#7a1f1f}
 .wb-x{border:0!important;background:none!important;color:var(--muted)!important;font-size:16px;padding:0 4px!important}.wb-x:hover{color:#b3261e!important}
+.fixch{display:flex;gap:6px;margin-top:4px}.fixch button{font-size:12px;padding:3px 10px;border-radius:999px}.fixch .fx-y.on{background:#eef8f1!important;border-color:#55b987!important;color:#1e5b31!important;font-weight:700}
+.fixch .fx-n.on{background:#fbeaea!important;border-color:#e0aaaa!important;color:#7a1f1f!important;font-weight:700}.issues li.rej>div:first-child,.issues li.rej>.hint{opacity:.5;text-decoration:line-through}
+.fixbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}.wb-cost{font-size:11.5px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 .tfill{border-color:#a98fd0!important;background:#fbf8ff!important;box-shadow:0 0 0 3px rgba(99,67,148,.10)!important}
 /* ---------- look and feel ---------- */
 main{padding:20px 0 40px;background:linear-gradient(180deg,#eef3f7 0,#f4f7fa 260px)}
@@ -223,7 +226,7 @@ table.t th{text-transform:uppercase;letter-spacing:.05em;font-size:11.5px}table.
 <div class="wb-acts"><button type="button" class="secondary" id="wb-keep" hidden title="Keep the changes you have made to this written proposal as a new proposal in progress">Save as a new version</button><button type="button" class="secondary" id="wb-list" aria-expanded="false" aria-controls="wb-pop">Proposals <span id="wb-n" class="wb-n"></span> ▾</button><button type="button" class="primary" id="wb-new">+ New proposal</button></div>
 <div class="wb-pop" id="wb-pop" hidden><input type="search" id="wb-q" placeholder="Find a proposal by title or client" aria-label="Find a proposal"><div id="wb-items"></div></div></div>
 <section class="hero"><div class="hero-in"><div><div class="ptitle">''' + parker_logo(58, 'hr') + '''<div><p class="eyebrow">Proposal writer \u00b7 bid and proposal studio</p><h1>''' + escape(a['name']) + '''</h1></div></div><p class="lead" id="greeting"></p></div>
-<ol class="flow" aria-label="How it works"><li>Brief</li><li>Draft</li><li>QA check</li><li>Word document</li></ol></div></section>
+<ol class="flow" aria-label="How it works"><li>Brief</li><li>Draft</li><li>Argus checks</li><li>Word document</li></ol></div></section>
 <section class="card" id="prog" hidden aria-live="polite"><h2 id="prog-title">Working on it</h2><ol class="steps" id="steps"></ol><div class="err" id="perr" hidden></div></section>
 <div id="result"></div>
 <form id="f">
@@ -233,7 +236,7 @@ table.t th{text-transform:uppercase;letter-spacing:.05em;font-size:11.5px}table.
 <label>Client or organisation<input id="org" maxlength="80" list="orgs" placeholder="Start typing a name"><datalist id="orgs"></datalist><span class="hint" id="org-hint">Its approved profile is used. Only this client's tagged material is used, never another client's.</span></label></div>
 <label>Brief and context<textarea id="brief" maxlength="20000" required placeholder="Paste the brief or describe what the client wants: outcomes, scope, requirements, timescales, evaluation criteria, anything they said."></textarea>
 <span class="hint">Everything in the brief is checked before it goes to the AI: secrets and protective markings are refused.</span></label>
-<div class="qa-only" hidden><label>Your proposal document<input type="file" id="qa-file" accept=".docx,.pdf,.txt,.md"><span class="hint">Word, PDF or text. Proposal QA checks it against the brief above. Your document is read for the check and not kept.</span></label></div>
+<div class="qa-only" hidden><label>Your proposal document<input type="file" id="qa-file" accept=".docx,.pdf,.txt,.md"><span class="hint">Word, PDF or text. Argus checks it against the brief above. Your document is read for the check and not kept.</span></label></div>
 <label class="w-only">Notes for the writer <span class="hint">(optional: angle to take, things to stress or avoid)</span><textarea id="notes" maxlength="4000" rows="3" placeholder="e.g. Lead with value for money; they were burned by a big-bang migration before."></textarea></label>
 </section>
 <section class="panel"><div class="ph"><div><span class="pt">Set-up</span><span class="ps">Template, models and what Alice may draw on</span></div></div>
@@ -258,7 +261,7 @@ table.t th{text-transform:uppercase;letter-spacing:.05em;font-size:11.5px}table.
 <section class="pk" id="pk" aria-label="Work with Parker"><div class="pk-head">''' + parker_logo(34, 'ch') + '''<div><b id="pk-title">Start with Parker</b><span class="s">Your proposal assistant</span></div><button type="button" class="secondary pk-new" id="pk-wide" title="Make Parker’s panel wider" aria-pressed="false">Wider</button><button type="button" class="secondary pk-new" id="pk-new" title="Start a new conversation (the form stays as it is)" style="margin-left:6px">New chat</button></div>
 <div class="pk-log" id="pk-log" aria-live="polite"></div>
 <div class="pk-in"><div id="pk-docs"></div><div class="pk-box"><label class="pk-att" title="Add the client’s brief or RFP" tabindex="0">+<input type="file" id="pk-file" accept=".docx,.pdf,.txt,.md" hidden></label><textarea id="pk-msg" maxlength="4000" placeholder="Tell Parker about the proposal, or answer its question…" aria-label="Message to Parker" rows="3"></textarea><button type="button" class="pk-send" id="pk-send">Send</button></div>
-<p class="pk-foot"><b>Working with Parker:</b> it fills in the form as you talk and asks for what’s missing. Its changes are outlined, and you can undo any of them. Nothing is saved until you write the proposal.</p></div></section>
+<p class="pk-foot"><b>Working with Parker:</b> it fills in the form as you talk and asks for what’s missing. Its changes are outlined, and you can undo any of them. The proposal and this conversation save themselves, so you can carry on from another device.</p></div></section>
 <details class="sumbar sum" id="sum-box"><summary><b>This proposal</b><span id="sum-line"></span></summary><dl id="sum"></dl><div class="big" id="sum-big"></div><p class="safe">Cost rates and protectively marked material never reach the AI. Every piece of context is checked on the way out.</p></details><button type="button" class="primary go2" id="go2" style="flex:none">Write proposal</button>
 </aside></div>
 <div class="full" id="full">
@@ -272,7 +275,7 @@ const A=''' + data.replace('</', '<\\/') + ''';
 const $=id=>document.getElementById(id),mk=PE.mk;let S=null,secEd=null,rateEd=null,timer=null;
 const base='/assistant/'+encodeURIComponent(A.id);
 async function api(path,method,body){const r=await fetch(base+path,{method:method||'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(typeof d.detail==='string'?d.detail:(Array.isArray(d.detail)?d.detail.map(x=>x.msg).join('; '):'Something went wrong. Try again.'));return d}
-const STEPS=[['Gathering','Gathering what Alice knows and writing the draft'],['checking the draft','Proposal QA checks the draft against the brief'],['Revising','Revising with the QA feedback (only if needed)'],['checking the revision','Proposal QA checks the revision'],['Building','Building the Word document']];
+const STEPS=[['Gathering','Gathering what Alice knows and writing the draft'],['checking the draft','Argus checks the draft against the brief'],['Revising','Revising with the QA feedback (only if needed)'],['checking the revision','Argus checks the revision'],['Building','Building the Word document']];
 function drawSteps(stage,status,qa){const ol=$('steps');ol.replaceChildren();let idx=STEPS.findIndex(s=>stage&&stage.includes(s[0]));if(status==='done')idx=STEPS.length;
  if(status==='running'&&idx<0&&stage){ol.append(mk('li',stage,'now'));return}
  const skipped=status==='done'&&qa&&qa.length===1;
@@ -369,7 +372,7 @@ function summary(){const dl=$('sum');if(!dl||!S)return;dl.replaceChildren();cons
 $('f').addEventListener('input',()=>summary());$('f').addEventListener('change',()=>summary());$('f').addEventListener('click',()=>setTimeout(summary,0));
 function setMode(m){mode=m;$('pk').hidden=m==='qa';$('f').classList.toggle('qa-mode',m==='qa');$('full').classList.toggle('qa-mode',m==='qa');document.querySelector('.qa-only').hidden=m!=='qa';$('m-write').classList.toggle('on',m==='write');$('m-qa').classList.toggle('on',m==='qa');
  $('m-write').setAttribute('aria-selected',m==='write');setTimeout(summary,0);$('m-qa').setAttribute('aria-selected',m==='qa');$('f-h').textContent=m==='qa'?'Check a proposal':'New proposal';
- $('go').textContent=m==='qa'?'Check it against the brief':'Write proposal';$('go-note').textContent=m==='qa'?'Proposal QA reads your document and checks it against the brief: usually under a minute.':'Writing, a QA check and one revision if needed: usually two to four minutes.';if(S)cost()}
+ $('go').textContent=m==='qa'?'Check it against the brief':'Write proposal';$('go-note').textContent=m==='qa'?'Argus reads your document and checks it against the brief: usually under a minute.':'Writing, a QA check and one revision if needed: usually two to four minutes.';if(S)cost()}
 $('m-write').onclick=()=>setMode('write');$('go2').onclick=()=>{if(!$('go').disabled)$('f').requestSubmit($('go'))};new MutationObserver(()=>{$('go2').disabled=$('go').disabled;$('go2').textContent=$('go').textContent}).observe($('go'),{attributes:true,childList:true});$('m-qa').onclick=()=>setMode('qa');
 function parseStructure(text){const out=[];let cur=null;const head=/^\s{0,1}(#{1,4}\s+|\d{1,2}(\.\d{1,2})*[.)]\s+|[A-Z][.)]\s+)?(.+)$/;
  for(const raw of text.split(/\r?\n/)){if(!raw.trim())continue;const bullet=/^\s*([-*•▪–]|\(?[a-z]\))\s+/.test(raw)||/^\s{2,}\S/.test(raw);
@@ -399,23 +402,32 @@ function table(head,rows,cls){const t=mk('table','','t');const h=document.create
 const n=(v,num)=>({node:mk('span',v),num});
 function show(p){CUR=p;EDS=null;if(formEmpty()&&!p.inputs.qa_only&&S)setTimeout(()=>loadIntoForm(p,true),0);const box=$('result');box.replaceChildren();const qa=p.qa[p.qa.length-1]||{};
  const top=mk('section','','card');const v=mk('div','','verdict '+(qa.verdict==='client_ready'?'ok':(qa.issues||[]).some(i=>i.severity==='high')?'bad':'warn'));
- const sc=mk('span',qa.score!=null?String(qa.score):'—','score');sc.style.setProperty('--p',qa.score||0);sc.title=qa.score!=null?qa.score+' out of 100':'';v.append(sc);const vt=mk('div');vt.append(mk('strong',qa.verdict==='client_ready'?'Client ready, according to Proposal QA':'Needs your attention before it goes to the client'),mk('div',qa.summary||'','hint'));v.append(vt);
+ const sc=mk('span',qa.score!=null?String(qa.score):'—','score');sc.style.setProperty('--p',qa.score||0);sc.title=qa.score!=null?qa.score+' out of 100':'';v.append(sc);const vt=mk('div');vt.append(mk('strong',qa.verdict==='client_ready'?'Client ready, according to Argus':'Needs your attention before it goes to the client'),mk('div',qa.summary||'','hint'));v.append(vt);
  if(p.document_id){const dl=document.createElement('a');dl.href='/documents/'+p.document_id+'/download';dl.className='dl';dl.textContent='Download Word document';v.append(dl)}top.append(mk('h2',p.title+(p.organisation?' · '+p.organisation:'')),v);
- if(p.qa.length>1){const rr=mk('div','','rounds');rr.append(mk('span','QA checks:'));p.qa.forEach((q,i)=>{if(i)rr.append(mk('span','→'));const b=mk('b',(q.score??'?')+'/100');b.title=(q.source||'check '+(i+1));rr.append(mk('span',(q.source||('check '+(i+1)))+' '),b)});top.append(rr)}
+ if(p.qa.length>1){const rr=mk('div','','rounds');rr.append(mk('span','Argus checks:'));p.qa.forEach((q,i)=>{if(i)rr.append(mk('span','→'));const b=mk('b',(q.score??'?')+'/100');b.title=(q.source||'check '+(i+1));rr.append(mk('span',(q.source||('check '+(i+1)))+' '),b)});top.append(rr)}
  if(p.error)top.append(mk('p','The last re-check did not finish: '+p.error,'err'));
  const act=mk('div','','act');
  if(!p.inputs.qa_only){const lf=document.createElement('button');lf.type='button';lf.className='secondary';lf.textContent='Load into the form';lf.title='Put this proposal\u2019s brief, notes, template, sections, references and roles back into the form, to change it with Parker or write a new version';lf.onclick=()=>loadIntoForm(p,false);act.append(lf)}
  if(!p.inputs.qa_only&&(p.draft.sections||[]).length){const eb=document.createElement('button');eb.type='button';eb.className='secondary';eb.textContent='Edit the draft and check again';eb.onclick=()=>editDraft(p);act.append(eb)}
  const ul_=mk('label','Upload a revised version for QA','btnlike');const fi=document.createElement('input');fi.type='file';fi.accept='.docx,.pdf,.txt,.md';fi.hidden=true;ul_.append(fi);
  fi.onchange=async()=>{const f=fi.files[0];fi.value='';if(!f)return;try{await api('/proposals/'+p.id+'/qa-upload','POST',{name:f.name,data:await fileData(f)});follow(p.id)}catch(e){alertBox(e.message)}};act.append(ul_);
- act.append(mk('span',p.inputs.qa_only?'Changed it? Upload the new version and QA checks it again.':'Edited it in Word? Upload it and QA checks your version against the brief (it is not kept).','hint'));top.append(act);
- const mn=k=>(S&&S.models.find(m=>m.key===k)||{}).name||k;if(p.inputs&&p.inputs.writer)top.append(mk('p','Written by '+mn(p.inputs.writer)+'; checked by '+mn(p.inputs.qa)+'.','hint'));
- top.append(mk('p','Read it before it goes anywhere: QA is a second pair of eyes, not a sign-off.','hint'));box.append(top);
+ act.append(mk('span',p.inputs.qa_only?'Changed it? Upload the new version and Argus checks it again.':'Edited it in Word? Upload it and Argus checks your version against the brief (it is not kept).','hint'));top.append(act);
+ const mn=k=>(S&&S.models.find(m=>m.key===k)||{}).name||k;if(p.inputs&&p.inputs.writer)top.append(mk('p','Written by '+mn(p.inputs.writer)+'; checked by Argus ('+mn(p.inputs.qa)+').','hint'));
+ const ac=(p.context||{}).ai_cost;if(ac&&ac.total)top.append(mk('p','Alice AI cost for this proposal so far: $'+ac.total.toFixed(2)+(ac.parker?' (writing and Argus $'+(ac.writing||0).toFixed(2)+', Parker $'+ac.parker.toFixed(2)+')':''),'hint'));
+ top.append(mk('p','Read it before it goes anywhere: Argus is a second pair of eyes, not a sign-off.','hint'));box.append(top);
  if(p.inputs.qa_only&&p.inputs.file)top.insertBefore(mk('p','Checked: '+p.inputs.file,'hint'),top.children[2]||null);
  const cols=mk('div','','cols');
  const rq=mk('section','','card');rq.append(mk('h2','Meets the brief?'));if((qa.requirements||[]).length)rq.append(table(['Requirement','','Where'],qa.requirements.map(r=>({cells:[r.requirement+(r.note?' — '+r.note:''),{node:mk('span',{met:'Met',partly:'Partly',missing:'Missing'}[r.status],'st '+r.status)},r.where||'']}))));else rq.append(mk('p','QA listed no requirements.','hint'));
- const is=mk('section','','card');is.append(mk('h2','Issues to look at'));const ul=mk('ul','','issues');for(const i of qa.issues||[]){const li=mk('li','',i.severity);const h=mk('div');h.append(mk('span',i.severity,'st '+i.severity),document.createTextNode(' '+(i.section?i.section+': ':'')+i.issue));li.append(h);if(i.fix)li.append(mk('span','Fix: '+i.fix,'hint'));ul.append(li)}
- if(!(qa.issues||[]).length)ul.append(mk('li','None.'));is.append(ul);if((qa.strengths||[]).length)is.append(mk('p','Strengths: '+qa.strengths.join('; '),'hint'));
+ const is=mk('section','','card');is.append(mk('h2','Issues to look at'));const ul=mk('ul','','issues');const pickF=new Map();
+ const fbar=mk('div','','fixbar');const fgo=mk('button','','primary');fgo.type='button';const fnote=mk('span','','hint');
+ const syncF=()=>{const n=[...pickF.values()].filter(v=>v==='yes').length,r=[...pickF.values()].filter(v=>v==='no').length;fgo.disabled=!n||p.status==='running';fgo.textContent=n?'Revise with '+n+' accepted fix'+(n>1?'es':''):'Accept fixes to revise';fnote.textContent=n||r?n+' accepted, '+r+' rejected. The writer applies only the accepted fixes, then Argus checks again and the Word document is rebuilt.':'Accept the fixes you want, reject the rest, then revise.'};
+ (qa.issues||[]).forEach((i,k)=>{const li=mk('li','',i.severity);const h=mk('div');h.append(mk('span',i.severity,'st '+i.severity),document.createTextNode(' '+(i.section?i.section+': ':'')+i.issue));li.append(h);if(i.fix)li.append(mk('span','Fix: '+i.fix,'hint'));
+  if(i.fix&&!p.inputs.qa_only&&(p.draft.sections||[]).length){const ch=mk('div','','fixch');const y=mk('button','Accept','fx-y'),nn=mk('button','Reject','fx-n');y.type=nn.type='button';
+   const set=v=>{if(pickF.get(k)===v)pickF.delete(k);else pickF.set(k,v);y.classList.toggle('on',pickF.get(k)==='yes');nn.classList.toggle('on',pickF.get(k)==='no');li.classList.toggle('rej',pickF.get(k)==='no');syncF()};
+   y.onclick=()=>set('yes');nn.onclick=()=>set('no');ch.append(y,nn);li.append(ch)}ul.append(li)});
+ if(!(qa.issues||[]).length)ul.append(mk('li','None.'));is.append(ul);
+ if((qa.issues||[]).some(i=>i.fix)&&!p.inputs.qa_only&&(p.draft.sections||[]).length){fgo.onclick=async()=>{const fixes=[...pickF.entries()].filter(([,v])=>v==='yes').map(([k])=>qa.issues[k]);fgo.disabled=true;
+   try{await api('/proposals/'+p.id+'/revise','POST',{fixes});follow(p.id);document.querySelector('main').scrollTop=0}catch(e){fgo.disabled=false;alertBox(e.message)}};fbar.append(fgo,fnote);is.append(fbar);syncF()}if((qa.strengths||[]).length)is.append(mk('p','Strengths: '+qa.strengths.join('; '),'hint'));
  cols.append(rq,is);box.append(cols);
  const pr=p.pricing||{};if((pr.lines||[]).length){const c=mk('section','','card internal');c.append(mk('h2','Commercials'));
   c.append(table(['Role','Quantity','Sell rate','Sell','Cost','Margin'],pr.lines.map(l=>({cells:[l.role,n(l.quantity+' '+l.unit+(l.quantity===1?'':'s'),1),n(PE.gbp(l.sell_rate),1),n(PE.gbp(l.sell),1),n(PE.gbp(l.cost),1),n(l.margin==null?'—':l.margin.toFixed(1)+'%',1)]})).concat([{cls:'tot',cells:['Total','','',n(PE.gbp(pr.sell),1),n(PE.gbp(pr.cost),1),n(pr.margin==null?'—':pr.margin.toFixed(1)+'%',1)]}])));
@@ -464,13 +476,14 @@ function pkWide(on){document.querySelector('.layout').classList.toggle('pk-wide'
 $('pk-wide').onclick=()=>pkWide(!document.querySelector('.layout').classList.contains('pk-wide'));try{if(localStorage.getItem('alice.parker.wide'))pkWide(true)}catch{}
 async function pkSend(text){if(PK.busy||A.paused)return;text=(text||'').trim();if(!text&&!PK.doc)return;PK.busy=true;$('pk-send').disabled=true;$('pk-title').textContent='Parker';
  if(text)pkSay('you',text);const ty=mk('div','','pk-typing');ty.append(mk('i'),mk('i'),mk('i'));$('pk-log').append(ty);pkScroll();
- try{const before=snap();const r=await api('/parker','POST',{message:text,history:PK.history,form:form(),organisation:$('org').value,doc_token:PK.doc?PK.doc.token:''});ty.remove();
+ try{const before=snap();const r=await api('/parker','POST',{message:text,history:PK.history,form:form(),organisation:$('org').value,doc_token:PK.doc?PK.doc.token:'',work_id:WORK||OPEN||''});ty.remove();
   await applyParker(r.updates);if(r.changed.length)changed();const m=pkSay('pk-p',r.reply);
   if(r.changed.length){const ch=mk('div','','pk-ch');for(const c of r.changed){const t=mk('span',c);t.title='Show '+c;t.onclick=()=>{const e=$(WHERE[c]);if(e){reveal(e);e.scrollIntoView({behavior:'smooth',block:'center'})}};ch.append(t)}m.append(ch);
    const un=mk('button','Undo these changes','pk-undo');un.type='button';un.onclick=async()=>{await restore(before);un.replaceWith(mk('span','Undone.','hint'))};m.append(un)}
   if(r.questions.length>1){const ul=mk('ul','','pk-q');for(const q of r.questions.slice(1)){const li=mk('li',q);li.title='Answer this';li.onclick=()=>{$('pk-msg').value=q.replace(/\?$/,'')+': ';$('pk-msg').focus();pkGrow()};ul.append(li)}m.append(ul)}
   pkScroll();
-  PK.history.push({role:'you',text:text||'(added '+(PK.doc?PK.doc.name:'a document')+')'},{role:'parker',text:r.reply});PK.history=PK.history.slice(-12)}
+  const you=text||'(added '+(PK.doc?PK.doc.name:'a document')+')';PK.history.push({role:'you',text:you},{role:'parker',text:r.reply});PK.history=PK.history.slice(-12);
+  if(!r.saved_to){if(WORK)api('/parker/keep','POST',{work_id:WORK,you,reply:r.reply,cost_usd:r.cost_usd||0}).catch(()=>{});else PK.cost=(PK.cost||0)+(r.cost_usd||0)}}
  catch(e){ty.remove();pkSay('pk-p err',e.message)}
  finally{PK.busy=false;$('pk-send').disabled=A.paused;$('pk-msg').focus()}}
 $('pk-send').onclick=()=>{const t=$('pk-msg').value;$('pk-msg').value='';pkGrow();pkSend(t)};
@@ -487,7 +500,7 @@ document.querySelectorAll('section.panel>.ph').forEach(h=>h.addEventListener('cl
 $('exp-all').onclick=()=>{document.querySelectorAll('main section.panel').forEach(p=>p.classList.remove('shut'));document.querySelectorAll('main details.panel').forEach(d=>d.open=true)};
 $('col-all').onclick=()=>{document.querySelectorAll('main section.panel').forEach(p=>p.classList.add('shut'));document.querySelectorAll('main details.panel').forEach(d=>d.open=false)};
 function alertBox(msg){const e=mk('div',msg,'err');$('result').prepend(e);setTimeout(()=>e.remove(),8000)}
-function editDraft(p){const box=$('result');const c=mk('section','','card');c.append(mk('h2','Edit the draft'),mk('p','Change any section, then send it back: Proposal QA checks your version against the brief and the Word document is rebuilt from the template. The headings stay as they are.','hint'));
+function editDraft(p){const box=$('result');const c=mk('section','','card');c.append(mk('h2','Edit the draft'),mk('p','Change any section, then send it back: Argus checks your version against the brief and the Word document is rebuilt from the template. The headings stay as they are.','hint'));
  const eds=[];for(const s of p.draft.sections||[]){const w=mk('div','','edit-sec');w.append(mk('b',s.title));if(s.keep){w.append(mk('span','(standard text from the template: not edited here)','hint'))}else{const t=document.createElement('textarea');t.value=s.body;t.maxLength=20000;t.setAttribute('aria-label','Text of '+s.title);w.append(t);eds.push([s,t])}c.append(w)}
  const go=document.createElement('button');go.type='button';go.className='primary';go.textContent='Save changes and check again';const cancel=document.createElement('button');cancel.type='button';cancel.className='secondary';cancel.textContent='Cancel';cancel.onclick=()=>show(p);
  go.onclick=async()=>{go.disabled=true;try{await api('/proposals/'+p.id+'/recheck','POST',{sections:(p.draft.sections||[]).map(s=>{const e=eds.find(x=>x[0]===s);return {title:s.title,body:e?e[1].value:''}})});follow(p.id)}catch(e){go.disabled=false;alertBox(e.message)}};
@@ -502,7 +515,7 @@ function drawItems(){const q=($('wb-q').value||'').toLowerCase(),box=$('wb-items
  for(const [g,f] of [['In progress',x=>x.status==='form'],['Being written',x=>x.status==='running'],['Written',x=>x.status==='done'||x.status==='failed']]){const its=list.filter(f);if(!its.length)continue;box.append(mk('div',g+' ('+its.length+')','wb-g'));
   for(const x of its){const it=mk('div','','wb-it'+(x.id===OPEN?' on':''));it.tabIndex=0;it.setAttribute('role','button');const t=mk('div');
    t.append(mk('b',(x.title||'Untitled proposal')+(x.organisation?' · '+x.organisation:'')),mk('span',(x.status==='form'?'Saved ':'Updated ')+new Date(x.updated_at||x.created_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),'hint'));
-   const [lab,cls]=STATE(x);it.append(t,mk('span',lab,'wb-pill '+cls));
+   const [lab,cls]=STATE(x);const pc=mk('span','','');pc.style.cssText='display:flex;gap:8px;align-items:center';pc.append(mk('span',x.ai_cost?'AI $'+Number(x.ai_cost).toFixed(2):'','wb-cost'),mk('span',lab,'wb-pill '+cls));pc.title=x.ai_cost?'What Alice\u2019s AI calls for this proposal have cost so far (writing, Argus and Parker)':'';it.append(t,pc);
    if(x.status==='form'){const xb=mk('button','×','wb-x');xb.type='button';xb.title='Remove this proposal in progress';xb.setAttribute('aria-label','Remove '+(x.title||'this proposal'));
     xb.onclick=async e=>{e.stopPropagation();if(!confirm('Remove “'+(x.title||'Untitled proposal')+'” from your proposals in progress?'))return;try{await api('/work/'+x.id+'/discard','POST',{});if(x.id===OPEN)await openNew();await recent()}catch(err){alertBox(err.message)}};it.append(xb)}else it.append(mk('span'));
    it.onclick=()=>{$('wb-pop').hidden=true;$('wb-list').setAttribute('aria-expanded','false');openItem(x.id)};it.onkeydown=e=>{if(e.key==='Enter')it.click()};box.append(it)}}}
@@ -510,14 +523,15 @@ function updateBar(){$('wb-title').textContent=$('title').value.trim()||(OPEN?'U
  $('wb-keep').hidden=!(OPEN&&!WORK&&DIRTY);if(!saveT&&!$('wb-state').classList.contains('bad')){const st=$('wb-state');
   if(WORK)st.textContent=st.textContent||'Saved';else if(x&&x.status!=='form'){st.className='wb-state';st.textContent=STATE(x)[0]+(DIRTY?' · changes not saved: write a new version or Save as a new version':'')}else if(!OPEN){st.className='wb-state';st.textContent=DIRTY?'':'Saves itself as you work'}}}
 function setState(t,cls){const st=$('wb-state');st.textContent=t;st.className='wb-state'+(cls?' '+cls:'')}
-function formData(){return {title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value,structure:$('structure').value,template:$('tplsel').value,
+function formData(){return {parker_chat:WORK?[]:PK.history,parker_cost:WORK?0:(PK.cost||0),title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value,structure:$('structure').value,template:$('tplsel').value,
  sections:secEd.value(),rate_card:rateEd.value(),references:[...picked],writer:$('wm').value,qa:$('qm').value,use_memory:$('mem').checked}}
 function changed(){if(LOADING||mode!=='write'||!S)return;DIRTY=true;
  if(!WORK&&OPEN){updateBar();return}                                           // a written proposal: kept as it is unless you save a new version
  clearTimeout(saveT);setState('Saving…');saveT=setTimeout(saveNow,1200)}
 async function saveNow(force){clearTimeout(saveT);saveT=null;const f=formData();
  if(!WORK&&!force&&!f.title.trim()&&!f.brief.trim()&&!f.notes.trim()){setState('');return}
- try{const r=await api('/work','POST',{id:WORK||'',form:f});if(r.created){moveChat(OPEN||'new',r.id);WORK=r.id;OPEN=r.id;CUR=null;history.replaceState(null,'','?p='+r.id);recent()}
+ try{const sent=(f.parker_chat||[]).length;const r=await api('/work','POST',{id:WORK||'',form:f});if(r.created){let extra=Math.max(0,(PK.cost||0)-(f.parker_cost||0));PK.cost=0;
+  for(let k=sent;k+1<PK.history.length;k+=2){api('/parker/keep','POST',{work_id:r.id,you:PK.history[k].text,reply:PK.history[k+1].text,cost_usd:extra}).catch(()=>{});extra=0}moveChat(OPEN||'new',r.id);WORK=r.id;OPEN=r.id;CUR=null;history.replaceState(null,'','?p='+r.id);recent()}
   DIRTY=false;setState('Saved '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}),'ok');const x=ITEMS.find(i=>i.id===WORK);if(x){x.title=f.title;x.organisation=f.organisation;x.updated_at=new Date().toISOString()}updateBar()}
  catch(e){setState('Not saved: '+e.message,'bad')}}
 $('f').addEventListener('input',changed);$('f').addEventListener('change',changed);
@@ -530,9 +544,9 @@ $('wb-q').oninput=drawItems;document.addEventListener('click',e=>{if(!e.target.c
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('wb-pop').hidden=true});
 $('wb-new').onclick=()=>openNew();
 const chatKey=id=>'alice.parker.chat.'+(id||'new');
-function stashChat(){try{localStorage.setItem(chatKey(OPEN),JSON.stringify(PK.history.slice(-24)))}catch{}}
-function moveChat(a,b,copy){try{const v=localStorage.getItem(chatKey(a));if(v){localStorage.setItem(chatKey(b),v);if(!copy)localStorage.removeItem(chatKey(a))}}catch{}}
-function restoreChat(id){PK.history=[];PK.doc=null;pkDocs();pkIntro();let h=[];try{h=JSON.parse(localStorage.getItem(chatKey(id))||'[]')}catch{}
+function stashChat(){}
+function moveChat(){}
+function restoreChat(id,p){PK.history=[];PK.cost=0;PK.doc=null;pkDocs();pkIntro();const h=((p&&p.context)||{}).parker_chat||[];
  if(h.length){PK.history=h;$('pk-title').textContent='Parker';for(const m of h)pkSay(m.role==='you'?'you':'pk-p',m.text)}}
 async function resetForm(){LOADING++;try{clearInterval(timer);$('result').replaceChildren();$('prog').hidden=true;$('ferr').hidden=true;CUR=null;EDS=null;
  for(const id of ['title','org','brief','notes','structure']){$(id).value='';$(id).classList.remove('tfill')}
@@ -542,7 +556,7 @@ async function resetForm(){LOADING++;try{clearInterval(timer);$('result').replac
 async function flush(){if(saveT){await saveNow()}}
 async function openNew(){await flush();stashChat();await resetForm();WORK=null;OPEN=null;DIRTY=false;setState('Saves itself as you work');history.replaceState(null,'',location.pathname);restoreChat(null);updateBar();drawItems();document.querySelector('main').scrollTop=0}
 async function openItem(id){await flush();stashChat();let p;try{p=await api('/proposals/'+id)}catch(e){alertBox(e.message);return}
- await resetForm();OPEN=id;DIRTY=false;history.replaceState(null,'','?p='+id);restoreChat(id);
+ await resetForm();OPEN=id;DIRTY=false;history.replaceState(null,'','?p='+id);restoreChat(id,p);
  if(p.status==='form'){WORK=id;await loadIntoForm(p,true,true);setState('Saved '+new Date(p.updated_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),'ok');
   if(!PK.history.length)pkSay('pk-p','Back to “'+(p.title||'this proposal')+'”. Everything you had is here. What would you like to change?')}
  else{WORK=null;setState('');follow(id)}

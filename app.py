@@ -1693,12 +1693,30 @@ class ParkerTurn(BaseModel):
     form: dict = Field(default_factory=dict)
     organisation: str = Field(default='',max_length=80)
     doc_token: str = Field(default='',max_length=64)
+    work_id: str = Field(default='',max_length=40)
 
 @app.post('/assistant/{aid}/parker')
 def parker_turn(aid: str, x: ParkerTurn, request: Request):
     import proposal_starter
     _same_origin(request); _proposal_writer(aid)
-    return _proposal_call(lambda: proposal_starter.chat(aid,x.message,x.history,x.form,x.organisation,x.doc_token))
+    return _proposal_call(lambda: proposal_starter.chat(aid,x.message,x.history,x.form,x.organisation,x.doc_token,x.work_id))
+
+class ParkerKeep(BaseModel):
+    work_id: str = Field(min_length=1,max_length=40)
+    you: str = Field(default='',max_length=4000)
+    reply: str = Field(default='',max_length=4000)
+    cost_usd: float = Field(default=0,ge=0,le=50)
+
+@app.post('/assistant/{aid}/parker/keep')
+def parker_keep(aid: str, x: ParkerKeep, request: Request):
+    """A Parker turn that finished just as the proposal was first saved: keep it with the proposal."""
+    import proposals, rules_engine
+    _same_origin(request); _proposal_writer(aid)
+    def go():
+        rules_engine.check_file(x.you+'\n'+x.reply,'Parker conversation')
+        if not proposals.parker_turn(aid,x.work_id,x.you,x.reply,x.cost_usd): raise LookupError('No such proposal.')
+        return {'status':'kept'}
+    return _proposal_call(go)
 
 @app.post('/assistant/{aid}/parker/document')
 def parker_document(aid: str, x: ProposalDoc, request: Request):
@@ -1740,6 +1758,15 @@ def proposal_qa_upload(aid: str, pid: str, x: ProposalDoc, request: Request):
     _same_origin(request)
     raw=_b64(x.data)
     return _proposal_call(lambda: proposals.qa_upload(aid,pid,x.name,raw))
+
+class ProposalFixes(BaseModel):
+    fixes: list[dict] = Field(min_length=1,max_length=30)
+
+@app.post('/assistant/{aid}/proposals/{pid}/revise')
+def proposal_revise(aid: str, pid: str, x: ProposalFixes, request: Request):
+    import proposals
+    _same_origin(request); _proposal_writer(aid)
+    return _proposal_call(lambda: proposals.revise(aid,pid,x.fixes))
 
 @app.post('/assistant/{aid}/work')
 def proposal_work_save(aid: str, x: ProposalWork, request: Request):

@@ -33,6 +33,7 @@ LABELS = ['general', 'internal', 'client']
 # id, name, kind, purpose, trigger, usage workloads, reads, writes, reads outside content
 # Agents replaced by another: kept (with their runs) for history, not listed. temple-proposal-starter became Parker.
 RETIRED = {'temple-proposal-starter'}
+AGENT_RENAMES = [('alice-proposal-qa', 'Proposal QA', 'Argus: proposal QA')]
 BUILTIN = [
     ('temple-review', 'Temple: memory reviews', 'internal',
      'Reviews each proposed memory against approved ones for duplicates, contradictions, weak sources and replacements. Advisory only.',
@@ -93,8 +94,8 @@ BUILTIN = [
      'When someone chats with Parker on the Parker page', ['Parker'],
      'Your messages, the form (never rates) and any client brief you add; the client profile, memories and knowledge for that client or general; names of templates, reference documents and roles',
      'Nothing: changes to the form on the page only; a log line for Temple per turn', True),
-    ('alice-proposal-qa', 'Proposal QA', 'internal',
-     'Checks each proposal draft against the brief and for client-ready quality: every requirement met, nothing invented, '
+    ('alice-proposal-qa', 'Argus: proposal QA', 'internal',
+     'Argus checks each proposal draft against the brief and for client-ready quality: every requirement met, nothing invented, '
      'no placeholders, the right client, a consistent price. Advisory: the person decides.',
      'After every proposal draft and revision', ['Proposal QA'],
      'The brief, the draft, the sell-price summary and Alice\'s own checks (never cost rates)', 'A QA report with a verdict', False),
@@ -221,6 +222,18 @@ def group_of(a):
 
 _ANATOMY_KEYS = ('model', 'identity', 'instructions', 'tools', 'data', 'guardrails', 'outputs', 'gate')
 _current = contextvars.ContextVar('alice_agent_run', default=None)
+_cost_sink = contextvars.ContextVar('alice_cost_sink', default=None)
+
+
+class cost_box:
+    """Add up the cost of every model call made inside the block (e.g. for one proposal), whichever agent makes it."""
+    def __enter__(self):
+        self.calls, self.usd = [], 0.0
+        self._tok = _cost_sink.set(self)
+        return self
+    def __exit__(self, *a):
+        _cost_sink.reset(self._tok)
+        return False
 
 
 def _now(): return store.now()
@@ -260,6 +273,10 @@ with store.db() as c:
                       'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', (_aid, _name, _kind, _purpose, _trigger, json.dumps(_workloads), _reads, _writes, int(_ext),
                                                            _perms, _now(), _now(), (date.today() + timedelta(days=365)).isoformat()))
             c.execute('INSERT INTO agent_versions VALUES (?,?,?,?,?,?)', (_aid, 1, json.dumps({'permissions': json.loads(_perms)}), _now(), 'Alice', 'Registered'))
+    for _aid, _old, _new in AGENT_RENAMES:            # named agents: renamed once if they still have the old name (logged)
+        if c.execute('SELECT 1 FROM agents WHERE id=? AND name=?', (_aid, _old)).fetchone():
+            c.execute('UPDATE agents SET name=?,updated_at=? WHERE id=?', (_new, _now(), _aid))
+            store.audit(c, 'agent_renamed', _aid, 'human_control', f'{_old} renamed {_new} (owner\'s request)')
 
 
 # ---------------- reading ----------------
@@ -679,6 +696,9 @@ def model_label(provider, model):
 def add_cost(usd, provider='', model=''):
     """Called by usage_meter for every model call: the cost lands on the agent run in progress, if any, and the run
     records which model it called (for 'Sent to' on Data touched)."""
+    box = _cost_sink.get()
+    if box is not None:
+        box.usd += float(usd or 0); box.calls.append((provider, model, float(usd or 0)))
     rid = _current.get()
     if not rid: return
     with store.db() as c:
