@@ -15,6 +15,8 @@ import knowledge
 import conversations
 import organisations
 import purview_labels
+import assistants
+import assistant_page
 import agents
 import actions
 import activity_log
@@ -1461,6 +1463,54 @@ def admin_purview_labels(): return purview_labels.listing()
 @app.put('/admin/api/purview-labels')
 def admin_purview_mapping(m: PurviewMapping):
     try: return purview_labels.set_mapping(m.label_id,m.action,m.name)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+class AssistantIn(BaseModel):
+    name: str = Field(min_length=1,max_length=80)
+    description: str = Field(default='',max_length=500)
+    greeting: str = Field(default='',max_length=800)
+    packs: list[Annotated[str, Field(max_length=10)]] = Field(default_factory=list,max_length=10)
+    provider: Literal['openai','claude'] = 'openai'
+    categories: list[Annotated[str, Field(max_length=40)]] = Field(default_factory=list,max_length=20)
+    guidance: str = Field(default='',max_length=3000)
+    contact: str = Field(default='',max_length=120)
+    status: Literal['active','paused'] = 'active'
+
+class AssistantQuestion(BaseModel):
+    question: str = Field(min_length=1,max_length=2000)
+    history: list[dict] = Field(default_factory=list,max_length=12)
+
+@app.get('/admin/api/assistants')
+def admin_assistants(): return assistants.listing()
+
+@app.post('/admin/api/assistants')
+def admin_assistant_create(a: AssistantIn):
+    try: return assistants.save(None,**a.model_dump())
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+@app.put('/admin/api/assistants/{aid}')
+def admin_assistant_update(aid: str, a: AssistantIn):
+    try: return assistants.save(aid,**a.model_dump())
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+    except LookupError as e: raise HTTPException(404,str(e)) from None
+
+@app.get('/assistant/{aid}', response_class=HTMLResponse)
+def assistant_view(aid: str):
+    try: return assistant_page.render(assistants.get(aid))
+    except LookupError: raise HTTPException(404,'No such assistant.') from None
+
+@app.post('/assistant/{aid}/ask')
+async def assistant_ask(aid: str, q: AssistantQuestion, request: Request):
+    from urllib.parse import urlsplit
+    origin = request.headers.get('origin')
+    if origin and urlsplit(origin).netloc != request.url.netloc: raise HTTPException(403,'Cross-origin requests are not allowed.')
+    try: assistants.get(aid)
+    except LookupError: raise HTTPException(404,'No such assistant.') from None
+    if not q.question.strip(): raise HTTPException(400,'Type a question.')
+    try: return await asyncio.to_thread(assistants.ask,aid,q.question,q.history)
+    except rules_engine.RuleViolation as e: raise HTTPException(429 if 'Spending caps' in str(e) else 400,str(e)) from None
+    except agents.AgentBlocked as e: raise HTTPException(503,str(e)) from None
+    except (APIError, anthropic.APIError) as e: raise HTTPException(502,'The AI service did not answer: '+provider_error(e)) from None
     except ValueError as e: raise HTTPException(400,str(e)) from None
 
 @app.get('/admin/api/owners')

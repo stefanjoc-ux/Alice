@@ -126,6 +126,18 @@ def special_about_person(text):
     return False
 
 
+SELF = re.compile(r"\b(?:I|I'm|I've|I'd|I am|[Mm]y|[Mm]e|[Mm]yself)\b")
+
+
+def self_disclosure(text):
+    """Health or other special category information about the person writing (first person). Staff-facing assistants
+    never take it: they send the person to a human instead."""
+    for s in _sentences(text):
+        if (SPECIAL.search(s) or HEALTH_EXTRA.search(s)) and SELF.search(s):
+            return True
+    return False
+
+
 def _any(pattern, text):
     return bool(re.search(pattern, text or '', re.I))
 
@@ -706,10 +718,11 @@ def _live_provider(provider):
     return {'name': name + (' (marked inside your tenant)' if inside else ' (outside your tenant)'), 'in_tenant': inside, 'uk': inside}
 
 
-def live_check(text, provider, target='chat message', redact_text=True):
+def live_check(text, provider, target='chat message', redact_text=True, packs=None):
     """Run every applied pack. Raises RuleViolation for blocks and escalations; otherwise returns the text the model
-    may receive (identifiers removed when redact_text) and notes for the activity panel."""
-    a = applied()
+    may receive (identifiers removed when redact_text) and notes for the activity panel.
+    packs: a fixed list instead of the applied packs (an assistant's own packs)."""
+    a = applied() if packs is None else [p for p in packs if p in PACKS]
     if not a or not (text or '').strip(): return {'text': text, 'notes': [], 'removed': []}
     import rules_engine
     prov, st = _live_provider(provider), state()
@@ -740,8 +753,8 @@ def live_check(text, provider, target='chat message', redact_text=True):
     return {'text': out, 'notes': notes, 'removed': removed}
 
 
-def live_guidance():
-    a, st = applied(), state()
+def live_guidance(packs=None):
+    a, st = (applied() if packs is None else [p for p in packs if p in PACKS]), state()
     lines = []
     for pid in a:
         for r in PACKS[pid]['rules']:

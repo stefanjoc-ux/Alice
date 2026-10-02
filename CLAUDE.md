@@ -108,6 +108,7 @@ A browser refresh is not enough: the old server process keeps running the old co
 | `organisations.py` | Organisation profiles: short approved facts with source pointers and review dates, the compiled brief, removal by source, account manager (typed now; `account_manager_oid` reserved for Entra ID), the Client switch and other names (`set_client`; unticking makes tagged material General) |
 | `demo_data.py` | Fictional demo data for the Organisations page and tracker, in a separate store (data\demo\substrate-demo.db, or schema `alice_demo` on PostgreSQL); rebuilt when the live schema changes |
 | `purview_labels.py` | Microsoft Purview sensitivity labels on uploaded Office files and PDFs: read (never changed), recorded, and mapped on the Rules page to an Alice label or Block; unmapped protective-marking labels are blocked, others treated as Internal; never lowers a label |
+| `assistants.py`, `assistant_page.py` | Assistants: focused chat bots (seeded: HR policy assistant) with their own rule packs, model, knowledge categories and guidance; staff page `/assistant/{id}`, managed on the Assistants page; agent `alice-assistants` |
 | `clients.py` | Clients (the separation list), tagging, alias detection, separation enforcement. There is no Clients page: a client is an organisation with Client ticked (`organisations.set_client` writes the clients table), and tagging lives in Organisations → Tag memories and files; `/admin/clients` redirects |
 | `actions.py` | Everything awaiting a decision (Actions page) |
 | `activity_log.py` | Activity log labels, types, filters, CSV |
@@ -153,6 +154,15 @@ call real AI services. Never read the demo store anywhere else, and never let a 
   Container Apps sends it to Log Analytics).
 - Owners (`record_meta.owner`, `knowledge_meta.owner`) are people's names for tracking (shown on overdue reviews in
   Actions). Validate with `store.clean_person()`. Never return owners or account managers in MCP tool output.
+
+## Assistants (focused bots)
+
+- `assistants.ask()` is the only path: active check and spending cap; `check_outbound` (secrets, markings) on every turn sent;
+  first-person health or special category details sent to a person (`rule_packs.self_disclosure`); the assistant's own packs via
+  `rule_packs.live_check(..., packs=…)` on every user turn (independent of the globally applied packs); knowledge only from its
+  categories, never client-tagged or Local only, and only labels its model may receive. The model answers only from those sources.
+- No transcript is stored. Activity rows record the outcome and the sources used, never the question.
+- Validate input before calling `ask` (it is `@agents.tracked`); the staff page refuses cross-origin posts and never carries the admin token.
 
 ## Lessons already learned (don't relearn them)
 

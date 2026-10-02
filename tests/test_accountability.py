@@ -70,8 +70,8 @@ os.environ['ALICE_AUDIT_STDOUT'] = '1'
 cl.post('/admin/api/memories/owner', headers=H, json={'ids': [a], 'owner': 'Ewan Mackay'})
 os.environ.pop('ALICE_AUDIT_STDOUT')
 cl.post('/admin/api/memories/owner', headers=H, json={'ids': [a], 'owner': 'Morven Hay'})
-ev = [json.loads(x) for x in lines]
-t('with ALICE_AUDIT_STDOUT=1 each activity row is one JSON line (for Log Analytics)', len(ev) == 1 and ev[0]['action'] == 'owner_set' and ev[0]['actor'] == 'Stefan Test' and ev[0]['type'] == 'alice.audit')
+ev = [e for e in (json.loads(x) for x in lines) if e['action'] == 'owner_set']     # background Temple jobs may log too
+t('with ALICE_AUDIT_STDOUT=1 each activity row is one JSON line (for Log Analytics)', len(ev) == 1 and ev[0]['detail'] == 'Ewan Mackay' and ev[0]['actor'] == 'Stefan Test' and ev[0]['type'] == 'alice.audit')
 
 # owners never reach a model
 with s.db() as c: c.execute("UPDATE records SET status='approved' WHERE id=?", (b,))

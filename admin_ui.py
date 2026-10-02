@@ -12,12 +12,16 @@ PAGES = {
  'agents': ('Agents','Everything that acts on Alice without you typing it: Temple\'s automations and connected apps. What each does, what it touched, what it cost, and its limits. Pause or stop any of them here.'),
  'organisations': ('Organisations','Clients and other organisations: short approved facts with a pointer to the source, opportunities, and for clients the names Alice recognises and the memories and files tagged to them. Detail stays in the source system.'),
  'archive': ('Archived chats','Inactive Alice chats (30 days) and conversations saved from Claude apps. Ask Temple to review any of them for memories and knowledge.'),
+ 'assistants': ('Assistants','Focused chat bots built on Alice, such as an HR policy assistant. Each has its own rule packs, model and knowledge, and staff use it on its own page without seeing the rest of Alice.'),
  'rule-packs': ('Rule packs','Ready-made safeguards for teams adopting AI. Switch each one on or off, test a message against the pack (a sandbox: no AI is called), and apply a pack to Alice\'s live rules when you want it enforced.'),
  'rules': ('Rules','Rule sets in precedence order. Enforced rules are checked in code; guidance rules are instructions to the model.'),
  'activity': ('Activity','Everything Alice and Temple did, and every decision you made: filter by type, date or words, and export for an audit trail.'),
 }
 
 SECTIONS = {
+'assistants': r'''<section><div class="mem-head"><h2>Assistants</h2><button id="as-new" type="button" class="secondary">New assistant</button></div>
+<p class="muted small">Every question goes through Alice first: secrets and protective markings are blocked, the assistant's rule packs block, escalate or remove identifiers, and only knowledge in its categories is used (never client-tagged or Local only material). No transcript is kept; the Activity log records whether each question was answered, blocked or escalated, and which sources were used.</p>
+<div id="as-list"></div></section>''',
 'rule-packs': r'''<div id="rp-packs" class="t-tabs" role="tablist" aria-label="Rule packs"></div>
 <section id="rp-head"></section>
 <div class="rp-grid"><div id="rp-rules"></div>
@@ -308,6 +312,10 @@ nav{display:flex;gap:20px;flex-wrap:wrap}.sidebar nav{display:contents}
 .o-demo-bar{background:#fdf3e1;border:1px solid #e2bf85;color:#6b4406;border-radius:10px;padding:9px 14px;margin-bottom:12px;font-size:14px}
 .o-mini{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline;padding:6px 0;border-bottom:1px solid var(--line);font-size:14px}
 #o-tagging[hidden],#o-tagged-sec[hidden],#o-aliases-wrap[hidden]{display:none}
+.as-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:12px}.as-card h3{margin:0 0 2px}
+.as-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.as-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.as-btns{display:flex;gap:8px;align-items:center}.as-btns .button-link{margin:0}
+.as-form{display:grid;gap:12px;margin-top:14px;padding-top:14px;border-top:1px solid var(--line)}.as-form label{display:grid;gap:4px}.as-two{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.as-checks{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:4px}.as-checks label{display:flex!important;gap:6px;align-items:center}
 /* Opportunity tracker: slides out from the right */
 .opp-tab{position:fixed;right:0;top:132px;z-index:30;writing-mode:vertical-rl;transform:rotate(180deg);background:var(--teal)!important;color:#fff!important;border:none!important;border-radius:0 10px 10px 0!important;padding:14px 9px!important;font-weight:700;letter-spacing:.04em;box-shadow:-2px 2px 10px #0002}
 .opp-tab .badge-count{position:absolute;top:auto;bottom:-9px;right:auto;left:50%;margin-left:-11px;writing-mode:horizontal-tb;transform:rotate(180deg);min-width:22px;text-align:center}
@@ -1061,6 +1069,43 @@ if(PAGE==='rules'){
 """
 
 SCRIPT += r"""
+if(PAGE==='assistants'){
+ let L=null;const open=new Set();
+ function field(label,node){const l=el('label',label);l.append(node);return l}
+ function input(v,max,ph){const i=document.createElement('input');i.value=v||'';i.maxLength=max;if(ph)i.placeholder=ph;return i}
+ function area(v,max,rows){const t=document.createElement('textarea');t.value=v||'';t.maxLength=max;t.rows=rows;return t}
+ function checks(all,picked){const box=el('div','','as-checks');const get=[];for(const [k,t] of all){const l=el('label','','r-check');const c=document.createElement('input');c.type='checkbox';c.value=k;c.checked=picked.includes(k);l.append(c,document.createTextNode(' '+t));box.append(l);get.push(c)}box.value=()=>get.filter(c=>c.checked).map(c=>c.value);return box}
+ function form(a,isNew){const f=el('div','','as-form');
+  const name=input(a.name,80,'e.g. HR policy assistant'),desc=input(a.description,500,'What it is for, in one line'),greet=area(a.greeting,800,2),guide=area(a.guidance,3000,4),contact=input(a.contact,120,'e.g. your HR business partner');
+  const prov=document.createElement('select');for(const [k,t] of Object.entries(L.providers)){const o=el('option',t);o.value=k;prov.append(o)}prov.value=a.provider||'openai';
+  const st=document.createElement('select');for(const [k,t] of [['active','Active'],['paused','Paused']]){const o=el('option',t);o.value=k;st.append(o)}st.value=a.status||'active';
+  const packs=checks(Object.entries(L.packs),a.packs||[]);const cats=checks(L.categories.map(c=>[c,c]),a.categories||[]);
+  const r1=el('div','','k-meta-row');r1.append(field('Name',name),field('Model',prov),field('Status',st));
+  f.append(r1,field('Description',desc),field('Greeting shown to staff',greet),field('Guidance (how it should answer)',guide),field('Who to contact when it cannot help',contact));
+  const pk=el('div','');pk.append(el('strong','Rule packs'),el('p','Applied to every question in code, whatever the global Rules settings say.','muted small'),packs);
+  const ct=el('div','');ct.append(el('strong','Knowledge it may use'),el('p',L.categories.length?'Active knowledge in these categories. Client-tagged and Local only items are never used.':'No categories yet: create one (e.g. HR) on the Memories page and put the policies in it on the Knowledge page.','muted small'),cats);
+  const two=el('div','','as-two');two.append(pk,ct);f.append(two);
+  const save=el('button',isNew?'Create assistant':'Save');save.type='button';
+  save.onclick=()=>run(async()=>{const body={name:name.value,description:desc.value,greeting:greet.value,guidance:guide.value,contact:contact.value,provider:prov.value,status:st.value,packs:packs.value(),categories:cats.value()};
+   const x=isNew?await api('/admin/api/assistants','POST',body):await api('/admin/api/assistants/'+encodeURIComponent(a.id),'PUT',body);$('notice').textContent='Saved '+x.name+'.';open.delete('__new__');open.add(x.id);await load()});
+  const cancel=el('button','Close');cancel.type='button';cancel.className='secondary';cancel.onclick=()=>{open.delete(isNew?'__new__':a.id);render()};
+  const act=el('div','','arc-actions');act.append(save,cancel);f.append(act);return f}
+ function render(){const box=$('as-list');box.replaceChildren();
+  if(open.has('__new__')){const c=el('div','','as-card');c.append(el('h3','New assistant'),form({},true));box.append(c)}
+  if(!L.assistants.length)box.append(el('p','No assistants yet.','muted'));
+  for(const a of L.assistants){const c=el('div','','as-card');const h=el('div','','as-head');const t=el('div','');t.append(el('h3',a.name),el('div',a.description,'muted small'));
+   const meta=el('div','','as-meta');meta.append(el('span',a.status==='active'?'Active':'Paused','badge '+(a.status==='active'?'approved':'proposed')),el('span',L.providers[a.provider]||a.provider,'tag'));
+   for(const p of a.packs)meta.append(el('span',(L.packs[p]||p)+' pack','tag k-knowledge'));for(const k of a.categories)meta.append(el('span',k,'tag'));if(!a.categories.length)meta.append(el('span','No knowledge yet','flag'));
+   t.append(meta);const btns=el('div','','as-btns');const go=document.createElement('a');go.href='/assistant/'+encodeURIComponent(a.id);go.target='_blank';go.rel='noopener';go.className='button-link';go.textContent='Open';
+   const ed=el('button',open.has(a.id)?'Close':'Edit');ed.type='button';ed.className='secondary';ed.onclick=()=>{open.has(a.id)?open.delete(a.id):open.add(a.id);render()};btns.append(go,ed);h.append(t,btns);c.append(h);
+   if(open.has(a.id))c.append(form(a,false));box.append(c)}}
+ async function load(){L=await api('/admin/api/assistants');render()}
+ $('as-new').onclick=()=>{open.add('__new__');render()};
+ run(load);
+}
+"""
+
+SCRIPT += r"""
 if(PAGE==='agents'){
  const st={L:null,sel:'',tab:'overview',view:(()=>{try{return localStorage.getItem('alice-agents-view')||'cards'}catch{return 'cards'}})()};
  const STATUS={active:['Active','approved'],paused:['Paused','proposed'],stopped:['Stopped','rejected']};
@@ -1291,7 +1336,7 @@ if(PAGE==='rules'){
 """
 
 NAV_GROUPS = [('Work', ['actions', 'temple', 'memories', 'knowledge', 'organisations', 'archive']),
-              ('Records and settings', ['agents', 'rules', 'rule-packs', 'activity', 'usage', 'overview'])]
+              ('Records and settings', ['agents', 'assistants', 'rules', 'rule-packs', 'activity', 'usage', 'overview'])]
 
 
 def render_admin(page, token):
