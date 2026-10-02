@@ -567,7 +567,8 @@ with db() as c:   # chats saved from other apps (Claude Desktop, Claude Code) ca
 def active_chats():
     """The chat sidebar: your own Alice chats with recent activity."""
     with db() as c:
-        return [dict(r) for r in c.execute("SELECT * FROM chats WHERE updated_at>=? AND source='alice' ORDER BY updated_at DESC,id", (archive_cutoff(),))]
+        return [dict(r) for r in c.execute("SELECT ch.*,(SELECT count(*) FROM chat_turns t WHERE t.chat_id=ch.id) AS turns FROM chats ch "
+                                           "WHERE ch.updated_at>=? AND ch.source='alice' ORDER BY ch.updated_at DESC,ch.id", (archive_cutoff(),))]
 
 
 def _captures(c, cid):

@@ -3,10 +3,10 @@ import json
 from html import escape
 
 PAGES = {
+ 'home': ('Home','What needs you, what happened today and what you were working on.'),
  'actions': ('Actions','Everything waiting for your decision, in one place. Quick decisions here; open the full page when you need to edit.'),
  'usage': ('Usage & costs','Estimated API spend and savings. Includes Chat, Temple, routing and images.'),
  'temple': ('Temple','Your advisory memory steward. Human decisions remain in control.'),
- 'overview': ('Overview','A summary of your knowledge, memories and saved conversations.'),
  'knowledge': ('Knowledge','Files, notes and meeting extracts. Tag them like memories; security labels decide which models may read each item.'),
  'memories': ('Memories','Review proposed records and browse approved knowledge.'),
  'agents': ('Agents','Everything that acts on Alice without you typing it: Temple\'s automations and connected apps. What each does, what it touched, what it cost, and its limits. Pause or stop any of them here.'),
@@ -20,6 +20,9 @@ PAGES = {
 }
 
 SECTIONS = {
+'home': r'''<section class="hm-hero"><div><h2 id="hm-hello">Hello</h2><p id="hm-sub" class="muted"></p></div>
+<div class="hm-go"><a class="hm-btn primary" href="/?new=1"><span>&#9998;</span>New chat</a><a class="hm-btn" id="hm-prop" href="/admin/assistants"><span>&#10064;</span>Write a proposal</a><a class="hm-btn" href="/admin/temple?tab=ask"><span>?</span>Ask Temple</a><a class="hm-btn" href="/admin/knowledge"><span>+</span>Add knowledge</a></div></section>
+<div id="hm" class="hm"></div>''',
 'documents': r'''<section><div class="mem-head"><h2>Document sources</h2><button id="ds-new" type="button" class="secondary">Add a source</button></div>
 <p class="muted small" id="ds-root"></p>
 <div class="ds-how"><div><strong>1. Documents stay in their source</strong><span>SharePoint, Fabric, Power Platform or a folder. Alice never copies them in.</span></div><div><strong>2. Knowledge holds summaries</strong><span>Approved summaries point to the document and section they came from.</span></div><div><strong>3. Full detail on demand</strong><span>When the summaries don't answer, an assistant reads that section for one answer, under the rules.</span></div></div>
@@ -181,7 +184,6 @@ SECTIONS = {
 <section id="al-log"><h2 class="av-h">Everything that happened</h2><div class="mem-tools"><input id="al-q" type="search" maxlength="200" placeholder="Search what happened, names and details" aria-label="Search activity"><a id="al-csv" class="button-link" href="#">Export CSV</a></div>
 <div id="al-types" class="mem-cats"></div><div class="table-wrap"><table id="al-table" class="mem-table al-table"></table></div><p id="al-count" class="muted small"></p><button id="al-more" type="button" class="secondary" hidden>Load more</button>
 <p class="muted small">Reads by Claude Desktop and Claude Code are not logged; their proposals, drafts and saved conversations are. Times are shown in your local time; the CSV uses UTC.</p></section>''' ,
-'overview': r'''<section><h2>Your substrate at a glance</h2><p>Knowledge and approved memories are shared by both models.</p><div id="overview-stats" class="stats"></div><p id="proposal-state" class="muted"></p><a class="button" href="/admin/memories?status=proposed">Review proposed memories →</a></section><section><h2>How it works</h2><p>Upload source files in Chat and inspect them in Knowledge. Proposed memories wait for your review; only approved memories are available through memory search.</p><p>Rules contains model response guidance and the controls enforced by the substrate. Activity shows recorded tool use, rule changes and review decisions.</p></section>''' ,
 }
 
 CSS = r'''
@@ -291,6 +293,30 @@ nav{display:flex;gap:20px;flex-wrap:wrap}.sidebar nav{display:contents}
 .ag-anat-edit{border-top:1px solid var(--line);margin-top:16px;padding-top:4px}.ag-anat-edit input,.ag-anat-edit textarea{width:100%}
 @media(max-width:1100px){.anat{grid-template-columns:repeat(3,minmax(0,1fr))}.anat-stage:nth-child(3):after{display:none}}
 .ag-perms{display:grid;gap:10px;margin:6px 0 10px}.ag-perm strong{margin-right:6px}
+.hm-hero{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;background:linear-gradient(120deg,#0b3d5c,#075e79 60%,#1f6f8b);color:#fff;border:0!important;border-radius:14px!important;padding:22px 26px!important}
+.hm-hero h2{margin:0 0 4px;font-size:24px;color:#fff}.hm-hero p{margin:0;color:#cfe3ee!important}
+.hm-go{display:flex;gap:10px;flex-wrap:wrap}.hm-btn{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:10px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.28);color:#fff!important;text-decoration:none;font-weight:600;font-size:14px}
+.hm-btn:hover{background:rgba(255,255,255,.22)}.hm-btn.primary{background:#fff;color:#0b3d5c!important;border-color:#fff}.hm-btn span{font-size:15px;opacity:.85}
+.hm{display:grid;gap:14px;margin-top:14px}.hm-row{display:grid;gap:14px}.hm-3{grid-template-columns:repeat(3,minmax(0,1fr))}.hm-2{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr)}
+.hm-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;min-width:0;display:flex;flex-direction:column;gap:8px}
+.hm-card h3{margin:0;font-size:15px;display:flex;justify-content:space-between;align-items:baseline;gap:8px}.hm-card h3 a{font-size:12.5px;font-weight:600;color:var(--teal);text-decoration:none}
+.hm-wait{display:grid;gap:6px}.hm-wait a{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:9px 12px;border-radius:9px;border:1px solid var(--line);text-decoration:none;color:var(--ink);background:#fff}
+.hm-wait a:hover{border-color:var(--teal)}.hm-wait a.warn{background:#fdf3e1;border-color:#e2bf85}.hm-wait a.bad{background:#fbeaea;border-color:#e0aaaa}
+.hm-n{font-weight:700;font-variant-numeric:tabular-nums;background:var(--teal2);color:var(--teal);border-radius:999px;padding:0 9px;font-size:13px;line-height:22px}
+.hm-clear{display:flex;gap:10px;align-items:center;color:#1e5b31;background:#eef8f1;border:1px solid #9fcfaf;border-radius:10px;padding:12px 14px;font-weight:600}
+.hm-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.hm-tile{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#fff;text-decoration:none;color:var(--ink);display:grid;gap:1px}
+a.hm-tile:hover{border-color:var(--teal)}.hm-tile b{font-size:24px;line-height:1.15;font-variant-numeric:tabular-nums}.hm-tile span{font-size:12.5px;color:var(--muted)}.hm-tile.alert b{color:#b3261e}
+.hm-meter{display:grid;gap:4px;font-size:12.5px;color:var(--muted)}.hm-bar{height:8px;border-radius:4px;background:#e6ecf1;overflow:hidden}.hm-bar>div{height:100%;background:#2a78d6;border-radius:4px}
+.hm-bar.warn>div{background:#eda100}.hm-bar.bad>div{background:#d03b3b}
+.hm-spark{display:flex;align-items:flex-end;gap:8px;padding-top:4px}.hm-spark>div{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:var(--muted)}.hm-bw{height:64px;width:100%;display:flex;align-items:flex-end;justify-content:center}
+.hm-spark i{display:block;width:100%;max-width:34px;background:#2a78d6;border-radius:4px 4px 0 0;min-height:2px}.hm-spark div:last-child i{background:#075e79}
+.hm-list{display:grid;gap:2px;margin:0;padding:0;list-style:none}.hm-list a{display:flex;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:8px;text-decoration:none;color:var(--ink)}
+.hm-list a:hover{background:#f4f8fb}.hm-list .muted{font-size:12.5px;white-space:nowrap}.hm-list b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hm-empty{color:var(--muted);font-size:13px;margin:4px 0}
+.hm-stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px}.hm-stat{text-decoration:none;color:var(--ink);border-left:3px solid var(--teal);padding:4px 10px}.hm-stat b{display:block;font-size:20px}.hm-stat span{font-size:12.5px;color:var(--muted)}
+.hm-pill{font-size:11.5px;padding:1px 8px;border-radius:999px;border:1px solid var(--line);color:#4b5a66;background:#f4f6f8;white-space:nowrap}.hm-pill.ok{background:#eef8f1;color:#1e5b31;border-color:#9fcfaf}.hm-pill.warn{background:#fdf3e1;color:#6b4406;border-color:#e2bf85}
+@media(max-width:1100px){.hm-3,.hm-2{grid-template-columns:1fr}}
+@media(max-width:600px){.hm-tiles{grid-template-columns:1fr 1fr}}
 .av-bar{padding:12px 18px!important}.av-bar .mem-tools{margin:0}.av-views{margin-left:auto;display:flex;gap:6px}.av-h{margin:0 0 10px;font-size:17px}
 .av{--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;--good:#0ca30c;--bad:#d03b3b;--open:#c9d3dc;--grid:#e6ecf1;display:grid;gap:14px;margin-bottom:14px}
 .av-tiles{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
@@ -615,7 +641,6 @@ if(PAGE==='activity'){
  const p=new URLSearchParams(location.search);if(p.get('type'))st.type=p.get('type');
  run(()=>load());run(viz);
 }
-if(PAGE==='overview')run(async()=>{const d=await api('/admin/api/overview');for(const [key,label,path] of [['files','Saved files','knowledge'],['approved','Approved memories','memories?status=approved'],['proposed','Awaiting approval','memories?status=proposed'],['chats','Saved chats','']]){const card=el('a','','stat');card.href=path?'/admin/'+path:'/';card.append(el('strong',String(d[key])),el('span',label));$('overview-stats').append(card)}$('proposal-state').textContent='New record proposals are '+(d.allow_proposals?'enabled.':'disabled. Change this in Rules.');});
 '''
 
 SCRIPT += r"""
@@ -784,7 +809,7 @@ if(PAGE==='archive'){
   box.append(el('div','Saved from '+(rec.app||chat.source)+' · written by that assistant, not a transcript','t-label'),el('div',rec.summary||'','t-body'));
   for(const [label,key] of [['Key points','key_points'],['Decisions','decisions'],['Asked to remember','remember'],['Your words','user_quotes']]){const xs=rec[key]||[];if(!xs.length)continue;box.append(el('strong',label));for(const x of xs)box.append(el('div',(key==='user_quotes'?'“'+x+'”':'• '+x),'small'))}
   const nm=(rec.proposed_memories||[]).length,nk=(rec.proposed_knowledge||[]).length;
-  if(nm||nk){const cap=el('div','','small');cap.append(el('strong','Captured from this conversation: '),document.createTextNode([nm?nm+(nm===1?' memory or decision proposal':' memory or decision proposals'):'',nk?nk+(nk===1?' knowledge draft':' knowledge drafts'):''].filter(Boolean).join(' · ')+' '));const a=document.createElement('a');a.href='/admin';a.textContent='Review in Actions ↗';cap.append(a);box.append(cap)}
+  if(nm||nk){const cap=el('div','','small');cap.append(el('strong','Captured from this conversation: '),document.createTextNode([nm?nm+(nm===1?' memory or decision proposal':' memory or decision proposals'):'',nk?nk+(nk===1?' knowledge draft':' knowledge drafts'):''].filter(Boolean).join(' · ')+' '));const a=document.createElement('a');a.href='/admin/actions';a.textContent='Review in Actions ↗';cap.append(a);box.append(cap)}
   if((rec.memory_notes||[]).length){box.append(el('strong','Not proposed'));for(const x of rec.memory_notes)box.append(el('div',x,'small muted'))}return box}
  async function detail(r){const box=el('div','','arc-detail');const bar=el('div','','arc-actions');
   const ask=el('button',r.review&&r.review.status==='complete'?'Ask Temple again':'Ask Temple to review');ask.type='button';ask.disabled=!!(r.review&&r.review.status==='running');ask.onclick=()=>run(async()=>{ask.disabled=true;ask.textContent='Temple is reading…';try{const x=await api('/admin/api/archive/'+r.id+'/temple-review','POST',{});$('notice').textContent=x.status==='complete'?'Temple found '+x.suggestions+' suggestion'+(x.suggestions===1?'':'s')+(x.suggestions?' — review them in Temple → Chat suggestions.':'.')+(x.dropped?' '+x.dropped+' dropped because their quotes were not your words.':''):(x.message||('Review '+x.status+'.'));await load()}finally{ask.disabled=false}});bar.append(ask);
@@ -1184,6 +1209,43 @@ if(PAGE==='rules'){
 }
 """
 
+SCRIPT += r'''
+if(PAGE==='home'){
+ const fmt=n=>Number(n||0).toLocaleString('en-GB'),usd=v=>'$'+Number(v||0).toFixed(2);
+ const ago=d=>{if(!d)return '';const m=(Date.now()-new Date(d))/60000;return m<1?'just now':m<60?Math.round(m)+' min ago':m<1440?Math.round(m/60)+' h ago':new Date(d).toLocaleDateString('en-GB',{day:'numeric',month:'short'})};
+ const card=(title,link,linkText)=>{const c=el('section','','hm-card');const h=el('h3',title);if(link){const a=document.createElement('a');a.href=link;a.textContent=linkText||'Open →';h.append(a)}c.append(h);return c};
+ function waiting(d){const c=card('Waiting for you','/admin/actions','All actions →');if(!d.waiting.total){c.append(el('div','✓ All clear: nothing needs a decision.','hm-clear'));return c}
+  const box=el('div','','hm-wait');for(const s of d.waiting.sections){const a=document.createElement('a');a.href=s.link;a.className=s.level==='bad'?'bad':s.level==='warn'?'warn':'';a.append(el('span',s.title),el('span',fmt(s.count),'hm-n'));box.append(a)}c.append(box);return c}
+ function today(d){const t=d.today||{},c=card('Today','/admin/activity','Activity →');const tl=el('div','','hm-tiles');
+  const tile=(n,l,href,alert)=>{const x=el(href?'a':'div','','hm-tile'+(alert?' alert':''));if(href)x.href=href;x.append(el('b',fmt(n)),el('span',l));tl.append(x)};
+  tile(t.events,'things recorded','/admin/activity');tile(t.blocked,'stopped by the rules','/admin/activity?type=blocks',t.blocked>0);tile(t.runs,'agent runs'+(t.failed_runs?' · '+t.failed_runs+' failed':''),'/admin/agents',t.failed_runs>0);tile(t.model_calls,'AI calls','/admin/usage');c.append(tl);
+  const sp=d.spend||{};if(sp.daily_usd){const m=el('div','','hm-meter');const lvl=sp.level==='blocked'?'bad':sp.level==='warning'?'warn':'';
+   const row=(label,v,cap)=>{const r=el('div');r.append(el('div',label+': '+usd(v)+' of '+usd(cap)));const b=el('div','','hm-bar '+lvl);const f=el('div');f.style.width=Math.min(100,100*v/cap)+'%';b.append(f);r.append(b);return r};
+   m.append(row('AI spend today',sp.today_usd,sp.daily_usd),row('This month',sp.month_usd,sp.monthly_usd));if(sp.level==='blocked')m.append(el('div','Chat is paused: the spending cap is reached.','hm-pill warn'));c.append(m)}
+  return c}
+ function week(d){const c=card('The last 7 days','/admin/activity','The picture →');const b=d.week.buckets.slice(-7);const mx=Math.max(1,...b.map(x=>x.n));const sp=el('div','','hm-spark');sp.setAttribute('role','img');sp.setAttribute('aria-label','Things recorded per day over the last 7 days');
+  for(const x of b){const col=el('div');col.title=x.label+': '+fmt(x.n)+' things';const bar=document.createElement('i');bar.style.height=Math.max(2,100*x.n/mx)+'%';const bw=el('div','','hm-bw');bw.append(bar);col.append(el('span',fmt(x.n)),bw,el('span',x.label));sp.append(col)}c.append(sp);
+  const g=(d.week.gate||[]).reduce((a,x)=>({p:a.p+x.proposed,ap:a.ap+x.approved,r:a.r+x.rejected}),{p:0,ap:0,r:0});c.append(el('p',g.p||g.ap||g.r?'Proposed '+fmt(g.p)+' · you approved '+fmt(g.ap)+' · rejected '+fmt(g.r)+'.':'Nothing proposed this week.','hm-empty'));return c}
+ function chats(d){const c=card('Recent chats','/?new=1','New chat →');if(!d.chats.length){c.append(el('p','No chats yet.','hm-empty'));return c}const ul=el('ul','','hm-list');
+  for(const x of d.chats){const li=document.createElement('li');const a=document.createElement('a');a.href='/#'+x.id;const l=el('b',x.title||'Untitled chat');a.append(l,el('span',(x.client?x.client+' · ':'')+ago(x.updated_at),'muted'));li.append(a);ul.append(li)}c.append(ul);return c}
+ function props(d){const pw=d.assistants.find(a=>a.kind==='proposal');const c=card('Recent proposals',pw?'/assistant/'+encodeURIComponent(pw.id):null,'Write one →');if(!d.proposals.length){c.append(el('p','No proposals yet.','hm-empty'));return c}const ul=el('ul','','hm-list');
+  for(const x of d.proposals){const li=document.createElement('li');const a=document.createElement('a');a.href='/assistant/'+encodeURIComponent(x.assistant_id)+'?p='+x.id;a.target='_blank';a.rel='noopener';
+   const st=x.status==='running'?el('span','writing…','hm-pill'):x.status==='failed'?el('span','failed','hm-pill warn'):el('span',(x.verdict==='client_ready'?'client ready':'needs attention')+(x.score!=null?' · '+x.score:''),'hm-pill '+(x.verdict==='client_ready'?'ok':'warn'));
+   a.append(el('b',x.title+(x.organisation?' · '+x.organisation:'')),st);li.append(a);ul.append(li)}c.append(ul);return c}
+ function helpers(d){const c=card('Assistants and agents','/admin/agents','Agents →');const ul=el('ul','','hm-list');
+  for(const x of d.assistants){const li=document.createElement('li');const a=document.createElement('a');a.href='/assistant/'+encodeURIComponent(x.id);a.target='_blank';a.rel='noopener';a.append(el('b',x.name),el('span',x.status==='active'?'open ↗':'paused','muted'));li.append(a);ul.append(li)}c.append(ul);
+  const ag=d.agents;c.append(el('p',fmt(ag.active)+' of '+fmt(ag.total)+' agents active.','hm-empty'));for(const x of ag.attention){const a=document.createElement('a');a.href='/admin/agents?agent='+encodeURIComponent(x.id);a.className='hm-pill warn';a.textContent='⚑ '+x.name+': '+x.why;c.append(a)}return c}
+ function substrate(d){const c=card('Your substrate');const g=el('div','','hm-stats');const s=d.substrate;
+  for(const [n,l,h] of [[s.memories,'approved memories','/admin/memories'],[s.knowledge,'knowledge items','/admin/knowledge'],[s.documents,'documents in sources','/admin/documents'],[s.organisations,'organisations ('+s.clients+' clients)','/admin/organisations'],[d.agents.total,'agents','/admin/agents']]){const a=document.createElement('a');a.className='hm-stat';a.href=h;a.append(el('b',fmt(n)),el('span',l));g.append(a)}c.append(g);return c}
+ run(async()=>{const d=await api('/admin/api/home?tz='+new Date().getTimezoneOffset());
+  $('hm-hello').textContent=d.greeting+', '+d.name+'.';
+  $('hm-sub').textContent=d.waiting.total?d.waiting.total+' thing'+(d.waiting.total===1?' needs':'s need')+' a decision from you. Everything else is running.':'Nothing is waiting for you. Here is what is happening in Alice.';
+  const pw=d.assistants.find(a=>a.kind==='proposal');if(pw){$('hm-prop').href='/assistant/'+encodeURIComponent(pw.id);$('hm-prop').target='_blank'}
+  const r1=el('div','','hm-row hm-2');r1.append(waiting(d),today(d));const r2=el('div','','hm-row hm-3');r2.append(chats(d),props(d),helpers(d));const r3=el('div','','hm-row hm-2');r3.append(week(d),substrate(d));
+  $('hm').replaceChildren(r1,r2,r3)});
+}
+'''
+
 SCRIPT += r"""
 if(PAGE==='documents'){
  let D=null;const open=new Set();
@@ -1574,14 +1636,14 @@ if(PAGE==='rules'){
 }
 """
 
-NAV_GROUPS = [('Work', ['actions', 'temple', 'memories', 'knowledge', 'documents', 'organisations', 'archive']),
-              ('Records and settings', ['agents', 'assistants', 'rules', 'rule-packs', 'activity', 'usage', 'overview'])]
+NAV_GROUPS = [('Work', ['home', 'actions', 'temple', 'memories', 'knowledge', 'documents', 'organisations', 'archive']),
+              ('Records and settings', ['agents', 'assistants', 'rules', 'rule-packs', 'activity', 'usage'])]
 
 
 def render_admin(page, token):
     from ui_theme import SHARED_CSS
     title, description = PAGES[page]
-    href = lambda key: '/admin' + ('' if key == 'actions' else '/' + key)
+    href = lambda key: '/admin' + ('' if key == 'home' else '/' + key)
     listed = [k for _, keys in NAV_GROUPS for k in keys]
     groups = NAV_GROUPS + ([('More', [k for k in PAGES if k not in listed])] if any(k not in listed for k in PAGES) else [])
     nav = ''.join('<div class="grp">' + escape(name) + '</div>' + ''.join(

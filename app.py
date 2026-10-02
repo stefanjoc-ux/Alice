@@ -2020,7 +2020,15 @@ def admin_overview():
 
 @app.get('/admin',response_class=HTMLResponse)
 def admin_page():
-    return render_admin('actions',ADMIN_TOKEN)   # the Command centre opens on what needs your attention
+    return render_admin('home',ADMIN_TOKEN)      # the Command centre opens on its home page
+
+@app.get('/admin/api/home')
+def admin_home(tz: int=Query(0,ge=-840,le=840)):
+    import home
+    return home.summary(tz)
+
+@app.get('/admin/overview')
+def admin_overview_redirect(): return RedirectResponse('/admin',status_code=307)
 
 @app.get('/admin/api/activity-log')
 def admin_activity_log(type: str=Query('',max_length=20), preset: Literal['today','7d','30d','all','custom']='7d',
@@ -2427,6 +2435,8 @@ byId('temple-chat-enabled').onchange=()=>templeRun(async()=>{await templeAPI('/a
 byId('temple-analyse').onclick=()=>templeRun(async()=>{if(!chatId)return;const b=byId('temple-analyse');b.disabled=true;try{const result=await templeAPI('/admin/api/temple-chat/'+chatId+'/analyse','POST',{});await refreshTemple();byId('temple-message').textContent=result.message;}finally{b.disabled=false}});
 
 if('serviceWorker' in navigator&&window.isSecureContext)navigator.serviceWorker.register('/sw.js').catch(()=>{});
-guard(async()=>{await setupVoice();await refreshFiles();const chats=await api('/chats');const requested=location.hash.slice(1);const current=chats.find(c=>c.id===requested)||chats[0];if(current)await loadChat(current.id);else await createChat()});
+guard(async()=>{await setupVoice();await refreshFiles();const chats=await api('/chats');const requested=location.hash.slice(1);if(location.search)window.history.replaceState(null,'',location.pathname+location.hash);
+ const asked=chats.find(c=>c.id===requested);if(asked){await loadChat(asked.id);return}
+ const empty=chats.find(c=>!c.turns);if(empty)await loadChat(empty.id);else await createChat()});
 
 </script></body></html>'''.replace('__SHARED_CSS__', SHARED_CSS).replace('__CHAT_ADMIN_TOKEN__', ADMIN_TOKEN).replace('__BANNER_V__', str(int(BANNER.stat().st_mtime)) if BANNER.is_file() else '0')

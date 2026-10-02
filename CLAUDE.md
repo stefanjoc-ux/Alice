@@ -114,6 +114,7 @@ A browser refresh is not enough: the old server process keeps running the old co
 | `doc_library.py` | Document sources: full documents kept OUTSIDE Alice in the `Documents\` folder (`ALICE_DOCUMENT_LIBRARY` overrides). Each subfolder is a source and its `_source.json` says what it stands in for (`sharepoint`, `fabric`, `power_platform` or `folder`); in Azure each becomes a real connector (Graph, OneLake, Dataverse) behind the same calls (`sources`, `files`, `resolve`, `extracts`). Pointers never leave the folder; older pointers (`Policy library\…`) match by unique file name. Checks Purview label mappings and `check_outbound` on each extract; in-memory cache only, nothing stored. Documents page `/admin/documents` |
 | `documents.py` | Word, Excel and PDF created in chat via the local `create_document` tool (not MCP, so outside apps don't get it): Word and PDF from simple markdown (stdlib; PDF written by hand with Helvetica), Excel with openpyxl; `check_file` runs first; kept in `generated_documents` for download at `/documents/{id}/download`; never knowledge |
 | `clients.py` | Clients (the separation list), tagging, alias detection, separation enforcement. There is no Clients page: a client is an organisation with Client ticked (`organisations.set_client` writes the clients table), and tagging lives in Organisations → Tag memories and files; `/admin/clients` redirects |
+| `home.py` | The Command centre home page (`/admin`, `/admin/api/home`): greeting, what is waiting, today's numbers and spend, the last 7 days, recent chats and proposals, assistants and agents needing attention, substrate counts. The desktop app opens here; Actions is at `/admin/actions`; the chat page (`/`) opens the empty chat or a new one unless a chat is named in the hash |
 | `actions.py` | Everything awaiting a decision (Actions page) |
 | `activity_log.py` | Activity log labels, types, filters, CSV; `overview()` feeds the Activity page's picture (`/admin/api/activity-overview`): tiles, activity over time by area (blocks counted separately), the approval gate, blocks by rule, agent runs, AI calls by model, a weekday-by-hour heatmap in the browser's time zone, most frequent actions |
 | `router.py` | Auto model routing, provider failure memory |
@@ -201,6 +202,7 @@ call real AI services. Never read the demo store anywhere else, and never let a 
   `<img>` (a blob URL), never inserted as live SVG, so model-written drawings cannot run script or fetch anything. Mermaid is
   bundled in `Static/vendor/` (pinned version, served by `/static/vendor/{name}` from an allow-list); never load
   libraries from a CDN. In inline JS, never end a statement with a `//` comment on a line that continues: it swallows the rest.
+- **The chat page declares `let history=[]`**, which shadows `window.history`: use `window.history.replaceState` there.
 - **Quotes from Temple** are verified against Stefan's own words with `store.quote_found()`, which forgives
   typography but not rewording. Never loosen it to accept paraphrase.
 

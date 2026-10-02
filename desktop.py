@@ -173,7 +173,7 @@ def fit_new_window(before):
             return
 
 
-def open_window(path=''):
+def open_window(path='admin'):          # Alice opens on the Command centre home page
     exe = browser()
     if exe:
         PROFILE.mkdir(parents=True, exist_ok=True)
@@ -333,6 +333,7 @@ def run_tray(show_window):
     icon.menu = pystray.Menu(
         pystray.MenuItem(f'Open AI Substrate ({hotkey})' if hotkey.lower() != 'off' else 'Open AI Substrate',
                          lambda *_: show_substrate(), default=True),
+        pystray.MenuItem('New chat', lambda *_: open_window('?new=1')),
         pystray.MenuItem('Command centre', lambda *_: open_window('admin')),
         pystray.MenuItem('Usage & costs', lambda *_: open_window('admin/usage')),
         pystray.Menu.SEPARATOR,

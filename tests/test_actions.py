@@ -35,4 +35,4 @@ c.post('/admin/api/knowledge/review', json={'ids': [draft], 'decision': 'approve
 c.post('/admin/api/memories/suggestions', json={'ids': [a], 'action': 'dismiss'}, headers=H)
 t('inline decisions reduce the total by 3', actions.count() == before - 3)
 t('chat page count endpoint', c.get('/actions-count').json()['total'] == actions.count())
-t('Command centre opens on Actions', 'Actions' in c.get('/admin').text)
+t('Actions has its own address', 'Everything waiting for your decision' in c.get('/admin/actions').text)
