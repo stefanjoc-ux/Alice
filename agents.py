@@ -82,8 +82,8 @@ BUILTIN = [
 ]
 # The parts of each agent, for its anatomy diagram and the system map. model 'temple' = Temple's reviewer setting.
 DATA_SOURCES = {'memories': 'Memories and decisions', 'knowledge': 'Knowledge', 'organisations': 'Organisation profiles',
-                'chats': 'Chats and saved conversations', 'activity': 'Activity and usage', 'input': 'What you supply',
-                'web': 'The public web'}
+                'chats': 'Chats and saved conversations', 'activity': 'Activity and usage', 'input': 'What you or staff type or paste',
+                'web': 'The public web', 'documents': 'Document library (outside Alice)'}
 _APP_ANATOMY = {'model': 'Its own model (the app decides)', 'instructions': 'Alice connector instructions plus your response guidance',
                 'tools': TOOLS, 'data': ['memories', 'knowledge', 'organisations', 'chats'],
                 'guardrails': ['external_scope', 'client_separation', 'provider_allow', 'protective_marking', 'secret_detection', 'pii',
@@ -133,7 +133,8 @@ ANATOMY = {
                              'outputs': ['Opportunity suggestions with evidence', 'News items'], 'gate': 'You accept or dismiss each suggestion in the tracker'},
     'alice-assistants': {'model': 'Chosen per assistant (GPT-6 Luna or Claude Haiku 4.5)',
                          'instructions': 'Answer only from the sources in scope, cite them, never advise on individual cases; the assistant\'s guidance and its rule packs\' guidance.',
-                         'tools': ['None: Alice picks the sources in code'], 'data': ['knowledge', 'input'],
+                         'tools': ['None: Alice picks the sources in code', 'Document library reader (only when the summaries do not answer)'],
+                         'data': ['knowledge', 'documents', 'input'],
                          'guardrails': ['secret_detection', 'protective_marking', 'provider_allow', 'client_separation', 'data_minimisation', 'spend_cap'],
                          'outputs': ['Answers with cited sources'], 'gate': 'Rule packs block or escalate before any model sees the question'},
     'claude-desktop': dict(_APP_ANATOMY, model='Claude (your Claude Desktop model)', identity='Caller name on this computer (stdio)'),
@@ -313,21 +314,118 @@ def run_detail(run_id, demo=False):
             'touched': {k: {t: len(v) for t, v in d.items()} for k, d in touched.items()}}
 
 
+# Where each kind of item comes from, for the Data touched tab. Order is the order shown.
+SOURCE_GROUPS = [
+    ('web', 'Internet', 'Public web pages, read during the run. Not stored in Alice except as a cited source URL.'),
+    ('library', 'Document library', 'Full documents kept outside Alice, read on demand for one answer. Not stored in Alice.'),
+    ('knowledge', 'Files and knowledge', 'Uploaded files, notes and meeting records stored in Alice.'),
+    ('memories', 'Memories and decisions', 'Approved and proposed memories and decisions in Alice.'),
+    ('organisations', 'Organisations', 'Organisation profiles, facts and opportunities in Alice.'),
+    ('chats', 'Chats', 'Chats and saved conversations in Alice.'),
+    ('other', 'Other', ''),
+]
+_GROUP_OF = {'web': 'web', 'document': 'library', 'knowledge': 'knowledge', 'file': 'knowledge', 'memory': 'memories', 'decision': 'memories',
+             'organisation': 'organisations', 'org_fact': 'organisations', 'opportunity': 'organisations', 'chat': 'chats'}
+TYPE_NAMES = {'web': 'Web page', 'document': 'Library document', 'knowledge': 'Knowledge', 'file': 'File', 'memory': 'Memory',
+              'decision': 'Decision', 'organisation': 'Organisation', 'org_fact': 'Organisation fact', 'opportunity': 'Opportunity', 'chat': 'Chat'}
+_HEX = re.compile(r'^[0-9a-f]{32}$')
+
+
+def _describe(rows):
+    """Fill in where each item lives: a URL, a file path or the Alice page that holds it, plus its current status and label."""
+    from urllib.parse import quote, urlparse
+    ids = lambda *types: [r['target_id'] for r in rows if r['target_type'] in types and _HEX.match(r['target_id'])]
+    info = {}
+    with store.db() as c:
+        def q(sql, keys):
+            if not keys: return []
+            try: return [dict(x) for x in c.execute(sql.format(','.join('?' * len(keys))), keys)]
+            except Exception: return []
+        for x in q("SELECT f.id,f.name,m.title,m.kind,m.status,m.label,m.source FROM files f LEFT JOIN knowledge_meta m ON m.file_id=f.id WHERE f.id IN ({})",
+                   ids('knowledge', 'file')):
+            info[x['id']] = {'name': x['title'] or x['name'], 'status': x['status'] or 'active', 'label': x['label'] or 'general',
+                             'location': (('Uploaded file: ' + x['name']) if (x['kind'] or 'file') == 'file' else (x['source'] or '')),
+                             'href': '/admin/knowledge?status=all&q=' + quote((x['title'] or x['name'])[:80])}
+        for x in q("SELECT r.id,r.title,r.status,r.source,a.state,m.kind FROM records r LEFT JOIN memory_archive a ON a.record_id=r.id "
+                   "LEFT JOIN record_meta m ON m.record_id=r.id WHERE r.id IN ({})", ids('memory', 'decision')):
+            info[x['id']] = {'name': x['title'], 'status': x['state'] or x['status'], 'kind': x['kind'] or 'fact', 'location': x['source'] or '',
+                             'href': '/admin/memories?status=all&q=' + quote(x['title'][:80])}
+        for x in q('SELECT id,org,statement,status,label,source_ref FROM org_facts WHERE id IN ({})', ids('org_fact')):
+            info[x['id']] = {'name': x['org'] + ': ' + x['statement'][:90], 'status': x['status'], 'label': x['label'],
+                             'location': x['source_ref'] or '', 'href': '/admin/organisations?org=' + quote(x['org'])}
+        for x in q('SELECT id,org,title,status FROM opportunities WHERE id IN ({})', ids('opportunity')):
+            info[x['id']] = {'name': x['org'] + ': ' + x['title'], 'status': x['status'], 'href': '/admin/organisations?org=' + quote(x['org'])}
+        for x in q('SELECT id,title FROM chats WHERE id IN ({})', ids('chat')):
+            info[x['id']] = {'name': x['title'] or 'Untitled chat', 'location': 'Chat in Alice'}
+    try:
+        import doc_library
+        root = str(doc_library.ROOT)
+    except Exception:
+        root = ''
+    for r in rows:
+        t, tid = r['target_type'], r['target_id']
+        d = info.get(tid, {})
+        r['group'] = _GROUP_OF.get(t, 'other')
+        r['type_name'] = TYPE_NAMES.get('decision' if d.get('kind') == 'decision' else t, t.replace('_', ' ').capitalize() or 'Item')
+        r['external'] = t in ('web', 'document')
+        r['status'], r['label'], r['location'], r['href'] = d.get('status', ''), d.get('label', ''), d.get('location', ''), d.get('href', '')
+        if t == 'web':
+            u = urlparse(tid)
+            r['target_name'] = r.get('target_name') or u.netloc or tid
+            r['location'], r['href'] = tid, (tid if u.scheme in ('http', 'https') else '')
+        elif t == 'document':
+            r['target_name'] = tid.replace('\\', '/').rsplit('/', 1)[-1]
+            r['location'] = (root.rstrip('\\/') + ('\\' if '\\' in root else '/') + tid) if root else tid
+        elif t == 'organisation':
+            r['target_name'] = tid; r['href'] = '/admin/organisations?org=' + quote(tid)
+        elif d:
+            r['target_name'] = d['name']
+        elif _HEX.match(tid or ''):
+            r['status'] = 'deleted'                                  # no longer in Alice
+        if not r.get('target_name'): r['target_name'] = tid
+    return rows
+
+
 def touched_items(aid, days=30, demo=False):
-    """Lineage: which items this agent read or wrote in the period, newest first."""
+    """Lineage: which items this agent read or wrote in the period, newest first, one row per item, with where it lives."""
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     with store.db() as c:
-        rows = [dict(r) for r in c.execute(
-            "SELECT e.kind,e.target_type,e.target_id,max(e.at) AS last,count(*) AS times FROM agent_events e JOIN agent_runs r ON r.id=e.run_id "
-            "WHERE r.agent_id=? AND e.at>=? AND e.kind IN ('read','wrote') AND e.target_id<>'' GROUP BY e.kind,e.target_type,e.target_id "
-            "ORDER BY last DESC LIMIT 300", (aid, since))]
+        ev = c.execute("SELECT e.kind,e.target_type,e.target_id,e.at,e.detail FROM agent_events e JOIN agent_runs r ON r.id=e.run_id "
+                       "WHERE r.agent_id=? AND e.at>=? AND e.kind IN ('read','wrote') AND e.target_id<>'' ORDER BY e.at DESC LIMIT 5000",
+                       (aid, since)).fetchall()
+    items = {}
+    for e in ev:
+        k = (e['target_type'], e['target_id'])
+        i = items.get(k)
+        if not i:
+            i = items[k] = {'target_type': e['target_type'], 'target_id': e['target_id'], 'kind': e['kind'], 'last': e['at'], 'first': e['at'],
+                            'read': 0, 'wrote': 0, 'times': 0, 'details': []}
+        i[e['kind']] += 1; i['times'] += 1; i['first'] = e['at']
+        if i['read'] and i['wrote']: i['kind'] = 'read and wrote'
+        dt = (e['detail'] or '').strip()
+        if dt and dt not in i['details'] and len(i['details']) < 3: i['details'].append(dt)
+    rows = list(items.values())[:300]
     try:
         import activity_log
         names = activity_log._names([r['target_id'] for r in rows])
     except Exception:
         names = {}
-    for r in rows: r['target_name'] = names.get(r['target_id'], '')
-    return _mask(rows) if demo else rows
+    for r in rows: r['target_name'] = names.get(r['target_id'], '').split(': ', 1)[-1] if names.get(r['target_id']) else ''
+    _describe(rows)
+    if demo:
+        _mask(rows)
+        for r in rows: r['location'] = r['href'] = ''; r['details'] = []
+    return rows
+
+
+def touched_groups(rows):
+    """The rows grouped by where the data came from, in a fixed order, with counts."""
+    out = []
+    for key, name, note in SOURCE_GROUPS:
+        g = [r for r in rows if r['group'] == key]
+        if g: out.append({'key': key, 'name': name, 'note': note, 'items': g, 'read': sum(1 for r in g if r['read']),
+                          'wrote': sum(1 for r in g if r['wrote'])})
+    return out
 
 
 def versions(aid):
@@ -450,7 +548,7 @@ def note(kind, target_type='', target_id='', detail=''):
     if not rid: return
     with store.db() as c:
         c.execute('INSERT INTO agent_events(run_id,at,kind,target_type,target_id,detail) VALUES (?,?,?,?,?,?)',
-                  (rid, _now(), kind, target_type, str(target_id or '')[:80], str(detail or '')[:500]))
+                  (rid, _now(), kind, target_type, str(target_id or '')[:500], str(detail or '')[:500]))
 
 
 def add_cost(usd):
@@ -587,7 +685,7 @@ def app_note(rid, kind, target_type, ids, detail=''):
     with store.db() as c:
         for i in ids:
             c.execute('INSERT INTO agent_events(run_id,at,kind,target_type,target_id,detail) VALUES (?,?,?,?,?,?)',
-                      (rid, _now(), kind, target_type, str(i)[:80], str(detail)[:500]))
+                      (rid, _now(), kind, target_type, str(i)[:500], str(detail)[:500]))
 
 
 def filter_records(a, records):

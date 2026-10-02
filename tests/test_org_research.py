@@ -75,6 +75,8 @@ runs = A.runs('temple-org-research')['runs']
 t('research runs appear on the Agents page', runs and any(x['status'] == 'complete' for x in runs))
 d = A.run_detail([x for x in runs if x['status'] == 'complete'][-1]['id'])
 t('the run records the facts it proposed', d['touched'].get('wrote', {}).get('org_fact', 0) == 2)
+t('the run records the web pages it read, cited or not', d['touched'].get('read', {}).get('web', 0) >= 2
+  and any(e['target_type'] == 'web' and e['target_id'].startswith('http') and 'cited' in e['detail'] for e in d['events']))
 
 # 6. provider adapters read the search results correctly
 class FakeAnthropic:

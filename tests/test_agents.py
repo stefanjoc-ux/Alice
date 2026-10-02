@@ -41,7 +41,7 @@ t('run recorded as complete', r['status'] == 'complete' and runs and runs[0]['st
 t('model cost attributed to the run', runs[0]['calls'] == 1 and runs[0]['cost_usd'] > 0)
 d = A.run_detail(runs[0]['id'])
 t('run records what it read (the proposal and the memories compared)', d['touched']['read']['memory'] >= 2 and any(e['target_id'] == old for e in d['events']))
-t('data touched lists the item by name', any(i['target_name'] == 'Memory: Carport roof' for i in A.touched_items('temple-review')))
+t('data touched lists the item by name', any(i['target_name'] == 'Carport roof' and i['group'] == 'memories' for i in A.touched_items('temple-review')))
 
 # 3. three failures in a row pause the agent; Actions says so; it then refuses to run
 MODE['fail'] = True

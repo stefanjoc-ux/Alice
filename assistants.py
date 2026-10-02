@@ -258,7 +258,7 @@ def ask(aid, question, history=()):
     for e in ex:
         if total + len(e['text']) > DOC_CONTEXT: break
         used.append(e); total += len(e['text'])
-    for e in used: agents.note('read', 'document', e['name'], f'section {e["section"] or "best match"} (read on demand, not stored)')
+    for e in used: agents.note('read', 'document', e['path'], f'section {e["section"]}' if e['section'] else 'best matching passages')
     if not used:
         _outcome(aid, 'answered', 'summaries did not answer; no usable document extract' + ('; ' + '; '.join(skipped) if skipped else ''))
         return {'status': 'answered', 'sources': [], 'notes': notes, 'reply': not_found}

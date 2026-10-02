@@ -213,6 +213,7 @@ def _research(name, website):
         if r.get('duplicate'): duplicates += 1; continue
         proposed += 1; ids.append(r['id'])
         used[url] = title or str(f.get('source_title') or '')[:200]
+    for u, t in seen.items(): agents.note('read', 'web', u, ((t or '')[:160] + ' · ' if t else '') + ('cited' if u in used else 'returned by the search, not cited'))
     for fid in ids: agents.note('wrote', 'org_fact', fid, 'proposed from public web')
     sources = [{'url': u, 'title': (used.get(u) or t or _domain(u))[:200], 'cited': u in used} for u, t in seen.items()][:40]
     sources.sort(key=lambda s: not s['cited'])

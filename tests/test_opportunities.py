@@ -92,6 +92,7 @@ t('a paused agent does not scan on schedule (and does not crash the scheduler)',
 A.set_status('temple-opportunities', 'active')
 runs = A.runs('temple-opportunities')['runs']
 t('scans appear on the Agents page with what they wrote', runs and A.run_detail([x for x in runs if x['status'] == 'complete'][-1]['id'])['touched'].get('wrote', {}).get('opportunity') == 2)
+t('scans record the web pages they read', A.run_detail([x for x in runs if x['status'] == 'complete'][-1]['id'])['touched'].get('read', {}).get('web', 0) >= 1)
 t('unknown organisation refused', cl.post('/admin/api/opportunities/scan', json={'org': 'Nobody'}, headers=H).status_code == 400)
 O.create('OFFICIAL-SENSITIVE Unit', 'other')
 n_before = len(calls)

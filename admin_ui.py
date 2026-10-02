@@ -270,7 +270,7 @@ nav{display:flex;gap:20px;flex-wrap:wrap}.sidebar nav{display:contents}
 .anat-guards{list-style:none;padding-left:0!important}.anat-guards li.off{color:var(--faint);text-decoration:line-through}
 .ag-map-svg{width:100%;height:auto;display:block}.m-head{font-size:13px;font-weight:600;fill:#5d7385;letter-spacing:.06em;text-transform:uppercase}
 .m-rules{fill:#f1ebf7;stroke:#9d86c0;stroke-width:1.5;stroke-dasharray:6 5}.m-rules-label{font-size:12px;fill:#634394;font-weight:600}
-.m-store{fill:#fff;stroke:#89b1bf}.m-store-t{font-size:13px;fill:#14324a;font-weight:600}
+.m-store{fill:#fff;stroke:#89b1bf}.m-outside{fill:#f6f8fa;stroke:#9fb2c1;stroke-width:1.2;stroke-dasharray:4 4}.m-outside-label{font-size:12px;fill:#4b5a66;font-weight:600}.m-src{fill:#fff;stroke:#b7a46a}.m-link.ext{stroke-dasharray:5 4;stroke:#8a6d1f}.m-link.ext.app{stroke:#634394}.m-store-t{font-size:13px;fill:#14324a;font-weight:600}
 .m-link{fill:none;stroke:#075e79;stroke-opacity:.35;stroke-width:1.5}.m-link.app{stroke:#634394}.m-link.off{stroke:#b9c6cf;stroke-dasharray:3 4}
 .m-node{cursor:pointer}.m-node rect{fill:#fff;stroke:#89b1bf}.m-node.app rect{stroke:#c7b8dd}.m-node:hover rect,.m-node:focus rect{stroke:#075e79;stroke-width:2}.m-node.off rect{fill:#f4f6f8;stroke:#c1cbd3}
 .m-name{font-size:13px;font-weight:600;fill:#14324a}.m-node.off .m-name{fill:#8aa0b0}.m-sub{font-size:11px;fill:#5d7385}
@@ -279,6 +279,10 @@ nav{display:flex;gap:20px;flex-wrap:wrap}.sidebar nav{display:contents}
 .ag-anat-edit{border-top:1px solid var(--line);margin-top:16px;padding-top:4px}.ag-anat-edit input,.ag-anat-edit textarea{width:100%}
 @media(max-width:1100px){.anat{grid-template-columns:repeat(3,minmax(0,1fr))}.anat-stage:nth-child(3):after{display:none}}
 .ag-perms{display:grid;gap:10px;margin:6px 0 10px}.ag-perm strong{margin-right:6px}
+.dt-bar{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 8px}.dt-group{margin:12px 0;border:1px solid var(--line);border-radius:8px;background:#fff}.dt-head{cursor:pointer;padding:9px 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.dt-out{margin-left:auto}.dt-note{margin:0 12px 6px}.dt-table{margin:0}.dt-table{table-layout:fixed;width:100%}.dt-table th:nth-child(1){width:38%}.dt-table th:nth-child(2){width:32%}.dt-table th:nth-child(3){width:16%}.dt-table td{vertical-align:top;overflow-wrap:anywhere}.dt-loc{font-size:12px;margin-top:3px;overflow-wrap:anywhere}.dt-loc code{font-size:11.5px;background:#f4f6f8;padding:1px 4px;border-radius:4px}
+@media(max-width:700px){.dt-table,.dt-table tbody,.dt-table tr,.dt-table td{display:block;width:auto!important}.dt-table tr:first-child{display:none}.dt-table tr{padding:8px 12px;border-top:1px solid var(--line)}.dt-table td{padding:2px 0!important;border:0!important}.dt-out{margin-left:0}}
+.dt-loc .mini-act{margin-left:6px!important;padding:1px 8px!important}.dt-bar .chips{display:flex;flex-wrap:wrap;gap:6px}
 .ag-events{max-height:320px;overflow:auto;background:#fff;border:1px solid var(--line);border-radius:6px;padding:8px 10px;line-height:1.7}
 @media(max-width:900px){.ag-stats{grid-template-columns:1fr 1fr}.ag-facts{grid-template-columns:1fr}.ag-mini{grid-template-columns:1fr 1fr}}
 .k-text{max-height:360px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;border:1px solid #c9d7e1;border-radius:6px;padding:10px;font-size:13px}
@@ -371,7 +375,7 @@ if(PAGE==='memories'){
  const TABS=[['proposed','Awaiting approval'],['approved','Active'],['superseded','Superseded'],['retired','Retired'],['rejected','Rejected'],['all','All']];
  const LABEL={proposed:'Awaiting approval',approved:'Active',superseded:'Superseded',retired:'Retired',rejected:'Rejected'};
  const params=new URLSearchParams(location.search);
- const state={status:TABS.some(t=>t[0]===params.get('status'))?params.get('status'):'approved',kind:params.get('kind')==='decision'?'decision':'',category:'',query:'',sort:'newest',offset:0,rows:[],open:new Set(),owner:params.get('owner')||''};
+ const state={status:TABS.some(t=>t[0]===params.get('status'))?params.get('status'):'approved',kind:params.get('kind')==='decision'?'decision':'',category:'',query:(params.get('q')||'').slice(0,200),sort:'newest',offset:0,rows:[],open:new Set(),owner:params.get('owner')||''};
  const picked=new Set();let known=[],timer=null;
  const MODE={auto:'Auto-assign',suggest:'Suggest only',off:'Off'};
  function fillSelect(sel,value,blank='Uncategorised'){sel.replaceChildren();const o=document.createElement('option');o.value='';o.textContent=blank;sel.append(o);for(const k of known){const x=document.createElement('option');x.value=k;x.textContent=k;sel.append(x)}sel.value=known.includes(value)?value:'';}
@@ -426,6 +430,7 @@ if(PAGE==='memories'){
   $('mem-cats').replaceChildren(...cats);
   render();$('mem-count').textContent='Showing '+state.rows.length+' of '+d.total;$('mem-more').hidden=state.offset===null}
  records=()=>load();
+ if(state.query)$('mem-query').value=state.query;
  $('mem-query').oninput=()=>{clearTimeout(timer);timer=setTimeout(()=>{state.query=$('mem-query').value.trim();run(()=>load())},300)};
  $('mem-sort').onchange=()=>{state.sort=$('mem-sort').value;run(()=>load())};
  $('mem-owner').onchange=()=>{state.owner=$('mem-owner').value;picked.clear();run(()=>load())};
@@ -510,7 +515,7 @@ if(PAGE==='overview')run(async()=>{const d=await api('/admin/api/overview');for(
 SCRIPT += r"""
 if(PAGE==='knowledge'){
  const KQ=new URLSearchParams(location.search);
- const st={status:['active','draft','rejected','archived','replaced','all'].includes(KQ.get('status'))?KQ.get('status'):'active',kind:'',label:'',category:KQ.get('category')||'',client:'',owner:KQ.get('owner')||'',query:'',offset:0,rows:[],open:new Set(),picked:new Set(),cache:{}};let D=null,timer=null;
+ const st={status:['active','draft','rejected','archived','replaced','all'].includes(KQ.get('status'))?KQ.get('status'):'active',kind:'',label:'',category:KQ.get('category')||'',client:'',owner:KQ.get('owner')||'',query:(KQ.get('q')||'').slice(0,200),offset:0,rows:[],open:new Set(),picked:new Set(),cache:{}};let D=null,timer=null;
  const KL={general:'General',internal:'Internal',client:'Client-confidential',local:'Local only'};
  const KIND={file:'File',note:'Note',meeting:'Meeting'};const STAT=[['active','Active'],['draft','Drafts'],['archived','Archived'],['replaced','Replaced'],['rejected','Rejected']];
  const WHO=p=>p.source==='temple'?'Temple':'The proposer';
@@ -586,6 +591,7 @@ if(PAGE==='knowledge'){
    for(const id of ['k-b-label','kn-label','km-label'])opts($(id),labList(),$(id).value||(id==='km-label'?'internal':'general'))}
   await render();$('k-count').textContent='Showing '+st.rows.length+' of '+D.total;$('k-more').hidden=st.offset===null}
  // filters and bulk
+ if(st.query)$('k-query').value=st.query;
  $('k-query').oninput=()=>{clearTimeout(timer);timer=setTimeout(()=>{st.query=$('k-query').value.trim();run(()=>load())},300)};
  $('k-f-category').onchange=()=>{st.category=$('k-f-category').value;run(()=>load())};$('k-f-client').onchange=()=>{st.client=$('k-f-client').value;run(()=>load())};
  $('k-review-save').onclick=()=>run(async()=>{const x=await api('/admin/api/knowledge-review-days','PUT',{days:Number($('k-review-days').value||0)});$('notice').textContent=x.days?'New and approved items are now due for review after '+x.days+' days.':'No default review date for new items.'});$('k-f-owner').onchange=()=>{st.owner=$('k-f-owner').value;st.picked.clear();run(()=>load())};
@@ -1194,10 +1200,39 @@ if(PAGE==='agents'){
     const l=el('div','','ag-events');for(const e of d.events.slice(-200)){const row=el('div','','small');row.append(el('span',new Date(e.at).toLocaleTimeString('en-GB')+'  ','muted'),el('strong',e.kind+' '),document.createTextNode((e.target_name||[e.target_type,e.target_id].filter(Boolean).join(' '))+(e.detail?' · '+e.detail:'')));l.append(row)}
     if(!d.events.length)l.append(el('p','No details recorded for this run.','muted small'));dtd.append(l);dr.hidden=false})}
   body.append(t)}
- async function dataTab(a,body){const d=await api('/admin/api/agents/'+a.id+'/touched'+(dq?'?'+dq:''));body.append(el('p','Everything '+a.name+' read or wrote in the last 30 days, newest first.','muted small'));
-  if(!d.items.length){body.append(el('p','Nothing recorded.','muted'));return}
-  const t=el('table','','mem-table');const h=document.createElement('tr');for(const x of ['Item','Type','Read / wrote','Times','Last'])h.append(el('th',x));t.append(h);
-  for(const i of d.items){const tr=document.createElement('tr');tr.append(el('td',i.target_name||i.target_id),el('td',i.target_type,'small'),el('td',i.kind,'small'),el('td',String(i.times),'num'),el('td',when(i.last),'small'));t.append(tr)}body.append(t)}
+ const DT={days:30,kind:''};
+ const STATUSNAME={approved:'Active',active:'Active',proposed:'Awaiting approval',draft:'Draft',rejected:'Rejected',retired:'Retired',superseded:'Superseded',archived:'Archived',replaced:'Replaced',suggested:'Suggested',deleted:'No longer in Alice'};
+ const LABNAME={general:'General',internal:'Internal',client:'Client-confidential',local:'Local only'};
+ async function dataTab(a,body){const d=await api('/admin/api/agents/'+a.id+'/touched?days='+DT.days+(dq?'&'+dq:''));
+  const bar=el('div','','dt-bar');
+  const chips=(opts,cur,set)=>{const g=el('div','','chips');for(const [k,l] of opts){const b=el('button',l,'chip'+(cur===k?' on':''));b.type='button';b.onclick=()=>{set(k);body.replaceChildren();run(()=>dataTab(a,body))};g.append(b)}return g};
+  bar.append(chips([[7,'7 days'],[30,'30 days'],[90,'90 days'],[365,'A year']],DT.days,k=>DT.days=k),chips([['','Read and wrote'],['read','Read'],['wrote','Wrote']],DT.kind,k=>DT.kind=k));
+  body.append(bar);
+  const keep=i=>!DT.kind||i[DT.kind]>0;
+  const groups=d.groups.map(g=>({...g,items:g.items.filter(keep)})).filter(g=>g.items.length);
+  if(!groups.length){body.append(el('p','Nothing recorded in this period.','muted'));return}
+  const total=groups.reduce((n,g)=>n+g.items.length,0);
+  body.append(el('p',a.name+' touched '+total+' item'+(total===1?'':'s')+' from '+groups.length+' source'+(groups.length===1?'':'s')+' in the last '+(DT.days===365?'year':DT.days+' days')+': '+groups.map(g=>g.name+' ('+g.items.length+')').join(', ')+'.','muted small'));
+  for(const g of groups){const sec=document.createElement('details');sec.open=true;sec.className='dt-group';
+   const sm=el('summary','','dt-head');sm.append(el('strong',g.name),el('span',g.items.length+' item'+(g.items.length===1?'':'s')+(g.read?' · '+g.read+' read':'')+(g.wrote?' · '+g.wrote+' written':''),'muted small'));
+   if(g.key==='web'||g.key==='library')sm.append(el('span','Outside Alice','tag dt-out'));sec.append(sm);
+   if(g.note)sec.append(el('p',g.note,'muted small dt-note'));
+   const t=el('table','','mem-table dt-table');const h=document.createElement('tr');for(const x of ['Item and where it is','What happened','Status','Last'])h.append(el('th',x));t.append(h);
+   for(const i of g.items){const tr=document.createElement('tr');const c1=document.createElement('td');
+    const nm=i.href&&g.key!=='web'?Object.assign(el('a',i.target_name),{href:i.href}):el('strong',i.target_name);c1.append(nm,el('div',i.type_name,'muted small'));
+    if(i.location){const loc=el('div','','dt-loc');
+     if(g.key==='web'&&i.href){const u=el('a',i.location);u.href=i.href;u.target='_blank';u.rel='noopener noreferrer';loc.append(u)}
+     else loc.append(el('code',i.location));
+     if(g.key==='library'||(g.key!=='web'&&/[\\\/]/.test(i.location)&&!/^https?:/.test(i.location))){const cp=el('button','Copy path','secondary mini-act');cp.type='button';cp.onclick=()=>{navigator.clipboard?.writeText(i.location);cp.textContent='Copied'};loc.append(cp)}
+     c1.append(loc)}
+    const c2=document.createElement('td');c2.className='small';
+    const parts=[];if(i.read)parts.push('Read'+(i.read>1?' '+i.read+'×':''));if(i.wrote)parts.push((g.key==='organisations'||g.key==='memories'||g.key==='knowledge'?'Proposed or wrote':'Wrote')+(i.wrote>1?' '+i.wrote+'×':''));
+    c2.append(el('div',parts.join(' · ')));for(const x of (i.details||[]))c2.append(el('div',x,'muted'));
+    const c3=document.createElement('td');if(i.status)c3.append(badge(STATUSNAME[i.status]||i.status,i.status==='deleted'?'v-warn':'v-none'));if(i.label)c3.append(document.createTextNode(' '),el('span',LABNAME[i.label]||i.label,'badge k-lab-'+i.label));
+    if(!i.status&&!i.label)c3.append(el('span',g.key==='web'||g.key==='library'?'Not stored':'—','muted small'));
+    tr.append(c1,c2,c3,el('td',when(i.last)+(i.first!==i.last?' (first '+when(i.first)+')':''),'small'));t.append(tr)}
+   sec.append(t);body.append(sec)}
+ }
  function settings(a,body){
   const pu=document.createElement('textarea');pu.value=a.purpose;pu.maxLength=1000;pu.rows=3;const lp=el('label','Purpose and tasks');lp.append(pu);body.append(lp);
   const lim=el('div','','k-meta-row');const extra={};
@@ -1247,19 +1282,27 @@ if(PAGE==='agents'){
  function S(tag,attrs,text){const e=document.createElementNS(SVGNS,tag);for(const [k,v] of Object.entries(attrs||{}))e.setAttribute(k,v);if(text!=null)e.textContent=text;return e}
  function drawMap(){const L=st.L,box=$('ag-map');box.replaceChildren();
   const left=L.agents.filter(a=>a.kind!=='app'),right=L.agents.filter(a=>a.kind==='app');
-  const STORES=[['memories','Memories and decisions'],['knowledge','Knowledge'],['organisations','Organisation profiles'],['chats','Chats and conversations'],['activity','Activity and usage']];
-  const rowH=58,top=70,W=1120,rows=Math.max(left.length,right.length,STORES.length+1),H=top+rows*rowH+120;
-  const svg=S('svg',{viewBox:'0 0 '+W+' '+H,class:'ag-map-svg',role:'img','aria-label':'System map of Alice agents'});
+  const STORES=[['memories','Memories and decisions'],['knowledge','Knowledge and files'],['organisations','Organisation profiles'],['chats','Chats and conversations'],['activity','Activity and usage']];
+  const OUTSIDE=[['web','The public web','web search, cited URLs'],['documents','Document library','full documents, on demand'],['input','What people type','questions, transcripts']];
+  // left to right: data outside Alice → automations → Alice's data (inside the rules) ← connected apps; you at the gate
+  const rowH=58,top=70,W=1320,srcX=115,autoX=410,cx=770,appX=W-150,coreW=290,coreY=top-10,coreH=STORES.length*rowH+20;
+  const rows=Math.max(left.length,right.length,STORES.length+3),youY=coreY+coreH+70,H=Math.max(top+rows*rowH+40,youY+70);
+  const svg=S('svg',{viewBox:'0 0 '+W+' '+H,class:'ag-map-svg',role:'img','aria-label':'System map: data sources outside Alice, Alice automations, Alice’s data and connected apps'});
   const defs=S('defs');const mk=S('marker',{id:'arw',viewBox:'0 0 10 10',refX:'9',refY:'5',markerWidth:'7',markerHeight:'7',orient:'auto-start-reverse'});mk.append(S('path',{d:'M0,0 L10,5 L0,10 z',fill:'#7e95a6'}));defs.append(mk);svg.append(defs);
-  svg.append(S('text',{x:150,y:34,'text-anchor':'middle',class:'m-head'},'Alice automations'),S('text',{x:W-150,y:34,'text-anchor':'middle',class:'m-head'},'Connected apps'));
-  // the rules boundary and the core
-  const cx=W/2,coreW=300,coreY=top-10,coreH=STORES.length*rowH+20;
+  svg.append(S('text',{x:srcX,y:34,'text-anchor':'middle',class:'m-head'},'Outside Alice'),S('text',{x:autoX,y:34,'text-anchor':'middle',class:'m-head'},'Alice automations'),S('text',{x:appX,y:34,'text-anchor':'middle',class:'m-head'},'Connected apps'));
+  // the rules boundary around Alice's own data
   svg.append(S('rect',{x:cx-coreW/2-40,y:coreY-34,width:coreW+80,height:coreH+68,rx:22,class:'m-rules'}));
-  svg.append(S('text',{x:cx,y:coreY-14,'text-anchor':'middle',class:'m-rules-label'},'Rules, enforced at the boundary'));
+  svg.append(S('text',{x:cx,y:coreY-14,'text-anchor':'middle',class:'m-rules-label'},'Alice’s data, rules enforced at the boundary'));
   const links=S('g',{class:'m-links'});svg.append(links);
   const ys={};STORES.forEach(([k,label],i)=>{const y=coreY+10+i*rowH;ys[k]=y+20;svg.append(S('rect',{x:cx-coreW/2,y,width:coreW,height:40,rx:9,class:'m-store'}),S('text',{x:cx,y:y+25,'text-anchor':'middle',class:'m-store-t'},label))});
+  // data sources outside Alice, spread down the left: read when needed, never stored
+  const span=Math.max(left.length,3)*rowH,srcW=190,srcY={};
+  svg.append(S('rect',{x:srcX-srcW/2-12,y:top-12,width:srcW+24,height:span+8,rx:16,class:'m-outside'}));
+  OUTSIDE.forEach(([k,label,sub],i)=>{const y=top+Math.round((i+0.5)*span/OUTSIDE.length)-28;srcY[k]=y+24;
+   svg.append(S('rect',{x:srcX-srcW/2,y,width:srcW,height:48,rx:9,class:'m-src'}),S('text',{x:srcX,y:y+20,'text-anchor':'middle',class:'m-store-t'},label),S('text',{x:srcX,y:y+37,'text-anchor':'middle',class:'m-small'},sub))});
+  svg.append(S('text',{x:srcX,y:top+span+14,'text-anchor':'middle',class:'m-small'},'Read when needed and checked'),S('text',{x:srcX,y:top+span+28,'text-anchor':'middle',class:'m-small'},'by the rules; never stored'));
   // you, at the gate
-  const youY=coreY+coreH+70;svg.append(S('line',{x1:cx,y1:coreY+coreH+34,x2:cx,y2:youY-4,class:'m-gate','marker-end':'url(#arw)'}));
+  svg.append(S('line',{x1:cx,y1:coreY+coreH+34,x2:cx,y2:youY-4,class:'m-gate','marker-end':'url(#arw)'}));
   svg.append(S('text',{x:cx+10,y:coreY+coreH+56,class:'m-small'},'proposals wait for you'));
   svg.append(S('rect',{x:cx-110,y:youY,width:220,height:40,rx:20,class:'m-you'}),S('text',{x:cx,y:youY+25,'text-anchor':'middle',class:'m-you-t'},'You: approve, retire, pause'));
   const node=(a,x,y,side)=>{const g=S('g',{class:'m-node'+(a.status!=='active'?' off':'')+(a.kind==='app'?' app':''),tabindex:'0',role:'link'});g.append(S('title',{},a.name+' · '+a.status));
@@ -1267,12 +1310,14 @@ if(PAGE==='agents'){
    g.append(S('text',{x:x-104,y:y+35,class:'m-sub'},a.status!=='active'?a.status:(a.kind==='app'?plural('call',a.calls_month)+' this month':plural('run',a.runs_month)+' this month')));
    g.append(S('circle',{cx:x+104,cy:y+22,r:5,class:'m-dot '+a.status}));
    g.onclick=()=>go(a.id);g.onkeydown=e=>{if(e.key==='Enter')go(a.id)};
-   for(const d of (a.anatomy_live?.data||[])){if(!ys[d.key])continue;const x1=side<0?x+120:x-120,x2=side<0?cx-coreW/2-2:cx+coreW/2+2;
-    links.append(S('path',{d:`M${x1},${y+22} C${(x1+x2)/2},${y+22} ${(x1+x2)/2},${ys[d.key]} ${x2},${ys[d.key]}`,class:'m-link'+(a.kind==='app'?' app':'')+(a.status!=='active'?' off':'')}))}
+   const cls='m-link'+(a.kind==='app'?' app':'')+(a.status!=='active'?' off':'');
+   for(const d of (a.anatomy_live?.data||[])){
+    if(ys[d.key]!=null){const x1=side<0?x+120:x-120,x2=side<0?cx-coreW/2-2:cx+coreW/2+2;links.append(S('path',{d:`M${x1},${y+22} C${(x1+x2)/2},${y+22} ${(x1+x2)/2},${ys[d.key]} ${x2},${ys[d.key]}`,class:cls}))}
+    else if(srcY[d.key]!=null&&side<0){const x1=srcX+srcW/2+2,x2=x-122;links.append(S('path',{d:`M${x1},${srcY[d.key]} C${(x1+x2)/2},${srcY[d.key]} ${(x1+x2)/2},${y+22} ${x2},${y+22}`,class:cls+' ext','marker-end':'url(#arw)'}))}}
    svg.append(g)};
-  left.forEach((a,i)=>node(a,150,top+i*rowH,-1));right.forEach((a,i)=>node(a,W-150,top+i*rowH,1));
+  left.forEach((a,i)=>node(a,autoX,top+i*rowH,-1));right.forEach((a,i)=>node(a,appX,top+i*rowH,1));
   box.append(svg);
-  $('ag-map-note').textContent='Lines show which data each agent reaches; every line passes through the rules. Greyed agents are paused or stopped. Click one to open it.'}
+  $('ag-map-note').textContent='Left to right: data sources outside Alice (dashed) feed the automations that read them; solid lines show the Alice data each agent reaches, always through the rules. Connected apps only reach Alice’s data. Greyed agents are paused or stopped. Click one to open it.'}
  readUrl();run(load);
 }
 """

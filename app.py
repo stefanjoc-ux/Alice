@@ -1264,7 +1264,9 @@ def admin_agents():
 def admin_agent_runs(aid: str, offset: int=Query(0,ge=0)): return agents.runs(aid,50,offset)
 
 @app.get('/admin/api/agents/{aid}/touched')
-def admin_agent_touched(aid: str, days: int=Query(30,ge=1,le=365), demo: bool=False): return {'items':agents.touched_items(aid,days,demo)}
+def admin_agent_touched(aid: str, days: int=Query(30,ge=1,le=365), demo: bool=False):
+    rows=agents.touched_items(aid,days,demo)
+    return {'items':rows,'groups':agents.touched_groups(rows),'days':days}
 
 @app.get('/admin/api/agents/{aid}/versions')
 def admin_agent_versions(aid: str): return {'versions':agents.versions(aid)}

@@ -209,6 +209,10 @@ def _scan(org, trigger):
                       (oid, org, title, _txt(o.get('summary'), 600), _txt(o.get('why_now'), 400), offering, size, conf, _txt(o.get('next_step'), 300),
                        _txt(o.get('timing'), 120), json.dumps(ev), 'suggested', store.now(), store.now(), trigger))
         existing.append(_norm(title)); ids.append(oid); opps_added += 1
+    cited = set()
+    with store.db() as c:
+        for oid in ids: cited.update(json.loads(c.execute('SELECT evidence FROM opportunities WHERE id=?', (oid,)).fetchone()[0] or '[]'))
+    for u, t in seen.items(): agents.note('read', 'web', u, ((t or '')[:160] + ' · ' if t else '') + ('cited as evidence' if u in cited else 'returned by the search'))
     for oid in ids: agents.note('wrote', 'opportunity', oid, 'suggested')
     summary = f'{opps_added} new opportunit{"y" if opps_added == 1 else "ies"}, {news_added} news item{"" if news_added == 1 else "s"}' + \
               (f'; {len(dropped)} dropped' if dropped else '')
