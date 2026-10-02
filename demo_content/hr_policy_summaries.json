@@ -1,7 +1,7 @@
 {
- "about": "Summaries of the demonstration Employee Policy Handbook v1.0 (fictional Example Organisation Ltd). The full handbook is not stored in Alice: it stays in the HR Policies document source (a folder simulating a SharePoint library), and each summary points to its section.",
+ "about": "Summaries of the demonstration Employee Policy Handbook v1.0 (fictional Example Organisation Ltd). The full handbook is not stored in Alice: it stays in the SharePoint document source (a folder simulating SharePoint), and each summary points to its section.",
  "document": "Employee Policy Handbook v1.0",
- "location": "Documents\\HR Policies\\Employee-Policy-Handbook-v1.0.docx",
+ "location": "Documents\\SharePoint\\Employee-Policy-Handbook-v1.0.docx",
  "owner": "Head of People",
  "category": "HR",
  "summaries": [

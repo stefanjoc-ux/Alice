@@ -63,4 +63,4 @@ t('Data touched names the source of each document', dt and dt[0]['where'].starts
 
 page = cl.get('/admin/documents').text
 t('the Documents page is in the menu and explains the flow', 'href="/admin/documents"' in cl.get('/admin/knowledge').text and 'Document sources' in page and 'ds-list' in page)
-t('the demo HR summaries point to the HR Policies source', json.loads((L.BASE / 'demo_content' / 'hr_policy_summaries.json').read_text(encoding='utf-8'))['location'].startswith('Documents\\HR Policies\\'))
+t('the demo HR summaries point to the SharePoint source', json.loads((L.BASE / 'demo_content' / 'hr_policy_summaries.json').read_text(encoding='utf-8'))['location'].startswith('Documents\\SharePoint\\'))
