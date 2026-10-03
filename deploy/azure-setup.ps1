@@ -93,6 +93,10 @@ function Key-Names {
 
 if (Want 'infra') {
   Say 'Infrastructure (about 10-15 minutes the first time)'
+  foreach ($ns in @('Microsoft.App', 'Microsoft.DBforPostgreSQL', 'Microsoft.ContainerRegistry', 'Microsoft.KeyVault',
+                    'Microsoft.OperationalInsights', 'Microsoft.Storage', 'Microsoft.Network', 'Microsoft.ManagedIdentity')) {
+    Az provider register --namespace $ns --wait --output none | Out-Null      # once per subscription; quick if already done
+  }
   Az group create -n $ResourceGroup -l $Location --output none | Out-Null
   Deploy 'infra' @{}
   Write-Host "Registry $($State.acrName), Key Vault $($State.keyVault), database $($State.postgresServer), file share $($State.storageAccount)/$($State.shareName)"
