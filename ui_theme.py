@@ -24,3 +24,41 @@ input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-vis
 .badge-count{position:absolute;top:-7px;right:-8px;background:var(--warn);color:#1b1203;border-radius:999px;font-size:11px;font-weight:700;padding:0 6px;line-height:17px}
 .sp{flex:1;min-width:8px}
 '''
+
+
+# ---------------- signed-in badge (top bar, under ALICE) ----------------
+# Filled from /me: in Azure the person Entra signed in (Container Apps sign-in headers); on the PC "This computer only".
+SIGNIN_CSS = r'''
+.brand{position:relative}.brand-home{color:inherit;text-decoration:none;display:flex;align-items:center}.brand-text{display:flex;flex-direction:column;align-items:flex-start;line-height:1.15;min-width:0;flex:1}
+.signin{display:inline-flex;align-items:center;gap:4px;margin-top:2px;padding:0;border:0;background:none;color:#8fd9b5;font:500 11px/1.2 "Segoe UI",system-ui,sans-serif;letter-spacing:0;cursor:pointer;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.signin,.signin:hover:not(:disabled),.signin:focus{background:none;border:0;padding:0;border-radius:3px}.signin svg,.signin-pop svg{flex:none;width:11px;height:11px}.signin-pop .ok svg{width:14px;height:14px}.signin.local{color:#a9bfd0;cursor:default}.signin:hover span,.signin:focus-visible span{text-decoration:underline}
+.signin-pop{position:absolute;top:46px;left:0;z-index:60;width:280px;padding:14px 16px;border-radius:10px;background:#fff;color:var(--ink);box-shadow:0 8px 28px rgba(10,30,50,.25);font-size:13px;letter-spacing:0;font-weight:400;text-align:left}
+.signin-pop[hidden]{display:none}.signin-pop b{display:block;font-size:14px;margin-bottom:2px}.signin-pop .muted{color:var(--muted)}
+.signin-pop .ok{display:flex;gap:6px;align-items:center;margin:10px 0;color:#1e7b4f;font-weight:600}.signin-pop a.out{display:inline-block;margin-top:4px}
+@media(max-width:900px){.brand .brand-text{display:flex}.brand .brand-text>a{display:none}.brand .signin span{display:none}.signin svg{width:14px;height:14px}.signin-pop{top:50px}}
+'''
+LOCK_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 7V5a4 4 0 1 1 8 0v2h.5A1.5 1.5 0 0 1 14 8.5v6A1.5 1.5 0 0 1 12.5 16h-9A1.5 1.5 0 0 1 2 14.5v-6A1.5 1.5 0 0 1 3.5 7H4Zm2 0h4V5a2 2 0 1 0-4 0v2Z"/></svg>'
+def brand_html(href='/', title='Alice'):
+    """The top-bar brand: logo and ALICE link home; the signed-in badge sits under ALICE (a button, so not inside the link)."""
+    from html import escape
+    return ('<div class="brand"><a class="brand-home" href="' + escape(href) + '" title="' + escape(title) + '"><img src="/static/favicon.png" alt=""></a>'
+            '<span class="brand-text"><a class="brand-home" href="' + escape(href) + '" title="' + escape(title) + '">ALICE</a>'
+            '<button type="button" class="signin" id="signin" hidden aria-haspopup="dialog" aria-expanded="false"></button></span></div>')
+SIGNIN_JS = r'''
+(()=>{const b=document.getElementById('signin');if(!b)return;const brand=b.closest('.brand');
+ fetch('/me',{credentials:'same-origin'}).then(r=>r.ok?r.json():null).then(me=>{if(!me)return;
+  const lock='__LOCK__';
+  if(!me.signed_in){b.classList.add('local');b.innerHTML=lock;const s=document.createElement('span');s.textContent='This computer only';b.append(s);b.title='Alice is running on this computer and is reachable only from it.';b.hidden=false;return}
+  b.innerHTML=lock;const s=document.createElement('span');s.textContent=me.name||me.email;b.append(s);b.title='Signed in securely as '+me.email;b.hidden=false;
+  const pop=document.createElement('div');pop.className='signin-pop';pop.hidden=true;pop.setAttribute('role','dialog');pop.setAttribute('aria-label','Signed in');
+  const n=document.createElement('b');n.textContent=me.name||me.email;const e=document.createElement('div');e.className='muted';e.textContent=me.email;
+  const ok=document.createElement('div');ok.className='ok';ok.innerHTML=lock;const t=document.createElement('span');t.textContent='Signed in securely with Microsoft Entra ID';ok.append(t);
+  const note=document.createElement('div');note.className='muted';note.textContent='Only the accounts you allowed can open Alice. Every action you take is recorded under this name.';
+  const out=document.createElement('a');out.className='out';out.href='/.auth/logout?post_logout_redirect_uri=/';out.textContent='Sign out';
+  pop.append(n,e,ok,note,out);brand.append(pop);
+  const toggle=(show)=>{pop.hidden=!show;b.setAttribute('aria-expanded',String(show))};
+  b.addEventListener('click',ev=>{ev.preventDefault();ev.stopPropagation();toggle(pop.hidden)});
+  pop.addEventListener('click',ev=>ev.stopPropagation());
+  document.addEventListener('click',()=>toggle(false));document.addEventListener('keydown',ev=>{if(ev.key==='Escape')toggle(false)});
+ }).catch(()=>{})})();
+'''.replace('__LOCK__', LOCK_SVG.replace("'", "\\'"))

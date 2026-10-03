@@ -108,7 +108,7 @@ A browser refresh is not enough: the old server process keeps running the old co
 |---|---|
 | `app.py` | Web app: chat page (HTML/JS), chat pipeline and tool loop, all HTTP routes |
 | `admin_ui.py` | Command centre pages (HTML/JS per page in `SECTIONS` and `SCRIPT`) |
-| `ui_theme.py` | Shared look for chat and Command centre: colours, type, buttons, inputs, top bar (`SHARED_CSS`) |
+| `ui_theme.py` | Shared look for chat and Command centre: colours, type, buttons, inputs, top bar (`SHARED_CSS`); the brand block `brand_html()` with the signed-in badge under ALICE (`SIGNIN_CSS`, `SIGNIN_JS`, filled from `GET /me`: the Entra name and email from the Container Apps sign-in headers, trusted only with `ALICE_TRUST_EASYAUTH=1`; on the PC "This computer only"; click for details and Sign out) |
 | `dbcompat.py` | PostgreSQL behind the SQLite-style calls (used when `ALICE_DATABASE_URL` is set) |
 | `migrate_to_postgres.py` | One-off copy of SQLite into PostgreSQL with per-table verification |
 | `substrate_store.py` | Database, chats, memories, categories, archive, decisions, quote matching |

@@ -215,7 +215,7 @@ SECTIONS = {
 CSS = r'''
 /* Command centre: same look as the chat page (shared tokens, buttons and top bar from ui_theme). */
 body{display:grid;grid-template-rows:52px minmax(0,1fr);height:100vh;height:100dvh;overflow:hidden}
-.page-title{position:absolute;left:calc(248px + (100% - 248px)/2);transform:translateX(-50%);margin:0;font-size:18px;line-height:24px;font-weight:700;color:#fff;white-space:nowrap;max-width:calc(100% - 640px);overflow:hidden;text-overflow:ellipsis}
+.page-title{position:absolute;left:calc(248px + (100% - 248px)/2);transform:translateX(-50%);margin:0;font-size:19px;line-height:24px;font-weight:700;letter-spacing:.01em;white-space:nowrap;max-width:calc(100% - 640px);overflow:hidden;text-overflow:ellipsis;padding:2px 6px 5px;color:#fff;background:linear-gradient(100deg,#ffffff 0%,#d4f5ff 35%,#7fe3ff 70%,#4fc3f7 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;border-bottom:2px solid transparent;border-image:linear-gradient(90deg,transparent,#4de6ff 30%,#8f7dff 70%,transparent) 1}.page-title .crumb{-webkit-text-fill-color:#9fb6c8;opacity:1;font-weight:600}.page-title .crumb:hover{-webkit-text-fill-color:#dff6ff}
 .shell{display:grid;grid-template-columns:248px minmax(0,1fr);grid-template-rows:minmax(0,1fr);min-height:0}
 .sidebar{background:#fff;border-right:1px solid var(--line);padding:12px 10px;overflow-y:auto;min-height:0;overscroll-behavior:contain;touch-action:pan-y;display:flex;flex-direction:column;gap:1px}
 .sidebar .grp{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:12px 10px 4px}.sidebar .grp:first-child{margin-top:2px}
@@ -1921,7 +1921,7 @@ NAV_GROUPS = [('Work', ['home', 'actions', 'temple', 'memories', 'knowledge', 'd
 
 
 def render_admin(page, token):
-    from ui_theme import SHARED_CSS
+    from ui_theme import SHARED_CSS, SIGNIN_CSS, SIGNIN_JS, brand_html
     from stage_ui import STAGE_CSS, STAGE_HTML, STAGE_JS
     import apps
     title, description = PAGES[page]
@@ -1936,13 +1936,13 @@ def render_admin(page, token):
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
             '<link rel="icon" href="/static/favicon.png" type="image/png">'
-            '<title>' + escape(title) + ' · Alice</title><style>' + SHARED_CSS + CSS + STAGE_CSS + '</style></head><body>'
-            '<header class="topbar"><a class="brand" href="/" title="Back to chat"><img src="/static/favicon.png" alt=""><span>ALICE</span></a>'
-            '<h1 class="page-title">' + heading + '</h1><div class="sp"></div><button id="demo-toggle" class="bar-link" type="button" title="Demo mode: only the Agents, Rule packs and Organisations pages, with fictional or replaced names and costs hidden">Demo mode</button><a class="bar-link" href="/">← Chat</a></header>'
+            '<title>' + escape(title) + ' · Alice</title><style>' + SHARED_CSS + SIGNIN_CSS + CSS + STAGE_CSS + '</style></head><body>'
+            '<header class="topbar">' + brand_html('/', 'Back to chat')
+            + '<h1 class="page-title">' + heading + '</h1><div class="sp"></div><button id="demo-toggle" class="bar-link" type="button" title="Demo mode: only the Agents, Rule packs and Organisations pages, with fictional or replaced names and costs hidden">Demo mode</button><a class="bar-link" href="/">← Chat</a></header>'
             '<div class="shell"><aside class="sidebar"><nav aria-label="Command centre">' + nav + '</nav></aside>'
             '<main class="content"><div class="inner"><p class="page-desc">' + escape(description) + '</p><div id="notice" role="status" aria-live="polite" title="Click to dismiss"></div>'
             + SECTIONS[page] + '</div></main></div>' + STAGE_HTML + '<script>const PAGE=' + json.dumps(page) + ';'
-            + DEMO_PRELUDE + SCRIPT.replace('__TOKEN__', token) + NAV_SCRIPT + STAGE_JS + '</script></body></html>')
+            + DEMO_PRELUDE + SCRIPT.replace('__TOKEN__', token) + NAV_SCRIPT + STAGE_JS + SIGNIN_JS + '</script></body></html>')
 
 
 DEMO_PRELUDE = r"""

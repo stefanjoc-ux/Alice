@@ -705,10 +705,10 @@ def _job(pid):
         reports.append(dict(review(p['assistant_id'], job, draft, pricing), round=2, source='automatic revision'))
     _save(pid, stage='Building the Word document', qa=reports)
     doc = _build(p, a, job, draft, pricing)
-    _save(pid, status='done', stage='', document_id=doc['id'])
-    with store.db() as c:
+    with store.db() as c:     # logged before it shows as done, so anything waiting for "done" also sees the log entry
         store.audit(c, 'proposal_written', pid, 'assistant', f'{p["title"]}: QA {reports[-1]["verdict"]}'
                     + (f' ({reports[-1]["score"]}/100)' if reports[-1]['score'] is not None else '') + f', {len(reports)} QA round(s)')
+    _save(pid, status='done', stage='', document_id=doc['id'])
 
 
 def _build(p, a, job, draft, pricing):

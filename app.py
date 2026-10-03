@@ -28,7 +28,7 @@ import autoapprove
 import mileage
 import apps
 from admin_ui import render_admin, PAGES
-from ui_theme import SHARED_CSS
+from ui_theme import SHARED_CSS, SIGNIN_CSS, SIGNIN_JS, brand_html
 import secrets
 import asyncio
 import time
@@ -1116,6 +1116,22 @@ def _mileage_refresh():
     for i in mileage.imports():
         try: mileage.refresh_drafts(i['id'])
         except ValueError: pass
+
+@app.get('/me')
+def me(request: Request):
+    """Who is signed in, for the badge in the top bar. In Azure, Container Apps sign-in (Entra ID) sets these headers and
+    strips any a caller sends; they are trusted only with ALICE_TRUST_EASYAUTH=1. On the PC Alice listens on this computer only."""
+    if os.environ.get('ALICE_TRUST_EASYAUTH') != '1':
+        return {'signed_in': False}
+    email = ' '.join(request.headers.get('x-ms-client-principal-name', '').split())[:200]
+    if not email: return {'signed_in': False}
+    name = ''
+    try:
+        import base64
+        claims = json.loads(base64.b64decode(request.headers.get('x-ms-client-principal', '') + '==').decode('utf-8'))
+        name = next((c.get('val', '') for c in claims.get('claims', []) if c.get('typ') == 'name'), '')
+    except Exception: name = ''
+    return {'signed_in': True, 'email': email, 'name': ' '.join(str(name).split())[:120], 'provider': 'Microsoft Entra ID'}
 
 @app.get('/admin/api/apps')
 def admin_apps():
@@ -2525,7 +2541,7 @@ body{display:grid;grid-template-rows:52px minmax(0,1fr);overflow:hidden}
 </style></head><body>
 <header class="topbar">
  <button id="menu" type="button" aria-label="Chats">☰</button>
- <a class="brand" href="/" title="Alice"><img src="/static/favicon.png" alt=""><span>ALICE</span></a>
+ __BRAND__
  <div class="title-wrap">
   <div class="title-line"><h1 id="chat-title" title="Chat title: click to rename">New chat</h1>
    <span class="title-tools"><button id="rename-chat" type="button" class="ghost" title="Rename chat" aria-label="Rename chat">✎</button>
@@ -2768,4 +2784,4 @@ guard(async()=>{await setupVoice();await refreshFiles();const chats=await api('/
  const asked=chats.find(c=>c.id===requested);if(asked){await loadChat(asked.id);return}
  const empty=chats.find(c=>!c.turns);if(empty)await loadChat(empty.id);else await createChat()});
 
-</script></body></html>'''.replace('__SHARED_CSS__', SHARED_CSS).replace('__CHAT_ADMIN_TOKEN__', ADMIN_TOKEN).replace('__BANNER_V__', str(int(BANNER.stat().st_mtime)) if BANNER.is_file() else '0')
+__SIGNIN_JS__</script></body></html>'''.replace('__SHARED_CSS__', SHARED_CSS + SIGNIN_CSS).replace('__BRAND__', brand_html('/', 'Alice')).replace('__SIGNIN_JS__', SIGNIN_JS).replace('__CHAT_ADMIN_TOKEN__', ADMIN_TOKEN).replace('__BANNER_V__', str(int(BANNER.stat().st_mtime)) if BANNER.is_file() else '0')

@@ -97,7 +97,11 @@ def wait(pid, secs=20):
     end = time.time() + secs
     while time.time() < end:
         p = cl.get(f'/assistant/proposal-writer/proposals/{pid}').json()
-        if p['status'] != 'running': return p
+        if p['status'] != 'running':
+            import threading    # the job also logs and adds its cost as it finishes: let its thread end first
+            for th in threading.enumerate():
+                if th.name in ('proposal-' + pid[:6], 'proposal-recheck-' + pid[:6]): th.join(10)
+            return cl.get(f'/assistant/proposal-writer/proposals/{pid}').json()
         time.sleep(0.1)
     return p
 
