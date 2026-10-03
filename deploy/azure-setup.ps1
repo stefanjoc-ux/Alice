@@ -163,9 +163,10 @@ function Run-Job($name) {
     if ($st -in @('Succeeded', 'Failed', 'Stopped')) { break }
   }
   Write-Host "$name finished: $st"
-  Write-Host 'Log (from Log Analytics; it can take a minute or two to appear):'
-  AzTry containerapp job logs show -n $name -g $ResourceGroup --container migrate --execution $exec
-  return $st
+  # No log fetch here: 'az containerapp job logs show' hangs once the job's container has gone. The job's exit status is
+  # the answer (the migration exits non-zero on any mismatch). To read the log: portal > $name > Execution history > Console logs.
+  if ($st -ne 'Succeeded') { Write-Host "Log: Azure portal > Container Apps jobs > $name > Execution history > $exec > Console logs" -ForegroundColor Yellow }
+  return "$st"
 }
 
 if (Want 'migrate') {
@@ -173,7 +174,8 @@ if (Want 'migrate') {
   Deploy 'migrate' @{ image = (Image-Ref) }
   $st = Run-Job 'alice-migrate-check'
   if ($st -ne 'Succeeded') { throw 'The dry run did not succeed. Nothing was copied. Check the log above (or the job in the portal).' }
-  $ok = Read-Host 'Did the dry run say "All tables match"? Type yes to copy for real'
+  Write-Host 'Dry run passed: every table matched (it fails on any difference). Nothing has been copied yet.' -ForegroundColor Green
+  $ok = Read-Host 'Type yes to copy for real'
   if ($ok -ne 'yes') { Write-Host 'Stopped before copying. Run -Step migrate again when ready.'; return }
   $st = Run-Job 'alice-migrate-apply'
   if ($st -ne 'Succeeded') { throw 'The copy did not succeed; the transaction was rolled back. Check the log.' }
