@@ -32,18 +32,19 @@ $StateFile = Join-Path $PSScriptRoot 'azure-state.json'
 
 function Say($text) { Write-Host "`n== $text" -ForegroundColor Cyan }
 function AzCli { $out = & az @args; if ($LASTEXITCODE -ne 0) { throw "az $($args -join ' ') failed" }; return $out }   # not named Az: PowerShell names ignore case, so it would call itself
+function AzTry { $ErrorActionPreference = 'Continue'; & az @args 2>$null }   # may fail (e.g. "does it exist?"): Windows PowerShell 5.1 otherwise turns az's error text into a stop
 function Want($name) { return ($Step -eq 'all' -or $Step -eq $name) }
 function Load-State { if (Test-Path $StateFile) { return Get-Content $StateFile -Raw | ConvertFrom-Json } else { return [pscustomobject]@{} } }
 function Save-State($s) { $s | ConvertTo-Json -Depth 5 | Set-Content $StateFile -Encoding UTF8 }
 function Set-Prop($obj, $name, $value) { $obj | Add-Member -NotePropertyName $name -NotePropertyValue $value -Force }
 function New-Password { -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 32 | ForEach-Object { [char]$_ }) }
-function Kv-Has($kv, $name) { & az keyvault secret show --vault-name $kv --name $name --query id -o tsv 2>$null | Out-Null; return ($LASTEXITCODE -eq 0) }
+function Kv-Has($kv, $name) { AzTry keyvault secret show --vault-name $kv --name $name --query id -o tsv | Out-Null; return ($LASTEXITCODE -eq 0) }
 function Kv-Set($kv, $name, $value) {
   $tmp = New-TemporaryFile
   try {
     [IO.File]::WriteAllText($tmp, $value)
     for ($i = 0; $i -lt 12; $i++) {            # Key Vault role assignments can take a minute to apply
-      & az keyvault secret set --vault-name $kv --name $name --file $tmp --encoding utf-8 --output none 2>$null
+      AzTry keyvault secret set --vault-name $kv --name $name --file $tmp --encoding utf-8 --output none
       if ($LASTEXITCODE -eq 0) { return }
       Start-Sleep -Seconds 10
     }
@@ -133,7 +134,7 @@ if (Want 'files') {
   if ($running) { throw 'Alice is still running on this PC. Quit it from the tray (Quit (stops servers)) so the database is not changing, then run this step again.' }
   $key = AzCli storage account keys list -g $ResourceGroup -n $State.storageAccount --query '[0].value' -o tsv
   $common = @('--account-name', $State.storageAccount, '--account-key', $key, '--output', 'none')
-  foreach ($d in @('Documents', 'data', 'data/images', 'migrate')) { & az storage directory create --share-name $State.shareName --name $d @common 2>$null | Out-Null }
+  foreach ($d in @('Documents', 'data', 'data/images', 'migrate')) { AzTry storage directory create --share-name $State.shareName --name $d @common | Out-Null }
   if (Test-Path (Join-Path $Root 'Documents')) { AzCli storage file upload-batch --destination $State.shareName --destination-path Documents --source (Join-Path $Root 'Documents') @common | Out-Null; Write-Host 'Documents copied.' }
   if (Test-Path (Join-Path $Root 'data\images')) { AzCli storage file upload-batch --destination $State.shareName --destination-path data/images --source (Join-Path $Root 'data\images') @common | Out-Null; Write-Host 'Generated images copied.' }
   AzCli storage file upload --share-name $State.shareName --path migrate/substrate.db --source (Join-Path $Root 'data\substrate.db') @common | Out-Null
@@ -150,7 +151,7 @@ function Run-Job($name) {
   }
   Write-Host "$name finished: $st"
   Write-Host 'Log (from Log Analytics; it can take a minute or two to appear):'
-  & az containerapp job logs show -n $name -g $ResourceGroup --container migrate --execution $exec 2>$null
+  AzTry containerapp job logs show -n $name -g $ResourceGroup --container migrate --execution $exec
   return $st
 }
 
@@ -171,7 +172,7 @@ if (Want 'signin') {
   $redirect = 'https://alice-web.' + $State.environmentDomain + '/.auth/login/aad/callback'
   if (-not $State.webAuthClientId) {
     $app = AzCli ad app create --display-name 'Alice web sign-in' --sign-in-audience AzureADMyOrg --web-redirect-uris $redirect --enable-id-token-issuance true --query appId -o tsv
-    & az ad sp create --id $app --output none 2>$null
+    AzTry ad sp create --id $app --output none
     Set-Prop $State 'webAuthClientId' $app; Save-State $State
   }
   $secret = AzCli ad app credential reset --id $State.webAuthClientId --display-name 'container-apps-sign-in' --years 1 --append --query password -o tsv

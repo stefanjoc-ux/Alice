@@ -16,6 +16,7 @@ PAGES = {
  'assistants': ('Assistants','Focused assistants built on Alice, such as Alex (HR policies) and Parker (proposals). Each has its own rule packs, model and knowledge, and staff use it on its own page without seeing the rest of Alice.'),
  'rule-packs': ('Rule packs','Ready-made safeguards for teams adopting AI. Switch each one on or off, test a message against the pack (a sandbox: no AI is called), and apply a pack to Alice\'s live rules when you want it enforced.'),
  'rules': ('Rules','Rule sets in precedence order. Enforced rules are checked in code; guidance rules are instructions to the model.'),
+ 'mileage': ('Mileage','Mileage Clerk: load a tracker export, tell Alice which places are home, personal or business, and approve the TMC entries she prepares. Nothing reaches TMC without your approval of that exact entry.'),
  'activity': ('Activity','Everything Alice and Temple did, and every decision you made: filter by type, date or words, and export for an audit trail.'),
 }
 
@@ -23,6 +24,15 @@ SECTIONS = {
 'home': r'''<section class="hm-hero"><div><h2 id="hm-hello">Hello</h2><p id="hm-sub" class="muted"></p></div>
 <div class="hm-go"><a class="hm-btn primary" href="/?new=1"><span>&#9998;</span>New chat</a><a class="hm-btn" id="hm-prop" href="/admin/assistants"><span>&#10064;</span>Write a proposal</a><a class="hm-btn" href="/admin/temple?tab=ask"><span>?</span>Ask Temple</a><a class="hm-btn" href="/admin/knowledge"><span>+</span>Add knowledge</a></div></section>
 <div id="hm" class="hm"></div>''',
+'mileage': r'''<section><div class="mem-head"><h2>Tracker export</h2><span id="mi-sum" class="muted small"></span></div>
+<div class="mi-top"><label class="mi-file"><input id="mi-file" type="file" accept=".csv,text/csv"><span class="primary-btn">Load a tracker export (CSV)</span></label>
+<label class="small">Showing <select id="mi-imp" aria-label="Export"></select></label>
+<label class="small">Vehicle <input id="mi-veh" maxlength="12" placeholder="e.g. AB12 CDE" aria-label="Vehicle registration"></label><button id="mi-veh-save" type="button" class="secondary mini-act">Save</button></div>
+<div id="mi-tiles" class="mi-tiles"></div></section>
+<section id="mi-unk-sec" hidden><div class="mem-head"><h2>Places to classify</h2><span class="muted small">Unclassified places count as personal. Classify the ones you visit for work.</span></div><div id="mi-unk"></div></section>
+<section><div class="mem-head"><h2>TMC entries</h2><span class="muted small">One per business day. You approve the exact entry before anything is filled in.</span></div><div id="mi-drafts"></div></section>
+<section><div class="mem-head"><h2>Days</h2></div><div class="table-wrap"><table id="mi-days" class="mem-table"></table></div></section>
+<section><div class="mem-head"><h2>Your places</h2><span class="muted small">Kept in Alice, never in code. Changing a place rebuilds entries not yet approved.</span></div><div id="mi-places"></div></section>''',
 'documents': r'''<section><div class="mem-head"><h2>Document sources</h2><button id="ds-new" type="button" class="secondary">Add a source</button></div>
 <p class="muted small" id="ds-root"></p>
 <div class="ds-how"><div><strong>1. Documents stay in their source</strong><span>SharePoint, Fabric, Power Platform or a folder. Alice never copies them in.</span></div><div><strong>2. Knowledge holds summaries</strong><span>Approved summaries point to the document and section they came from.</span></div><div><strong>3. Full detail on demand</strong><span>When the summaries don't answer, an assistant reads that section for one answer, under the rules.</span></div></div>
@@ -382,7 +392,10 @@ a.av-tile:hover{border-color:var(--teal)}.av-tile b{font-size:28px;line-height:1
 #k-table td:nth-child(2){min-width:260px}
 .tag.k-decision{background:#ede7f6;color:#4b2f73;border-color:#c7b8dd}
 .act-auto{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-top:6px}.act-switch{display:inline-flex;align-items:center;gap:6px;margin:0;white-space:nowrap}.act-switch input{width:auto;margin:0}
-.act-info{background:#f7fafc}.o-watch{align-items:center;gap:10px;flex-wrap:wrap}.o-watch select{width:auto;margin:0}.o-watch select:disabled{opacity:.5}
+.act-info{background:#f7fafc}.mi-top{display:flex;gap:14px;align-items:center;flex-wrap:wrap}.mi-top input,.mi-top select{margin:0;width:auto}.mi-file input{display:none}.mi-file .primary-btn{display:inline-block;background:#075e79;color:#fff;border-radius:8px;padding:9px 16px;font-weight:600;cursor:pointer}
+.mi-tiles{display:flex;gap:12px;flex-wrap:wrap;margin-top:14px}.mi-tile{background:#f4f7fa;border:1px solid #d3dee6;border-radius:10px;padding:10px 16px;min-width:120px}.mi-tile strong{display:block;font-size:20px;color:#102b40}.mi-tile span{font-size:12px;color:#5d7385}.mi-tile.mi-biz{background:#e6f0f8;border-color:#9cc0db}.mi-biz{color:#1d6fa5;font-weight:600}
+.mi-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 12px;margin:6px 0 10px;background:#f4f7fa;border:1px solid #d3dee6;border-radius:8px}.mi-form input,.mi-form select{margin:0;width:auto;flex:1 1 180px}.mi-form .mi-pc{flex:0 0 100px}.mi-form [hidden]{display:none!important}
+.mi-warn{display:block;margin:6px 0;font-weight:400;white-space:normal;overflow-wrap:anywhere;box-sizing:border-box;max-width:100%}#mi-days td:first-child,#mi-days th:first-child{white-space:nowrap;width:130px}.mi-legs{display:grid;gap:4px;padding:6px 0}.mi-leg{display:grid;grid-template-columns:60px 1fr 70px 70px;gap:10px;font-size:13px;padding:4px 8px;border-radius:6px}.mi-leg.biz{background:#e6f0f8}.o-watch{align-items:center;gap:10px;flex-wrap:wrap}.o-watch select{width:auto;margin:0}.o-watch select:disabled{opacity:.5}
 .o-flag.o-watched{background:#e6f0f8;color:#1d6fa5;border-color:#9cc0db}.opp-sched-row input[type=checkbox]{width:auto;margin:0}
 .opp-fresh{margin:8px 0;padding:7px 10px;border-radius:7px;font-size:13px;background:#eef3f7;color:#314d62}.opp-fresh a{margin-right:8px}
 .fr-live{background:#e7f4ec;color:#1f6b3d}.fr-changed{background:#fdf3e1;color:#6b4406}.fr-closed{background:#fbe9e9;color:#a12a2a}.fr-old strong::after{content:' · getting old';font-weight:400}.act-nodec{border-left:4px solid #2f7d4f}.dec-none{font-weight:700;color:#1f6b3d;background:#e7f4ec;border:1px solid #9fcbb0;border-radius:999px;padding:3px 12px;font-size:13px}.act-info details>summary{cursor:pointer;margin:6px 0;font-weight:600;color:#075e79}
@@ -1399,6 +1412,68 @@ if(PAGE==='temple')run(async()=>{const d=await api('/admin/api/temple/auto-appro
 '''
 
 SCRIPT += r"""
+if(PAGE==='mileage'){
+ const st={imp:'',d:null,open:new Set()};const KIND={home:'Home',personal:'Personal',business:'Business'};
+ const ST={draft:['Draft: waiting for you','v-warn'],fill_approved:['Approved for filling','v-run'],save_approved:['Approved for saving','v-run'],saved:['Saved in TMC','v-ok'],verified:['Verified in TMC','v-ok'],rejected:['Not claimed','v-none'],withdrawn:['No longer a business day','v-none']};
+ const fmt=d=>new Date(d+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
+ const map=c=>{const a=document.createElement('a');a.href='https://www.google.com/maps?q='+encodeURIComponent(c);a.target='_blank';a.rel='noopener noreferrer';a.textContent='map';a.className='small';return a};
+ async function load(){const d=await api('/admin/api/mileage'+(st.imp?'?import_id='+st.imp:''));st.d=d;render()}
+ function placeForm(init,onDone){const f=el('div','','mi-form');const n=document.createElement('input');n.maxLength=80;n.placeholder='Name, e.g. Hamilton office';n.value=init.name||'';
+  const k=document.createElement('select');for(const [v,l] of [['personal','Personal'],['business','Business'],['home','Home']]){const o=el('option',l);o.value=v;k.append(o)}k.value=init.kind||'personal';
+  const pu=document.createElement('input');pu.maxLength=200;pu.placeholder='Purpose wording for TMC';pu.value=init.purpose||'';
+  const tl=document.createElement('input');tl.maxLength=200;tl.placeholder='Location as it should appear in TMC';tl.value=init.tmc_location||'';
+  const tp=document.createElement('input');tp.maxLength=10;tp.placeholder='Postcode';tp.value=init.tmc_postcode||'';tp.className='mi-pc';
+  const sync=()=>{pu.hidden=k.value!=='business';tl.hidden=tp.hidden=k.value==='personal'};k.onchange=sync;sync();
+  const save=el('button','Save place','mini-act');save.type='button';const cancel=el('button','Cancel','secondary mini-act');cancel.type='button';cancel.onclick=()=>onDone(false);
+  save.onclick=()=>run(async()=>{await api('/admin/api/mileage/places','POST',{id:init.id||'',name:n.value,kind:k.value,keys:init.keys||[],purpose:pu.value,tmc_location:tl.value,tmc_postcode:tp.value,lat:init.lat??null,lon:init.lon??null});$('notice').textContent='Saved '+n.value+'. Entries rebuilt.';onDone(true)});
+  for(const x of [n,pu,tl,tp])x.setAttribute('aria-label',x.placeholder);k.setAttribute('aria-label','Kind');
+  f.append(n,k,pu,tl,tp,save,cancel);return f}
+ function render(){const d=st.d,c=d.current;
+  $('mi-veh').value=d.vehicle||'';const sel=$('mi-imp');sel.replaceChildren(...(d.imports.length?d.imports.map(i=>{const o=el('option',i.name+' · '+i.first_date+' to '+i.last_date);o.value=i.id;return o}):[el('option','No exports yet')]));if(c)sel.value=c.import.id;
+  $('mi-sum').textContent=c?c.days.length+' days of driving':'';
+  const t=$('mi-tiles');t.replaceChildren();if(c){for(const [l,v,cls] of [['Tracked',c.totals.tracked,''],['Business',c.totals.business,'mi-biz'],['Personal',c.totals.personal,''],['Entries',c.drafts.filter(x=>!['withdrawn','rejected'].includes(x.status)).length,'']]){const b=el('div','','mi-tile '+cls);b.append(el('strong',String(v)+(l==='Entries'?'':' mi')),el('span',l));t.append(b)}}
+  if(c&&!c.has_home)t.append(el('p','Start by classifying your home in "Places to classify" below: every TMC entry starts there.','flag'));
+  // places to classify
+  const u=$('mi-unk');u.replaceChildren();$('mi-unk-sec').hidden=!(c&&c.unknown.length);
+  if(c)for(const x of c.unknown){const r=el('div','','act-row');const tx=el('div','','act-text');tx.append(el('strong',x.label),el('div',x.visits+' visit'+(x.visits===1?'':'s')+' · '+x.coords+' ','small muted'));tx.lastChild.append(map(x.coords));
+   const box=el('div','','act-buttons');const [lat,lon]=x.coords.split(',').map(Number);
+   for(const [kind,lab] of [['home','Home'],['personal','Personal'],['business','Business…']]){const b=el('button',lab,kind==='personal'?'secondary mini-act':'mini-act');b.type='button';
+    b.onclick=()=>{if(kind==='personal')run(async()=>{await api('/admin/api/mileage/places','POST',{name:x.label,kind,keys:[x.key],lat,lon});await load()});else{const f=placeForm({name:kind==='home'?'Home':x.label,kind,keys:[x.key],lat,lon},ok=>run(load));r.after(f)}};box.append(b)}
+   const join=document.createElement('select');join.setAttribute('aria-label','Add to an existing place');join.append(el('option','Same as…'));join.options[0].value='';for(const p of d.places){const o=el('option',p.name+' ('+KIND[p.kind]+')');o.value=p.id;join.append(o)}
+   join.onchange=()=>{const p=d.places.find(p=>p.id===join.value);if(p)run(async()=>{await api('/admin/api/mileage/places','POST',{id:p.id,name:p.name,kind:p.kind,keys:[x.key],purpose:p.purpose,tmc_location:p.tmc_location,tmc_postcode:p.tmc_postcode});await load()})};if(d.places.length)box.append(join);
+   r.append(tx,box);u.append(r)}
+  // drafts
+  const dr=$('mi-drafts');dr.replaceChildren();const live=c?c.drafts.filter(x=>x.status!=='withdrawn'):[];
+  if(!live.length)dr.append(el('p',c?(c.has_home?'No business days in this export.':'Classify your home first.'):'Load a tracker export to begin.','muted'));
+  for(const x of live){const card=el('div','','dec-card mi-card');const h=el('div','','dec-head');h.append(el('strong',x.payload.date+' · '+x.miles+' business miles'));const [sl,sc]=ST[x.status]||[x.status,'v-none'];h.append(el('span',sl,'badge '+sc));card.append(h);
+   const g=el('dl','','dec-grid');const row=(k,v)=>{g.append(el('dt',k),el('dd',v))};row('Vehicle',x.payload.vehicle_registration||'not set: add it at the top');
+   for(const r of x.payload.rows)row(r.row_type==='start'?'Start':'Stop',r.location+', '+r.postcode+(r.purpose?' · '+r.purpose:''));card.append(g);
+   for(const w of x.payload.warnings)card.append(el('div','⚑ '+w,'flag mi-warn'));if(x.notes)card.append(el('p',x.notes,'small'));
+   for(const a of x.approvals)card.append(el('div','Approved for '+(a.action==='fill'?'filling':'saving')+' by '+a.by+' on '+new Date(a.at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+(a.note?' · '+a.note:''),'small muted'));
+   const act=el('div','','act-buttons');
+   if(x.status==='draft'){const ok=el('button','Approve filling TMC with this exact entry','mini-act');ok.type='button';ok.onclick=()=>run(async()=>{if(!confirm('Approve filling TMC with this exact entry?\n\n'+x.payload.date+': '+x.miles+' miles\n'+x.payload.rows.map(r=>r.location+(r.purpose?' ('+r.purpose+')':'')).join('\n')))return;await api('/admin/api/mileage/drafts/'+x.id+'/approve','POST',{action:'fill',hash:x.payload_hash});$('notice').textContent='Approved for filling. Saving in TMC needs a second approval after the form is filled.';await load()});act.append(ok)}
+   if(x.status==='fill_approved')act.append(el('span','Next: your browser fills TMC from this entry and stops before Save (the browser step comes after the move to Azure).','small muted'));
+   if(['draft','fill_approved'].includes(x.status)){const no=el('button','Not claiming this day','secondary mini-act');no.type='button';no.onclick=()=>run(async()=>{const n=prompt('Why not? (optional)');if(n===null)return;await api('/admin/api/mileage/drafts/'+x.id+'/reject','POST',{note:n});await load()});act.append(no)}
+   card.append(act);dr.append(card)}
+  // days
+  const tb=$('mi-days');tb.replaceChildren();if(c){const hd=document.createElement('tr');for(const h of ['Day','Tracked','Business','Personal','Checks'])hd.append(el('th',h));const th=document.createElement('thead');th.append(hd);tb.append(th);const body=document.createElement('tbody');
+   for(const day of c.days){const tr=document.createElement('tr');tr.className='mem-row';const b=el('button',fmt(day.day),'mem-title');b.type='button';b.onclick=()=>{st.open.has(day.day)?st.open.delete(day.day):st.open.add(day.day);render()};const td=document.createElement('td');td.append(b);
+    tr.append(td,el('td',day.tracked+' mi','num'),el('td',day.business?day.business+' mi':'—','num'+(day.business?' mi-biz':'')),el('td',day.personal+' mi','num'),el('td',day.warnings.length?'⚑ '+day.warnings.length:'','small'));body.append(tr);
+    if(st.open.has(day.day)){const dr2=document.createElement('tr');const td2=document.createElement('td');td2.colSpan=5;const list=el('div','','mi-legs');
+     for(const w of day.warnings)list.append(el('div','⚑ '+w,'flag mi-warn'));
+     for(const l of day.legs){const li=el('div','','mi-leg'+(l.business?' biz':''));li.append(el('span',l.start.slice(11),'num'),el('span',(l.from_place?l.from_place.name:l.from.split(',').slice(0,2).join(','))+' → '+(l.to_place?l.to_place.name:l.to.split(',').slice(0,2).join(','))),el('span',l.miles+' mi','num'),el('span',l.business?'business':'personal','small muted'));list.append(li)}
+     td2.append(list);dr2.append(td2);body.append(dr2)}}tb.append(body)}
+  // places
+  const pl=$('mi-places');pl.replaceChildren();if(!d.places.length)pl.append(el('p','None yet: classify places from an export above.','muted'));
+  for(const p of d.places){const r=el('div','','act-row');const tx=el('div','','act-text');tx.append(el('strong',p.name),el('span',KIND[p.kind],'badge '+(p.kind==='business'?'v-run':p.kind==='home'?'v-ok':'v-none')));tx.children[1].style.marginLeft='8px';
+   tx.append(el('div',[p.tmc_location&&(p.tmc_location+', '+p.tmc_postcode),p.purpose,(p.match_keys.length?p.match_keys.length+' tracker stop'+(p.match_keys.length===1?'':'s'):'')+(p.lat!=null?(p.match_keys.length?' + ':'')+'stops within 300 m':'')].filter(Boolean).join(' · '),'small muted'));
+   const box=el('div','','act-buttons');const ed=el('button','Edit','secondary mini-act');ed.type='button';ed.onclick=()=>{r.after(placeForm(p,ok=>run(load)))};const del=el('button','Delete','secondary mini-act');del.type='button';del.onclick=()=>run(async()=>{if(!confirm('Delete '+p.name+'? Its stops become unclassified again.'))return;await api('/admin/api/mileage/places/'+p.id,'DELETE');await load()});box.append(ed,del);r.append(tx,box);pl.append(r)}}
+ $('mi-file').onchange=()=>run(async()=>{const f=$('mi-file').files[0];if(!f)return;if(f.size>3e6)throw Error('That file is larger than 3 MB.');const text=await f.text();const r=await api('/admin/api/mileage/import','POST',{name:f.name,text});st.imp=r.id;$('notice').textContent=r.duplicate?'That export was already loaded.':'Loaded '+f.name+': '+r.days.length+' days, '+r.totals.business+' business miles so far.';$('mi-file').value='';await load()});
+ $('mi-imp').onchange=()=>{st.imp=$('mi-imp').value;run(load)};
+ $('mi-veh-save').onclick=()=>run(async()=>{const r=await api('/admin/api/mileage/vehicle','PUT',{vehicle:$('mi-veh').value});$('notice').textContent='Vehicle '+(r.vehicle||'cleared')+'.';await load()});
+ run(load);
+}
+
 if(PAGE==='documents'){
  let D=null;const open=new Set();
  const size=n=>n>=1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round(n/1024))+' KB';
@@ -1829,7 +1904,7 @@ if(PAGE==='rules'){
 }
 """
 
-NAV_GROUPS = [('Work', ['home', 'actions', 'temple', 'memories', 'knowledge', 'documents', 'organisations', 'archive']),
+NAV_GROUPS = [('Work', ['home', 'actions', 'temple', 'memories', 'knowledge', 'documents', 'organisations', 'mileage', 'archive']),
               ('Records and settings', ['agents', 'assistants', 'rules', 'rule-packs', 'activity', 'usage'])]
 
 

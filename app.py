@@ -25,6 +25,7 @@ import temple_ask
 import memory_tags
 import refs
 import autoapprove
+import mileage
 from admin_ui import render_admin, PAGES
 from ui_theme import SHARED_CSS
 import secrets
@@ -1083,6 +1084,79 @@ def admin_auto_undo(change: AutoUndo):
 async def admin_auto_backlog():
     try: return await asyncio.to_thread(autoapprove.backlog)
     except ValueError as e: raise HTTPException(400,str(e)) from None
+
+class MileageImport(BaseModel):
+    name: str = Field(default='Trips.csv',max_length=120)
+    text: str = Field(min_length=10,max_length=3_000_000)
+
+class MileagePlace(BaseModel):
+    id: str = Field(default='',max_length=40)
+    name: str = Field(min_length=1,max_length=80)
+    kind: Literal['home','personal','business']
+    keys: list[str] = Field(default=[],max_length=40)
+    purpose: str = Field(default='',max_length=200)
+    tmc_location: str = Field(default='',max_length=200)
+    tmc_postcode: str = Field(default='',max_length=10)
+    lat: float|None = Field(default=None,ge=-90,le=90)
+    lon: float|None = Field(default=None,ge=-180,le=180)
+
+class MileageVehicle(BaseModel):
+    vehicle: str = Field(default='',max_length=12)
+
+class MileageApproval(BaseModel):
+    action: Literal['fill','save']
+    hash: str = Field(min_length=64,max_length=64)
+    note: str = Field(default='',max_length=300)
+
+class MileageReject(BaseModel):
+    note: str = Field(default='',max_length=300)
+
+def _mileage_refresh():
+    for i in mileage.imports():
+        try: mileage.refresh_drafts(i['id'])
+        except ValueError: pass
+
+@app.get('/admin/api/mileage')
+def admin_mileage(import_id: str=Query('',max_length=40)):
+    imps=mileage.imports();cur=import_id or (imps[0]['id'] if imps else '')
+    try: summ=mileage.summary(cur) if cur else None
+    except ValueError: summ=None
+    return {'imports':imps,'places':mileage.places(),'vehicle':mileage.vehicle(),'current':summ}
+
+@app.post('/admin/api/mileage/import')
+def admin_mileage_import(m: MileageImport):
+    try:
+        rules_engine.check_file(m.text,m.name)          # secrets and markings never stored
+        return mileage.import_export(m.name,m.text)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+@app.post('/admin/api/mileage/places')
+def admin_mileage_place(p: MileagePlace):
+    try: r=mileage.save_place(p.id or None,p.name,p.kind,p.keys,p.purpose,p.tmc_location,p.tmc_postcode,p.lat,p.lon)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+    _mileage_refresh();return r
+
+@app.delete('/admin/api/mileage/places/{pid}')
+def admin_mileage_place_delete(pid: str):
+    try: r=mileage.delete_place(pid)
+    except ValueError as e: raise HTTPException(404,str(e)) from None
+    _mileage_refresh();return r
+
+@app.put('/admin/api/mileage/vehicle')
+def admin_mileage_vehicle(v: MileageVehicle):
+    try: r=mileage.set_vehicle(v.vehicle)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+    _mileage_refresh();return r
+
+@app.post('/admin/api/mileage/drafts/{did}/approve')
+def admin_mileage_approve(did: str, a: MileageApproval):
+    try: return mileage.approve(did,a.action,a.hash,a.note)
+    except ValueError as e: raise HTTPException(409,str(e)) from None
+
+@app.post('/admin/api/mileage/drafts/{did}/reject')
+def admin_mileage_reject(did: str, r: MileageReject):
+    try: return mileage.reject(did,r.note)
+    except ValueError as e: raise HTTPException(409,str(e)) from None
 
 @app.get('/admin/api/archive')
 def admin_archive(query: str=Query('',max_length=200), flag: Literal['all','uncaptured','external']='all',
