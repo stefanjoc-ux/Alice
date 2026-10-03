@@ -22,7 +22,7 @@ LABELS = {
     'category_suggestions_dismiss': ('memories', 'Category suggestions dismissed'), 'category_area_set': ('memories', 'Category area set'),
     'tag_created': ('memories', 'Tag created'), 'tag_updated': ('memories', 'Tag changed'), 'tag_deleted': ('memories', 'Tag deleted'),
     'tags_set': ('memories', 'Tags changed on memories'), 'tag_suggestions_accept': ('memories', 'Tag suggestions accepted'),
-    'tag_suggestions_dismiss': ('memories', 'Tag suggestions dismissed'), 'references_assigned': ('memories', 'Reference numbers given'), 'proposal_blocked': ('blocks', 'Proposal refused (proposals off)'),
+    'tag_suggestions_dismiss': ('memories', 'Tag suggestions dismissed'), 'references_assigned': ('memories', 'Reference numbers given'), 'auto_approved': ('memories', 'Approved automatically'), 'auto_held': ('memories', 'Held back for you'), 'auto_undone': ('memories', 'Automatic approval undone'), 'auto_approve_setting': ('rules', 'Automatic approval switched'), 'proposal_blocked': ('blocks', 'Proposal refused (proposals off)'),
     'knowledge_added': ('knowledge', 'Knowledge added'), 'knowledge_proposed': ('knowledge', 'Knowledge draft proposed'),
     'knowledge_approved': ('knowledge', 'Knowledge draft approved'), 'knowledge_rejected': ('knowledge', 'Knowledge draft rejected'),
     'knowledge_updated': ('knowledge', 'Knowledge details changed'),

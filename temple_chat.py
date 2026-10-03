@@ -158,6 +158,11 @@ def analyse(cid,tid):
                            json.dumps([allowed[mid] for mid in item.related_ids]),store.now()))
             c.execute("UPDATE temple_chat_jobs SET status='complete',coverage=? WHERE turn_id=?",(coverage,tid))
             store.audit(c,'temple_chat_complete',cid,'advisory_only',coverage)
+        try:
+            import autoapprove
+            autoapprove.suggestions_for_chat(cid)   # memories and notes accepted; decisions become proposals that wait for you
+        except Exception:
+            import logging;logging.exception('Automatic acceptance of Temple suggestions failed')
     except Exception as e:
         import logging
         logging.exception('Temple conversation analysis failed')   # full detail in data\\logs\\web.log

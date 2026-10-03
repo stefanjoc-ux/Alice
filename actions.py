@@ -6,8 +6,8 @@ import substrate_store as store
 TOP = 5
 
 
-def _section(key, title, count, link, items=(), note='', level='normal'):
-    return {'key': key, 'title': title, 'count': count, 'link': link, 'items': list(items)[:TOP], 'note': note, 'level': level}
+def _section(key, title, count, link, items=(), note='', level='normal', top=TOP, info=False):
+    return {'key': key, 'title': title, 'count': count, 'link': link, 'items': list(items)[:top], 'note': note, 'level': level, 'info': info}
 
 
 def summary():
@@ -15,26 +15,68 @@ def summary():
     today = datetime.now(timezone.utc).date().isoformat()
     out = []
 
-    # 1. Memory proposals and decisions, with Temple's verdict
+    import autoapprove, refs
+    auto_on, held = autoapprove.on(), autoapprove.held()
+    refs.ensure(fresh=False)
+
+    # 1. Decisions: always yours, explained (why it is a decision, what it is for, Temple's recommendation)
     q = temple.queue('pending')
     kinds = store.record_kinds(i['id'] for i in q['items'])
-    items = [{'type': 'proposal', 'id': i['id'], 'title': i['title'],
-              'detail': (i['reason'] or i['content'].replace('\n', ' ')[:160]),
-              'verdict': i['verdict'], 'kind': (kinds.get(i['id']) or {}).get('kind', 'fact'),
-              'replaces': i.get('replaces')} for i in q['items']]
-    decisions = sum(1 for i in items if i['kind'] == 'decision')
-    out.append(_section('proposals', 'Memories and decisions awaiting approval', q['views']['pending'],
-                        '/admin/memories?status=proposed', items,
-                        f'{decisions} of these are decisions.' if decisions else ''))
+    rmap = refs.of('record', [i['id'] for i in q['items']])
+    dec = [i for i in q['items'] if (kinds.get(i['id']) or {}).get('kind') == 'decision']
+    out.append(_section('decisions', 'Decisions to approve', len(dec), '/admin/memories?status=proposed&kind=decision',
+                        [{'type': 'decision', 'id': i['id'], 'title': i['title'], 'ref': rmap.get(i['id'], ''), 'verdict': i['verdict'],
+                          'replaces': i.get('replaces'), **autoapprove.explain_decision(i)} for i in dec],
+                        'Decisions always wait for you. Temple checks each one against your earlier decisions and memories.', top=20))
 
-    # 2. Knowledge drafts proposed by models
-    d = knowledge.listing(status='draft')
-    def _draft(i):
+    # 2. Held back: automatic approval stopped, and says why
+    mems = [i for i in q['items'] if i not in dec]
+    drafts = knowledge.listing(status='draft', limit=100000)['items']
+    import organisations
+    facts = organisations.pending(limit=100000)
+    def _mem(i, why=''):
+        return {'type': 'proposal', 'id': i['id'], 'title': i['title'], 'ref': rmap.get(i['id'], ''), 'verdict': i['verdict'], 'replaces': i.get('replaces'),
+                'detail': why or (i['reason'] or i['content'].replace('\n', ' ')[:160])}
+    def _draft(i, why=''):
         rep = [{'id': p['old_id'], 'title': p['old_title']} for p in i['replacement_suggestions']
                if p['new_id'] == i['id'] and p['source'] == 'proposer']
-        return {'type': 'draft', 'id': i['id'], 'title': i['title'], 'replaces': rep,
-                'detail': i['source'] + ' · ' + i['added_by'] + (' · replaces ' + ', '.join('“' + x['title'] + '”' for x in rep) if rep else '')}
-    out.append(_section('drafts', 'Knowledge drafts awaiting approval', d['total'], '/admin/knowledge', [_draft(i) for i in d['items']]))
+        return {'type': 'draft', 'id': i['id'], 'title': i['title'], 'replaces': rep, 'ref': i.get('ref', ''),
+                'detail': why or (i['source'] + ' · ' + i['added_by'] + (' · replaces ' + ', '.join('“' + x['title'] + '”' for x in rep) if rep else ''))}
+    def _fact(f, why=''):
+        return {'type': 'orgfact', 'id': f['id'], 'title': f"{f['org']} · {organisations.SECTION_NAMES.get(f['section'], f['section'])}",
+                'detail': (why + ' · ' if why else '') + f"{f['statement']} · source: {f['source_system']}" + (f" ({f['source_ref'][:80]})" if f['source_ref'] else '')}
+    fref = refs.of('file', [i['id'] for i in drafts])
+    for i in drafts: i['ref'] = fref.get(i['id'], '')
+    if auto_on:
+        h_items = ([_mem(i, held[('memory', i['id'])]) for i in mems if ('memory', i['id']) in held]
+                   + [_draft(i, held[('knowledge', i['id'])]) for i in drafts if ('knowledge', i['id']) in held]
+                   + [_fact(f, held[('orgfact', f['id'])]) for f in facts if ('orgfact', f['id']) in held])
+        out.append(_section('held', 'Held back for you', len(h_items), '/admin/memories?status=proposed', h_items,
+                            'Automatic approval stopped at these: a clash with what Alice holds, a possible replacement, '
+                            'something Temple could not check, or a proposal through the outside connector. Each says why.', top=20))
+        w_items = ([_mem(i, 'Temple is checking it' if i['verdict'] == 'running' else '') for i in mems if ('memory', i['id']) not in held]
+                   + [_draft(i) for i in drafts if ('knowledge', i['id']) not in held]
+                   + [_fact(f) for f in facts if ('orgfact', f['id']) not in held])
+        out.append(_section('waiting', 'Waiting for the automatic checks', len(w_items), '/admin/memories?status=proposed', w_items,
+                            'Being checked now, or proposed before automatic approval was switched on. “Approve these automatically” '
+                            'runs the same checks on them; anything that fails is held back for you.'))
+    else:
+        w_items = [_mem(i) for i in mems] + [_draft(i) for i in drafts] + [_fact(f) for f in facts]
+        out.append(_section('waiting', 'Awaiting approval', len(w_items), '/admin/memories?status=proposed', w_items,
+                            'Automatic approval is off: memories, knowledge and organisation facts wait for you.'))
+
+    # 2a. What went live automatically (for information; each can be undone)
+    if auto_on:
+        recent = autoapprove.recent()
+        by = {}
+        for r in recent: by[r['item_type']] = by.get(r['item_type'], 0) + 1
+        names = {'memory': ('memory', 'memories'), 'knowledge': ('knowledge item', 'knowledge items'), 'orgfact': ('organisation fact', 'organisation facts')}
+        out.append(_section('auto', 'Approved automatically in the last 7 days', len(recent), '/admin/activity?type=memories',
+                            [{'type': 'auto', 'item_type': r['item_type'], 'id': r['item_id'], 'title': r['title'], 'ref': r['ref'],
+                              'detail': names.get(r['item_type'], (r['item_type'],))[0].capitalize() + ' · ' + r['reason'] + ' · ' + r['at'][:16].replace('T', ' ')}
+                             for r in recent],
+                            ' · '.join(f'{n} {names[k][0] if n == 1 else names[k][1]}' for k, n in by.items() if k in names)
+                            + ('. Undo retires it (history kept).' if recent else ''), top=60, info=True))
 
     # 2b. Older knowledge that a newer, approved item replaces (proposer's word or Temple's suggestion)
     reps = [p for p in knowledge.replacements('pending') if p['new_status'] == 'active']
@@ -44,14 +86,6 @@ def summary():
                                     + (': ' + p['reason'] if p['reason'] else '') + (f" · quote: “{p['quote'][:160]}”" if p['quote'] else '')}
                          for p in reps],
                         'Retiring archives the older item with a link to its replacement; models are pointed to the new one. Restore undoes it.'))
-
-    # 2c. Organisation facts proposed by models
-    import organisations
-    of = organisations.pending()
-    out.append(_section('orgfacts', 'Organisation facts awaiting approval', len(of), '/admin/organisations',
-                        [{'type': 'orgfact', 'id': f['id'], 'title': f"{f['org']} · {organisations.SECTION_NAMES.get(f['section'], f['section'])}",
-                          'detail': f"{f['statement']} · source: {f['source_system']}" + (f" ({f['source_ref'][:80]})" if f['source_ref'] else '')
-                                    + f" · {f['proposed_by']}"} for f in of]))
 
     # 2c-ii. Client opportunities Temple has suggested
     import opportunities
@@ -125,8 +159,8 @@ def summary():
                                [{'type': 'link', 'id': 'spend', 'title': f"${sp['today_usd']:.2f} today of ${sp['daily_usd']:.2f} · ${sp['month_usd']:.2f} this month of ${sp['monthly_usd']:.2f}",
                                  'detail': 'Chat is paused.' if sp['level'] == 'blocked' else 'Temple automations are paused until the next day or month, or until you raise the cap.',
                                  'href': '/admin/rules'}], level='bad' if sp['level'] == 'blocked' else 'warn'))
-    total = sum(s['count'] for s in out)
-    return {'total': total, 'sections': out}
+    total = sum(s['count'] for s in out if not s.get('info'))
+    return {'total': total, 'sections': out, 'auto_on': auto_on}
 
 
 def count():

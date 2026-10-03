@@ -53,6 +53,7 @@ os.environ['OPENAI_BASE_URL'] = 'http://127.0.0.1:9/v1'
 os.environ['ANTHROPIC_BASE_URL'] = 'http://127.0.0.1:9'
 os.environ['SUBSTRATE_HOTKEY'] = 'off'
 os.environ['ALICE_NO_SCHEDULER'] = '1'   # no background schedules during tests
+os.environ['ALICE_AUTO_APPROVE_DEFAULT'] = 'off'   # suites test the approval gates; test_autoapprove switches it on
 try:
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')

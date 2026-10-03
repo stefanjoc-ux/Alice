@@ -1,5 +1,6 @@
 import usage_meter
-"""Temple: advisory reviews only. No approval, mutation or model tools."""
+"""Temple: advisory reviews only. No approval, mutation or model tools. (Automatic approval reads Temple's finished review in
+autoapprove.py: Temple itself still approves nothing.)"""
 import json
 import os
 import re
@@ -28,7 +29,13 @@ to different clients, or conflicts only with another client's memory, say so: cl
 Only cite supplied IDs. State comparison coverage: this may be a selected subset, not all memories.
 Never claim to have checked original files or to have saved/approved anything. Use UK English.
 If the proposal is a newer version of one approved memory and should replace it (same subject, the older one
-is now out of date), end the report with a line exactly "Replaces: <ID>" using that supplied ID. Otherwise omit the line.'''
+is now out of date), end the report with a line exactly "Replaces: <ID>" using that supplied ID. Otherwise omit the line.
+If the proposal's kind is "decision", judge it as a decision: is a clear choice stated, is the reason given, and does it
+clash with or overturn an earlier decision? Recommend approve only for a clear, reasoned choice that does not clash.
+For a decision also give two lines: "Why it is a decision: <one sentence: the choice it makes and what it rules out>" and
+"What it is for: <one sentence: the client, project or area of work or life it governs>".
+Always finish with a line exactly "Conflict: yes" if the proposal definitely contradicts an approved memory or decision
+supplied to you, otherwise "Conflict: no".'''
 
 def settings():
     with store.db() as c: d=dict(c.execute("SELECT key,value FROM settings WHERE key LIKE 'temple_%'").fetchall())
@@ -61,6 +68,7 @@ def review_record(rid):
     rules_engine.check_spend('automation')   # raises RuleViolation (a ValueError) when paused
     config=settings();provider=reviewer();model='gpt-6-luna' if provider=='openai' else 'claude-haiku-4-5-20251001'
     review_id=uuid.uuid4().hex
+    kind=(store.record_kinds([rid]).get(rid) or {})
     try: import clients   # loaded before the write transaction below (its first import creates tables)
     except Exception: pass
     with store.db() as c:
@@ -84,6 +92,7 @@ def review_record(rid):
             record=dict(record)|{'client':owners.get(rid,'') or 'General'}
             chosen=[m|{'client':owners.get(m['id'],'') or 'General'} for m in chosen]
         except Exception: record=dict(record)
+        if kind.get('kind')=='decision': record=dict(record)|{'kind':'decision','decision':kind.get('decision')}
         context={'proposal':dict(record),'compared_memories':chosen,'total_approved':len(candidates),
                  'compared_count':len(chosen),'selection':'Word overlap, then recent; up to 20 complete records within 30,000 JSON characters'}
         c.execute('INSERT INTO temple_reviews(id,record_id,status,provider,model,created_at,context) VALUES (?,?,?,?,?,?,?)',
@@ -122,14 +131,23 @@ def automatic_review(rid):
         clients.schedule_tagging()          # client tagging: alias matches free, then Temple
     except Exception:
         pass
+    import autoapprove
+    if autoapprove.deciding():              # a decision: held, and reviewed once its details are saved (autoapprove.propose_decision)
+        return {'status':'deferred','message':'Decision: reviewed once saved.'}
+    if autoapprove.outside():               # from the outside connector: always waits for the owner
+        autoapprove.hold('memory',rid,f'Proposed by {autoapprove.outside()} through the outside connector: it reads material you do not control.')
     if settings()['enabled']:
         # Background: the proposal is already saved, so callers (web chat, Claude Desktop) need not wait.
         import threading
         def work():
             try: review_record(rid)
             except Exception: pass   # no review entry = Not reviewed; manual review remains available
+            try: autoapprove.after_review(rid)   # automatic approval unless Temple found a clash (held for the owner)
+            except Exception: pass
         threading.Thread(target=work,daemon=True).start()
         return {'status':'running','message':'Temple review started.'}
+    try: autoapprove.after_review(rid,reviewed=False)
+    except Exception: pass
     return {'status':'not_reviewed','message':'Automatic review is disabled.'}
 
 def inbox(offset=0):
@@ -229,8 +247,11 @@ def review_batch(ids):
         ids = [i for i in ids if c.execute("SELECT 1 FROM records WHERE id=? AND status='proposed'", (i,)).fetchone()]
     import threading
     def work():
+        import autoapprove
         for rid in ids:
             try: review_record(rid)
+            except Exception: pass
+            try: autoapprove.after_review(rid)
             except Exception: pass
     threading.Thread(target=work, daemon=True).start()
     return {'started': len(ids)}

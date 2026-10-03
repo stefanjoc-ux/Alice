@@ -44,7 +44,7 @@ def summary(tz=0):
     hour = (datetime.now(timezone.utc).hour - (tz or 0) // 60) % 24
     return {
         'name': store.owner_name(), 'greeting': 'Good morning' if 5 <= hour < 12 else 'Good afternoon' if hour < 18 else 'Good evening',
-        'waiting': {'total': acts['total'], 'sections': [{k: s[k] for k in ('key', 'title', 'count', 'link', 'level')} for s in acts['sections'] if s['count']]},
+        'waiting': {'total': acts['total'], 'sections': [{k: s[k] for k in ('key', 'title', 'count', 'link', 'level')} for s in acts['sections'] if s['count'] and not s.get('info')]},
         'today': today.get('totals', {}), 'spend': spend,
         'week': {'buckets': [{'label': b['label'], 'n': sum(b[g['key']] for g in week['groups']) + b.get('blocks', 0)} for b in week.get('buckets', [])],
                  'gate': week.get('gate', [])},

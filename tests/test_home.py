@@ -14,7 +14,7 @@ r = cl.get('/admin/overview', follow_redirects=False)
 t('the old Overview page goes to Home', r.status_code == 307 and r.headers['location'] == '/admin')
 mem = s.propose('Carport roof', 'Clear twinwall polycarbonate for the carport roof.', 'Stefan said')['id']
 d = cl.get('/admin/api/home?tz=-60', headers=H).json()
-t('home lists what is waiting, with links', d['waiting']['total'] >= 1 and any(x['key'] == 'proposals' and x['link'].startswith('/admin/') for x in d['waiting']['sections']))
+t('home lists what is waiting, with links', d['waiting']['total'] >= 1 and any(x['key'] == 'waiting' and x['link'].startswith('/admin/') for x in d['waiting']['sections']))
 t('home has today, the week, spend and the substrate', {'events', 'blocked', 'runs', 'model_calls'} <= set(d['today']) and len(d['week']['buckets']) >= 7
   and 'daily_usd' in d['spend'] and {'memories', 'knowledge', 'documents', 'organisations', 'clients'} <= set(d['substrate']))
 t('assistants are listed, including the proposal writer', any(a['kind'] == 'proposal' for a in d['assistants']) and any(a['id'] == 'hr-policy' for a in d['assistants']))

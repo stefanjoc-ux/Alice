@@ -64,7 +64,7 @@ p = M.propose_org_fact(organisation='SBC', section='commercial', statement='Buys
 t('model fact is a proposal', p['status'] == 'proposed' and 'approves it' in p['message'])
 t('proposal recorded with provenance', O.facts('SBC', 'proposed')[0]['proposed_by'] == 'model via Claude Desktop')
 a = {x['key']: x for x in actions.summary()['sections']}
-t('Actions lists it', a['orgfacts']['count'] == 1 and a['orgfacts']['items'][0]['id'] == p['id'])
+t('Actions lists it', any(i['type'] == 'orgfact' and i['id'] == p['id'] for i in a['waiting']['items']))
 t('not in the brief until approved', 'Scottish Government national frameworks' not in O.brief('SBC')['text'])
 cl.post('/admin/api/organisations/facts/review', json={'ids': [p['id']], 'decision': 'approved'}, headers=H)
 t('approved via API, now in the brief', 'Scottish Government national frameworks' in O.brief('SBC')['text'])

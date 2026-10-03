@@ -230,6 +230,9 @@ def propose_fact(org, section, statement, source_system, source_ref='', as_of=''
             c.execute('INSERT INTO organisations(name,kind,description,created_at) VALUES (?,?,?,?)', (org, 'other', '', store.now()))
         store.audit(c, 'org_fact_added' if status == 'approved' else 'org_fact_proposed', fid,
                     'human_review' if status == 'approved' else 'approval_required', f'{org} · {SECTION_NAMES[section]} · by {by}')
+    if status == 'proposed' and store.DATASET.get() != 'demo':
+        import autoapprove        # approved automatically unless it came through the outside connector (held for you)
+        if autoapprove.org_fact(fid) == 'approved': status = 'approved'
     return {'id': fid, 'status': status, 'duplicate': False, 'org': org, 'review_by': review_by}
 
 

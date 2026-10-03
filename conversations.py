@@ -332,6 +332,11 @@ def review_chat(cid, manual=False):
         notes = ([f'{skipped} suggestions dropped: quotes not found in your words.'] if skipped else []) + \
                 ([f'{invalid} malformed suggestions dropped.'] if invalid else [])
         _finish(cid, 'complete', saved, ' '.join(notes), provider)
+        try:
+            import autoapprove
+            autoapprove.suggestions_for_chat(cid)   # memories and notes accepted; decisions become proposals that wait for you
+        except Exception:
+            import logging; logging.exception('Automatic acceptance of Temple suggestions failed')
         return {'status': 'complete', 'suggestions': saved, 'dropped': skipped + invalid}
     finally:
         with _lock: _running.discard(cid)

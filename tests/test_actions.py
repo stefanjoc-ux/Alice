@@ -21,8 +21,9 @@ a = s._propose_original('Beehive count', 'Has four colonies this year', 'User sa
 s.record_temple_results([(a, 'Home', 0.6, 'hobby')], 'auto')
 d = s._propose_original('Boiler service', 'Boiler serviced every September', 'User said')['id']; s.review(d, 'approved'); R.set_review_by(d, '2025-01-01')
 sm = actions.summary(); by = {x['key']: x['count'] for x in sm['sections']}
-t('proposals and decisions counted', by['proposals'] == 2)
-t('knowledge drafts counted', by['drafts'] == 1)
+wt = next(x for x in sm['sections'] if x['key'] == 'waiting')
+t('proposals and decisions counted (automatic approval off: all waiting)', by['waiting'] + by['decisions'] == 3 and wt['title'] == 'Awaiting approval')
+t('knowledge drafts counted', any(i['type'] == 'draft' and i['id'] == draft for i in wt['items']))
 t('Temple suggestions counted', by['suggestions'] == 1)
 t('category suggestion counted', by['tags'] >= 1)
 t('past review date counted', by['due'] == 1)

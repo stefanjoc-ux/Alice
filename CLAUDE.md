@@ -21,14 +21,18 @@ knowledge note "AI Substrate: status summary" through the `alice` connector, or 
 3. **Schema changes are additive only.** `CREATE TABLE IF NOT EXISTS` and guarded
    `ALTER TABLE … ADD COLUMN` (check `PRAGMA table_info` first). Never drop, rename or rewrite columns or
    tables, and never delete user data in a migration.
-4. **The approval gates are the product.** Models and Temple may only *propose*. Nothing becomes an approved
-   memory, decision or active knowledge item without Stefan's explicit action. Never add an automatic
-   approval path, even "just for testing" in production code.
-   **One owner-approved exception:** summaries of reference documents a person uploads on a Proposal writer page are
-   approved automatically when that writer's setting `auto_approve_references` is on (the default; Stefan's choice,
-   switchable on the Assistants page). Each one is logged as `reference_auto_approved` and listed on the Temple page.
-   Do not extend this to anything else.
-5. **Temple is advisory.** It reviews, suggests, categorises and tags. It never approves, never overrides a
+4. **The approval gates are the product, and automatic approval is their only shortcut.** Models and Temple only *propose*.
+   **Stefan's decision (3 Oct 2026): automatic approval** (`autoapprove.py`, switch on the Actions page, setting `auto_approve`):
+   memories, knowledge drafts, organisation facts and Temple's memory/knowledge chat suggestions go live after the same
+   security checks a person's approval runs, logged as `auto_approved` (actor Alice) and listed on Actions for 7 days with Undo.
+   **Guard rails that must stay:** decisions always wait for Stefan; so does a memory Temple finds clashing (`Conflict: yes`),
+   recommends rejecting, says replaces an older one, or could not check; anything proposed through the outside connector
+   (`mcp_server.py --external`, i.e. Copilot: wrap proposals in `autoapprove.from_outside`), including conversations it saves;
+   rule and guidance changes; and retiring or replacing older items. Do not widen automatic approval past these without his say.
+   The older exception still stands: reference summaries uploaded on a Proposal writer page (`auto_approve_references`,
+   logged `reference_auto_approved`). Test databases start with automatic approval off (`ALICE_AUTO_APPROVE_DEFAULT=off` in
+   `tests/_util.py`); `test_autoapprove.py` switches it on.
+5. **Temple is advisory.** It reviews, suggests, categorises and tags. It never approves (automatic approval reads its finished review; Temple itself approves nothing), never overrides a
    human choice (precedence: human > model > Temple), and never changes memory content or status.
 6. **Enforced rules run in Python at the point data moves**, never only as model instructions. Any new path
    that sends text to a model, stores a memory or knowledge item, or returns tool output must go through the
@@ -124,7 +128,8 @@ A browser refresh is not enough: the old server process keeps running the old co
 | `documents.py` | Word, Excel and PDF created in chat via the local `create_document` tool (not MCP, so outside apps don't get it): Word and PDF from simple markdown (stdlib; PDF written by hand with Helvetica), Excel with openpyxl; `check_file` runs first; kept in `generated_documents` for download at `/documents/{id}/download`; never knowledge |
 | `clients.py` | Clients (the separation list), tagging, alias detection, separation enforcement. There is no Clients page: a client is an organisation with Client ticked (`organisations.set_client` writes the clients table), and tagging lives in Organisations → Tag memories and files; `/admin/clients` redirects |
 | `home.py` | The Command centre home page (`/admin`, `/admin/api/home`): greeting, what is waiting, today's numbers and spend, the last 7 days, recent chats and proposals, assistants and agents needing attention, substrate counts. The desktop app opens here; Actions is at `/admin/actions`; the chat page (`/`) opens the empty chat or a new one unless a chat is named in the hash |
-| `actions.py` | Everything awaiting a decision (Actions page) |
+| `actions.py` | The Actions page: decisions to approve first (each explained by `autoapprove.explain_decision`: why it is a decision, what it is for, options, reason, revisit, where it came from, Temple's recommendation and any clash), then what automatic approval held back and why, what is still waiting for the checks (Approve these automatically = `autoapprove.backlog()`), replacements, suggestions and the rest; what went live automatically in the last 7 days is listed for information (not counted) with Undo |
+| `autoapprove.py` | Automatic approval and its guard rails (see rule 4): `after_review` (memories, once Temple's review is in; called from `temple.automatic_review` and `review_batch`), `knowledge_draft`, `org_fact`, `suggestions_for_chat` / `accept_suggestion` (the Accept path for Temple's chat suggestions, used by the route too), a wrapper on `store.propose_decision` that holds every decision and starts its review once its details are saved, `from_outside` (contextvar), `hold`, `recent`, `undo`, `backlog`; table `auto_approvals` (item_type memory/knowledge/orgfact/chat, state approved/held, reason). Temple's prompt asks for `Conflict: yes/no`, and for decisions `Why it is a decision:` and `What it is for:` |
 | `activity_log.py` | Activity log labels, types, filters, CSV; `overview()` feeds the Activity page's picture (`/admin/api/activity-overview`): tiles, activity over time by area (blocks counted separately), the approval gate, blocks by rule, agent runs, AI calls by model, a weekday-by-hour heatmap in the browser's time zone, most frequent actions |
 | `router.py` | Auto model routing, provider failure memory |
 | `usage_meter.py` | Token/cost ledger, timings, savings |

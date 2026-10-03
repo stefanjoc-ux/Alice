@@ -45,7 +45,8 @@ SECTIONS = {
 <label class="small" for="rp-provider">Sent to</label><select id="rp-provider"></select>
 <div class="row" style="margin-top:10px"><button id="rp-run" type="button" class="primary">Run through the rules</button></div>
 <div id="rp-result" aria-live="polite"></div></section></aside></div>''',
-'actions': r'''<section><div class="mem-head"><h2 id="act-total">Actions</h2><button id="act-refresh" type="button" class="secondary">Refresh</button></div><p class="muted small">Approving here is the same decision as on the full page: security rules are re-checked, and nothing becomes a memory or knowledge without you.</p></section><div id="act-sections"></div>''' ,
+'actions': r'''<section><div class="mem-head"><h2 id="act-total">Actions</h2><button id="act-refresh" type="button" class="secondary">Refresh</button></div>
+<div class="act-auto"><label class="act-switch"><input id="act-auto" type="checkbox"> <strong>Automatic approval</strong></label><span id="act-auto-text" class="muted small"></span></div></section><div id="act-sections"></div>''' ,
 'usage': r'''<section><div class="usage-bar"><h2>Spend</h2><label>Period <select id="usage-period"><option value="7d">Last 7 days</option><option value="30d" selected>Last 30 days</option><option value="month">This month</option><option value="all">All time</option></select></label><button id="usage-refresh" type="button">Refresh</button></div><div id="usage-stats" class="stats usage-stats"></div><p id="usage-caveat" class="muted"></p></section>
 <section><div class="mem-head"><h2>Provider connections</h2><button id="prov-check" type="button" class="secondary">Check connections</button></div><p class="muted small">Sends one tiny request to each provider you have a key for (a fraction of a penny each) and reports key, credit and model-access problems in plain words.</p><div id="prov-results"></div></section>
 <section><h2>Cost by model and workload</h2><div class="table-wrap"><table id="usage-groups"></table></div></section>
@@ -378,7 +379,16 @@ a.av-tile:hover{border-color:var(--teal)}.av-tile b{font-size:28px;line-height:1
 .k-text{max-height:360px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:#fff;border:1px solid #c9d7e1;border-radius:6px;padding:10px;font-size:13px}
 .badge.k-lab-general{background:#e6f4ea;color:#1e5b31;border-color:#9fcfaf}.badge.k-lab-internal{background:#e3f1f6;color:#064b63;border-color:#89b1bf}.badge.k-lab-client{background:#fdf3e1;color:#6b4406;border-color:#e2bf85}.badge.k-lab-local{background:#fbeaea;color:#7a1f1f;border-color:#e0aaaa}
 #k-table td:nth-child(2){min-width:260px}
-.tag.k-decision{background:#ede7f6;color:#4b2f73;border-color:#c7b8dd}.t-report>strong{display:block;margin-top:8px}
+.tag.k-decision{background:#ede7f6;color:#4b2f73;border-color:#c7b8dd}
+.act-auto{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-top:6px}.act-switch{display:inline-flex;align-items:center;gap:6px;margin:0;white-space:nowrap}.act-switch input{width:auto;margin:0}
+.act-info{background:#f7fafc}.act-info details>summary{cursor:pointer;margin:6px 0;font-weight:600;color:#075e79}
+.dec-card{border:1px solid #c7b8dd;border-left:4px solid #634394;border-radius:10px;padding:14px 16px;margin:12px 0;background:#fff}
+.dec-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}.dec-head strong{font-size:16px;color:#102b40}
+.dec-what{font-size:15px;margin:8px 0 10px;color:#1d3a50;font-weight:500}
+.dec-grid{display:grid;grid-template-columns:minmax(140px,190px) 1fr;gap:5px 14px;margin:0 0 10px;font-size:13px}.dec-grid dt{color:#5d7385;font-weight:600}.dec-grid dd{margin:0;color:#1d3a50}
+.dec-rec{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:9px 12px;border-radius:8px;margin-bottom:10px;background:#eef3f7}.dec-rec .small{flex-basis:100%}
+.dec-rec-k{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#5d7385}.rec-ok{background:#e7f4ec}.rec-ok strong{color:#1f6b3d}.rec-warn{background:#fdf3e1}.rec-warn strong{color:#7a4b08}.rec-bad{background:#fbe9e9}.rec-bad strong{color:#a12a2a}
+@media(max-width:700px){.dec-grid{grid-template-columns:1fr}}.t-report>strong{display:block;margin-top:8px}
 .imp-progress{margin:10px 0}.imp-progress[hidden]{display:none}.imp-bar{height:12px;background:#e3eaf0;border-radius:6px;overflow:hidden;margin-bottom:6px}.imp-bar span{display:block;height:100%;width:0;background:#075e79;transition:width .3s}
 .act-count{display:inline-block;min-width:26px;padding:2px 9px;border-radius:999px;background:#075e79;color:#fff;font-size:14px;text-align:center;vertical-align:middle}
 .act-sec.act-warn{border-left:4px solid #c08a1e}.act-sec.act-bad{border-left:4px solid #b3261e}
@@ -868,19 +878,37 @@ if(PAGE==='actions'){
   else if(i.type==='category'){box.append(btn('Accept',()=>api('/admin/api/memories/suggestions','POST',{ids:[i.id],action:'accept'})),btn('Dismiss',()=>api('/admin/api/memories/suggestions','POST',{ids:[i.id],action:'dismiss'}),true))}
   else if(i.type==='kcategory'){box.append(btn('Accept',()=>api('/admin/api/knowledge/suggestions','POST',{ids:[i.id],action:'accept'})),btn('Dismiss',()=>api('/admin/api/knowledge/suggestions','POST',{ids:[i.id],action:'dismiss'}),true))}
   else if(i.type==='client'){box.append(btn('Accept',()=>api('/admin/api/clients/suggestions','POST',{items:[{type:i.item_type,id:i.id}],action:'accept'})),btn('Dismiss',()=>api('/admin/api/clients/suggestions','POST',{items:[{type:i.item_type,id:i.id}],action:'dismiss'}),true))}
+  else if(i.type==='decision'){const note=(what)=>{const n=prompt(what);return n===null?null:n.trim()};
+   if(i.replaces)box.append(btn('Approve, replacing “'+i.replaces.title+'”',async()=>{await api('/admin/api/records/'+i.id+'/replace','POST',{old_id:i.replaces.id,reason:'Approved on Actions as a newer decision (Temple suggested the replacement).'});$('notice').textContent='Approved '+(i.ref||'')+'; “'+i.replaces.title+'” is now superseded.'}));
+   box.append(btn(i.replaces?'Approve only':'Approve',async()=>{await api('/admin/api/records/'+i.id+'/review','POST',{decision:'approved'});$('notice').textContent='Decision approved: '+(i.ref?i.ref+' ':'')+i.title},!!i.replaces),
+    btn('Approve with a note',async()=>{const n=note('Your note (kept with the approval):');if(n===null)return;await api('/admin/api/records/'+i.id+'/review','POST',{decision:'approved',note:n});$('notice').textContent='Decision approved with your note.'},true),
+    btn('Reject',async()=>{const n=note('Why are you rejecting it? (optional)');if(n===null)return;await api('/admin/api/records/'+i.id+'/review','POST',{decision:'rejected',note:n});$('notice').textContent='Decision rejected: '+i.title},true))}
+  else if(i.type==='auto'){box.append(btn('Undo',async()=>{if(!confirm('Take “'+i.title+'” back out? It is retired with its history kept.'))return;await api('/admin/api/auto-approve/undo','POST',{item_type:i.item_type,id:i.id});$('notice').textContent='Taken back out: '+i.title},true))}
   else if(i.href){const a=document.createElement('a');a.href=i.href;a.textContent='Open ↗';a.className='small';box.append(a)}
   return box}
+ const REC={approve:['Approve','rec-ok'],clarify:['Clarify first','rec-warn'],reject:['Reject','rec-bad'],running:['Temple is checking it…','rec-none'],unreviewed:['Not reviewed yet','rec-none'],failed:['Temple could not check it','rec-bad'],unclear:['See the report','rec-none']};
+ function decisionCard(i){const card=el('div','','dec-card');const head=el('div','','dec-head');if(i.ref)head.append(el('span',i.ref,'ref'));head.append(el('strong',i.title));card.append(head);
+  card.append(el('div',i.decision,'dec-what'));
+  const grid=el('dl','','dec-grid');const row=(k,v)=>{if(!v)return;grid.append(el('dt',k),el('dd',v))};
+  row('Why it is a decision',i.why_decision);row('What it is for',i.for);row('Reason given',i.rationale);if(i.options&&i.options.length)row('Options considered',i.options.join(' · '));row('Revisit',[i.revisit,i.review_by?'by '+i.review_by:''].filter(Boolean).join(' · '));row('Where it came from',i.source);card.append(grid);
+  const [l,c]=REC[i.recommendation]||REC.unclear;const rec=el('div','','dec-rec '+c);rec.append(el('span','Temple recommends','dec-rec-k'),el('strong',l));if(i.clash)rec.append(el('span','Clashes with something you hold','badge v-bad'));if(i.replaces)rec.append(el('span','Replaces “'+i.replaces.title+'”','badge v-warn'));if(i.reason)rec.append(el('div',i.reason,'small'));card.append(rec);
+  card.append(actionsFor(i));return card}
  async function load(){const d=await api('/admin/api/actions');$('act-total').textContent=d.total?d.total+(d.total===1?' action waiting':' actions waiting'):'Nothing waiting — all clear';
   const box=$('act-sections');box.replaceChildren();
   const open=d.sections.filter(s=>s.count),clear=d.sections.filter(s=>!s.count);
-  for(const s of open){const sec=el('section','','act-sec act-'+s.level);const h=el('div','','mem-head');const t=el('h2','');t.append(document.createTextNode(s.title+' '),el('span',String(s.count),'act-count'));const a=document.createElement('a');a.href=s.link;a.textContent=s.count>s.items.length?'Open all '+s.count+' ↗':'Open ↗';h.append(t,a);sec.append(h);
+  for(const s of open.filter(s=>!s.info).concat(open.filter(s=>s.info))){const sec=el('section','','act-sec act-'+s.level+(s.info?' act-info':''));const h=el('div','','mem-head');const t=el('h2','');t.append(document.createTextNode(s.title+' '),el('span',String(s.count),'act-count'));const a=document.createElement('a');a.href=s.link;a.textContent=s.count>s.items.length?'Open all '+s.count+' ↗':'Open ↗';h.append(t,a);sec.append(h);
    if(s.note)sec.append(el('p',s.note,'muted small'));
-   for(const i of s.items){const row=el('div','','act-row');const txt=el('div','','act-text');const tl=el('strong',i.title);txt.append(tl);
+   if(s.key==='waiting'&&d.auto_on){const go=btn('Approve these automatically',async()=>{const x=await api('/admin/api/auto-approve/backlog','POST',{});$('notice').textContent='Checked '+x.memories+' memories ('+x.checking+' being reviewed by Temple), '+x.drafts+' knowledge drafts, '+x.facts+' organisation facts'+(x.suggestions?', accepted '+x.suggestions+' suggestions':'')+'. Anything that failed a check is held back for you.'});go.classList.remove('secondary');sec.append(go)}
+   let list=sec;if(s.info&&s.items.length>6){const det=document.createElement('details');det.append(el('summary','Show '+s.items.length));sec.append(det);list=det}
+   if(s.key==='decisions'){for(const i of s.items)sec.append(decisionCard(i));box.append(sec);continue}
+   for(const i of s.items){const row=el('div','','act-row');const txt=el('div','','act-text');if(i.ref){const rf=el('span',i.ref,'ref');rf.style.marginRight='6px';txt.append(rf)}const tl=el('strong',i.title);txt.append(tl);
     if(i.verdict){const [l,c]=V[i.verdict]||V.unclear;const bd=el('span',l,'badge '+c);bd.style.marginLeft='8px';txt.append(bd)}if(i.kind==='decision'&&i.type==='proposal'){const db=el('span','Decision','badge v-run');db.style.marginLeft='6px';txt.append(db)}
     if(i.type==='proposal'&&i.replaces)txt.append(el('div','Temple: replaces “'+i.replaces.title+'”','small'));
-    if(i.detail)txt.append(el('div',i.detail,'small muted'));row.append(txt,actionsFor(i));sec.append(row)}
+    if(i.detail)txt.append(el('div',i.detail,'small muted'));row.append(txt,actionsFor(i));list.append(row)}
    box.append(sec)}
-  if(clear.length){const sec=el('section','','act-sec');sec.append(el('h2','All clear'),el('p',clear.map(s=>s.title).join(' · '),'muted small'));box.append(sec)}}
+  if(clear.length){const sec=el('section','','act-sec');sec.append(el('h2','All clear'),el('p',clear.map(s=>s.title).join(' · '),'muted small'));box.append(sec)}
+  $('act-auto').checked=!!d.auto_on;$('act-auto-text').textContent=d.auto_on?'On: memories, knowledge and organisation facts go live after Alice\u2019s checks. Decisions, clashes, replacements, rule changes and anything from the outside connector wait for you here.':'Off: everything waits for your approval.'}
+ $('act-auto').onchange=()=>run(async()=>{const on=$('act-auto').checked;if(!confirm(on?'Turn automatic approval on? Decisions and anything that clashes still wait for you.':'Turn automatic approval off? Everything new will wait for your approval.')){$('act-auto').checked=!on;return}await api('/admin/api/auto-approve','PUT',{on});await load()});
  $('act-refresh').onclick=()=>run(load);run(load);
 }
 """

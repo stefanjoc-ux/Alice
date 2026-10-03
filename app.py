@@ -24,6 +24,7 @@ import activity_log
 import temple_ask
 import memory_tags
 import refs
+import autoapprove
 from admin_ui import render_admin, PAGES
 from ui_theme import SHARED_CSS
 import secrets
@@ -1060,6 +1061,29 @@ def admin_category_suggestions(change: SuggestionAction):
     try: return store.resolve_suggestions(change.ids,change.action)
     except ValueError as e: raise HTTPException(400,str(e)) from None
 
+class AutoSetting(BaseModel):
+    on: bool
+
+class AutoUndo(BaseModel):
+    item_type: Literal['memory','knowledge','orgfact']
+    id: str = Field(min_length=1,max_length=80)
+
+@app.get('/admin/api/auto-approve')
+def admin_auto_approve(): return {'on':autoapprove.on(),'recent':autoapprove.recent()}
+
+@app.put('/admin/api/auto-approve')
+def admin_auto_approve_set(update: AutoSetting): return autoapprove.set_on(update.on)
+
+@app.post('/admin/api/auto-approve/undo')
+def admin_auto_undo(change: AutoUndo):
+    try: return autoapprove.undo(change.item_type,change.id)
+    except ValueError as e: raise HTTPException(409,str(e)) from None
+
+@app.post('/admin/api/auto-approve/backlog')
+async def admin_auto_backlog():
+    try: return await asyncio.to_thread(autoapprove.backlog)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
 @app.get('/admin/api/archive')
 def admin_archive(query: str=Query('',max_length=200), flag: Literal['all','uncaptured','external']='all',
                   sort: Literal['recent','oldest','created','title']='recent', offset: int=Query(0,ge=0)):
@@ -2089,38 +2113,9 @@ async def temple_chat_analyse(cid: str):
 
 @app.post('/admin/api/temple-suggestions/{sid}')
 def temple_suggestion_action(sid: str, update: TempleSuggestionAction):
-    if update.action=='accept':
-        with store.db() as c:
-            row=c.execute('SELECT kind,title,quote FROM temple_suggestions WHERE id=?',(sid,)).fetchone()
-        try:
-            if row and row['kind'] in ('memory','knowledge'):
-                rules_engine.check_record(row['title'],update.content,'Your words in chat: '+row['quote'],stage=row['kind'])
-            elif row: rules_engine.check_outbound(update.content,'guidance',packs=False)
-        except rules_engine.RuleViolation as e: raise HTTPException(400,str(e)) from None
-    if update.action=='accept':
-        with store.db() as c:
-            srow=c.execute('SELECT s.*,ch.client FROM temple_suggestions s LEFT JOIN chats ch ON ch.id=s.chat_id WHERE s.id=?',(sid,)).fetchone()
-        if srow and srow['kind']=='decision':   # decisions become structured memory proposals
-            if srow['status'] in ('accepted','dismissed'): raise HTTPException(400,'This suggestion has already been handled.')
-            d=store.parse_decision(update.content)
-            try:
-                r=store.propose_decision(srow['title'],d['decision'],f"Chat {srow['chat_id']}: {srow['quote']}",d['rationale'],d['options'],d['revisit'])
-            except ValueError as e: raise HTTPException(400,str(e)) from None
-            with store.db() as c:
-                c.execute("UPDATE temple_suggestions SET status='accepted',target=?,content=? WHERE id=?",(r.get('id',''),update.content.strip(),sid))
-                store.audit(c,'temple_suggestion_accepted',sid,'human_review','decision → '+r.get('id',''))
-            if srow['client'] and r.get('id'): clients.tag('memory',[r['id']],srow['client'],'chat')
-            return {'status':'accepted','target':r.get('id','')}
     try:
-        result=temple_chat.act(sid,update.action,update.content)
-        if update.action=='accept' and result.get('target'):
-            with store.db() as c:
-                row=c.execute('SELECT s.kind,ch.client FROM temple_suggestions s JOIN chats ch ON ch.id=s.chat_id WHERE s.id=?',(sid,)).fetchone()
-            if row and row['client'] and row['kind'] in ('memory','knowledge'):   # captures inherit the chat's client
-                clients.tag('memory' if row['kind']=='memory' else 'file',[result['target']],row['client'],'chat')
-                if row['kind']=='knowledge':
-                    knowledge.update(result['target'],label='client',audit_it=False)   # a Temple note, labelled client-confidential
-        return result
+        if update.action=='accept': return autoapprove.accept_suggestion(sid,update.content)   # same path as automatic acceptance
+        return temple_chat.act(sid,update.action,update.content)
     except ValueError as e:raise HTTPException(400,str(e)) from None
 
 class TempleSettings(BaseModel):

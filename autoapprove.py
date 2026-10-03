@@ -1,0 +1,340 @@
+"""Automatic approval (Stefan's decision, 3 Oct 2026): to keep Alice from being admin, memories, knowledge drafts,
+organisation facts and Temple's memory/knowledge suggestions go live without a click. What still waits for him:
+
+- Decisions: always. Shown on Actions with why it is a decision, what it is for, and Temple's recommendation.
+- Anything that changes behaviour or removes something: rule and guidance suggestions, and "this replaces that"
+  suggestions (retiring older knowledge or memories). Their existing approval paths are unchanged.
+- A new memory that clashes: Temple's review says it contradicts an approved memory or decision ('Conflict: yes'),
+  recommends rejecting it, says it replaces an older memory, or could not check it.
+- Anything proposed through the outside connector (Copilot, the signed-in endpoint): it reads documents and web pages
+  Stefan does not control, so a page saying "remember that…" must not become a live memory.
+
+The security rules still run when anything is proposed and again on approval (secrets, protective markings, personal
+identifiers, duplicates, client separation): automatic approval never skips them. Each automatic approval is logged
+('auto_approved', actor Alice) and listed on Actions for 7 days with Undo (retire or archive; history kept).
+Switch: settings key 'auto_approve' ('true'/'false'), on the Actions page."""
+import contextvars
+import json
+import os
+import re
+import threading
+
+import substrate_store as store
+
+_outside = contextvars.ContextVar('alice_auto_outside', default='')
+_deciding = contextvars.ContextVar('alice_auto_deciding', default=False)
+TYPES = {'memory': 'Memory', 'knowledge': 'Knowledge', 'orgfact': 'Organisation fact', 'chat': 'Saved conversation'}
+CONFLICT = re.compile(r'^\W*conflict\W*(yes|no)\b', re.I | re.M)
+WHY = re.compile(r'^\W*why it is a decision\W*[:\-]\s*(.+)$', re.I | re.M)
+FOR = re.compile(r'^\W*what it is for\W*[:\-]\s*(.+)$', re.I | re.M)
+
+
+def _schema():
+    with store.db() as c:
+        c.execute("CREATE TABLE IF NOT EXISTS auto_approvals (item_type TEXT NOT NULL, item_id TEXT NOT NULL, state TEXT NOT NULL, "
+                  "reason TEXT NOT NULL DEFAULT '', at TEXT NOT NULL, undone_at TEXT, PRIMARY KEY (item_type,item_id))")
+        default = 'false' if os.getenv('ALICE_AUTO_APPROVE_DEFAULT') == 'off' else 'true'   # only for a brand-new database
+        c.execute("INSERT OR IGNORE INTO settings VALUES ('auto_approve',?)", (default,))
+
+
+_schema()
+
+
+def on():
+    with store.db() as c:
+        row = c.execute("SELECT value FROM settings WHERE key='auto_approve'").fetchone()
+    return not row or row[0] == 'true'
+
+
+def set_on(value):
+    with store.db() as c:
+        c.execute("UPDATE settings SET value=? WHERE key='auto_approve'", ('true' if value else 'false',))
+        store.audit(c, 'auto_approve_setting', 'Alice', 'human_control', 'Automatic approval ' + ('on' if value else 'off'))
+    return {'on': bool(value)}
+
+
+# ---------------- who proposed it ----------------
+class from_outside:
+    """with from_outside('Microsoft Copilot'): ... — proposals made inside are held for Stefan ('' = trusted caller)."""
+    def __init__(self, label): self.label = label or ''
+    def __enter__(self): self.t = _outside.set(self.label); return self
+    def __exit__(self, *a): _outside.reset(self.t)
+
+
+def deciding(): return _deciding.get()
+
+
+def outside(): return _outside.get()
+
+
+# ---------------- state ----------------
+def _state(item_type, item_id):
+    with store.db() as c:
+        r = c.execute('SELECT state,reason FROM auto_approvals WHERE item_type=? AND item_id=?', (item_type, item_id)).fetchone()
+    return dict(r) if r else None
+
+
+def _mark(c, item_type, item_id, state, reason):
+    c.execute('INSERT INTO auto_approvals(item_type,item_id,state,reason,at) VALUES (?,?,?,?,?) '
+              'ON CONFLICT(item_type,item_id) DO UPDATE SET state=excluded.state,reason=excluded.reason,at=excluded.at,undone_at=NULL',
+              (item_type, item_id, state, reason[:300], store.now()))
+
+
+def hold(item_type, item_id, reason):
+    with store.db() as c:
+        _mark(c, item_type, item_id, 'held', reason)
+        store.audit(c, 'auto_held', item_id, 'approval_required', f'{TYPES.get(item_type, item_type)} held for you: {reason}'[:500])
+
+
+def _approved(item_type, item_id, note):
+    with store.db() as c:
+        _mark(c, item_type, item_id, 'approved', note)
+        store.audit(c, 'auto_approved', item_id, 'automatic_safeguard', f'{TYPES.get(item_type, item_type)} approved automatically: {note}'[:500])
+
+
+# ---------------- memories ----------------
+def _latest_review(rid):
+    with store.db() as c:
+        r = c.execute('SELECT status,report,error FROM temple_reviews WHERE record_id=? ORDER BY created_at DESC,id LIMIT 1', (rid,)).fetchone()
+    return dict(r) if r else None
+
+
+def _title(c, rid):
+    r = c.execute('SELECT title FROM records WHERE id=?', (rid,)).fetchone()
+    return r[0] if r else ''
+
+
+def after_review(rid, reviewed=True):
+    """Called once Temple's review of a new memory has finished (or straight away when reviews are off)."""
+    import temple
+    if not on() or _state('memory', rid): return
+    with store.db() as c:
+        row = c.execute("SELECT r.status,coalesce(m.kind,'fact') AS kind FROM records r LEFT JOIN record_meta m ON m.record_id=r.id WHERE r.id=?", (rid,)).fetchone()
+    if not row or row['status'] != 'proposed': return
+    if row['kind'] == 'decision': hold('memory', rid, 'A decision: decisions always wait for you.'); return
+    note = 'not checked for clashes (Temple reviews are off)'
+    if reviewed:
+        rv = _latest_review(rid)
+        if not rv or rv['status'] != 'complete':
+            hold('memory', rid, 'Temple could not check it for clashes' + (f": {rv['error']}" if rv and rv.get('error') else '') + '.'); return
+        report, verdict = rv['report'] or '', temple.verdict(rv)
+        rep = temple.REPLACES.search(report)
+        if rep:
+            with store.db() as c: old = _title(c, rep.group(1))
+            hold('memory', rid, f'Temple thinks it replaces “{old or rep.group(1)[:8]}”: you choose whether to retire the older one.'); return
+        clash = CONFLICT.search(report)
+        if (clash and clash.group(1).lower() == 'yes') or verdict == 'reject':
+            why = temple.reason_line(report) or 'Temple found a clash with what Alice already holds.'
+            hold('memory', rid, ('Clashes with an approved memory: ' if clash and clash.group(1).lower() == 'yes' else 'Temple recommends rejecting it: ') + why); return
+        note = f'Temple: {verdict}, no clash'
+    try:
+        with store.acting('Alice', note='Approved automatically: ' + note):
+            store.review(rid, 'approved')
+    except ValueError as e:
+        hold('memory', rid, f'Not approved automatically: {e}'); return
+    _approved('memory', rid, note)
+
+
+def review_then_decide(rid):
+    """Background: Temple reviews the memory, then automatic approval decides."""
+    import temple
+    def work():
+        try: temple.review_record(rid)
+        except Exception: pass
+        try: after_review(rid)
+        except Exception: pass
+    threading.Thread(target=work, daemon=True).start()
+
+
+# ---------------- knowledge drafts and organisation facts ----------------
+def knowledge_draft(fid):
+    import knowledge
+    if not fid or _state('knowledge', fid): return 'already'
+    if not on(): return 'off'
+    if outside():
+        hold('knowledge', fid, f'Proposed by {outside()} through the outside connector: it reads material you do not control.'); return 'held'
+    with store.acting('Alice', note='Approved automatically'):
+        r = knowledge.review([fid], 'approved')
+    if r['changed']: _approved('knowledge', fid, 'draft from a trusted source'); return 'approved'
+    if r['blocked']: hold('knowledge', fid, 'Not approved automatically: ' + ' '.join(r['block_reasons'])); return 'held'
+    return 'skipped'
+
+
+def org_fact(fid):
+    import organisations
+    if not fid or _state('orgfact', fid): return 'already'
+    if not on(): return 'off'
+    if outside():
+        hold('orgfact', fid, f'Proposed by {outside()} through the outside connector.'); return 'held'
+    with store.acting('Alice', note='Approved automatically'):
+        r = organisations.review_facts([fid], 'approved')
+    if r.get('changed'): _approved('orgfact', fid, 'proposed with a source'); return 'approved'
+    if r.get('blocked'): hold('orgfact', fid, 'Not approved automatically: ' + ' '.join(r.get('block_reasons') or [])); return 'held'
+    return 'skipped'
+
+
+# ---------------- Temple's chat suggestions ----------------
+def accept_suggestion(sid, content):
+    """Accept one of Temple's chat suggestions (the same path as the Accept button). Returns the act() result."""
+    import clients, knowledge, rules_engine, temple_chat
+    with store.db() as c:
+        srow = c.execute('SELECT s.*,ch.client FROM temple_suggestions s LEFT JOIN chats ch ON ch.id=s.chat_id WHERE s.id=?', (sid,)).fetchone()
+    if not srow: raise ValueError('Suggestion not found.')
+    if srow['kind'] in ('memory', 'knowledge'):
+        rules_engine.check_record(srow['title'], content, 'Your words in chat: ' + srow['quote'], stage=srow['kind'])
+    elif srow['kind'] != 'decision':
+        rules_engine.check_outbound(content, 'guidance', packs=False)
+    if srow['kind'] == 'decision':          # decisions become structured decision proposals (which wait for you)
+        if srow['status'] in ('accepted', 'dismissed'): raise ValueError('This suggestion has already been handled.')
+        d = store.parse_decision(content)
+        r = store.propose_decision(srow['title'], d['decision'], f"Chat {srow['chat_id']}: {srow['quote']}", d['rationale'], d['options'], d['revisit'])
+        with store.db() as c:
+            c.execute("UPDATE temple_suggestions SET status='accepted',target=?,content=? WHERE id=?", (r.get('id', ''), content.strip(), sid))
+            store.audit(c, 'temple_suggestion_accepted', sid, 'human_review', 'decision → ' + r.get('id', ''))
+        if srow['client'] and r.get('id'): clients.tag('memory', [r['id']], srow['client'], 'chat')
+        return {'status': 'accepted', 'target': r.get('id', '')}
+    result = temple_chat.act(sid, 'accept', content)
+    if result.get('target') and srow['client'] and srow['kind'] in ('memory', 'knowledge'):   # captures inherit the chat's client
+        clients.tag('memory' if srow['kind'] == 'memory' else 'file', [result['target']], srow['client'], 'chat')
+        if srow['kind'] == 'knowledge': knowledge.update(result['target'], label='client', audit_it=False)
+    return result
+
+
+def suggestions_for_chat(cid):
+    """After Temple suggests things from a chat: memories and knowledge notes are accepted (memories then go through the
+    same clash check), decisions become decision proposals for you; guidance and rule requests stay as suggestions."""
+    if not on() or _state('chat', cid): return {'accepted': 0}      # a conversation saved through the outside connector: you decide
+    with store.db() as c:
+        rows = [dict(r) for r in c.execute("SELECT id,kind,content FROM temple_suggestions WHERE chat_id=? AND status='pending' "
+                                           "AND kind IN ('memory','knowledge','decision')", (cid,))]
+    done = 0
+    for r in rows:
+        try:
+            with store.acting('Alice', note='Accepted automatically'):
+                res = accept_suggestion(r['id'], r['content'])
+            done += 1
+            if r['kind'] == 'knowledge' and res.get('target'): _approved('knowledge', res['target'], "Temple's note from your own words")
+        except Exception:
+            pass                        # stays as a suggestion for you
+    return {'accepted': done}
+
+
+# ---------------- what was approved, what is held, undo ----------------
+def recent(days=7, limit=200):
+    from datetime import datetime, timedelta, timezone
+    import refs
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    with store.db() as c:
+        rows = [dict(r) for r in c.execute("SELECT item_type,item_id,reason,at FROM auto_approvals WHERE state='approved' AND undone_at IS NULL "
+                                           "AND at>=? ORDER BY at DESC LIMIT ?", (since, limit))]
+        for r in rows:
+            if r['item_type'] == 'memory': x = c.execute('SELECT title FROM records WHERE id=?', (r['item_id'],)).fetchone()
+            elif r['item_type'] == 'knowledge': x = (c.execute('SELECT title FROM knowledge_meta WHERE file_id=?', (r['item_id'],)).fetchone()
+                                                     or c.execute('SELECT name FROM files WHERE id=?', (r['item_id'],)).fetchone())
+            else: x = c.execute("SELECT org || ': ' || statement FROM org_facts WHERE id=?", (r['item_id'],)).fetchone()
+            r['title'] = x[0] if x else '(deleted)'
+    rec, fil = refs.of('record', [r['item_id'] for r in rows if r['item_type'] == 'memory']), refs.of('file', [r['item_id'] for r in rows if r['item_type'] == 'knowledge'])
+    for r in rows: r['ref'] = rec.get(r['item_id']) or fil.get(r['item_id']) or ''
+    return rows
+
+
+def held():
+    with store.db() as c:
+        return {(r['item_type'], r['item_id']): r['reason'] for r in c.execute("SELECT item_type,item_id,reason FROM auto_approvals WHERE state='held'")}
+
+
+def undo(item_type, item_id):
+    import knowledge, organisations
+    st = _state(item_type, item_id)
+    if not st or st['state'] != 'approved': raise ValueError('That was not approved automatically, or has already been undone.')
+    reason = 'Undone after automatic approval'
+    with store.acting(note=reason):
+        if item_type == 'memory': store.retire_memory(item_id, reason)
+        elif item_type == 'knowledge': knowledge.update(item_id, status='archived')
+        elif item_type == 'orgfact': organisations.retire_fact(item_id, reason)
+        else: raise ValueError('Unknown item.')
+    with store.db() as c:
+        c.execute('UPDATE auto_approvals SET undone_at=? WHERE item_type=? AND item_id=?', (store.now(), item_type, item_id))
+        store.audit(c, 'auto_undone', item_id, 'human_review', f'{TYPES.get(item_type, item_type)} taken back out (history kept)')
+    return {'undone': True}
+
+
+def backlog():
+    """Apply automatic approval to what was already waiting before it was switched on (not decisions, not held items)."""
+    import knowledge, organisations, temple
+    if not on(): raise ValueError('Automatic approval is off.')
+    hl = held()
+    with store.db() as c:
+        mems = [r[0] for r in c.execute("SELECT r.id FROM records r LEFT JOIN memory_archive a ON a.record_id=r.id LEFT JOIN record_meta m ON m.record_id=r.id "
+                                        "WHERE coalesce(a.state,r.status)='proposed' AND coalesce(m.kind,'fact')<>'decision'")]
+        chats = [r[0] for r in c.execute("SELECT DISTINCT chat_id FROM temple_suggestions WHERE status='pending' AND kind IN ('memory','knowledge','decision')")]
+    mems = [m for m in mems if ('memory', m) not in hl]
+    started = 0
+    for rid in mems:
+        rv = _latest_review(rid)
+        if rv and rv['status'] == 'complete': after_review(rid)
+        elif temple.settings()['enabled']: review_then_decide(rid); started += 1
+        else: after_review(rid, reviewed=False)
+    drafts = [i['id'] for i in knowledge.listing(status='draft', limit=100000)['items'] if ('knowledge', i['id']) not in hl]
+    for fid in drafts:
+        m = knowledge.meta([fid]).get(fid) or {}
+        if 'copilot' in (m.get('added_by', '') + ' ' + m.get('source', '')).lower():
+            hold('knowledge', fid, 'Proposed through the outside connector before automatic approval.')
+        else: knowledge_draft(fid)
+    facts = [f['id'] for f in organisations.pending(limit=100000) if ('orgfact', f['id']) not in hl]
+    for fid in facts: org_fact(fid)
+    sugg = 0
+    for cid in chats: sugg += suggestions_for_chat(cid)['accepted']
+    return {'memories': len(mems), 'checking': started, 'drafts': len(drafts), 'facts': len(facts), 'suggestions': sugg}
+
+
+# ---------------- decisions, explained ----------------
+def explain_decision(item):
+    """item: a temple.queue() row for a proposed decision. Adds why it is a decision, what it is for and the recommendation."""
+    import clients, temple
+    meta = (store.record_kinds([item['id']]).get(item['id']) or {}).get('decision') or store.parse_decision(item['content'])
+    latest = (item.get('reviews') or [None])[0]
+    report = latest['report'] if latest and latest.get('status') == 'complete' else ''
+    why = WHY.search(report); what = FOR.search(report)
+    opts = [o for o in meta.get('options') or [] if o]
+    if why: why_text = why.group(1).strip()
+    elif opts: why_text = 'It chooses one option over ' + ('the others considered' if len(opts) > 1 else 'an alternative') + ': later work should follow it.'
+    else: why_text = 'It records a choice made, not just a fact: later work should follow it until it is revisited.'
+    client = clients.clients_for('memory', [item['id']]).get(item['id'], '')
+    source = item.get('source') or ''
+    m = re.match(r'Chat ([0-9a-f]{32})', source)
+    if m:
+        with store.db() as c:
+            t = c.execute('SELECT title FROM chats WHERE id=?', (m.group(1),)).fetchone()
+        source = 'From the chat “' + (t[0] if t else 'deleted chat') + '”' + source[m.end():][:160]
+    where = ', '.join(x for x in [client and f'client {client}', item.get('category') and f'category {item["category"]}'] if x)
+    what_text = what.group(1).strip() if what else (f'Applies to {where}.' if where else 'General: not tied to a client.')
+    rec = temple.verdict(latest)
+    clash = CONFLICT.search(report)
+    return {'decision': meta.get('decision') or item['content'], 'why_decision': why_text[:300], 'for': what_text[:300],
+            'rationale': meta.get('rationale', ''), 'options': opts, 'revisit': meta.get('revisit', ''), 'review_by': item.get('review_by'),
+            'source': source[:300], 'client': client, 'recommendation': rec, 'reason': temple.reason_line(report) if report else '',
+            'clash': bool(clash and clash.group(1).lower() == 'yes')}
+
+
+# ---------------- decisions: held as soon as they are proposed, then reviewed by Temple ----------------
+_propose_decision = store.propose_decision
+
+
+def propose_decision(*args, **kwargs):
+    token = _deciding.set(True)
+    try: result = _propose_decision(*args, **kwargs)
+    finally: _deciding.reset(token)
+    rid = result.get('id')
+    if rid and not result.get('duplicate') and not _state('memory', rid):
+        hold('memory', rid, 'A decision: decisions always wait for you.')
+        import temple
+        if temple.settings()['enabled']:         # reviewed now that its decision details are saved
+            def work():
+                try: temple.review_record(rid)
+                except Exception: pass
+            threading.Thread(target=work, daemon=True).start()
+    return result
+
+
+store.propose_decision = propose_decision

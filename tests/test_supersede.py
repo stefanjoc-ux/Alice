@@ -43,7 +43,7 @@ p = K.replacements('pending', new_id=new)
 t('proposer suggestion recorded, pointing at the right item', len(p) == 1 and p[0]['old_id'] == old and p[0]['source'] == 'proposer')
 t('nothing retired by proposing', K.meta([old])[old]['status'] == 'active')
 a = {x['key']: x for x in actions.summary()['sections']}
-t('Actions: draft shows what it replaces', a['drafts']['items'][0]['replaces'][0]['id'] == old)
+t('Actions: draft shows what it replaces', next(i for i in a['waiting']['items'] if i['type'] == 'draft')['replaces'][0]['id'] == old)
 t('Actions: no retire suggestion while the newer item is only a draft', a['replacements']['count'] == 0)
 x = cl.post('/admin/api/knowledge/review', json={'ids': [new], 'decision': 'approved', 'retire_replaced': True}, headers=H).json()
 t('approve and retire: one item retired', x['changed'] == 1 and x['retired'] == 1)
@@ -142,7 +142,7 @@ temple.review_record(mn)
 item = [i for i in temple.queue('pending')['items'] if i['id'] == mn][0]
 t('Temple queue carries the suggested replacement', item['replaces'] and item['replaces']['id'] == mo)
 a = {x['key']: x for x in actions.summary()['sections']}
-t('Actions proposal shows it', any(i['id'] == mn and i['replaces'] for i in a['proposals']['items']))
+t('Actions proposal shows it', any(i['id'] == mn and i['replaces'] for i in a['waiting']['items']))
 t('nothing replaced until you approve', s.records('approved')['total'] >= 1 and not any(r['id'] == mo and r['status'] == 'superseded' for r in s.records('all')['records']))
 cl.post(f'/admin/api/records/{mn}/replace', json={'old_id': mo, 'reason': 'Approved on Actions'}, headers=H)
 st = {r['id']: r['status'] for r in s.records('all')['records']}
