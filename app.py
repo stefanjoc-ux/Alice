@@ -23,6 +23,7 @@ import actions
 import activity_log
 import temple_ask
 import memory_tags
+import refs
 from admin_ui import render_admin, PAGES
 from ui_theme import SHARED_CSS
 import secrets
@@ -1200,7 +1201,14 @@ class ReplacementAction(BulkIds):
 def admin_knowledge(kind: str=Query('',max_length=10), status: Literal['active','draft','rejected','archived','replaced','all']='active',
                     category: str=Query('',max_length=40), client: str=Query('',max_length=60), label: str=Query('',max_length=10),
                     query: str=Query('',max_length=200), offset: int=Query(0,ge=0), owner: str=Query('',max_length=80)):
-    d=knowledge.listing(kind,status,category,client,label,query,offset,owner=owner)
+    refs.ensure(fresh=False)
+    if refs.parse(query):                      # a reference such as K-0042: that item only
+        kind_of,fid=refs.find(query)
+        d=knowledge.listing(kind,status,category,client,label,'',0,limit=100000,owner=owner)
+        d['items']=[i for i in d['items'] if kind_of=='file' and i['id']==fid];d['total']=len(d['items']);d['next_offset']=None
+    else: d=knowledge.listing(kind,status,category,client,label,query,offset,owner=owner)
+    rf=refs.of('file',[i['id'] for i in d['items']])
+    for i in d['items']: i['ref']=rf.get(i['id'],'')
     d['categories']=[c['name'] for c in store.list_categories()['categories']];d['clients']=clients.names()
     return d
 

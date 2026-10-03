@@ -258,13 +258,21 @@ def record_results(results, checked, mode, threshold=0.75, per_memory=3):
 # ---------------- the Memories page listing ----------------
 def organised(status='approved', query='', category='', sort='newest', offset=0, limit=50, kind='', owner='', area='', tag=''):
     """store.organised_records plus area and tag filters, each memory's tags and suggestions, and tag counts."""
+    import refs
+    refs.ensure(fresh=False)
     area = _area(area) if area else ''
     tag = (tag or '')[:40]
-    if not area and not tag:
+    only = None
+    if refs.parse(query):                       # a reference such as M-0042 or D-7: that item only
+        kind_of, only = refs.find(query)
+        if kind_of != 'record': only = '-'
+        query = ''
+    if not area and not tag and only is None:
         d = store.organised_records(status, query, category, sort, offset, limit, kind, owner)
     else:
         full = store.organised_records(status, query, category, sort, 0, 100000, kind, owner)
         rows = full['records']
+        if only is not None: rows = [r for r in rows if r['id'] == only]
         if area:
             areas = category_areas()
             rows = [r for r in rows if r['category'] and areas.get(r['category'], '') in (area, '')]
@@ -276,8 +284,10 @@ def organised(status='approved', query='', category='', sort='newest', offset=0,
         d = full | {'records': rows[offset:offset + limit], 'total': len(rows),
                     'next_offset': offset + limit if offset + limit < len(rows) else None}
     tg = tags_for([r['id'] for r in d['records']])
+    rf = refs.of('record', [r['id'] for r in d['records']])
     for r in d['records']:
         r['tags'], r['tag_suggestions'] = tg[r['id']]['tags'], tg[r['id']]['suggested']
+        r['ref'] = rf.get(r['id'], '')
     st = "(?='all' OR coalesce(a.state,r.status)=?)"
     with store.db() as c:
         d['tag_counts'] = {r[0]: r[1] for r in c.execute(
