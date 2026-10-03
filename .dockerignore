@@ -1,14 +1,14 @@
 .env
 .env.*
-data/
-Documents/
-.venv/
-__pycache__/
-**/__pycache__/
+data
+Documents
+.venv
+__pycache__
+**/__pycache__
 *.pyc
-.git/
-Downloads/
-Claude outputs/
+.git
+Downloads
+Claude outputs
 *.zip
 *.bak
 alice-activity-*.csv

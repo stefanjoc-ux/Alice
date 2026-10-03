@@ -119,12 +119,20 @@ if (Want 'image') {
   Say 'Container image (built in Azure Container Registry)'
   Push-Location $Root
   try {
+    # Build from the COMMITTED code only (git archive): .env, data\ and Documents\ are never committed, so they can never
+    # be uploaded. (az acr build's own .dockerignore handling ignores rules ending in "/", so it uploaded data\ once.)
     $tag = (& git rev-parse --short HEAD).Trim()
-    if (& git status --porcelain) { $tag = $tag + '-local' ; Write-Host 'Note: uncommitted changes are included; commit before cut-over.' -ForegroundColor Yellow }
-    Write-Host 'Building in Azure (about 5-10 minutes; the log is not streamed: az crashes printing it on the Windows console)...'
-    & az acr build --registry $State.acrName --image ("alice:" + $tag) --file Dockerfile . --no-logs --output none
-    if ($LASTEXITCODE -ne 0) {
-      Write-Host "The build failed. See its log with:  az acr task list-runs -r $($State.acrName) --top 1 -o table   then   az acr task logs -r $($State.acrName) --run-id <RUN ID>" -ForegroundColor Yellow
+    if (& git status --porcelain --untracked-files=no) { Write-Host 'Note: uncommitted edits are NOT in this image; commit and run this step again to include them.' -ForegroundColor Yellow }
+    $src = Join-Path ([IO.Path]::GetTempPath()) ('alice-src-' + $tag); $zip = $src + '.zip'
+    Remove-Item $src, $zip -Recurse -Force -ErrorAction SilentlyContinue
+    & git archive --format=zip -o $zip HEAD; if ($LASTEXITCODE -ne 0) { throw 'git archive failed.' }
+    Expand-Archive -Path $zip -DestinationPath $src
+    try {
+      Write-Host "Building in Azure from commit $tag (about 5-10 minutes; the log is not streamed: az crashes printing it on the Windows console)..."
+      $status = AzCli acr build --registry $State.acrName --image ("alice:" + $tag) --file Dockerfile $src --no-logs --query status -o tsv
+    } finally { Remove-Item $src, $zip -Recurse -Force -ErrorAction SilentlyContinue }
+    if ("$status".Trim() -ne 'Succeeded') {
+      Write-Host "The build did not succeed ($status). See its log with:  az acr task list-runs -r $($State.acrName) --top 1 -o table   then   az acr task logs -r $($State.acrName) --run-id <RUN ID>" -ForegroundColor Yellow
       throw 'Image build failed.'
     }
     Set-Prop $State 'image' ($State.acrLoginServer + '/alice:' + $tag); Save-State $State
