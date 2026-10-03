@@ -26,6 +26,7 @@ param(
   [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github')][string]$Step = 'all'
 )
 $ErrorActionPreference = 'Stop'
+$env:PYTHONIOENCODING = 'utf-8'; $env:PYTHONUTF8 = '1'   # az streams build logs; without this the Windows console encoding (cp1252) crashes it
 $Root = Split-Path -Parent $PSScriptRoot
 $Template = Join-Path $Root 'infra\main.bicep'
 $StateFile = Join-Path $PSScriptRoot 'azure-state.json'
