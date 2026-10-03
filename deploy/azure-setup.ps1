@@ -31,7 +31,7 @@ $Template = Join-Path $Root 'infra\main.bicep'
 $StateFile = Join-Path $PSScriptRoot 'azure-state.json'
 
 function Say($text) { Write-Host "`n== $text" -ForegroundColor Cyan }
-function Az { $out = & az @args; if ($LASTEXITCODE -ne 0) { throw "az $($args -join ' ') failed" }; return $out }
+function AzCli { $out = & az @args; if ($LASTEXITCODE -ne 0) { throw "az $($args -join ' ') failed" }; return $out }   # not named Az: PowerShell names ignore case, so it would call itself
 function Want($name) { return ($Step -eq 'all' -or $Step -eq $name) }
 function Load-State { if (Test-Path $StateFile) { return Get-Content $StateFile -Raw | ConvertFrom-Json } else { return [pscustomobject]@{} } }
 function Save-State($s) { $s | ConvertTo-Json -Depth 5 | Set-Content $StateFile -Encoding UTF8 }
@@ -50,11 +50,11 @@ function Kv-Set($kv, $name, $value) {
     throw "Could not write secret $name to Key Vault $kv."
   } finally { Remove-Item $tmp -Force -ErrorAction SilentlyContinue }
 }
-function Kv-Get($kv, $name) { return (Az keyvault secret show --vault-name $kv --name $name --query value -o tsv) }
+function Kv-Get($kv, $name) { return (AzCli keyvault secret show --vault-name $kv --name $name --query value -o tsv) }
 
-Az account set --subscription $SubscriptionId | Out-Null
-$Me = Az ad signed-in-user show --query id -o tsv
-$Tenant = Az account show --query tenantId -o tsv
+AzCli account set --subscription $SubscriptionId | Out-Null
+$Me = AzCli ad signed-in-user show --query id -o tsv
+$Tenant = AzCli account show --query tenantId -o tsv
 if (-not $ExtAllowedUsers) { $ExtAllowedUsers = $Me }
 $State = Load-State
 Write-Host "Subscription $SubscriptionId, tenant $Tenant, resource group $ResourceGroup ($Location), you: $Me"
@@ -70,7 +70,7 @@ function Deploy($stage, $extra) {
   $pfile = New-TemporaryFile                     # a parameters file: no quoting problems, and the password is not on the command line
   try {
     [IO.File]::WriteAllText($pfile, ($doc | ConvertTo-Json -Depth 6))
-    $out = Az deployment group create -g $ResourceGroup -f $Template -n ('alice-' + $stage) --parameters ('@' + $pfile) --query properties.outputs -o json | ConvertFrom-Json
+    $out = AzCli deployment group create -g $ResourceGroup -f $Template -n ('alice-' + $stage) --parameters ('@' + $pfile) --query properties.outputs -o json | ConvertFrom-Json
   } finally { Remove-Item $pfile -Force -ErrorAction SilentlyContinue }
   foreach ($p in 'acrName', 'acrLoginServer', 'keyVaultName', 'storageAccount', 'shareName', 'environmentDomain', 'webUrl', 'mcpUrl', 'postgresServer') {
     if ($out.$p) { Set-Prop $State $p $out.$p.value }
@@ -95,9 +95,9 @@ if (Want 'infra') {
   Say 'Infrastructure (about 10-15 minutes the first time)'
   foreach ($ns in @('Microsoft.App', 'Microsoft.DBforPostgreSQL', 'Microsoft.ContainerRegistry', 'Microsoft.KeyVault',
                     'Microsoft.OperationalInsights', 'Microsoft.Storage', 'Microsoft.Network', 'Microsoft.ManagedIdentity')) {
-    Az provider register --namespace $ns --wait --output none | Out-Null      # once per subscription; quick if already done
+    AzCli provider register --namespace $ns --wait --output none | Out-Null      # once per subscription; quick if already done
   }
-  Az group create -n $ResourceGroup -l $Location --output none | Out-Null
+  AzCli group create -n $ResourceGroup -l $Location --output none | Out-Null
   Deploy 'infra' @{}
   Write-Host "Registry $($State.acrName), Key Vault $($State.keyVault), database $($State.postgresServer), file share $($State.storageAccount)/$($State.shareName)"
 }
@@ -120,7 +120,7 @@ if (Want 'image') {
   try {
     $tag = (& git rev-parse --short HEAD).Trim()
     if (& git status --porcelain) { $tag = $tag + '-local' ; Write-Host 'Note: uncommitted changes are included; commit before cut-over.' -ForegroundColor Yellow }
-    Az acr build --registry $State.acrName --image ("alice:" + $tag) --file Dockerfile . --output none | Out-Null
+    AzCli acr build --registry $State.acrName --image ("alice:" + $tag) --file Dockerfile . --output none | Out-Null
     Set-Prop $State 'image' ($State.acrLoginServer + '/alice:' + $tag); Save-State $State
     Write-Host "Image $($State.image)"
   } finally { Pop-Location }
@@ -131,21 +131,21 @@ if (Want 'files') {
   $running = $false
   try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 http://127.0.0.1:8000/ | Out-Null; $running = $true } catch { }
   if ($running) { throw 'Alice is still running on this PC. Quit it from the tray (Quit (stops servers)) so the database is not changing, then run this step again.' }
-  $key = Az storage account keys list -g $ResourceGroup -n $State.storageAccount --query '[0].value' -o tsv
+  $key = AzCli storage account keys list -g $ResourceGroup -n $State.storageAccount --query '[0].value' -o tsv
   $common = @('--account-name', $State.storageAccount, '--account-key', $key, '--output', 'none')
   foreach ($d in @('Documents', 'data', 'data/images', 'migrate')) { & az storage directory create --share-name $State.shareName --name $d @common 2>$null | Out-Null }
-  if (Test-Path (Join-Path $Root 'Documents')) { Az storage file upload-batch --destination $State.shareName --destination-path Documents --source (Join-Path $Root 'Documents') @common | Out-Null; Write-Host 'Documents copied.' }
-  if (Test-Path (Join-Path $Root 'data\images')) { Az storage file upload-batch --destination $State.shareName --destination-path data/images --source (Join-Path $Root 'data\images') @common | Out-Null; Write-Host 'Generated images copied.' }
-  Az storage file upload --share-name $State.shareName --path migrate/substrate.db --source (Join-Path $Root 'data\substrate.db') @common | Out-Null
+  if (Test-Path (Join-Path $Root 'Documents')) { AzCli storage file upload-batch --destination $State.shareName --destination-path Documents --source (Join-Path $Root 'Documents') @common | Out-Null; Write-Host 'Documents copied.' }
+  if (Test-Path (Join-Path $Root 'data\images')) { AzCli storage file upload-batch --destination $State.shareName --destination-path data/images --source (Join-Path $Root 'data\images') @common | Out-Null; Write-Host 'Generated images copied.' }
+  AzCli storage file upload --share-name $State.shareName --path migrate/substrate.db --source (Join-Path $Root 'data\substrate.db') @common | Out-Null
   Write-Host 'Database copy uploaded for the migration (it is not used by the apps; delete it from the share after cut-over).'
 }
 
 function Run-Job($name) {
-  $exec = Az containerapp job start -n $name -g $ResourceGroup --query name -o tsv
+  $exec = AzCli containerapp job start -n $name -g $ResourceGroup --query name -o tsv
   Write-Host "Started $name ($exec). Waiting..."
   for ($i = 0; $i -lt 120; $i++) {
     Start-Sleep -Seconds 10
-    $st = Az containerapp job execution show -n $name -g $ResourceGroup --job-execution-name $exec --query properties.status -o tsv
+    $st = AzCli containerapp job execution show -n $name -g $ResourceGroup --job-execution-name $exec --query properties.status -o tsv
     if ($st -in @('Succeeded', 'Failed', 'Stopped')) { break }
   }
   Write-Host "$name finished: $st"
@@ -170,11 +170,11 @@ if (Want 'signin') {
   if (-not $State.environmentDomain) { throw 'Run -Step infra first.' }
   $redirect = 'https://alice-web.' + $State.environmentDomain + '/.auth/login/aad/callback'
   if (-not $State.webAuthClientId) {
-    $app = Az ad app create --display-name 'Alice web sign-in' --sign-in-audience AzureADMyOrg --web-redirect-uris $redirect --enable-id-token-issuance true --query appId -o tsv
+    $app = AzCli ad app create --display-name 'Alice web sign-in' --sign-in-audience AzureADMyOrg --web-redirect-uris $redirect --enable-id-token-issuance true --query appId -o tsv
     & az ad sp create --id $app --output none 2>$null
     Set-Prop $State 'webAuthClientId' $app; Save-State $State
   }
-  $secret = Az ad app credential reset --id $State.webAuthClientId --display-name 'container-apps-sign-in' --years 1 --append --query password -o tsv
+  $secret = AzCli ad app credential reset --id $State.webAuthClientId --display-name 'container-apps-sign-in' --years 1 --append --query password -o tsv
   Kv-Set $State.keyVault 'web-auth-secret' $secret
   $secret = $null
   Write-Host "App registration $($State.webAuthClientId); its secret is in Key Vault (renew yearly: run -Step signin again)."
@@ -194,15 +194,15 @@ if (Want 'github') {
   Say 'GitHub pipeline sign-in (OIDC)'
   if (-not $GitHubRepo) { Write-Host 'Skipped: give -GitHubRepo owner/name.'; return }
   if (-not $State.githubClientId) {
-    $app = Az ad app create --display-name 'Alice GitHub deploy' --sign-in-audience AzureADMyOrg --query appId -o tsv
-    $sp = Az ad sp create --id $app --query id -o tsv
+    $app = AzCli ad app create --display-name 'Alice GitHub deploy' --sign-in-audience AzureADMyOrg --query appId -o tsv
+    $sp = AzCli ad sp create --id $app --query id -o tsv
     $fed = @{ name = 'github-main'; issuer = 'https://token.actions.githubusercontent.com'; subject = "repo:${GitHubRepo}:ref:refs/heads/main"; audiences = @('api://AzureADTokenExchange') } | ConvertTo-Json -Compress
     $tmp = New-TemporaryFile; [IO.File]::WriteAllText($tmp, $fed)
-    Az ad app federated-credential create --id $app --parameters "@$tmp" --output none | Out-Null; Remove-Item $tmp
-    $rg = Az group show -n $ResourceGroup --query id -o tsv
-    $acr = Az acr show -n $State.acrName --query id -o tsv
-    Az role assignment create --assignee-object-id $sp --assignee-principal-type ServicePrincipal --role Contributor --scope $rg --output none | Out-Null
-    Az role assignment create --assignee-object-id $sp --assignee-principal-type ServicePrincipal --role AcrPush --scope $acr --output none | Out-Null
+    AzCli ad app federated-credential create --id $app --parameters "@$tmp" --output none | Out-Null; Remove-Item $tmp
+    $rg = AzCli group show -n $ResourceGroup --query id -o tsv
+    $acr = AzCli acr show -n $State.acrName --query id -o tsv
+    AzCli role assignment create --assignee-object-id $sp --assignee-principal-type ServicePrincipal --role Contributor --scope $rg --output none | Out-Null
+    AzCli role assignment create --assignee-object-id $sp --assignee-principal-type ServicePrincipal --role AcrPush --scope $acr --output none | Out-Null
     Set-Prop $State 'githubClientId' $app; Save-State $State
   }
   Write-Host "Set these as repository VARIABLES (Settings > Secrets and variables > Actions > Variables) in $GitHubRepo :"
