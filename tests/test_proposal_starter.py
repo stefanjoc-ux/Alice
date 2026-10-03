@@ -74,8 +74,8 @@ t('questions and what changed are passed on', x['questions'] == ['Who is the nam
 msg = calls[-1]['messages'][0]['content']
 t('Parker sees the client profile and relevant memories', 'moving its finance data to Microsoft Fabric' in msg and 'Fabric baseline approach' in msg)
 t('another client\'s memories and documents are never sent', 'Southvale' not in msg)
-t('cost rates are never sent, even if the page sends them; sell rates are', '- Solution architect' in msg and '653' not in msg and 'sells at \u00a31,217.00 per day' in msg)
-t('the form is sent as it stands', 'Solution architect (ticked, sells at' in msg and 'not ticked: Project manager' in msg)
+t('Parker sees cost and sell rates and the margin (your decision)', 'costs \u00a3653.00, sells at \u00a31,217.00 per day, margin 46.3%' in msg)
+t('the form is sent as it stands', 'Solution architect (ticked, costs' in msg and 'not ticked: Project manager' in msg)
 calls.clear()
 hist = [{'role': 'you', 'text': 'Fabric baseline for NSC'}, {'role': 'parker', 'text': 'Who is the named sponsor?'}]
 REPLY.update({'reply': 'Added the sponsor to the brief.', 'updates': {'brief': 'Background\n...\n\nStakeholders and sponsor\nDirector of Finance (sponsor).'}, 'questions': []})
@@ -146,7 +146,7 @@ REPLY.update({'reply': 'Set the sell rate to 1050 a day on the ticked roles; the
               'updates': {'roles': [{'role': 'Solution architect', 'use': True, 'sell': '1,050'}, {'role': 'Project manager', 'use': True, 'days': 3, 'sell': -5}]}})
 rs = go(message='Change the sell rate to a 1050 day rate. The PM can stay, light touch.').json()
 t('Parker sets the sell rate you give it (never sees costs)', rs['updates']['roles'] == [{'role': 'Solution architect', 'use': True, 'days': None, 'sell': 1050.0},
-  {'role': 'Project manager', 'use': True, 'days': 3.0, 'sell': None}] and 'never cost rates or margins' in PS.PROMPT)
+  {'role': 'Project manager', 'use': True, 'days': 3.0, 'sell': None}] and 'sell = cost / (1 - margin)' in PS.PROMPT)
 class Plain:
     def __init__(s_, texts): s_.texts = texts
 real_create = Msgs.create
@@ -190,6 +190,6 @@ rp2 = cl.post('/assistant/proposal-writer/parker', json={'message': 'The rate ca
       'roles': [{'role': 'AI and Financial Consultant', 'unit': 'day', 'use': True, 'days': '20', 'sell': '1050', 'cost': '700'}],
       'priced': [{'role': 'AI and Financial Consultant', 'quantity': 10, 'sell_rate': 1050}], 'priced_total': 10500}}).json()
 mp = calls[-1]['messages'][0]['content']
-t('Parker sees roles from a price book loaded on the page, with days and sell rates', 'AI and Financial Consultant (ticked, 20 days, sells at \u00a31,050.00 per day)' in mp and '700' not in mp)
+t('Parker sees roles from a price book loaded on the page, with days and sell rates', 'AI and Financial Consultant (ticked, 20 days, costs \u00a3700.00, sells at \u00a31,050.00 per day, margin 33.3%)' in mp)
 t('Parker sees what the written proposal was priced at', 'AI and Financial Consultant: 10 at \u00a31,050.00; total \u00a310,500.00' in mp and 'Update the pricing' in PS.PROMPT)
 t('Parker can update those roles', rp2['updates']['roles'][0]['role'] == 'AI and Financial Consultant')

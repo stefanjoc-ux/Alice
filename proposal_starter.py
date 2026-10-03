@@ -38,9 +38,11 @@ Choose only from the lists given, using the exact path or role name.
 If a DRAFT is given, the colleague is revising a proposal that has already been written: when they ask for a change to the
 proposal (e.g. "add to the approach..."), rewrite the affected DRAFT sections and return them in "draft" (whole sections, in the
 same style and format, keeping everything that is still right); keep the brief in line when the change is a fact about the work.
-Never put prices or day rates in the draft: Alice adds the pricing table. You see each role's days and SELL rate (what the client is
-charged) and the PRICED total, never cost rates or margins. When the colleague tells you the rate to charge the client (e.g. "a 1050
-day rate"), set "sell" on the roles it applies to (the ticked roles unless they say otherwise) and say that the page shows the margin.
+Never put prices, day rates, costs or margins in the draft: Alice adds the pricing table, and costs and margins are internal. You
+see each role's days, COST rate (what it costs us), SELL rate (what the client is charged) and margin, and the PRICED total, so you
+can help with the commercials: e.g. what day rate gives a 30% margin, or whether a price is below the minimum margin. When the
+colleague tells you the rate to charge the client (e.g. "a 1050 day rate", or "a 35% margin"), set "sell" on the roles it applies to
+(the ticked roles unless they say otherwise; for a margin, sell = cost / (1 - margin)) and say what the margin becomes.
 Keep words in the draft (e.g. "20 consultant days" in Commercials) in line with the rate card. If the proposal has been written and
 the rate card no longer matches what was PRICED, say so and tell them to press "Update the pricing" so Alice reprices it and rebuilds
 the document. Keep your reply short and always return valid JSON.
@@ -125,8 +127,9 @@ def _num(v):
 
 
 def _form(f, roles_known):
-    """The form as the browser sent it, cut down to what Parker may see: role names, units, ticks, days and sell rates. Never cost
-    rates or margins, even if the page sends them. Roles on the page count as known (a price book loaded on the page, not saved)."""
+    """The form as the browser sent it: role names, units, ticks, days, cost and sell rates (the owner decided costs are not sensitive
+    for Parker; the writer, Argus and the document still never get them). Roles on the page count as known (a price book loaded on the
+    page, not saved)."""
     f = f if isinstance(f, dict) else {}
     roles = []
     for r in (f.get('roles') or [])[:300]:
@@ -134,17 +137,18 @@ def _form(f, roles_known):
         if not name: continue
         roles_known.setdefault(name.casefold(), name)
         roles.append({'role': roles_known[name.casefold()], 'unit': 'hour' if r.get('unit') == 'hour' else 'day', 'use': r.get('use') is not False,
-                      'days': _num(r.get('days')), 'sell': _num(r.get('sell'))})
+                      'days': _num(r.get('days')), 'sell': _num(r.get('sell')), 'cost': _num(r.get('cost'))})
     priced = []
     for l in (f.get('priced') or [])[:60]:
         if isinstance(l, dict) and _clean(l.get('role'), 80):
-            priced.append({'role': _clean(l.get('role'), 80), 'quantity': _num(l.get('quantity')), 'sell_rate': _num(l.get('sell_rate'))})
+            priced.append({'role': _clean(l.get('role'), 80), 'quantity': _num(l.get('quantity')), 'sell_rate': _num(l.get('sell_rate')),
+                           'cost_rate': _num(l.get('cost_rate'))})
     return {'title': _clean(f.get('title'), 150), 'organisation': _clean(f.get('organisation'), 80),
             'brief': str(f.get('brief') or '').strip()[:20000], 'notes': str(f.get('notes') or '').strip()[:4000],
             'template': _clean(f.get('template'), 300), 'structure': str(f.get('structure') or '').strip()[:6000],
             'references': [_slash(x) for x in (f.get('references') or [])][:10],
             'sections': [_clean(x, 120) for x in (f.get('sections') or [])][:40], 'roles': roles, 'draft': _draft(f.get('draft')),
-            'priced': priced, 'priced_total': _num(f.get('priced_total'))}
+            'priced': priced, 'priced_total': _num(f.get('priced_total')), 'priced_cost': _num(f.get('priced_cost'))}
 
 
 def _draft(items):
@@ -254,11 +258,16 @@ def _chat(aid, message, history=(), form=None, organisation='', doc_token=''):
               ('BRIEF', f['brief']), ('NOTES', f['notes']), ('STRUCTURE', f['structure']),
               ('SECTIONS', '; '.join(f['sections'])), ('REFERENCES CHOSEN', '; '.join(f['references'])),
               ('ROLES ON THE RATE CARD', '; '.join(r['role'] + ((' (ticked' + (f', {r["days"]:g} {r["unit"]}s' if r['days'] else '')
-                                                                + (f', sells at \u00a3{r["sell"]:,.2f} per {r["unit"]}' if r['sell'] else '') + ')')
+                                                                + (f', costs \u00a3{r["cost"]:,.2f}' if r['cost'] else '')
+                                                                + (f', sells at \u00a3{r["sell"]:,.2f} per {r["unit"]}' if r['sell'] else '')
+                                                                + (f', margin {(r["sell"] - r["cost"]) / r["sell"] * 100:.1f}%' if r['sell'] and r['cost'] else '') + ')')
                                                                if r['use'] else ' (not ticked)') for r in f['roles'] if r['use'])
                + ('; not ticked: ' + ', '.join(r['role'] for r in f['roles'] if not r['use'])[:1500] if any(not r['use'] for r in f['roles']) else '')),
-              ('PRICED (the pricing in the written proposal)', '; '.join(f'{l["role"]}: {l["quantity"] or 0:g} at \u00a3{l["sell_rate"] or 0:,.2f}' for l in f['priced'])
-               + (f'; total \u00a3{f["priced_total"]:,.2f}' if f['priced_total'] else ''))]
+              ('PRICED (the pricing in the written proposal)', '; '.join(f'{l["role"]}: {l["quantity"] or 0:g} at \u00a3{l["sell_rate"] or 0:,.2f}'
+                                                                         + (f' (cost \u00a3{l["cost_rate"]:,.2f})' if l['cost_rate'] else '') for l in f['priced'])
+               + (f'; total \u00a3{f["priced_total"]:,.2f}' if f['priced_total'] else '')
+               + (f'; cost \u00a3{f["priced_cost"]:,.2f}, margin {(f["priced_total"] - f["priced_cost"]) / f["priced_total"] * 100:.1f}%'
+                  if f['priced_total'] and f['priced_cost'] else ''))]
     msg = ('FORM\n' + ('\n'.join(f'{k}: {v}' for k, v in fields if v) or '(empty)') + '\n\n'
            + (f'ORGANISATION: {org}' + (' (a client)' if client else '') + '\n\n' if org else '')
            + 'TEMPLATES\n' + ('\n'.join(f'- {_slash(t["path"])} ({t["source"]})' for t in tpls) or '(none)') + '\n\n'

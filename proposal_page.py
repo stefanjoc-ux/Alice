@@ -50,7 +50,7 @@ details.fold>summary::before{content:'\\25B8';color:var(--muted)}details.fold[op
 table.t{width:100%;border-collapse:collapse;font-size:14px}table.t th{text-align:left;font-size:12.5px;color:var(--muted);padding:6px;border-bottom:1px solid var(--line)}
 table.t td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}table.t td.num{text-align:right;white-space:nowrap}table.t tr.tot td{font-weight:700}
 .st{font-size:12px;padding:1px 8px;border-radius:999px;border:1px solid}.st.met{background:#eef8f1;color:#1e5b31;border-color:#9fcfaf}.st.partly{background:#fdf3e1;color:#6b4406;border-color:#e2bf85}.st.missing,.st.high{background:#fbeaea;color:#7a1f1f;border-color:#e0aaaa}.st.medium{background:#fdf3e1;color:#6b4406;border-color:#e2bf85}.st.low{background:#f4f6f8;color:#4b5a66;border-color:#c1cbd3}
-.internal{border:2px dashed #c7b8dd;background:#faf7fd}.internal h2::after{content:' \\00b7 internal: costs and margins are never in the document or sent to the AI';font-size:12px;font-weight:400;color:#634394}
+.internal{border:2px dashed #c7b8dd;background:#faf7fd}.internal h2::after{content:' \\00b7 internal: costs and margins never go in the document; Parker sees them, the writer and Argus do not';font-size:12px;font-weight:400;color:#634394}
 .warnline{color:#7a1f1f;font-weight:600;margin:6px 0 0}
 .issues{display:grid;gap:8px;margin:0;padding:0;list-style:none}.issues li{display:grid;gap:2px;border-left:3px solid #c1cbd3;padding-left:10px}.issues li.high{border-color:#b3261e}.issues li.medium{border-color:#e2a33b}
 .draft h3{margin:16px 0 4px;font-size:15px}.draft .body{white-space:pre-wrap;font-size:14px;line-height:1.55}
@@ -269,7 +269,7 @@ table.t th{text-transform:uppercase;letter-spacing:.05em;font-size:11.5px}table.
 </aside></div>
 <div class="full" id="full">
 <details class="fold panel w-only"><summary><span>Rate card<span class="psub">Roles, days, cost and sell rates, margin</span></span></summary><div class="pbody">
-<p class="pe-note">Load your pricing tool or paste a rate card, set the target margin Alice applies to each cost, and tick the roles this proposal needs. Change any sell rate or margin to override it (\u21ba puts it back); Price book keeps the rate from your pricing tool and Change shows the difference, so you can see what applying the target margin does. Add days to fix a role's quantity; the writer suggests the rest. Cost rates stay in Alice: never sent to the AI, never in the document.</p><div id="rates"></div></div></details>
+<p class="pe-note">Load your pricing tool or paste a rate card, set the target margin Alice applies to each cost, and tick the roles this proposal needs. Change any sell rate or margin to override it (\u21ba puts it back); Price book keeps the rate from your pricing tool and Change shows the difference, so you can see what applying the target margin does. Add days to fix a role's quantity; the writer suggests the rest. Cost rates never go in the document or to the writer and Argus; Parker can see them, to help you with the commercials.</p><div id="rates"></div></div></details>
 <div class="actionbar"><button class="primary" id="go" type="submit" form="f">Write proposal</button><span class="hint" id="go-note">Writing, a QA check and one revision if needed: usually two to four minutes.</span></div>
 </div></div></main>
 <script>
@@ -472,8 +472,8 @@ async function applyParker(u){clearTags();
 function draftNow(){if(EDS&&CUR)return (CUR.draft.sections||[]).map(s=>{const e=EDS.find(x=>x[0]===s);return {title:s.title,body:e?e[1].value:s.body,keep:!!s.keep}});
  if(CUR&&!CUR.inputs.qa_only&&CUR.draft)return (CUR.draft.sections||[]).map(s=>({title:s.title,body:s.body,keep:!!s.keep}));return []}
 function form(){return {title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value,template:$('tplsel').value,structure:$('structure').value,
- references:[...picked],sections:secEd?secEd.value().map(x=>x.title):[],draft:draftNow(),roles:rateEd?rateEd.value().map(r=>({role:r.role,unit:r.unit,use:r.use,days:r.days,sell:r.sell})):[],
- priced:CUR&&CUR.pricing?(CUR.pricing.lines||[]).map(l=>({role:l.role,quantity:l.quantity,sell_rate:l.sell_rate})):[],priced_total:CUR&&CUR.pricing?CUR.pricing.sell:null}}
+ references:[...picked],sections:secEd?secEd.value().map(x=>x.title):[],draft:draftNow(),roles:rateEd?rateEd.value().map(r=>({role:r.role,unit:r.unit,use:r.use,days:r.days,sell:r.sell,cost:r.cost})):[],
+ priced:CUR&&CUR.pricing?(CUR.pricing.lines||[]).map(l=>({role:l.role,quantity:l.quantity,sell_rate:l.sell_rate,cost_rate:l.cost_rate})):[],priced_total:CUR&&CUR.pricing?CUR.pricing.sell:null,priced_cost:CUR&&CUR.pricing?CUR.pricing.cost:null}}
 function pkScroll(){const l=$('pk-log');l.scrollTop=l.scrollHeight}
 function pkSay(cls,text){const m=mk('div',text,'pk-m '+cls);$('pk-log').append(m);pkScroll();return m}
 function pkIntro(){$('pk-log').replaceChildren();const m=pkSay('pk-p',A.paused?A.name+' is paused at the moment.':'Hi, I’m Parker. Tell me about the proposal in a sentence or two, or add the client’s brief or RFP with +. I’ll fill in the form with you and ask for anything that’s missing.');
