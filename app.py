@@ -22,6 +22,7 @@ import agents
 import actions
 import activity_log
 import temple_ask
+import memory_tags
 from admin_ui import render_admin, PAGES
 from ui_theme import SHARED_CSS
 import secrets
@@ -926,8 +927,9 @@ class BulkCategory(BulkIds):
 def admin_memories(status: Literal['all','proposed','approved','rejected','superseded','retired']='approved',
                    query: str=Query('',max_length=200), category: str=Query('',max_length=40),
                    sort: Literal['newest','oldest','title','category','reviewed']='newest', offset: int=Query(0,ge=0),
-                   kind: Literal['','fact','decision']='', owner: str=Query('',max_length=80)):
-    return store.organised_records(status,query,category,sort,offset,kind=kind,owner=owner)
+                   kind: Literal['','fact','decision']='', owner: str=Query('',max_length=80),
+                   area: Literal['','work','personal']='', tag: str=Query('',max_length=40)):
+    return memory_tags.organised(status,query,category,sort,offset,kind=kind,owner=owner,area=area,tag=tag)
 
 @app.post('/admin/api/memories/review')
 def admin_bulk_review(change: BulkReview):
@@ -943,6 +945,7 @@ def admin_memory_owner(change: OwnerChange):
 class CategoryIn(BaseModel):
     name: str = Field(min_length=1,max_length=40)
     description: str = Field(default='',max_length=300)
+    area: Literal['','work','personal']|None = None
 
 class TempleMode(BaseModel):
     mode: Literal['off','suggest','auto']
@@ -951,16 +954,25 @@ class SuggestionAction(BulkIds):
     action: Literal['accept','dismiss']
 
 @app.get('/admin/api/categories')
-def admin_categories(): return store.list_categories()
+def admin_categories():
+    d=store.list_categories();areas=memory_tags.category_areas()
+    for c in d['categories']: c['area']=areas.get(c['name'],'')
+    return d
 
 @app.post('/admin/api/categories')
 def admin_create_category(cat: CategoryIn):
-    try: return store.create_category(cat.name,cat.description)
+    try:
+        r=store.create_category(cat.name,cat.description)
+        if cat.area: memory_tags.set_category_area(r['name'],cat.area)
+        return r
     except ValueError as e: raise HTTPException(400,str(e)) from None
 
 @app.put('/admin/api/categories/{name}')
 def admin_update_category(name: str, cat: CategoryIn):
-    try: return store.update_category(name,cat.name,cat.description)
+    try:
+        r=store.update_category(name,cat.name,cat.description)
+        if cat.area is not None and memory_tags.category_areas().get(r['name'],'')!=cat.area: memory_tags.set_category_area(r['name'],cat.area)
+        return r
     except ValueError as e: raise HTTPException(400,str(e)) from None
 
 @app.delete('/admin/api/categories/{name}')
@@ -977,6 +989,70 @@ async def admin_temple_categorise():
     try: return await asyncio.to_thread(temple_categorise.run,None,True)
     except ValueError as e: raise HTTPException(400,str(e)) from None
     except Exception: raise HTTPException(502,'Temple could not categorise right now. Check the reviewer API key and credit, then try again.') from None
+
+class TagIn(BaseModel):
+    name: str = Field(min_length=1,max_length=40)
+    description: str = Field(default='',max_length=300)
+    area: Literal['','work','personal'] = ''
+
+class TagChange(BulkIds):
+    add: list[str] = Field(default=[],max_length=20)
+    remove: list[str] = Field(default=[],max_length=20)
+
+class TagPick(BaseModel):
+    id: str = Field(min_length=1,max_length=80)
+    tag: str = Field(min_length=1,max_length=40)
+
+class TagSuggestionAction(BaseModel):
+    items: list[TagPick] = Field(default=[],max_length=400)
+    ids: list[str] = Field(default=[],max_length=200)
+    action: Literal['accept','dismiss']
+
+def _tag_in_background():
+    if memory_tags.mode()!='off':
+        import temple_tags
+        temple_tags.schedule()
+
+@app.get('/admin/api/tags')
+def admin_tags(): return memory_tags.list_tags()
+
+@app.post('/admin/api/tags')
+def admin_create_tag(tag: TagIn):
+    try: r=memory_tags.create_tag(tag.name,tag.description,tag.area)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+    _tag_in_background();return r
+
+@app.put('/admin/api/tags/{name}')
+def admin_update_tag(name: str, tag: TagIn):
+    try: r=memory_tags.update_tag(name,tag.name,tag.description,tag.area)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+    _tag_in_background();return r
+
+@app.delete('/admin/api/tags/{name}')
+def admin_delete_tag(name: str):
+    try: return memory_tags.delete_tag(name)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+@app.put('/admin/api/tags-mode')
+def admin_tags_mode(update: TempleMode): return memory_tags.set_mode(update.mode)
+
+@app.post('/admin/api/tags/temple-run')
+async def admin_temple_tag():
+    import temple_tags
+    try: return await asyncio.to_thread(temple_tags.run,None,True)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+    except Exception: raise HTTPException(502,'Temple could not tag right now. Check the reviewer API key and credit, then try again.') from None
+
+@app.post('/admin/api/memories/tags')
+def admin_memory_tags(change: TagChange):
+    try: return memory_tags.set_tags(change.ids,change.add,change.remove)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+@app.post('/admin/api/memories/tag-suggestions')
+def admin_tag_suggestions(change: TagSuggestionAction):
+    items=[(i.id,i.tag) for i in change.items]+memory_tags.suggestions_for(change.ids)
+    try: return memory_tags.resolve_suggestions(items,change.action)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
 
 @app.post('/admin/api/memories/suggestions')
 def admin_category_suggestions(change: SuggestionAction):

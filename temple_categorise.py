@@ -94,8 +94,13 @@ def run(ids=None, manual=False):
 
 
 def schedule(ids):
-    """Background categorisation after a proposal; failures are silent (manual run remains available)."""
+    """Background categorisation after a proposal, then Temple's tags (which see the category); failures are silent
+    (manual runs remain available)."""
     def work():
         try: run(ids)
+        except Exception: pass
+        try:
+            import temple_tags
+            temple_tags.run(ids)
         except Exception: pass
     threading.Thread(target=work, daemon=True).start()

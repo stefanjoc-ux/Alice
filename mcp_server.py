@@ -265,6 +265,11 @@ def search_records(query: Annotated[str, Field(max_length=200)] = '',
         k = kinds.get(r['id']) or {}
         if k.get('kind') == 'decision':
             r['type'] = 'decision'; r['decision_detail'] = k.get('decision')
+    import memory_tags
+    tg = memory_tags.tags_for([r['id'] for r in result['records']])
+    for r in result['records']:
+        names = [t['name'] for t in tg.get(r['id'], {}).get('tags', [])]
+        if names: r['tags'] = names
     who = _who()
     if who:   # external apps: their provider's allow-list, then the categories allowed by External client scope
         result['records'], blocked = rules_engine.filter_records_for_provider(result['records'], who.provider)

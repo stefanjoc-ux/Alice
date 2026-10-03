@@ -61,6 +61,10 @@ TOOLS = [
          'status': {'type': 'string', 'enum': ['', 'in_progress', 'running', 'done', 'failed'], 'description': 'Filter; empty for all.'},
          'words': {'type': 'string', 'description': 'Words in the title or client (optional).'},
          'limit': {'type': 'integer', 'minimum': 1, 'maximum': 50, 'description': 'Maximum (default 20).'}}}},
+    {'name': 'memory_organisation',
+     'description': 'How memories are organised: categories (with area Work, Personal or Both) and tags (with area and description), how many '
+                    'active memories each holds, how many are uncategorised or untagged, suggestions waiting, and Temple\'s categorising and tagging modes.',
+     'schema': {'type': 'object', 'properties': {}}},
     {'name': 'usage_and_costs',
      'description': 'Estimated API spend, calls and timings by model and workload, plus spending-cap status.',
      'schema': {'type': 'object', 'properties': {
@@ -189,6 +193,19 @@ def run_tool(name, args):
                         'sell_price': pr.get('sell'), 'margin_pct': round(pr['margin'], 1) if isinstance(pr.get('margin'), (int, float)) else None,
                         'template': inp.get('template', ''), 'references': len(inp.get('references') or [])})
         return {'shown': len(out), 'proposals': out}
+    if name == 'memory_organisation':
+        import memory_tags
+        cats, areas = store.list_categories(), memory_tags.category_areas()
+        tags = memory_tags.list_tags()
+        d = memory_tags.organised('approved', limit=1)
+        none = next((c['count'] for c in d['categories'] if not c['category']), 0)
+        return {'categories': [{'name': c['name'], 'area': memory_tags.AREAS[areas.get(c['name'], '')], 'active_memories': c['active'],
+                                'description': c['description'][:160]} for c in cats['categories']],
+                'tags': [{'name': t['name'], 'area': memory_tags.AREAS[t['area']], 'active_memories': t['active'], 'suggestions_waiting': t['suggested'],
+                          'description': t['description'][:160]} for t in tags['tags']],
+                'active_uncategorised': none, 'active_untagged': d['untagged'], 'category_suggestions_waiting': d['suggested'],
+                'tag_suggestions_waiting': d['tag_suggested'], 'temple_categorising': cats['temple_mode'], 'temple_tagging': tags['temple_mode'],
+                'where': 'Memories page: Categories and Tags sections; the Work / Personal switch above the list'}
     raise ValueError(f'Unknown tool {name}.')
 
 
