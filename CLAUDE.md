@@ -63,6 +63,18 @@ knowledge note "AI Substrate: status summary" through the `alice` connector, or 
   desktop.log). `AISUBSTRATE_DATA_DIR` overrides the data folder (the tests use this).
 - **Settings**: `.env` (never read it; see rule 1).
 
+### In Azure (Tuduma, UK South) — see `infra/main.bicep`, `deploy/`
+- One image (`Dockerfile`, packages pinned in `requirements.txt`: add any new package there too, with Stefan's say),
+  two Container Apps with one replica each: `alice-web` (`ALICE_ROLE=web`: uvicorn on 8000 plus the internal MCP server on
+  127.0.0.1:8001 inside the container; Entra sign-in in front, Stefan only, `/healthz` excluded) and `alice-mcp`
+  (`ALICE_ROLE=mcp`: `mcp_server.py --external` on 8002). `deploy/start.sh` starts the role; roles `migrate` and `test` too.
+- PostgreSQL Flexible Server on a private network (point-in-time restore replaces "back up data\"); secrets in Key Vault,
+  read by a managed identity; `Documents\` and `data\images` on an Azure Files share mounted at `/mnt/alice`.
+- `deploy/azure-setup.ps1` builds it in steps (infra, secrets, image, files, migrate, signin, apps, github); it never reads .env.
+- Pipeline (`.github/workflows/deploy.yml`): all suites inside the image (SQLite and PostgreSQL), push, then a new revision
+  with no traffic; `deploy/promote.ps1` moves traffic (or `-Rollback`). The opportunity scheduler holds a database lease
+  (`scheduler_lease`), so only one process runs it even while two revisions are up.
+
 ### Restarting after a change
 1. Quit from the tray ("Quit (stops servers)").
 2. Run the tests (below).
@@ -224,8 +236,9 @@ call real AI services. Never read the demo store anywhere else, and never let a 
 
 - Python, stdlib first; dependencies are already in `.venv`. Do not add packages without asking.
 - User-facing text: plain UK English, specific, no jargon. Errors say what happened and what to do.
-- Admin API: non-GET routes need the `X-Admin-Token` header (the pages inject it). GET routes are
-  unauthenticated because the app only listens on 127.0.0.1; keep it that way until the Azure step adds auth.
+- Admin API: non-GET routes need the `X-Admin-Token` header (the pages inject it). GET routes carry no token: on the PC the
+  app only listens on 127.0.0.1, and in Azure Entra sign-in sits in front of everything except `/healthz`. Never add a
+  route that bypasses that sign-in.
 - Keep changes small and reviewable. Commit after the tests pass (see git below).
 
 ## Git

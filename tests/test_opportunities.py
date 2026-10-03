@@ -164,3 +164,14 @@ w = [w for w in OP.watch_list() if w['org'] == 'Watch Council'][0]
 t('ticked: watched weekly with a first slot', w['frequency'] == 'weekly' and w['next_run'])
 import activity_log
 t('activity labels for freshness', all(a in activity_log.LABELS for a in ('opportunity_closed', 'opportunity_changed', 'opportunity_expired')))
+
+# one scheduler only, even with two revisions running
+t('this process takes the schedule lease', OP._lease())
+with s.db() as c:
+    c.execute("UPDATE scheduler_lease SET holder='another-revision', expires_at=? WHERE name='opportunities'", ((datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),))
+t('while another process holds it, this one does not run the schedule', not OP._lease() and OP.run_due() == [])
+with s.db() as c:
+    c.execute("UPDATE scheduler_lease SET expires_at=? WHERE name='opportunities'", ((datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),))
+t('a lapsed lease is taken over', OP._lease())
+r = cl.get('/healthz')
+t('health probe answers without data', r.status_code == 200 and r.json()['ok'] is True and set(r.json()) == {'ok', 'database'})

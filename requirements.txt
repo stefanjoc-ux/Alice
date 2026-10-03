@@ -1,0 +1,20 @@
+# Alice's Python packages, pinned to the versions in the Windows .venv (3 Oct 2026), for the container image.
+# psycopg is the PostgreSQL driver dbcompat.py uses when ALICE_DATABASE_URL is set (Azure). Desktop-only packages
+# (pystray, pillow, pywin32, keyring) are not needed in the container.
+anthropic==1.6.0
+openai==3.14.1
+fastapi==0.141.1
+starlette==1.6.0
+uvicorn==0.53.0
+fastmcp==4.0.10
+mcp==2.2.0
+httpx==0.28.1
+pydantic==2.13.5
+python-dotenv==1.2.3
+python-multipart==0.0.32
+openpyxl==3.1.5
+pypdf==6.19.0
+pyjwt==2.15.0
+cryptography==50.0.1
+psycopg[binary]==3.3.6
+psycopg-pool==3.3.3

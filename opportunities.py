@@ -50,6 +50,7 @@ with store.db() as c:
                      ('freshness_evidence', "TEXT NOT NULL DEFAULT '[]'")]:
         if col not in _oc: c.execute(f'ALTER TABLE opportunities ADD COLUMN {col} {ddl}')
     c.execute("INSERT OR IGNORE INTO settings VALUES ('opportunity_expire_days','30')")
+    c.execute('CREATE TABLE IF NOT EXISTS scheduler_lease (name TEXT PRIMARY KEY, holder TEXT NOT NULL, expires_at TEXT NOT NULL)')
 O.tidy_citations('opportunities', ['title', 'summary', 'why_now', 'next_step'])
 O.tidy_citations('org_news', ['title', 'summary'])
 
@@ -379,8 +380,25 @@ def update(oid, status=None, notes=None):
 _started = False
 
 
+_HOLDER = f'{__import__("socket").gethostname()}-{__import__("os").getpid()}-{uuid.uuid4().hex[:6]}'
+
+
+def _lease(name='opportunities', ttl=5400):
+    """Only one process runs the schedule, even while Azure briefly runs an old and a new revision side by side: the holder
+    renews a lease in the database each pass; another process takes over only once it has lapsed (90 minutes)."""
+    now = datetime.now(timezone.utc)
+    with store.db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        r = c.execute('SELECT holder,expires_at FROM scheduler_lease WHERE name=?', (name,)).fetchone()
+        if r and r['holder'] != _HOLDER and r['expires_at'] > now.isoformat(): return False
+        c.execute('INSERT INTO scheduler_lease(name,holder,expires_at) VALUES (?,?,?) ON CONFLICT(name) DO UPDATE SET '
+                  'holder=excluded.holder,expires_at=excluded.expires_at', (name, _HOLDER, (now + timedelta(seconds=ttl)).isoformat()))
+    return True
+
+
 def run_due():
     """One pass of the schedule. Scheduled runs never raise: a refusal (paused, budget, cap) is recorded and retried next time."""
+    if not _lease(): return []                # another process holds the schedule
     done = []
     try: expire_stale()
     except Exception: pass

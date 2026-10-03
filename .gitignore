@@ -10,3 +10,6 @@ Downloads/
 *.bak
 ~$*
 manifest-*.json
+deploy/azure-state.json
+Documents/
+Claude outputs/

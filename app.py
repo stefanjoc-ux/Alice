@@ -2308,6 +2308,15 @@ async def admin_ask_temple(q: AskTemple):
 @app.get('/admin/api/actions')
 def admin_actions(): return actions.summary()
 
+@app.get('/healthz')
+def healthz():
+    """Container health probe (excluded from sign-in in Azure): the process answers and the database responds. No data returned."""
+    try:
+        with store.db(readonly=True) as c: c.execute('SELECT 1').fetchone()
+        return {'ok': True, 'database': 'postgresql' if os.environ.get('ALICE_DATABASE_URL') else 'sqlite'}
+    except Exception:
+        return JSONResponse({'ok': False}, status_code=503)
+
 @app.get('/actions-count')
 def actions_count(): return {'total':actions.count()}
 
