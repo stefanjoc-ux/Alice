@@ -26,7 +26,6 @@ param(
   [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github')][string]$Step = 'all'
 )
 $ErrorActionPreference = 'Stop'
-$env:PYTHONIOENCODING = 'utf-8'; $env:PYTHONUTF8 = '1'   # az streams build logs; without this the Windows console encoding (cp1252) crashes it
 $Root = Split-Path -Parent $PSScriptRoot
 $Template = Join-Path $Root 'infra\main.bicep'
 $StateFile = Join-Path $PSScriptRoot 'azure-state.json'
@@ -122,7 +121,12 @@ if (Want 'image') {
   try {
     $tag = (& git rev-parse --short HEAD).Trim()
     if (& git status --porcelain) { $tag = $tag + '-local' ; Write-Host 'Note: uncommitted changes are included; commit before cut-over.' -ForegroundColor Yellow }
-    AzCli acr build --registry $State.acrName --image ("alice:" + $tag) --file Dockerfile . --output none | Out-Null
+    Write-Host 'Building in Azure (about 5-10 minutes; the log is not streamed: az crashes printing it on the Windows console)...'
+    & az acr build --registry $State.acrName --image ("alice:" + $tag) --file Dockerfile . --no-logs --output none
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host "The build failed. See its log with:  az acr task list-runs -r $($State.acrName) --top 1 -o table   then   az acr task logs -r $($State.acrName) --run-id <RUN ID>" -ForegroundColor Yellow
+      throw 'Image build failed.'
+    }
     Set-Prop $State 'image' ($State.acrLoginServer + '/alice:' + $tag); Save-State $State
     Write-Host "Image $($State.image)"
   } finally { Pop-Location }
