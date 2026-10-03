@@ -107,3 +107,60 @@ t('page has the slide-out tracker and the scan controls', 'id="opp-drawer"' in p
 import actions
 sec = {x['key']: x for x in actions.summary()['sections']}
 t('suggested opportunities appear in Actions', 'opportunities' in sec and sec['opportunities']['count'] == cl.get('/admin/api/opportunities').json()['counts']['suggested'])
+
+# ---- keeping opportunities fresh ----
+open_ = [o for o in OP.tracker()['opportunities'] if o['status'] in ('suggested', 'tracking', 'pursuing') and o['org'] == 'Example Council']
+ids = {o['title']: o['id'] for o in open_}
+idp, cloud = ids.get('Identity platform tender'), ids.get('Cloud-first strategy support')
+if idp and cloud:
+    OP.update(cloud, status='tracking'); OP.update(idp, status='suggested')
+    N4 = 'https://www.publiccontractsscotland.gov.uk/notice/123/award'
+    REPLY_CHECK = {'news': [{'title': 'Contract awarded: identity platform', 'url': N4, 'published': '2026-10-01', 'summary': 'Awarded.'}], 'opportunities': [],
+                   'checks': [{'id': idp[:8], 'state': 'closed', 'note': 'The tender was awarded to another supplier on 1 October.', 'evidence': [N4]},
+                              {'id': cloud[:8], 'state': 'changed', 'note': 'The strategy now starts in April, not January.', 'evidence': ['https://not-returned.example/z']},
+                              {'id': 'deadbeef', 'state': 'closed', 'note': 'invented id', 'evidence': [N4]}]}
+    def fake2(prompt, query, provider, workload='x'):
+        calls.append((prompt, query, provider, workload)); return json.dumps(REPLY_CHECK), {**SEEN, N4: 'Award notice'}
+    OR._ask = fake2
+    r = OP.scan('Example Council')
+    q = calls[-1][1]
+    t('open opportunities are sent to be re-checked, by short id', 'OPEN OPPORTUNITIES TO CHECK' in q and idp[:8] in q and cloud[:8] in q)
+    tr = {o['id']: o for o in OP.tracker()['opportunities']}
+    t('a closed suggestion, with evidence from the search, is dismissed with the reason', tr[idp]['status'] == 'dismissed'
+      and tr[idp]['notes'].startswith('Closed: The tender was awarded') and tr[idp]['freshness'] == 'closed' and tr[idp]['freshness_evidence'] == [N4])
+    t('a change without evidence from the search is not believed (stays live, checked)', tr[cloud]['freshness'] == 'live'
+      and tr[cloud]['status'] == 'tracking' and tr[cloud]['last_checked'])
+    t('scan summary counts the checks', r['checked'] == 2 and r['closed'] == 1 and 'open checked' in r['summary'])
+    REPLY_CHECK['checks'] = [{'id': cloud[:8], 'state': 'closed', 'note': 'Programme cancelled at committee.', 'evidence': [N4]}]
+    OP.scan('Example Council')
+    tr = {o['id']: o for o in OP.tracker()['opportunities']}
+    t('a closed opportunity you are tracking is only flagged: your call', tr[cloud]['status'] == 'tracking' and tr[cloud]['freshness'] == 'closed')
+else:
+    t('fresh-check setup found the open opportunities', False)
+
+# stale suggestions
+import uuid as _u
+old = (datetime.now(timezone.utc) - timedelta(days=45)).isoformat()
+sid, lid = _u.uuid4().hex, _u.uuid4().hex
+with s.db() as c:
+    for i_, title_, fr, lc in [(sid, 'Old idea nobody touched', '', None), (lid, 'Old idea still live', 'live', s.now())]:
+        c.execute("INSERT INTO opportunities(id,org,title,summary,status,created_at,updated_at,last_checked,freshness) VALUES (?,?,?,?,?,?,?,?,?)",
+                  (i_, 'Example Council', title_, 'x', 'suggested', old, old, lc, fr))
+t('expiry setting defaults to 30 days', OP.expire_days() == 30)
+n = OP.expire_stale()
+tr = {o['id']: o for o in OP.tracker()['opportunities']}
+t('a suggestion nobody acted on goes stale and is dismissed', tr[sid]['status'] == 'dismissed' and 'Went stale' in tr[sid]['notes'])
+t('one a scan recently confirmed as live does not', tr[lid]['status'] == 'suggested')
+r = cl.put('/admin/api/opportunities-expiry', json={'days': 0}, headers=H)
+t('expiry can be switched off', r.status_code == 200 and OP.expire_days() == 0 and OP.expire_stale() == 0)
+t('expiry route needs the admin token', cl.put('/admin/api/opportunities-expiry', json={'days': 30}).status_code in (401, 403))
+
+# the watch tick box
+C.create_client('Watch Council', ['WC'])
+OP.set_watch('Watch Council', False)
+t('unticked: not watched', [w for w in OP.watch_list() if w['org'] == 'Watch Council'][0]['frequency'] == 'off')
+OP.set_watch('Watch Council', True)
+w = [w for w in OP.watch_list() if w['org'] == 'Watch Council'][0]
+t('ticked: watched weekly with a first slot', w['frequency'] == 'weekly' and w['next_run'])
+import activity_log
+t('activity labels for freshness', all(a in activity_log.LABELS for a in ('opportunity_closed', 'opportunity_changed', 'opportunity_expired')))

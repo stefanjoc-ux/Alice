@@ -82,7 +82,8 @@ SECTIONS = {
 <div class="opp-filters"><div id="opp-status" class="mem-cats"></div><label class="small">Organisation <select id="opp-org"></select></label></div>
 <div id="opp-list"></div>
 <details id="opp-news-box"><summary>Latest news <span id="opp-news-n" class="muted small"></span></summary><ol id="opp-news"></ol></details>
-<details id="opp-sched-box"><summary>Schedule</summary><p class="muted small">Scheduled scans run in the background (first slot: next Monday morning) and pause at the spending cap or if you pause the agent. Run now any time.</p><div id="opp-sched"></div></details>
+<details id="opp-sched-box"><summary>Watch list and schedule</summary><p class="muted small">Tick the organisations Temple should watch. Each scan searches recent news, suggests new opportunities and re-checks the open ones (still live, changed or closed, with the evidence). Scans run in the background (a new watch starts next Monday morning), pause at the spending cap or if you pause the agent, and only while Alice is running. Run now any time.</p>
+<label class="small">Suggestions go stale after <select id="opp-expire"><option value="14">14 days</option><option value="30">30 days</option><option value="60">60 days</option><option value="90">90 days</option><option value="0">never</option></select></label><p class="muted small">A suggestion nobody acted on, and no scan has confirmed as still live, is dismissed as stale after this (logged; it stays under Dismissed).</p><div id="opp-sched"></div></details>
 <details id="opp-off-box"><summary>Your offerings</summary><p class="muted small">Temple maps each opportunity to one of these. One per line.</p><textarea id="opp-offerings" rows="7"></textarea><button id="opp-off-save" type="button" class="secondary">Save offerings</button></details>
 </aside><div id="opp-scrim" class="opp-scrim" hidden></div>
 <div id="o-demo-bar" class="o-demo-bar" hidden><strong>Demo data.</strong> These are fictional organisations kept in a separate store; your real organisations are hidden and untouched. Research and opportunity scans are off. <button id="o-demo-reset" type="button" class="secondary mini-act">Reset demo data</button></div>
@@ -115,7 +116,7 @@ SECTIONS = {
    <button id="o-save" type="button" class="secondary">Save details</button></div></details>
   <details class="o-sec" data-sec="facts" open><summary><span>Profile facts</span><span id="o-sum-facts" class="o-sum"></span></summary><div class="o-sec-body"><div id="o-status" class="mem-tabs"></div><div id="o-facts"></div></div></details>
   <details class="o-sec" data-sec="opps"><summary><span>Opportunities</span><span id="o-sum-opps" class="o-sum"></span></summary><div class="o-sec-body">
-   <div class="arc-actions"><label class="small">Scan for opportunities <select id="o-opp-freq"><option value="weekly">weekly</option><option value="fortnightly">fortnightly</option><option value="monthly">monthly</option><option value="off">off</option></select></label></div><div id="o-opp-mini"></div></div></details>
+   <div class="arc-actions o-watch"><label class="act-switch"><input id="o-watch" type="checkbox"> <strong>Watch for news and opportunities</strong></label><select id="o-opp-freq" aria-label="How often"><option value="weekly">weekly</option><option value="fortnightly">fortnightly</option><option value="monthly">monthly</option></select><span id="o-watch-note" class="muted small"></span></div><div id="o-opp-mini"></div></div></details>
   <details class="o-sec" data-sec="tagged" id="o-tagged-sec"><summary><span>Tagged material</span><span id="o-sum-tagged" class="o-sum"></span></summary><div class="o-sec-body"><p id="o-tagged-text" class="small"></p><button id="o-tagged-show" type="button" class="secondary">Show and change tags</button></div></details>
   <details class="o-sec" data-sec="research"><summary><span>Research history</span><span id="o-sum-research" class="o-sum"></span></summary><div class="o-sec-body"><div id="o-research-box"></div></div></details>
   <details class="o-sec" data-sec="add"><summary><span>Add a fact</span></summary><div class="o-sec-body">
@@ -223,7 +224,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:500px;overflow:auto;f
 .card{border-top:1px solid var(--line);padding:16px 0;overflow-wrap:anywhere}.card p{overflow-wrap:anywhere}
 .approved,.proposed,.rejected,.superseded,.retired{display:inline-block;padding:2px 9px;border-radius:999px;font-size:12px;border:1px solid}
 .approved{background:#e6f4ea;color:#1e5b31;border-color:#9fcfaf}.proposed{background:#fdf3e1;color:#6b4406;border-color:#e2bf85}.rejected{background:#fbeaea;color:#7a1f1f;border-color:#e0aaaa}.superseded,.retired{background:#eef1f4;color:#4b5a66;border-color:#c1cbd3}
-#notice{position:sticky;top:0;z-index:5;background:var(--teal2);border:1px solid #89b1bf;border-radius:8px;padding:10px 12px;margin:0 0 12px;white-space:pre-wrap}#notice:empty{display:none}
+#notice{position:fixed;right:20px;bottom:20px;z-index:900;max-width:min(460px,calc(100vw - 40px));background:#0d2a3f;color:#eef6fa;border-radius:10px;padding:12px 40px 12px 16px;box-shadow:0 14px 34px -12px rgba(5,25,40,.55);white-space:pre-wrap;font-size:14px;line-height:1.45;cursor:pointer;animation:notice-in .25s ease-out}#notice:empty{display:none}#notice::after{content:'\00d7';position:absolute;right:14px;top:9px;font-size:18px;opacity:.7}#notice.leaving{opacity:0;transform:translateY(8px);transition:opacity .3s,transform .3s}@keyframes notice-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){#notice{animation:none}#notice.leaving{transition:none}}
 .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.stat{padding:18px 20px;background:#fff;border:1px solid var(--line);border-radius:10px;text-decoration:none;display:flex;flex-direction:column;gap:4px;color:var(--ink)}
 .stat strong{font-size:30px;color:var(--teal);font-weight:600}.stat span{color:var(--muted);font-size:13px}.stat:hover{border-color:#89b1bf}
 nav{display:flex;gap:20px;flex-wrap:wrap}.sidebar nav{display:contents}
@@ -381,7 +382,10 @@ a.av-tile:hover{border-color:var(--teal)}.av-tile b{font-size:28px;line-height:1
 #k-table td:nth-child(2){min-width:260px}
 .tag.k-decision{background:#ede7f6;color:#4b2f73;border-color:#c7b8dd}
 .act-auto{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-top:6px}.act-switch{display:inline-flex;align-items:center;gap:6px;margin:0;white-space:nowrap}.act-switch input{width:auto;margin:0}
-.act-info{background:#f7fafc}.act-nodec{border-left:4px solid #2f7d4f}.dec-none{font-weight:700;color:#1f6b3d;background:#e7f4ec;border:1px solid #9fcbb0;border-radius:999px;padding:3px 12px;font-size:13px}.act-info details>summary{cursor:pointer;margin:6px 0;font-weight:600;color:#075e79}
+.act-info{background:#f7fafc}.o-watch{align-items:center;gap:10px;flex-wrap:wrap}.o-watch select{width:auto;margin:0}.o-watch select:disabled{opacity:.5}
+.o-flag.o-watched{background:#e6f0f8;color:#1d6fa5;border-color:#9cc0db}.opp-sched-row input[type=checkbox]{width:auto;margin:0}
+.opp-fresh{margin:8px 0;padding:7px 10px;border-radius:7px;font-size:13px;background:#eef3f7;color:#314d62}.opp-fresh a{margin-right:8px}
+.fr-live{background:#e7f4ec;color:#1f6b3d}.fr-changed{background:#fdf3e1;color:#6b4406}.fr-closed{background:#fbe9e9;color:#a12a2a}.fr-old strong::after{content:' · getting old';font-weight:400}.act-nodec{border-left:4px solid #2f7d4f}.dec-none{font-weight:700;color:#1f6b3d;background:#e7f4ec;border:1px solid #9fcbb0;border-radius:999px;padding:3px 12px;font-size:13px}.act-info details>summary{cursor:pointer;margin:6px 0;font-weight:600;color:#075e79}
 .dec-card{border:1px solid #c7b8dd;border-left:4px solid #634394;border-radius:10px;padding:14px 16px;margin:12px 0;background:#fff}
 .dec-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}.dec-head strong{font-size:16px;color:#102b40}
 .dec-what{font-size:15px;margin:8px 0 10px;color:#1d3a50;font-weight:500}
@@ -1146,23 +1150,24 @@ if(PAGE==='organisations'){
  function hint(){const s=st.L.sections.find(x=>x.key===$('f-section').value);$('f-hint').textContent=s?s.hint:''}
  const attention=o=>o.facts.proposed>0||o.facts.due>0;
  const openOpps=name=>st.opps.filter(x=>x.org.toLowerCase()===name.toLowerCase()&&OPEN.includes(x.status));
+ const watched=name=>{const w=OT.data&&OT.data.watch.find(x=>x.org.toLowerCase()===name.toLowerCase());return !!w&&w.frequency!=='off'};
  const domain=u=>(u||'').replace(/^https?:\/\/(www\.)?/i,'').split('/')[0];
  $('o-demo').checked=DEMO_ORG;$('o-demo').disabled=DEMO;if(DEMO)$('o-demo').parentElement.title='Demo mode is on for the whole command centre';
  $('o-demo-bar').hidden=!DEMO_ORG;for(const id of ['o-research','o-opp-scan','o-r-go'])$(id).disabled=DEMO_ORG;
  if(DEMO_ORG){$('o-research').title=$('o-opp-scan').title=$('o-r-go').title='Off for demo data: no web searches or model calls.'}
  $('o-demo').onchange=()=>{store('alice-org-demo',$('o-demo').checked);const u=new URL(location.href);u.searchParams.delete('org');location.href=u.href};
  $('o-demo-reset').onclick=()=>run(async()=>{if(!confirm('Rebuild the demo data? Changes you made to the demo organisations are lost. Your real data is not touched.'))return;await api('/admin/api/demo-data/reset','POST');$('notice').textContent='Demo data rebuilt.';st.org='';await load()});
- function renderFilters(){const L=st.L.organisations;const n={all:L.length,clients:L.filter(o=>o.is_client).length,attention:L.filter(attention).length,opps:L.filter(o=>openOpps(o.name).length).length};
-  $('o-filter').replaceChildren(...[['all','All'],['clients','Clients'],['attention','Needs attention'],['opps','Open opportunities']].map(([k,l])=>{const b=el('button',l+' ('+n[k]+')','chip'+(st.filter===k?' on':'')+(k==='attention'&&n[k]&&st.filter!==k?' attention':''));b.type='button';b.onclick=()=>{st.filter=k;store('alice-org-filter',k);renderList()};return b}));
+ function renderFilters(){const L=st.L.organisations;const n={all:L.length,clients:L.filter(o=>o.is_client).length,attention:L.filter(attention).length,opps:L.filter(o=>openOpps(o.name).length).length,watched:L.filter(o=>watched(o.name)).length};
+  $('o-filter').replaceChildren(...[['all','All'],['clients','Clients'],['watched','Watched'],['attention','Needs attention'],['opps','Open opportunities']].map(([k,l])=>{const b=el('button',l+' ('+n[k]+')','chip'+(st.filter===k?' on':'')+(k==='attention'&&n[k]&&st.filter!==k?' attention':''));b.type='button';b.onclick=()=>{st.filter=k;store('alice-org-filter',k);renderList()};return b}));
   opts($('o-f-kind'),[['','All types'],...st.L.kinds.map(k=>[k,KN[k]||k])],st.kind);
   opts($('o-f-mgr'),[['','All account managers'],...st.L.managers.map(m=>[m,m]),['-','Unassigned']],st.mgr)}
- function matches(o){if(st.filter==='clients'&&!o.is_client)return false;if(st.filter==='attention'&&!attention(o))return false;if(st.filter==='opps'&&!openOpps(o.name).length)return false;
+ function matches(o){if(st.filter==='clients'&&!o.is_client)return false;if(st.filter==='attention'&&!attention(o))return false;if(st.filter==='opps'&&!openOpps(o.name).length)return false;if(st.filter==='watched'&&!watched(o.name))return false;
   if(st.kind&&o.kind!==st.kind)return false;if(st.mgr==='-'&&o.account_manager)return false;if(st.mgr&&st.mgr!=='-'&&o.account_manager!==st.mgr)return false;
   if(st.q){const hay=(o.name+' '+(o.account_manager||'')+' '+(o.website||'')+' '+(o.description||'')).toLowerCase();if(!st.q.split(/\s+/).every(w=>hay.includes(w)))return false}return true}
  function item(o){const b=el('button','','o-item'+(st.org===o.name?' on':''));b.type='button';b.append(el('span',o.name,'o-name'));const sub=el('span','','o-sub');
   if(o.is_client)sub.append(el('span','Client','o-flag cl'));sub.append(el('span',o.facts.approved+(o.facts.approved===1?' fact':' facts')));
   if(o.facts.proposed)sub.append(el('span',o.facts.proposed+' to approve','o-flag'));if(o.facts.due)sub.append(el('span',o.facts.due+' overdue','o-flag'));
-  const op=openOpps(o.name).length;if(op)sub.append(el('span',op+(op===1?' opportunity':' opportunities'),'o-flag o-opp'));if(o.account_manager)sub.append(el('span',o.account_manager));
+  if(watched(o.name))sub.append(el('span','Watched','o-flag o-watched'));const op=openOpps(o.name).length;if(op)sub.append(el('span',op+(op===1?' opportunity':' opportunities'),'o-flag o-opp'));if(o.account_manager)sub.append(el('span',o.account_manager));
   b.append(sub);b.onclick=()=>{st.org=o.name;st.status='approved';history.replaceState(null,'','?org='+encodeURIComponent(o.name));run(load)};return b}
  function renderList(){renderFilters();const rows=st.L.organisations.filter(matches);const box=$('o-list');box.replaceChildren();
   $('o-summary').textContent=(rows.length===st.L.organisations.length?'':rows.length+' of ')+st.L.organisations.length+(st.L.organisations.length===1?' organisation':' organisations');
@@ -1247,7 +1252,7 @@ $('o-desc').value=o.description||'';$('o-web').value=o.website||'';
     if(f.status==='approved'){const rb=document.createElement('input');rb.type='date';rb.value=f.review_by;rb.setAttribute('aria-label','Review by');const sv=el('button','Set review date','secondary mini-act');sv.type='button';sv.onclick=()=>run(async()=>{await api('/admin/api/organisations/facts/'+f.id,'PUT',{review_by:rb.value});$('notice').textContent='Review date saved.';await load()});
      const rt=el('button','Retire','secondary mini-act');rt.type='button';rt.onclick=()=>run(async()=>{const reason=prompt('Why is this fact no longer right?');if(!reason||!reason.trim())return;await api('/admin/api/organisations/facts/'+f.id+'/retire','POST',{reason});$('notice').textContent='Retired.';await load()});act.append(rb,sv,rt)}
     row.append(txt,act);fs.append(row)}box.append(fs)}
-  $('b-text').textContent='';const w=OT.data&&OT.data.watch.find(x=>x.org===st.org);$('o-opp-freq').value=w?w.frequency:'off'}
+  $('b-text').textContent='';const w=OT.data&&OT.data.watch.find(x=>x.org===st.org);const on=!!w&&w.frequency!=='off';$('o-watch').checked=on;$('o-opp-freq').value=on?w.frequency:'weekly';$('o-opp-freq').disabled=!on;$('o-watch-note').textContent=on?(w.last_run?'Last scanned '+when(w.last_run):'Not scanned yet')+(w.next_run?' · next '+when(w.next_run):''):'Not watched: Temple only scans it when you press Scan for opportunities.'}
  function link(href,text){const a=el('a',text,'src-link');a.href=href;a.target='_blank';a.rel='noopener noreferrer';return a}
  function runs(list){const box=$('o-research-box');box.replaceChildren();if(!list.length){box.append(el('p','Not researched yet. Use Research online at the top.','muted small'));return}const r=list[0];
   const d=el('div','','o-run');d.append(el('p','Last researched '+new Date(r.created_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+': '+(r.status==='complete'?r.summary:'failed ('+r.error+')')));
@@ -1290,6 +1295,11 @@ $('o-desc').value=o.description||'';$('o-web').value=o.website||'';
    if(o.why_now){const p=el('p','');p.append(el('strong','Why now: '),document.createTextNode(o.why_now));c.append(p)}c.append(el('p',o.summary));
    if(o.next_step){const p=el('p','');p.append(el('strong','Next step: '),document.createTextNode(o.next_step+(o.timing?' ('+o.timing+')':'')));c.append(p)}
    const ev=el('div','Evidence: ','opp-ev muted');o.evidence.forEach((u,i)=>ev.append(link(u,u.replace(/^https?:\/\/(www\.)?/i,'').split('/')[0]+(o.evidence.length>1?' ('+(i+1)+')':''))));c.append(ev);
+   if(['suggested','tracking','pursuing'].includes(o.status)){const age=o.last_checked?Math.floor((Date.now()-new Date(o.last_checked))/864e5):null;
+    const fr=el('div','','opp-fresh fr-'+(o.freshness||'none')+(age!==null&&age>21?' fr-old':''));
+    fr.append(el('strong',o.freshness==='live'?'Still live':o.freshness==='changed'?'Changed':o.freshness==='closed'?'Looks closed':'Not re-checked yet'),
+     document.createTextNode(o.last_checked?' · checked '+when(o.last_checked)+(age>21?' ('+age+' days ago)':''):' · the next scan of '+o.org+' checks it'));
+    if(o.freshness_note)fr.append(el('div',o.freshness_note,'small'));(o.freshness_evidence||[]).forEach(u=>fr.append(link(u,u.replace(/^https?:\/\/(www\.)?/i,'').split('/')[0])));c.append(fr)}
    const act=el('div','','opp-act');
    if(o.status==='suggested'){const tr=el('button','Track','mini-act');tr.type='button';tr.onclick=()=>run(async()=>{await api('/admin/api/opportunities/'+o.id,'PUT',{status:'tracking'});$('notice').textContent='Tracking: '+o.title;await loadOpps()});
     const di=el('button','Dismiss','secondary mini-act');di.type='button';di.onclick=()=>run(async()=>{await api('/admin/api/opportunities/'+o.id,'PUT',{status:'dismissed'});await loadOpps()});act.append(tr,di)}
@@ -1298,10 +1308,12 @@ $('o-desc').value=o.description||'';$('o-web').value=o.website||'';
    if(o.status!=='suggested'){const ta=document.createElement('textarea');ta.value=o.notes||'';ta.placeholder='Notes: contacts in the account plan, value, dates…';ta.setAttribute('aria-label','Notes');ta.onchange=()=>run(async()=>{await api('/admin/api/opportunities/'+o.id,'PUT',{notes:ta.value});$('notice').textContent='Notes saved.'});c.append(ta)}
    list.append(c)}
   const nl=$('opp-news');nl.replaceChildren();$('opp-news-n').textContent='('+d.news.length+')';for(const n of d.news){const li=el('li','');li.append(link(n.url,n.title),el('div',(OT.org?'':n.org+' · ')+(n.published||'date unknown')+(n.summary?' · '+n.summary:''),'muted'));nl.append(li)}
-  const sc=$('opp-sched');sc.replaceChildren();for(const w of d.watch){const r=el('div','','opp-sched-row');const fs=document.createElement('select');fs.setAttribute('aria-label','Scan frequency for '+w.org);for(const f of ['weekly','fortnightly','monthly','off']){const op=el('option',f);op.value=f;fs.append(op)}fs.value=w.frequency;
-   fs.onchange=()=>run(async()=>{await api('/admin/api/opportunities/schedule','POST',{org:w.org,frequency:fs.value});$('notice').textContent=w.org+': scan '+fs.value+'.';await loadOpps()});
+  if(document.activeElement!==$('opp-expire'))$('opp-expire').value=String(d.expire_days);
+  const sc=$('opp-sched');sc.replaceChildren();for(const w of [...d.watch].sort((a,b)=>(b.frequency!=='off')-(a.frequency!=='off')||a.org.localeCompare(b.org))){const r=el('div','','opp-sched-row');const cb=document.createElement('input');cb.type='checkbox';cb.checked=w.frequency!=='off';cb.setAttribute('aria-label','Watch '+w.org);
+   const fs=document.createElement('select');fs.setAttribute('aria-label','Scan frequency for '+w.org);for(const f of ['weekly','fortnightly','monthly']){const op=el('option',f);op.value=f;fs.append(op)}fs.value=w.frequency==='off'?'weekly':w.frequency;fs.disabled=!cb.checked;
+   const save=()=>run(async()=>{const f=cb.checked?fs.value:'off';await api('/admin/api/opportunities/schedule','POST',{org:w.org,frequency:f});$('notice').textContent=w.org+(f==='off'?': no longer watched.':': watched, scanned '+f+'.');await loadOpps()});cb.onchange=save;fs.onchange=save;
    const go=el('button','Run now','secondary mini-act');go.type='button';go.onclick=()=>scanOrg(w.org,go);
-   r.append(el('strong',w.org+(w.is_client?'':' ')),fs,el('span',(w.last_run?'Last '+when(w.last_run)+(w.last_status&&w.last_status!=='complete'?' ('+w.last_status+')':''):'Not scanned yet')+(w.frequency!=='off'&&w.next_run?' · next '+when(w.next_run):''),'muted'),go);sc.append(r)}
+   r.append(cb,el('strong',w.org+(w.is_client?'':' ')),fs,el('span',(w.last_run?'Last '+when(w.last_run)+(w.last_status&&w.last_status!=='complete'?' ('+w.last_status+')':''):'Not scanned yet')+(w.frequency!=='off'&&w.next_run?' · next '+when(w.next_run):''),'muted'),go);sc.append(r)}
   if(document.activeElement!==$('opp-offerings'))$('opp-offerings').value=d.offerings.join('\n');return d}
  async function scanOrg(org,btn,statusEl){btn.disabled=true;const old=btn.textContent;btn.textContent='Scanning…';if(statusEl){statusEl.className='muted small o-busy';statusEl.textContent='Temple is reading the profile and searching recent news…'}
   try{const x=await api('/admin/api/opportunities/scan','POST',{org});$('notice').textContent=org+': '+x.summary+'. Open the tracker to review.';if(statusEl){statusEl.className='muted small';statusEl.textContent=x.summary}OT.status='suggested';await loadOpps();if(!OT.open&&x.opportunities)drawer(true)}
@@ -1312,9 +1324,11 @@ $('o-desc').value=o.description||'';$('o-web').value=o.website||'';
  $('opp-off-save').onclick=()=>run(async()=>{const x=await api('/admin/api/opportunities-offerings','PUT',{offerings:$('opp-offerings').value.split('\n')});$('notice').textContent='Offerings saved ('+x.offerings.length+').'});
  $('o-opp-scan').onclick=()=>scanOrg(st.org,$('o-opp-scan'),$('o-opp-status'));
  $('o-opp-view').onclick=()=>{OT.org=st.org;OT.status='';drawer(true)};
- $('o-opp-freq').onchange=()=>run(async()=>{await api('/admin/api/opportunities/schedule','POST',{org:st.org,frequency:$('o-opp-freq').value});$('notice').textContent=st.org+': scan '+$('o-opp-freq').value+'.';await loadOpps()});
+ const setWatch=()=>run(async()=>{const f=$('o-watch').checked?$('o-opp-freq').value:'off';await api('/admin/api/opportunities/schedule','POST',{org:st.org,frequency:f});$('notice').textContent=st.org+(f==='off'?': no longer watched.':': watched, scanned '+f+'.');await loadOpps();await load()});
+ $('o-opp-freq').onchange=setWatch;$('o-watch').onchange=setWatch;
+ $('opp-expire').onchange=()=>run(async()=>{const x=await api('/admin/api/opportunities-expiry','PUT',{days:+$('opp-expire').value});$('notice').textContent=x.expire_days?'Suggestions go stale after '+x.expire_days+' days.':'Suggestions never go stale.';await loadOpps()});
  const q=new URLSearchParams(location.search).get('org');if(q)st.org=q;
- const qf=new URLSearchParams(location.search).get('filter');if(['all','clients','attention','opps'].includes(qf))st.filter=qf;
+ const qf=new URLSearchParams(location.search).get('filter');if(['all','clients','attention','opps','watched'].includes(qf))st.filter=qf;
  const TAG=DEMO_ORG?null:initTagging();$('o-tagging').hidden=DEMO_ORG;
  run(async()=>{await loadOpps();await load();if(TAG)await TAG.refresh()});
  if(new URLSearchParams(location.search).get('tracker')){OT.status='suggested';drawer(true)}
@@ -1836,7 +1850,7 @@ def render_admin(page, token):
             '<header class="topbar"><a class="brand" href="/" title="Back to chat"><img src="/static/favicon.png" alt=""><span>ALICE</span></a>'
             '<h1 class="page-title">' + escape(title) + '</h1><div class="sp"></div><button id="demo-toggle" class="bar-link" type="button" title="Demo mode: only the Agents, Rule packs and Organisations pages, with fictional or replaced names and costs hidden">Demo mode</button><a class="bar-link" href="/">← Chat</a></header>'
             '<div class="shell"><aside class="sidebar"><nav aria-label="Command centre">' + nav + '</nav></aside>'
-            '<main class="content"><div class="inner"><p class="page-desc">' + escape(description) + '</p><div id="notice" role="status"></div>'
+            '<main class="content"><div class="inner"><p class="page-desc">' + escape(description) + '</p><div id="notice" role="status" aria-live="polite" title="Click to dismiss"></div>'
             + SECTIONS[page] + '</div></main></div>' + STAGE_HTML + '<script>const PAGE=' + json.dumps(page) + ';'
             + DEMO_PRELUDE + SCRIPT.replace('__TOKEN__', token) + NAV_SCRIPT + STAGE_JS + '</script></body></html>')
 
@@ -1857,4 +1871,11 @@ NAV_SCRIPT = r"""
 (async()=>{try{const d=await api('/admin/api/actions');const n={};for(const s of d.sections)n[s.key]=s.count;
  if(DEMO)return;const counts={agents:n.agents||0,actions:d.total,memories:n.proposals||0,knowledge:(n.drafts||0)+(n.replacements||0),organisations:(n.orgfacts||0)+(n.opportunities||0),temple:n.suggestions||0,archive:n.chats||0,rules:n.rules||0};
  for(const [k,v] of Object.entries(counts)){if(!v)continue;const a=document.querySelector('.sidebar a[data-page="'+k+'"]');if(!a)continue;const c=document.createElement('span');c.className='nav-count';c.textContent=v;a.append(c)}}catch{}})();
+"""
+
+SCRIPT += r"""
+(()=>{const n=document.getElementById('notice');if(!n)return;let t=null;
+ const clear=()=>{n.classList.add('leaving');setTimeout(()=>{n.textContent='';n.classList.remove('leaving')},300)};
+ new MutationObserver(()=>{clearTimeout(t);n.classList.remove('leaving');const len=n.textContent.trim().length;if(len)t=setTimeout(clear,Math.min(15000,4500+len*45))}).observe(n,{childList:true,characterData:true,subtree:true});
+ n.addEventListener('click',()=>{clearTimeout(t);clear()});})();
 """

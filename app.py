@@ -1496,6 +1496,14 @@ def admin_opportunity_schedule(r: OppSchedule):
     try: return opportunities.set_frequency(r.org, r.frequency)
     except ValueError as e: raise HTTPException(400,str(e)) from None
 
+class OppExpiry(BaseModel):
+    days: int = Field(ge=0,le=365)
+
+@app.put('/admin/api/opportunities-expiry')
+def admin_opportunity_expiry(e: OppExpiry):
+    try: return opportunities.set_expire_days(e.days)
+    except ValueError as x: raise HTTPException(400,str(x)) from None
+
 @app.put('/admin/api/opportunities/{oid}')
 def admin_opportunity_update(oid: str, u: OppUpdate):
     try: return opportunities.update(oid, u.status, u.notes)
