@@ -145,14 +145,21 @@ def summary():
     out.append(_section('chats', 'Chats with nothing captured and no Temple review', len(unreviewed), '/admin/archive',
                         [{'type': 'link', 'id': c['id'], 'title': c['title'], 'detail': (c['source'] if c['source'] != 'alice' else 'Alice chat'),
                           'href': '/admin/archive'} for c in unreviewed],
-                        'Use “Ask Temple to review flagged chats” on the Archive page (up to 50 per run).' if unreviewed else ''))
+                        'Use “Ask Temple to review flagged chats” on the Saved chats page (up to 50 per run).' if unreviewed else ''))
 
     # 8. Rule requests from Temple
     rr = rules_engine.rule_requests()
     out.append(_section('rules', 'Rule requests to consider', len(rr), '/admin/rules',
                         [{'type': 'link', 'id': r['id'], 'title': r['title'], 'detail': r['content'][:140], 'href': '/admin/rules'} for r in rr]))
 
-    # 9. Spending
+    # 9. Apps (Mileage and others): their approvals happen on the app's own page, with the full detail
+    import apps
+    aw = apps.waiting()
+    out.append(_section('apps', 'Waiting in your apps', len(aw), '/admin/apps',
+                        [{'type': 'link', 'id': f'app{n}', 'title': i['app'] + ': ' + i['title'], 'detail': i['detail'], 'href': i['href']}
+                         for n, i in enumerate(aw)], 'Open the app to check and approve each one.' if aw else ''))
+
+    # 10. Spending
     sp = rules_engine.spend_status()
     if sp['level'] in ('warning', 'blocked'):
         out.insert(0, _section('spend', 'Spending cap ' + ('reached' if sp['level'] == 'blocked' else 'warning'), 1, '/admin/rules',

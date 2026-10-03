@@ -395,3 +395,12 @@ def approved_for(action, draft_id, payload_hash):
     if not d or d['payload_hash'] != payload_hash: return False
     want = {'fill': ('fill_approved', 'save_approved'), 'save': ('save_approved',)}.get(action, ())
     return d['status'] in want and any(a['action'] == action and a['hash'] == payload_hash for a in json.loads(d['approvals']))
+
+
+def waiting():
+    """For the Apps area and Actions: entries waiting for your fill approval (newest export first)."""
+    with store.db() as c:
+        rows = [dict(r) for r in c.execute("SELECT d.id, d.day, d.miles, d.import_id, i.name FROM mileage_drafts d "
+                                            "JOIN mileage_imports i ON i.id = d.import_id WHERE d.status = 'draft' ORDER BY d.day")]
+    return [{'title': datetime.strptime(r['day'], '%Y-%m-%d').strftime('%a %d %b %Y').replace(' 0', ' ') + f": {r['miles']} business miles",
+             'detail': 'TMC entry waiting for your approval (' + r['name'] + ')', 'href': '/admin/mileage?import_id=' + r['import_id']} for r in rows]

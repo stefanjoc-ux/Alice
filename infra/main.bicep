@@ -24,6 +24,12 @@ param deployerObjectId string
 param ownerName string = 'Stefan'
 @description('Your Entra object ID: the only person the web sign-in lets in.')
 param ownerObjectId string = ''
+@description('Other Entra object IDs allowed to sign in (e.g. your everyday account in the same tenant). The owner is always allowed.')
+param allowedUserObjectIds array = []
+@description('Custom domain for alice-web (e.g. alice.northants.it), already bound once with a managed certificate; empty = none.')
+param customDomain string = ''
+@description('Resource ID of that domain\'s managed certificate.')
+param customDomainCertificateId string = ''
 @description('Client ID of the "Alice web sign-in" app registration (created by the script before stage apps).')
 param webAuthClientId string = ''
 @description('Environment variable name -> Key Vault secret name, for the API keys you have stored.')
@@ -288,7 +294,8 @@ resource web 'Microsoft.App/containerApps@2024-03-01' = if (withApps) {
     workloadProfileName: 'Consumption'
     configuration: {
       activeRevisionsMode: 'Multiple'
-      ingress: { external: true, targetPort: 8000, transport: 'auto', allowInsecure: false, traffic: [{ latestRevision: true, weight: 100 }] }
+      ingress: { external: true, targetPort: 8000, transport: 'auto', allowInsecure: false, traffic: [{ latestRevision: true, weight: 100 }]
+        customDomains: empty(customDomain) ? [] : [{ name: customDomain, bindingType: 'SniEnabled', certificateId: customDomainCertificateId }] }
       registries: registries
       secrets: concat(secrets, [{ name: 'web-auth-secret', keyVaultUrl: '${kvUri}secrets/web-auth-secret', identity: identity.id }])
     }
@@ -300,7 +307,7 @@ resource web 'Microsoft.App/containerApps@2024-03-01' = if (withApps) {
         env: concat(commonEnv, [
           { name: 'ALICE_ROLE', value: 'web' }
           { name: 'ALICE_TRUST_EASYAUTH', value: '1' }
-          { name: 'SUBSTRATE_ALLOWED_HOSTS', value: webFqdn }
+          { name: 'SUBSTRATE_ALLOWED_HOSTS', value: empty(customDomain) ? webFqdn : '${webFqdn},${customDomain}' }
         ])
         volumeMounts: mounts
         probes: [for p in tcpProbes: union(p, { tcpSocket: { port: 8000 } })]
@@ -329,7 +336,7 @@ resource webAuth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (with
         }
         validation: {
           allowedAudiences: [webAuthClientId, 'api://${webAuthClientId}']
-          defaultAuthorizationPolicy: { allowedPrincipals: { identities: [ownerObjectId] } }
+          defaultAuthorizationPolicy: { allowedPrincipals: { identities: union([ownerObjectId], allowedUserObjectIds) } }
         }
       }
     }

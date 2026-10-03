@@ -26,6 +26,7 @@ import memory_tags
 import refs
 import autoapprove
 import mileage
+import apps
 from admin_ui import render_admin, PAGES
 from ui_theme import SHARED_CSS
 import secrets
@@ -1115,6 +1116,10 @@ def _mileage_refresh():
     for i in mileage.imports():
         try: mileage.refresh_drafts(i['id'])
         except ValueError: pass
+
+@app.get('/admin/api/apps')
+def admin_apps():
+    return {'apps':apps.listing()}
 
 @app.get('/admin/api/mileage')
 def admin_mileage(import_id: str=Query('',max_length=40)):

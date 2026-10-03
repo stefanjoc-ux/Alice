@@ -23,6 +23,8 @@ param(
   [string]$ExtCallers = '',
   [string]$ExtAllowedUsers = '',
   [string]$GitHubRepo = '',
+  [string]$AlsoAllow = '',      # other accounts allowed to sign in, comma separated (e.g. stefan@yourdomain); remembered
+  [string]$CustomDomain = '',   # e.g. alice.northants.it, after binding it once with a managed certificate; remembered
   [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github')][string]$Step = 'all'
 )
 $ErrorActionPreference = 'Stop'
@@ -56,7 +58,6 @@ function Kv-Get($kv, $name) { return (AzCli keyvault secret show --vault-name $k
 AzCli account set --subscription $SubscriptionId | Out-Null
 $Me = AzCli ad signed-in-user show --query id -o tsv
 $Tenant = AzCli account show --query tenantId -o tsv
-if (-not $ExtAllowedUsers) { $ExtAllowedUsers = $Me }
 $State = Load-State
 Write-Host "Subscription $SubscriptionId, tenant $Tenant, resource group $ResourceGroup ($Location), you: $Me"
 
@@ -199,9 +200,31 @@ if (Want 'signin') {
 if (Want 'apps') {
   Say 'Apps: alice-web and alice-mcp'
   if (-not $State.webAuthClientId) { throw 'Run -Step signin first: the web app must never start without sign-in.' }
-  if (-not $ExtAppId -or -not $ExtCallers) { throw 'Give -ExtAppId (the Alice API app registration) and -ExtCallers (e.g. "<copilot app id>=Microsoft Copilot:copilot"), the same values as ALICE_EXT_APP_ID and ALICE_EXT_CALLERS on the PC.' }
+  # Remembered between runs, so a later -Step apps keeps them without retyping
+  if ($ExtAppId) { Set-Prop $State 'extAppId' $ExtAppId }
+  if ($ExtCallers) { Set-Prop $State 'extCallers' $ExtCallers }
+  if (-not $State.extAppId -or -not $State.extCallers) { throw 'Give -ExtAppId (the Alice API app registration) and -ExtCallers (e.g. "<copilot app id>=Microsoft Copilot:copilot"), the same values as ALICE_EXT_APP_ID and ALICE_EXT_CALLERS on the PC.' }
+  $also = @($State.alsoAllow | Where-Object { $_ })
+  foreach ($u in ($AlsoAllow -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
+    $oid = if ($u -match '^[0-9a-fA-F-]{36}$') { $u } else { AzCli ad user show --id $u --query id -o tsv }
+    if ($oid -and $also -notcontains $oid) { $also += $oid; Write-Host "Also allowed to sign in: $u ($oid)" }
+  }
+  Set-Prop $State 'alsoAllow' $also
+  if ($CustomDomain) { Set-Prop $State 'customDomain' $CustomDomain.Trim().ToLower() }
+  $certId = ''
+  if ($State.customDomain) {
+    $envName = AzCli containerapp env list -g $ResourceGroup --query '[0].name' -o tsv
+    $certId = AzCli containerapp env certificate list -g $ResourceGroup -n $envName --managed-certificates-only --query "[?properties.subjectName=='$($State.customDomain)'].id | [0]" -o tsv
+    if (-not $certId) { throw "No managed certificate for $($State.customDomain) yet: bind it once first (az containerapp hostname bind ...)." }
+    $redirects = @("$($State.webUrl)/.auth/login/aad/callback", "https://$($State.customDomain)/.auth/login/aad/callback")
+    AzCli ad app update --id $State.webAuthClientId --web-redirect-uris @redirects | Out-Null
+  }
+  Save-State $State
+  $users = if ($ExtAllowedUsers) { $ExtAllowedUsers } else { (@($Me) + $also | Select-Object -Unique) -join ',' }
   Deploy 'apps' @{ image = (Image-Ref); webAuthClientId = $State.webAuthClientId; keyVaultSecretNames = (Key-Names)
-                   extAppId = $ExtAppId; extAllowedUsers = $ExtAllowedUsers; extCallers = $ExtCallers }
+                   extAppId = $State.extAppId; extAllowedUsers = $users; extCallers = $State.extCallers
+                   allowedUserObjectIds = $also; customDomain = "$($State.customDomain)"; customDomainCertificateId = "$certId" }
+  if ($State.customDomain) { Write-Host "Also at: https://$($State.customDomain)" }
   Write-Host "Web:  $($State.webUrl)"
   Write-Host "MCP:  $($State.mcpUrl)/mcp   (set this as the Copilot plugin URL, and run Test-External against it)"
 }
@@ -209,17 +232,28 @@ if (Want 'apps') {
 if (Want 'github') {
   Say 'GitHub pipeline sign-in (OIDC)'
   if (-not $GitHubRepo) { Write-Host 'Skipped: give -GitHubRepo owner/name.'; return }
+  # Each part is checked first and retried (new Entra objects take a minute to appear everywhere), so this is safe to run again.
+  function Retry($what, [scriptblock]$do) {
+    for ($i = 1; $i -le 12; $i++) { try { return (& $do) } catch { if ($i -eq 12) { throw "$what failed: $_" }; Start-Sleep -Seconds 10 } }
+  }
   if (-not $State.githubClientId) {
     $app = AzCli ad app create --display-name 'Alice GitHub deploy' --sign-in-audience AzureADMyOrg --query appId -o tsv
-    $sp = AzCli ad sp create --id $app --query id -o tsv
+    Set-Prop $State 'githubClientId' $app; Save-State $State
+  }
+  $app = $State.githubClientId
+  $sp = AzTry ad sp show --id $app --query id -o tsv
+  if (-not $sp) { $sp = Retry 'Creating the GitHub service principal' { AzCli ad sp create --id $app --query id -o tsv } }
+  $haveFed = AzTry ad app federated-credential list --id $app --query "[?name=='github-main'].name | [0]" -o tsv
+  if (-not $haveFed) {
     $fed = @{ name = 'github-main'; issuer = 'https://token.actions.githubusercontent.com'; subject = "repo:${GitHubRepo}:ref:refs/heads/main"; audiences = @('api://AzureADTokenExchange') } | ConvertTo-Json -Compress
     $tmp = New-TemporaryFile; [IO.File]::WriteAllText($tmp, $fed)
-    AzCli ad app federated-credential create --id $app --parameters "@$tmp" --output none | Out-Null; Remove-Item $tmp
-    $rg = AzCli group show -n $ResourceGroup --query id -o tsv
-    $acr = AzCli acr show -n $State.acrName --query id -o tsv
-    AzCli role assignment create --assignee-object-id $sp --assignee-principal-type ServicePrincipal --role Contributor --scope $rg --output none | Out-Null
-    AzCli role assignment create --assignee-object-id $sp --assignee-principal-type ServicePrincipal --role AcrPush --scope $acr --output none | Out-Null
-    Set-Prop $State 'githubClientId' $app; Save-State $State
+    try { Retry 'Adding the GitHub federated credential' { AzCli ad app federated-credential create --id $app --parameters "@$tmp" --output none | Out-Null } } finally { Remove-Item $tmp -ErrorAction SilentlyContinue }
+  }
+  $rg = AzCli group show -n $ResourceGroup --query id -o tsv
+  $acr = AzCli acr show -n $State.acrName --query id -o tsv
+  foreach ($ra in @(@('Contributor', $rg), @('AcrPush', $acr))) {
+    $has = AzTry role assignment list --assignee $sp --role $ra[0] --scope $ra[1] --query '[0].id' -o tsv
+    if (-not $has) { Retry "Giving the pipeline $($ra[0])" { AzCli role assignment create --assignee-object-id $sp --assignee-principal-type ServicePrincipal --role $ra[0] --scope $ra[1] --output none | Out-Null } }
   }
   Write-Host "Set these as repository VARIABLES (Settings > Secrets and variables > Actions > Variables) in $GitHubRepo :"
   Write-Host "  AZURE_CLIENT_ID       = $($State.githubClientId)"

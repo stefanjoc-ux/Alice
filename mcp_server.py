@@ -626,7 +626,7 @@ def save_conversation(title: Annotated[str, Field(min_length=1, max_length=120)]
     if r.get('duplicate'): return {'id': r['id'], 'message': 'This conversation was already saved.'}
     agents.app_note(run, 'wrote', 'chat', r['id'], 'conversation saved')
     turns_note = f" with {r['transcript_turns']} transcript turns" if r.get('transcript_turns') else ''
-    msg = 'Saved to Alice (Command centre → Archived chats)' + turns_note + '.'
+    msg = 'Saved to Alice (Command centre → Saved chats)' + turns_note + '.'
     if transcript and not transcript_complete:
         msg += ' Send the rest with append_conversation using conversation_id ' + r['id'] + '.' 
     if r['proposed_memories']: msg += f" {r['proposed_memories']} memory proposal(s) await approval in Memories."

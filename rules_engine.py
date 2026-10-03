@@ -55,7 +55,7 @@ BUILTIN = [
      'When drafting material that will go to a client, remind me once that AI assisted so I can declare it if required.',
      False),
     ('retention', 'organisation', 'Chat retention', 'enforced',
-     'Permanently deletes archived chats that had nothing captured once they are older than the set number of months. '
+     'Permanently deletes saved chats that had nothing captured once they are older than the set number of months. '
      'Chats with captured memories or knowledge are kept. Off by default because deletion cannot be undone.',
      False, {'months': 12}, '', False),
     ('approval_required', 'memory', 'Human approval', 'enforced',

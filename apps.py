@@ -1,0 +1,40 @@
+"""Apps: things built on Alice that do a job end to end (Mileage Clerk first; expenses, purchase-to-pay slices and others
+later). Each app has its own page under the Apps area instead of a slot in the menu, and declares what is waiting for
+you so the Apps page and the Actions page can show it. Adding an app = one entry in APPS plus its page.
+
+An app's approvals stay on its own page (they need the full detail, e.g. the exact mileage entry); Actions only links
+to them, so there is still one place to see everything that needs you.
+"""
+
+
+def _mileage_waiting():
+    import mileage
+    return mileage.waiting()
+
+
+APPS = [
+    {'id': 'mileage', 'name': 'Mileage', 'mark': 'Mi', 'page': 'mileage', 'agent': 'Mileage Clerk',
+     'description': 'Business mileage for TMC from your vehicle tracker export: classify places, approve each exact entry.',
+     'waiting': _mileage_waiting},
+]
+PAGES = {a['page'] for a in APPS}
+
+
+def by_page(page):
+    return next((a for a in APPS if a['page'] == page), None)
+
+
+def waiting():
+    """Every app's waiting items: [{'app', 'title', 'detail', 'href'}]. An app that fails to answer is skipped, never fatal."""
+    out = []
+    for a in APPS:
+        try: items = a['waiting']() or []
+        except Exception: items = []
+        for i in items: out.append({'app': a['name'], 'title': i['title'], 'detail': i.get('detail', ''), 'href': i.get('href') or '/admin/' + a['page']})
+    return out
+
+
+def listing():
+    items = waiting()
+    return [{'id': a['id'], 'name': a['name'], 'mark': a['mark'], 'description': a['description'], 'href': '/admin/' + a['page'],
+             'agent': a['agent'], 'waiting': sum(1 for i in items if i['app'] == a['name'])} for a in APPS]

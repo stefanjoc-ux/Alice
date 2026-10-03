@@ -7,20 +7,22 @@ PAGES = {
  'actions': ('Actions','Everything waiting for your decision, in one place. Quick decisions here; open the full page when you need to edit.'),
  'usage': ('Usage & costs','Estimated API spend and savings. Includes Chat, Temple, routing and images.'),
  'temple': ('Temple','Your advisory memory steward. Human decisions remain in control.'),
- 'knowledge': ('Knowledge','Files, notes and meeting extracts. Tag them like memories; security labels decide which models may read each item.'),
+ 'knowledge': ('Knowledge summaries','Files, notes and meeting extracts. Tag them like memories; security labels decide which models may read each item.'),
  'memories': ('Memories','Review proposed records and browse approved knowledge.'),
  'agents': ('Agents','Everything that acts on Alice without you typing it: Temple\'s automations and connected apps. What each does, what it touched, what it cost, and its limits. Pause or stop any of them here.'),
  'organisations': ('Organisations','Clients and other organisations: short approved facts with a pointer to the source, opportunities, and for clients the names Alice recognises and the memories and files tagged to them. Detail stays in the source system.'),
- 'archive': ('Archived chats','Inactive Alice chats (30 days) and conversations saved from Claude apps. Ask Temple to review any of them for memories and knowledge.'),
+ 'archive': ('Saved chats','Conversations saved from Claude, ChatGPT and other AI apps, and your Alice chats after 30 days without activity. Ask Temple to review any of them for memories and knowledge.'),
  'documents': ('Documents','Document sources: full documents that stay outside Alice. Knowledge keeps approved summaries that point to them; assistants read a section on demand only when the summaries do not answer. For now each source is a folder in the Documents folder that stands in for SharePoint, Fabric or Power Platform; in Azure each becomes a real connector.'),
  'assistants': ('Assistants','Focused assistants built on Alice, such as Alex (HR policies) and Parker (proposals). Each has its own rule packs, model and knowledge, and staff use it on its own page without seeing the rest of Alice.'),
  'rule-packs': ('Rule packs','Ready-made safeguards for teams adopting AI. Switch each one on or off, test a message against the pack (a sandbox: no AI is called), and apply a pack to Alice\'s live rules when you want it enforced.'),
  'rules': ('Rules','Rule sets in precedence order. Enforced rules are checked in code; guidance rules are instructions to the model.'),
  'mileage': ('Mileage','Mileage Clerk: load a tracker export, tell Alice which places are home, personal or business, and approve the TMC entries she prepares. Nothing reaches TMC without your approval of that exact entry.'),
+ 'apps': ('Apps','Apps built on Alice that each do one job end to end. Each keeps its approvals on its own page; anything waiting for you also shows on Actions.'),
  'activity': ('Activity','Everything Alice and Temple did, and every decision you made: filter by type, date or words, and export for an audit trail.'),
 }
 
 SECTIONS = {
+'apps': r'''<section><div class="mem-head"><h2>Your apps</h2><span id="ap-sum" class="muted small"></span></div><div id="ap-grid" class="ap-grid"></div></section>''',
 'home': r'''<section class="hm-hero"><div><h2 id="hm-hello">Hello</h2><p id="hm-sub" class="muted"></p></div>
 <div class="hm-go"><a class="hm-btn primary" href="/?new=1"><span>&#9998;</span>New chat</a><a class="hm-btn" id="hm-prop" href="/admin/assistants"><span>&#10064;</span>Write a proposal</a><a class="hm-btn" href="/admin/temple?tab=ask"><span>?</span>Ask Temple</a><a class="hm-btn" href="/admin/knowledge"><span>+</span>Add knowledge</a></div></section>
 <div id="hm" class="hm"></div>''',
@@ -182,7 +184,7 @@ SECTIONS = {
 'archive': r'''<section><div class="mem-head"><h2>Import from Claude</h2><span class="muted small">Verbatim copies of your Claude conversations</span></div>
 <p class="muted small">In Claude: Settings → Privacy → Export data. You'll get an email with a zip, or for larger accounts a small manifest file. Choose the manifest and Alice downloads every batch (each link works once; copies are kept in data\\imports) and imports them. You can also select zips directly; several import one after another. Running it again later only adds new conversations and updates ones that have grown. Conversations containing credentials or protective markings are skipped and listed, never stored.</p>
 <div class="arc-actions"><input id="imp-file" type="file" accept=".zip,.json" multiple hidden><label class="r-param">Only conversations updated since (optional)<input id="imp-since" type="date"></label><button id="imp-go" type="button">Choose export files and import…</button></div><div id="imp-progress" class="imp-progress" hidden><div class="imp-bar"><span id="imp-fill"></span></div><div id="imp-label" class="small" aria-live="polite"></div></div><div id="imp-result" class="small" role="status"></div></section>
-<section id="archive"><div class="mem-tools"><input id="arc-query" type="search" maxlength="200" placeholder="Search chat titles" aria-label="Search archived chats"><label>Sort <select id="arc-sort"><option value="recent">Most recently used</option><option value="oldest">Longest inactive</option><option value="created">Newest created</option><option value="title">Title A–Z</option></select></label></div>
+<section id="archive"><div class="mem-tools"><input id="arc-query" type="search" maxlength="200" placeholder="Search chat titles" aria-label="Search saved chats"><label>Sort <select id="arc-sort"><option value="recent">Most recently used</option><option value="oldest">Longest inactive</option><option value="created">Newest created</option><option value="title">Title A–Z</option></select></label></div>
 <div class="mem-head"><div id="arc-filters" class="mem-tabs"></div><button id="arc-review-flagged" type="button" class="secondary">Ask Temple to review flagged chats</button></div>
 <div class="table-wrap"><table id="arc-table" class="mem-table"></table></div><p id="arc-count" class="muted small"></p><button id="arc-more" type="button" class="secondary" hidden>Load more</button>
 <p class="muted small">Captured means memories proposed from the chat (by the model, from a saved conversation, or accepted from Temple) or knowledge notes saved from it. Files you uploaded into a chat are not counted. Temple's suggestions go to <a href="/admin/temple?tab=suggestions">Temple → Chat suggestions</a> for your approval.</p></section>''' ,
@@ -212,10 +214,10 @@ SECTIONS = {
 
 CSS = r'''
 /* Command centre: same look as the chat page (shared tokens, buttons and top bar from ui_theme). */
-body{display:grid;grid-template-rows:52px minmax(0,1fr);height:100vh;overflow:hidden}
+body{display:grid;grid-template-rows:52px minmax(0,1fr);height:100vh;height:100dvh;overflow:hidden}
 .page-title{position:absolute;left:calc(248px + (100% - 248px)/2);transform:translateX(-50%);margin:0;font-size:18px;line-height:24px;font-weight:700;color:#fff;white-space:nowrap;max-width:calc(100% - 640px);overflow:hidden;text-overflow:ellipsis}
-.shell{display:grid;grid-template-columns:248px minmax(0,1fr);min-height:0}
-.sidebar{background:#fff;border-right:1px solid var(--line);padding:12px 10px;overflow:auto;display:flex;flex-direction:column;gap:1px}
+.shell{display:grid;grid-template-columns:248px minmax(0,1fr);grid-template-rows:minmax(0,1fr);min-height:0}
+.sidebar{background:#fff;border-right:1px solid var(--line);padding:12px 10px;overflow-y:auto;min-height:0;overscroll-behavior:contain;touch-action:pan-y;display:flex;flex-direction:column;gap:1px}
 .sidebar .grp{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:12px 10px 4px}.sidebar .grp:first-child{margin-top:2px}
 .sidebar a{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;text-decoration:none;color:var(--ink);font-size:14px}
 .sidebar a:hover{background:#f1f6f9}.sidebar a[aria-current=page]{background:var(--teal2);font-weight:600}
@@ -395,6 +397,7 @@ a.av-tile:hover{border-color:var(--teal)}.av-tile b{font-size:28px;line-height:1
 .act-info{background:#f7fafc}.mi-top{display:flex;gap:14px;align-items:center;flex-wrap:wrap}.mi-top input,.mi-top select{margin:0;width:auto}.mi-file input{display:none}.mi-file .primary-btn{display:inline-block;background:#075e79;color:#fff;border-radius:8px;padding:9px 16px;font-weight:600;cursor:pointer}
 .mi-tiles{display:flex;gap:12px;flex-wrap:wrap;margin-top:14px}.mi-tile{background:#f4f7fa;border:1px solid #d3dee6;border-radius:10px;padding:10px 16px;min-width:120px}.mi-tile strong{display:block;font-size:20px;color:#102b40}.mi-tile span{font-size:12px;color:#5d7385}.mi-tile.mi-biz{background:#e6f0f8;border-color:#9cc0db}.mi-biz{color:#1d6fa5;font-weight:600}
 .mi-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 12px;margin:6px 0 10px;background:#f4f7fa;border:1px solid #d3dee6;border-radius:8px}.mi-form input,.mi-form select{margin:0;width:auto;flex:1 1 180px}.mi-form .mi-pc{flex:0 0 100px}.mi-form [hidden]{display:none!important}
+.ap-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-top:10px}.ap-tile{display:flex;gap:14px;align-items:flex-start;padding:16px;border:1px solid #d3dee6;border-radius:12px;background:#fff;color:inherit;text-decoration:none;transition:box-shadow .15s,border-color .15s}.ap-tile:hover,.ap-tile:focus-visible{border-color:#7fa9c4;box-shadow:0 2px 10px rgba(16,43,64,.08)}.ap-mark{flex:0 0 44px;height:44px;border-radius:10px;background:#075e79;color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:15px}.ap-tile h3{margin:0 0 4px;font-size:16px}.ap-tile p{margin:0;font-size:13px;color:#5d7385}.ap-tile .badge{margin-top:8px;display:inline-block}.crumb{color:inherit;text-decoration:none;opacity:.75}.crumb:hover{opacity:1;text-decoration:underline}
 .mi-warn{display:block;margin:6px 0;font-weight:400;white-space:normal;overflow-wrap:anywhere;box-sizing:border-box;max-width:100%}#mi-days td:first-child,#mi-days th:first-child{white-space:nowrap;width:130px}.mi-legs{display:grid;gap:4px;padding:6px 0}.mi-leg{display:grid;grid-template-columns:60px 1fr 70px 70px;gap:10px;font-size:13px;padding:4px 8px;border-radius:6px}.mi-leg.biz{background:#e6f0f8}.o-watch{align-items:center;gap:10px;flex-wrap:wrap}.o-watch select{width:auto;margin:0}.o-watch select:disabled{opacity:.5}
 .o-flag.o-watched{background:#e6f0f8;color:#1d6fa5;border-color:#9cc0db}.opp-sched-row input[type=checkbox]{width:auto;margin:0}
 .opp-fresh{margin:8px 0;padding:7px 10px;border-radius:7px;font-size:13px;background:#eef3f7;color:#314d62}.opp-fresh a{margin-right:8px}
@@ -642,7 +645,7 @@ if(PAGE==='rules'){
  async function patch(id,body,msg){await api('/admin/api/rules/'+id,'PUT',body);$('notice').textContent=msg||'Rule saved.';await load()}
  function paramsEditor(r){const box=el('div','','r-params');const p=r.params;
   if(r.id==='spend_cap'){const [a,ai]=num('Daily cap (USD)',p.daily_usd,0.1,1000,0.5),[b,bi]=num('Monthly cap (USD)',p.monthly_usd,1,10000,1),[c,ci]=num('Warn and pause Temple at (%)',p.warn_percent,10,99,5);box.append(a,b,c,saveBtn(()=>patch(r.id,{params:{daily_usd:+ai.value,monthly_usd:+bi.value,warn_percent:+ci.value}})))}
-  else if(r.id==='retention'){const [a,ai]=num('Delete after (months)',p.months,1,120,1);const go=saveBtn(async()=>{if(!confirm('Delete archived chats older than '+ai.value+' months that had nothing captured? This cannot be undone.'))return;const res=await api('/admin/api/rules/retention/run','POST',{});$('notice').textContent=res.status==='off'?'Switch the rule on first.':res.deleted+' chats deleted.'},'Run now');go.disabled=!r.enabled;box.append(a,saveBtn(()=>patch(r.id,{params:{months:+ai.value}})),go)}
+  else if(r.id==='retention'){const [a,ai]=num('Delete after (months)',p.months,1,120,1);const go=saveBtn(async()=>{if(!confirm('Delete saved chats older than '+ai.value+' months that had nothing captured? This cannot be undone.'))return;const res=await api('/admin/api/rules/retention/run','POST',{});$('notice').textContent=res.status==='off'?'Switch the rule on first.':res.deleted+' chats deleted.'},'Run now');go.disabled=!r.enabled;box.append(a,saveBtn(()=>patch(r.id,{params:{months:+ai.value}})),go)}
   else if(r.id==='quality'){const [a,ai]=num('Minimum content length',p.min_chars,1,200,1);box.append(a,saveBtn(()=>patch(r.id,{params:{min_chars:+ai.value}})))}
   else if(r.id==='duplicates'){const [a,ai]=num('Similarity threshold (0.5–1)',p.threshold,0.5,1,0.05);box.append(a,saveBtn(()=>patch(r.id,{params:{threshold:+ai.value}})))}
   else if(r.id==='protective_marking'){const l=el('label','Markings (comma separated)','r-param wide');const i=document.createElement('input');i.value=p.markings.join(', ');l.append(i);box.append(l,saveBtn(()=>patch(r.id,{params:{markings:i.value.split(',')}})))}
@@ -963,7 +966,7 @@ if(PAGE==='archive'){
   restore.hidden=r.source!=='alice';bar.append(open,restore,del);box.append(bar);const holder=el('div','Loading conversation…','muted small');box.append(holder);
   try{const chat=st.cache[r.id]||(st.cache[r.id]=await api('/chats/'+r.id));if(chat.source&&chat.source!=='alice'){const wrap=el('div','');wrap.append(savedView(chat));if(chat.turns.length){const rec=JSON.parse(chat.summary||'{}');if(!rec.verbatim)wrap.append(el('p','Transcript reproduced by '+(rec.app||chat.source)+(rec.transcript_complete===false?' (incomplete: more parts were expected)':'')+'. Not an exact export.','muted small'));wrap.append(transcript(chat))}holder.replaceWith(wrap)}else holder.replaceWith(transcript(chat))}catch(e){holder.textContent=e.message}return box}
  async function render(){const t=$('arc-table');t.replaceChildren();const head=document.createElement('thead'),hr=document.createElement('tr');for(const h of ['Chat','Created','Last used','Captured']){const th=el('th',h);th.scope='col';hr.append(th)}head.append(hr);t.append(head);
-  const body=document.createElement('tbody');if(!st.rows.length){const tr=document.createElement('tr'),td=el('td',st.query||st.flag!=='all'?'No archived chats match.':'No archived chats yet. Chats appear here after 30 days without activity.','muted');td.colSpan=4;tr.append(td);body.append(tr)}
+  const body=document.createElement('tbody');if(!st.rows.length){const tr=document.createElement('tr'),td=el('td',st.query||st.flag!=='all'?'No saved chats match.':'No saved chats yet. Conversations saved from AI apps appear here, and Alice chats after 30 days without activity.','muted');td.colSpan=4;tr.append(td);body.append(tr)}
   for(const r of st.rows){const tr=document.createElement('tr');tr.className='mem-row'+(st.open.has(r.id)?' open':'');const c1=document.createElement('td');const b=el('button',r.title,'mem-title');b.type='button';b.setAttribute('aria-expanded',st.open.has(r.id));b.onclick=()=>{st.open.has(r.id)?st.open.delete(r.id):st.open.add(r.id);run(render)};c1.append(b,el('div',r.source!=='alice'?'Saved conversation':r.exchanges+(r.exchanges===1?' exchange':' exchanges'),'mem-preview'));if(SRC(r.source)){const sb=el('span',r.source,'tag k-knowledge');sb.style.marginLeft='6px';b.after(sb)}if(r.client){const cc=el('span',r.client,'tag');cc.style.marginLeft='6px';c1.append(cc)}
    const c3=el('td',fmt(r.updated_at),'num');c3.title=ago(r.updated_at);tr.append(c1,el('td',fmt(r.created_at),'num'),c3,captured(r));body.append(tr);
    if(st.open.has(r.id)){const dr=document.createElement('tr');dr.className='mem-detail-row';const td=document.createElement('td');td.colSpan=4;dr.append(td);body.append(dr);td.append(await detail(r))}}
@@ -1412,8 +1415,17 @@ if(PAGE==='temple')run(async()=>{const d=await api('/admin/api/temple/auto-appro
 '''
 
 SCRIPT += r"""
+if(PAGE==='apps'){
+ run(async()=>{const d=await api('/admin/api/apps');const g=$('ap-grid');g.replaceChildren();let w=0;
+  for(const a of d.apps){w+=a.waiting;const t=document.createElement('a');t.className='ap-tile';t.href=a.href;t.dataset.app=a.id;
+   const m=el('div',a.mark,'ap-mark');m.setAttribute('aria-hidden','true');const tx=el('div','');tx.append(el('h3',a.name),el('p',a.description));
+   tx.append(a.waiting?el('span',a.waiting+' waiting for you','badge v-warn'):el('span','Nothing waiting','badge v-none'));t.append(m,tx);g.append(t)}
+  $('ap-sum').textContent=d.apps.length+' app'+(d.apps.length===1?'':'s')+(w?' · '+w+' waiting':'')})
+}
+"""
+SCRIPT += r"""
 if(PAGE==='mileage'){
- const st={imp:'',d:null,open:new Set()};const KIND={home:'Home',personal:'Personal',business:'Business'};
+ const st={imp:new URLSearchParams(location.search).get('import_id')||'',d:null,open:new Set()};const KIND={home:'Home',personal:'Personal',business:'Business'};
  const ST={draft:['Draft: waiting for you','v-warn'],fill_approved:['Approved for filling','v-run'],save_approved:['Approved for saving','v-run'],saved:['Saved in TMC','v-ok'],verified:['Verified in TMC','v-ok'],rejected:['Not claimed','v-none'],withdrawn:['No longer a business day','v-none']};
  const fmt=d=>new Date(d+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
  const map=c=>{const a=document.createElement('a');a.href='https://www.google.com/maps?q='+encodeURIComponent(c);a.target='_blank';a.rel='noopener noreferrer';a.textContent='map';a.className='small';return a};
@@ -1904,26 +1916,29 @@ if(PAGE==='rules'){
 }
 """
 
-NAV_GROUPS = [('Work', ['home', 'actions', 'temple', 'memories', 'knowledge', 'documents', 'organisations', 'mileage', 'archive']),
+NAV_GROUPS = [('Work', ['home', 'actions', 'temple', 'memories', 'knowledge', 'documents', 'organisations', 'apps', 'archive']),
               ('Records and settings', ['agents', 'assistants', 'rules', 'rule-packs', 'activity', 'usage'])]
 
 
 def render_admin(page, token):
     from ui_theme import SHARED_CSS
     from stage_ui import STAGE_CSS, STAGE_HTML, STAGE_JS
+    import apps
     title, description = PAGES[page]
     href = lambda key: '/admin' + ('' if key == 'home' else '/' + key)
-    listed = [k for _, keys in NAV_GROUPS for k in keys]
+    current = 'apps' if page in apps.PAGES else page          # an app's page highlights Apps in the menu
+    heading = ('<a class="crumb" href="/admin/apps">Apps</a> › ' + escape(title)) if page in apps.PAGES else escape(title)
+    listed = [k for _, keys in NAV_GROUPS for k in keys] + sorted(apps.PAGES)
     groups = NAV_GROUPS + ([('More', [k for k in PAGES if k not in listed])] if any(k not in listed for k in PAGES) else [])
     nav = ''.join('<div class="grp">' + escape(name) + '</div>' + ''.join(
-        '<a href="' + href(k) + '" data-page="' + k + '"' + (' aria-current="page"' if k == page else '') + '>' + escape(PAGES[k][0]) + '</a>'
+        '<a href="' + href(k) + '" data-page="' + k + '"' + (' aria-current="page"' if k == current else '') + '>' + escape(PAGES[k][0]) + '</a>'
         for k in keys if k in PAGES) for name, keys in groups)
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
             '<link rel="icon" href="/static/favicon.png" type="image/png">'
             '<title>' + escape(title) + ' · Alice</title><style>' + SHARED_CSS + CSS + STAGE_CSS + '</style></head><body>'
             '<header class="topbar"><a class="brand" href="/" title="Back to chat"><img src="/static/favicon.png" alt=""><span>ALICE</span></a>'
-            '<h1 class="page-title">' + escape(title) + '</h1><div class="sp"></div><button id="demo-toggle" class="bar-link" type="button" title="Demo mode: only the Agents, Rule packs and Organisations pages, with fictional or replaced names and costs hidden">Demo mode</button><a class="bar-link" href="/">← Chat</a></header>'
+            '<h1 class="page-title">' + heading + '</h1><div class="sp"></div><button id="demo-toggle" class="bar-link" type="button" title="Demo mode: only the Agents, Rule packs and Organisations pages, with fictional or replaced names and costs hidden">Demo mode</button><a class="bar-link" href="/">← Chat</a></header>'
             '<div class="shell"><aside class="sidebar"><nav aria-label="Command centre">' + nav + '</nav></aside>'
             '<main class="content"><div class="inner"><p class="page-desc">' + escape(description) + '</p><div id="notice" role="status" aria-live="polite" title="Click to dismiss"></div>'
             + SECTIONS[page] + '</div></main></div>' + STAGE_HTML + '<script>const PAGE=' + json.dumps(page) + ';'
@@ -1944,7 +1959,7 @@ NAV_SCRIPT = r"""
  document.querySelectorAll('.bar-link[href="/"]').forEach(a=>a.hidden=true);
  if(!DEMO_PAGES.includes(PAGE)){const inner=document.querySelector('.content .inner');inner.replaceChildren();const s=document.createElement('section');const h=document.createElement('h2');h.textContent='Demo mode is on';const p=document.createElement('p');p.textContent='Only the Agents, Rule packs and Organisations pages are shown, with fictional or replaced names and costs hidden. Turn demo mode off in the top bar to see this page.';const a=document.createElement('a');a.href='/admin/agents';a.textContent='Go to Agents';s.append(h,p,a);inner.append(s)}})();
 (async()=>{try{const d=await api('/admin/api/actions');const n={};for(const s of d.sections)n[s.key]=s.count;
- if(DEMO)return;const counts={agents:n.agents||0,actions:d.total,memories:n.proposals||0,knowledge:(n.drafts||0)+(n.replacements||0),organisations:(n.orgfacts||0)+(n.opportunities||0),temple:n.suggestions||0,archive:n.chats||0,rules:n.rules||0};
+ if(DEMO)return;const counts={agents:n.agents||0,actions:d.total,memories:n.proposals||0,knowledge:(n.drafts||0)+(n.replacements||0),organisations:(n.orgfacts||0)+(n.opportunities||0),temple:n.suggestions||0,archive:n.chats||0,rules:n.rules||0,apps:n.apps||0};
  for(const [k,v] of Object.entries(counts)){if(!v)continue;const a=document.querySelector('.sidebar a[data-page="'+k+'"]');if(!a)continue;const c=document.createElement('span');c.className='nav-count';c.textContent=v;a.append(c)}}catch{}})();
 """
 
