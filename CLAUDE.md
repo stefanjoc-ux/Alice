@@ -245,3 +245,8 @@ To undo uncommitted changes to a file: `git restore <file>`. To see what changed
   has been reported).
 - TypeScript front end against the existing API; split `substrate_store.py` into modules.
 - OpenAI image pricing once the usage export arrives (`IMAGE_PRICE_OPENAI`).
+- Opportunity and news digests by email to each organisation's account manager (Stefan, 3 Oct 2026). Build on
+  `opportunities.tracker()` (new suggestions, changed/closed checks, news since the last digest) per watched organisation;
+  send through Microsoft Graph once Alice runs in Azure; resolve the recipient from `account_manager_oid` (reserved for
+  Entra ID), not the typed name; an account manager only ever receives their own organisations (client separation);
+  run the content through `check_outbound`; never include cost rates or Local only facts; log each send.
