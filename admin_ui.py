@@ -381,7 +381,7 @@ a.av-tile:hover{border-color:var(--teal)}.av-tile b{font-size:28px;line-height:1
 #k-table td:nth-child(2){min-width:260px}
 .tag.k-decision{background:#ede7f6;color:#4b2f73;border-color:#c7b8dd}
 .act-auto{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-top:6px}.act-switch{display:inline-flex;align-items:center;gap:6px;margin:0;white-space:nowrap}.act-switch input{width:auto;margin:0}
-.act-info{background:#f7fafc}.act-info details>summary{cursor:pointer;margin:6px 0;font-weight:600;color:#075e79}
+.act-info{background:#f7fafc}.act-nodec{border-left:4px solid #2f7d4f}.dec-none{font-weight:700;color:#1f6b3d;background:#e7f4ec;border:1px solid #9fcbb0;border-radius:999px;padding:3px 12px;font-size:13px}.act-info details>summary{cursor:pointer;margin:6px 0;font-weight:600;color:#075e79}
 .dec-card{border:1px solid #c7b8dd;border-left:4px solid #634394;border-radius:10px;padding:14px 16px;margin:12px 0;background:#fff}
 .dec-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}.dec-head strong{font-size:16px;color:#102b40}
 .dec-what{font-size:15px;margin:8px 0 10px;color:#1d3a50;font-weight:500}
@@ -895,7 +895,9 @@ if(PAGE==='actions'){
   card.append(actionsFor(i));return card}
  async function load(){const d=await api('/admin/api/actions');$('act-total').textContent=d.total?d.total+(d.total===1?' action waiting':' actions waiting'):'Nothing waiting — all clear';
   const box=$('act-sections');box.replaceChildren();
-  const open=d.sections.filter(s=>s.count),clear=d.sections.filter(s=>!s.count);
+  const open=d.sections.filter(s=>s.count),clear=d.sections.filter(s=>!s.count&&s.key!=='decisions');
+  const nodec=d.sections.find(s=>s.key==='decisions'&&!s.count);
+  if(nodec){const sec=el('section','','act-sec act-nodec');const h=el('div','','mem-head');h.append(el('h2','Decisions to approve'),el('span','✓ None waiting','dec-none'));sec.append(h,el('p','No decisions need you right now. When one is proposed (by you in Claude, from a saved conversation or from Temple\u2019s chat suggestions) it appears here first, explained, with Temple\u2019s recommendation.','muted small'));box.append(sec)}
   for(const s of open.filter(s=>!s.info).concat(open.filter(s=>s.info))){const sec=el('section','','act-sec act-'+s.level+(s.info?' act-info':''));const h=el('div','','mem-head');const t=el('h2','');t.append(document.createTextNode(s.title+' '),el('span',String(s.count),'act-count'));const a=document.createElement('a');a.href=s.link;a.textContent=s.count>s.items.length?'Open all '+s.count+' ↗':'Open ↗';h.append(t,a);sec.append(h);
    if(s.note)sec.append(el('p',s.note,'muted small'));
    if(s.key==='waiting'&&d.auto_on){const go=btn('Approve these automatically',async()=>{const x=await api('/admin/api/auto-approve/backlog','POST',{});$('notice').textContent='Checked '+x.memories+' memories ('+x.checking+' being reviewed by Temple), '+x.drafts+' knowledge drafts, '+x.facts+' organisation facts'+(x.suggestions?', accepted '+x.suggestions+' suggestions':'')+'. Anything that failed a check is held back for you.'});go.classList.remove('secondary');sec.append(go)}
