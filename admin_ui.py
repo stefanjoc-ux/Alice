@@ -18,11 +18,16 @@ PAGES = {
  'rules': ('Rules','Rule sets in precedence order. Enforced rules are checked in code; guidance rules are instructions to the model.'),
  'mileage': ('Mileage','Mileage Clerk: load a tracker export, tell Alice which places are home, personal or business, and approve the TMC entries she prepares. Nothing reaches TMC without your approval of that exact entry.'),
  'apps': ('Apps','Apps built on Alice that each do one job end to end. Each keeps its approvals on its own page; anything waiting for you also shows on Actions.'),
+ 'signins': ('Sign-ins and devices','Where Alice is signed in: each device and browser, the address it was used from, and when. Sign out one device, or every device at once (this one too). Your Microsoft sign-in for Outlook, Teams and the portal is not affected.'),
  'speed': ('Speed','Where Alice\'s time goes: how long pages take to load in your browser, how long each request takes on the server, and how much of that is the database. Only addresses and timings are kept, never what you asked or saw.'),
  'activity': ('Activity','Everything Alice and Temple did, and every decision you made: filter by type, date or words, and export for an audit trail.'),
 }
 
 SECTIONS = {
+'signins': r'''<section><div class="mem-head"><h2>Signed in now</h2><button type="button" id="si-all" class="secondary">Sign out of Alice on all devices</button></div>
+<div id="si-tiles" class="mi-tiles"></div><p class="small muted" id="si-note"></p>
+<div class="si-list" id="si-active"></div></section>
+<section><div class="mem-head"><h2>Recent sessions</h2><span class="small muted">Expired or signed out, last 30 days</span></div><div class="si-list" id="si-old"></div></section>''',
 'speed': r'''<section><div class="mem-head"><h2>Overview</h2><label class="small">Period <select id="sp-days"><option value="1">Today</option><option value="7" selected>Last 7 days</option><option value="30">Last 30 days</option></select></label></div>
 <div id="sp-tiles" class="mi-tiles"></div><p class="small muted" id="sp-note"></p></section>
 <section><div class="mem-head"><h2>Pages in your browser</h2><span class="small muted">Until the page and its data are on screen, average and slowest</span></div><div class="table-wrap"><table id="sp-pages" class="mem-table"></table></div></section>
@@ -318,6 +323,7 @@ nav{display:flex;gap:20px;flex-wrap:wrap}.sidebar nav{display:contents}
 .ag-card-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:auto}.ag-card-stat{margin-left:auto}
 .ag-card-flags{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;color:#6b4406}
 .ag-head{padding-bottom:6px}.ag-head>button{margin:0 0 10px}.ag-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.ag-title h2{margin:0;font-size:20px}
+.si-list{display:grid;gap:10px;margin-top:12px}.si-row{display:grid;grid-template-columns:40px 1fr auto;gap:12px;align-items:center;padding:12px 14px;border:1px solid #d3dee6;border-radius:12px;background:#fff}.si-row.me{border-color:#075e79;box-shadow:0 0 0 1px #075e79}.si-row.old{background:#f7f9fb;color:#5d7385}.si-ico{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:#e3f1f6;color:#075e79}.si-ico svg{width:22px;height:22px}.si-row.old .si-ico{background:#eef2f5;color:#8aa0b0}.si-row b{display:block;color:#102b40}.si-row.old b{color:#3d5566}.si-meta{font-size:13px;color:#5d7385}.si-tag{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600;background:#075e79;color:#fff;vertical-align:1px}@media(max-width:600px){.si-row{grid-template-columns:34px 1fr}.si-row>button{grid-column:1/-1;justify-self:start}}
 .ag-ctl{display:flex;gap:6px;margin-top:10px}.ag-ack{margin:12px 0 0;padding:12px 14px;border-radius:10px;background:#fdf3e1;border:1px solid #e2bf85;color:#4a3004}.ag-ack-top{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}.ag-ack-err{margin:6px 0 10px;font-size:13px;font-family:ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-word;background:#fff8ec;border-radius:6px;padding:6px 8px}.ag-ack-form{display:grid;gap:8px}.ag-ack-kinds{display:flex;gap:8px;flex-wrap:wrap}.ag-ack-kind{display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid #d9b77c;border-radius:8px;background:#fff;cursor:pointer}.ag-ack-kind small{color:#7a5a20}.ag-ack-kind:has(input:checked){border-color:#075e79;box-shadow:0 0 0 1px #075e79}.ag-ack-form textarea{width:100%;box-sizing:border-box}.ag-ack-form button{justify-self:start}.ag-ack-dec{display:flex;gap:6px;align-items:center}.ag-acked{margin-top:4px;color:#2f6b3a}.ag-reason{margin:10px 0 0;padding:8px 12px;border-radius:8px;background:#fdf3e1;border:1px solid #e2bf85;color:#4a3004;font-size:13px}
 .ag-tabs{margin:14px 0 0}.ag-purpose{font-size:15px;margin:0 0 14px}.ag-stats{grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:16px}
 .ag-facts{display:grid;grid-template-columns:160px 1fr;gap:6px 14px;margin:0 0 16px;font-size:14px}.ag-facts dt{color:var(--muted)}.ag-facts dd{margin:0}
@@ -1435,6 +1441,37 @@ if(PAGE==='temple')run(async()=>{const d=await api('/admin/api/temple/auto-appro
 '''
 
 SCRIPT += r"""
+if(PAGE==='signins'){
+ const ICON={phone:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="18.5" r="1" fill="currentColor"/></svg>',
+  tablet:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="2" width="16" height="20" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="18.5" r="1" fill="currentColor"/></svg>',
+  computer:'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 20h8M12 16v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>'};
+ const kind=d=>/phone|iPhone/.test(d)?'phone':/tablet|iPad/.test(d)?'tablet':'computer';
+ const ago=iso=>{const m=Math.max(0,Math.round((Date.now()-new Date(iso))/60000));return m<2?'just now':m<60?m+' minutes ago':m<1440?Math.round(m/60)+(Math.round(m/60)===1?' hour ago':' hours ago'):new Date(iso).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})};
+ const at=iso=>new Date(iso).toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+ function row(x){const r=el('div','','si-row'+(x.this_device?' me':'')+(x.state!=='active'?' old':''));const ic=el('div','','si-ico');ic.innerHTML=ICON[kind(x.device)];
+  const tx=el('div','');const name=el('b',x.device||'A browser');if(x.this_device)name.append(el('span','This device','si-tag'));tx.append(name);
+  const parts=[x.email];if(x.address)parts.push(x.address);tx.append(el('div',parts.join(' · '),'si-meta'));
+  tx.append(el('div',x.state==='active'?'Signed in '+at(x.signed_in)+' · last used '+ago(x.last_seen):x.state==='expired'?'Signed in '+at(x.signed_in)+' · expired (not used for '+SH+' hours)':'Signed out '+(x.signed_out_how==='everywhere'?'(everywhere) ':'')+(x.signed_out_at?ago(x.signed_out_at):''),'si-meta'));
+  r.append(ic,tx);
+  if(x.state==='active'){const b=el('button',x.this_device?'Sign out':'Sign out this device','secondary');b.type='button';
+   b.onclick=()=>{if(x.this_device){location.href='/signout';return}if(!confirm('Sign out '+(x.device||'this device')+'? It will have to sign in to Alice again.'))return;
+    run(async()=>{await api('/admin/api/signins/'+x.id+'/signout','POST',{});$('notice').textContent=(x.device||'Device')+' signed out of Alice.';await load()})};r.append(b)}
+  return r}
+ let SH=8;
+ async function load(){const d=await api('/admin/api/signins');SH=d.session_hours;
+  const act=d.sessions.filter(x=>x.state==='active'),old=d.sessions.filter(x=>x.state!=='active');
+  const tile=(v,l,cls)=>{const x=el('div','','mi-tile'+(cls?' '+cls:''));x.append(el('strong',v),el('span',l));return x};
+  const devs=new Set(act.map(x=>x.device));
+  $('si-tiles').replaceChildren(tile(String(act.length),act.length===1?'session signed in':'sessions signed in','mi-biz'),tile(String(devs.size),devs.size===1?'kind of device':'kinds of device'),tile(d.signout_everywhere_at?ago(d.signout_everywhere_at):'never','last signed out everywhere'));
+  $('si-note').textContent=!d.behind_signin?'Alice is running on this computer only, so there are no sign-ins to show. In Azure this lists every device signed in to Alice.':
+   !d.can_tell_sessions_apart?'Sign-in did not pass on a sign-in time, so Alice cannot tell sessions apart here.':'A session ends by itself after '+d.session_hours+' hours without use. Signing out here takes effect on that device’s next click.';
+  $('si-all').hidden=!d.behind_signin;
+  $('si-active').replaceChildren(...(act.length?act.map(row):[el('p','No sessions seen yet.','muted small')]));
+  $('si-old').replaceChildren(...(old.length?old.map(row):[el('p','None.','muted small')]))}
+ $('si-all').onclick=()=>{if(!confirm('Sign out of Alice on every device, including this one? Each will have to sign in again. Your Microsoft sign-in elsewhere is not affected.'))return;
+  run(async()=>{const r=await api('/admin/api/signout-everywhere','POST',{});location.href=r.next})};
+ run(load);
+}
 if(PAGE==='speed'){
  const fmt=ms=>ms>=1000?(ms/1000).toFixed(1)+' s':Math.round(ms)+' ms';
  function table(id,head,rows){const t=$(id);t.replaceChildren();const th=document.createElement('thead'),hr=document.createElement('tr');for(const h of head){const c=el('th',h);c.scope='col';hr.append(c)}th.append(hr);t.append(th);const b=document.createElement('tbody');
@@ -2015,7 +2052,7 @@ if(PAGE==='rules'){
 """
 
 NAV_GROUPS = [('Work', ['home', 'actions', 'temple', 'memories', 'knowledge', 'documents', 'organisations', 'apps', 'archive']),
-              ('Records and settings', ['agents', 'assistants', 'rules', 'rule-packs', 'activity', 'usage', 'speed'])]
+              ('Records and settings', ['agents', 'assistants', 'rules', 'rule-packs', 'activity', 'usage', 'speed', 'signins'])]
 
 
 def render_admin(page, token):
@@ -2040,7 +2077,7 @@ def render_admin(page, token):
             '<div class="shell"><aside class="sidebar"><nav aria-label="Command centre">' + nav + '</nav></aside>'
             '<main class="content"><div class="inner"><p class="page-desc">' + escape(description) + '</p><div id="notice" role="status" aria-live="polite" title="Click to dismiss"></div>'
             + SECTIONS[page] + '</div></main></div>' + STAGE_HTML + '<script>const PAGE=' + json.dumps(page) + ';'
-            + DEMO_PRELUDE + SCRIPT.replace('__TOKEN__', token) + NAV_SCRIPT + STAGE_JS + SIGNIN_JS + '</script></body></html>')
+            + DEMO_PRELUDE + SCRIPT.replace('__TOKEN__', token) + NAV_SCRIPT + STAGE_JS + SIGNIN_JS.replace('__SIGNIN_TOKEN__', token) + '</script></body></html>')
 
 
 DEMO_PRELUDE = r"""
