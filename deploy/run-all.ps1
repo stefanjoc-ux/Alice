@@ -13,7 +13,8 @@ param(
   [string]$ExtCallers = '04b07795-8ddb-461a-bbee-02f9e1bf7b46=Azure CLI test:copilot',
   [string]$AlsoAllow = 'stefan.oconnor@es3cloud.com',
   [string]$CustomDomain = 'alice.northants.it',
-  [string]$GitHubRepo = 'stefanjoc-ux/Alice'
+  [string]$GitHubRepo = 'stefanjoc-ux/Alice',
+  [string]$GitHubSubject = 'repo:stefanjoc-ux@336622755/Alice@1403454494:environment:production'
 )
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
@@ -46,7 +47,7 @@ try {
 
   $step = '4/4 GitHub pipeline sign-in'
   Write-Host "`n== $step" -ForegroundColor Cyan
-  & $Setup -SubscriptionId $SubscriptionId -Step github -GitHubRepo $GitHubRepo
+  & $Setup -SubscriptionId $SubscriptionId -Step github -GitHubRepo $GitHubRepo -GitHubSubject $GitHubSubject
 
   Write-Host "`nAll four steps finished. Alice: https://$CustomDomain  (paste the 5 GitHub values above into the repo)." -ForegroundColor Green
 }

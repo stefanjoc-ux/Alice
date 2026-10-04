@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   test-image:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
         image: postgres:16
@@ -22,7 +22,7 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U alice" --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build the image
         run: docker build -t alice:${{ github.sha }} .
       - name: Tests inside the image (SQLite)
@@ -34,18 +34,18 @@ jobs:
           alice:${{ github.sha }}
       - name: Save the tested image
         run: docker save alice:${{ github.sha }} | gzip > image.tar.gz
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with: { name: image, path: image.tar.gz, retention-days: 3 }
 
   deploy:
     needs: test-image
     if: ${{ vars.AZURE_CLIENT_ID != '' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: production
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with: { name: image }
-      - uses: azure/login@v2
+      - uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}

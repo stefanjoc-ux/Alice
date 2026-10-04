@@ -24,7 +24,8 @@ param(
   [string]$ExtAllowedUsers = '',
   [string]$GitHubRepo = '',
   [string]$AlsoAllow = '',      # other accounts allowed to sign in, comma separated (e.g. stefan@yourdomain); remembered
-  [string]$CustomDomain = '',   # e.g. alice.northants.it, after binding it once with a managed certificate; remembered
+  [string]$CustomDomain = '',
+  [string]$GitHubSubject = '',  # the exact OIDC subject GitHub presents, if it uses owner and repo IDs (shown in a failed deploy log)   # e.g. alice.northants.it, after binding it once with a managed certificate; remembered
   [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github')][string]$Step = 'all'
 )
 $ErrorActionPreference = 'Stop'
@@ -243,11 +244,16 @@ if (Want 'github') {
   $app = $State.githubClientId
   $sp = AzTry ad sp show --id $app --query id -o tsv
   if (-not $sp) { $sp = Retry 'Creating the GitHub service principal' { AzCli ad sp create --id $app --query id -o tsv } }
-  $haveFed = AzTry ad app federated-credential list --id $app --query "[?name=='github-main'].name | [0]" -o tsv
-  if (-not $haveFed) {
-    $fed = @{ name = 'github-main'; issuer = 'https://token.actions.githubusercontent.com'; subject = "repo:${GitHubRepo}:ref:refs/heads/main"; audiences = @('api://AzureADTokenExchange') } | ConvertTo-Json -Compress
+  # The deploy job runs in the "production" environment, and GitHub names the repo by owner and repo ID as well as name,
+  # e.g. repo:stefanjoc-ux@336622755/Alice@1403454494:environment:production (the deploy log shows the exact subject).
+  $subjects = @(@('github-main', "repo:${GitHubRepo}:ref:refs/heads/main"), @('github-production', "repo:${GitHubRepo}:environment:production"))
+  if ($GitHubSubject) { $subjects += ,@('github-production-ids', $GitHubSubject) }
+  $existing = @(AzTry ad app federated-credential list --id $app --query '[].subject' -o tsv)
+  foreach ($fc in $subjects) {
+    if ($existing -contains $fc[1]) { continue }
+    $fed = @{ name = $fc[0]; issuer = 'https://token.actions.githubusercontent.com'; subject = $fc[1]; audiences = @('api://AzureADTokenExchange') } | ConvertTo-Json -Compress
     $tmp = New-TemporaryFile; [IO.File]::WriteAllText($tmp, $fed)
-    try { Retry 'Adding the GitHub federated credential' { AzCli ad app federated-credential create --id $app --parameters "@$tmp" --output none | Out-Null } } finally { Remove-Item $tmp -ErrorAction SilentlyContinue }
+    try { Retry "Adding the GitHub sign-in record $($fc[0])" { AzCli ad app federated-credential create --id $app --parameters "@$tmp" --output none | Out-Null } } finally { Remove-Item $tmp -ErrorAction SilentlyContinue }
   }
   $rg = AzCli group show -n $ResourceGroup --query id -o tsv
   $acr = AzCli acr show -n $State.acrName --query id -o tsv
