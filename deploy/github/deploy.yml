@@ -1,6 +1,6 @@
 # On every push to main: run all the tests (SQLite and PostgreSQL) INSIDE the container image, push the image, and
-# deploy it to Azure as a new revision with NO traffic. Stefan moves traffic with deploy/promote.ps1 (or the portal);
-# rollback = move it back. Azure sign-in is OIDC (federated credential), so no Azure secrets are stored in GitHub.
+# deploy it to Azure as a new revision with NO traffic. Stefan moves traffic with the "Go live" workflow (promote.yml);
+# rollback = the same button. Azure sign-in is OIDC (federated credential), so no Azure secrets are stored in GitHub.
 name: test-and-deploy
 on:
   push:
@@ -10,6 +10,11 @@ on:
 permissions:
   id-token: write
   contents: read
+
+# A newer push cancels an older run still going, so an older build can never end up as the "newest" revision.
+concurrency:
+  group: test-and-deploy
+  cancel-in-progress: true
 
 jobs:
   test-image:
@@ -74,4 +79,4 @@ jobs:
             az containerapp job update -n "$JOB" -g "$RG" --image "$IMAGE" --only-show-errors -o none || true
           done
           echo "### Ready to go live: alice:$TAG" >> "$GITHUB_STEP_SUMMARY"
-          echo "Run \`.\\deploy\\promote.ps1 -SubscriptionId <id>\` on the PC to move traffic to it." >> "$GITHUB_STEP_SUMMARY"
+          echo "To put it live: Actions > Go live (promote or roll back) > Run workflow > promote." >> "$GITHUB_STEP_SUMMARY"
