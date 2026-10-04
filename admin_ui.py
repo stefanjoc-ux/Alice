@@ -232,14 +232,30 @@ SECTIONS = {
 CSS = r'''
 /* Command centre: same look as the chat page (shared tokens, buttons and top bar from ui_theme). */
 body{display:grid;grid-template-rows:52px minmax(0,1fr);height:100vh;height:100dvh;overflow:hidden}
-.page-title{position:absolute;left:calc(248px + (100% - 248px)/2);transform:translateX(-50%);margin:0;font-size:19px;line-height:24px;font-weight:700;letter-spacing:.01em;white-space:nowrap;max-width:calc(100% - 640px);overflow:hidden;text-overflow:ellipsis;padding:2px 6px 5px;color:#fff;background:linear-gradient(100deg,#ffffff 0%,#d4f5ff 35%,#7fe3ff 70%,#4fc3f7 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;border-bottom:2px solid transparent;border-image:linear-gradient(90deg,transparent,#4de6ff 30%,#8f7dff 70%,transparent) 1}.page-title .crumb{-webkit-text-fill-color:#9fb6c8;opacity:1;font-weight:600}.page-title .crumb:hover{-webkit-text-fill-color:#dff6ff}
-.shell{display:grid;grid-template-columns:248px minmax(0,1fr);grid-template-rows:minmax(0,1fr);min-height:0}
-.sidebar{background:#fff;border-right:1px solid var(--line);padding:12px 10px;overflow-y:auto;min-height:0;overscroll-behavior:contain;touch-action:pan-y;display:flex;flex-direction:column;gap:1px}
-.sidebar .grp{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:12px 10px 4px}.sidebar .grp:first-child{margin-top:2px}
-.sidebar a{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;text-decoration:none;color:var(--ink);font-size:14px}
-.sidebar a:hover{background:#f1f6f9}.sidebar a[aria-current=page]{background:var(--teal2);font-weight:600}
+.page-title{position:absolute;left:calc(var(--nav-w) + (100% - var(--nav-w))/2);transform:translateX(-50%);margin:0;font-size:19px;line-height:24px;font-weight:700;letter-spacing:.01em;white-space:nowrap;max-width:calc(100% - 640px);overflow:hidden;text-overflow:ellipsis;padding:2px 6px 5px;color:#fff;background:linear-gradient(100deg,#ffffff 0%,#d4f5ff 35%,#7fe3ff 70%,#4fc3f7 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;border-bottom:2px solid transparent;border-image:linear-gradient(90deg,transparent,#4de6ff 30%,#8f7dff 70%,transparent) 1}.page-title .crumb{-webkit-text-fill-color:#9fb6c8;opacity:1;font-weight:600}.page-title .crumb:hover{-webkit-text-fill-color:#dff6ff}
+:root{--nav-w:248px}body.nav-rail{--nav-w:68px}
+.shell{display:grid;grid-template-columns:var(--nav-w) minmax(0,1fr);transition:grid-template-columns .18s ease;grid-template-rows:minmax(0,1fr);min-height:0}
+.sidebar{background:linear-gradient(180deg,#f8fbfd 0%,#f2f6f9 100%);border-right:1px solid #e1e9ef;padding:14px 12px 10px;overflow-y:auto;overflow-x:hidden;min-height:0;overscroll-behavior:contain;touch-action:pan-y;display:flex;flex-direction:column}
+.sidebar nav{display:flex;flex-direction:column;gap:14px;flex:none}.sidebar nav>*{flex:none}
+.sidebar .nav-group{display:flex;flex-direction:column;gap:2px}
+.sidebar .grp{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;letter-spacing:.01em;color:#7b8f9e;margin:0 10px 6px;list-style:none;cursor:default;user-select:none}
+.sidebar summary.grp{cursor:pointer;border-radius:6px;padding:2px 0}.sidebar summary.grp::-webkit-details-marker{display:none}.sidebar summary.grp:hover{color:var(--ink)}
+.sidebar .chev{width:13px;height:13px;margin-left:auto;transition:transform .15s ease}.sidebar details[open]>summary .chev{transform:rotate(90deg)}
+.sidebar a{position:relative;display:flex;align-items:center;gap:11px;height:38px;padding:0 10px;border-radius:10px;text-decoration:none;color:#2c475b;font-size:14px;font-weight:500;white-space:nowrap;transition:background .12s,color .12s}
+.sidebar a svg{flex:none;width:19px;height:19px;color:#6d8596;transition:color .12s}
+.sidebar a:hover{background:#e7eff4;color:var(--ink)}.sidebar a:hover svg{color:var(--teal)}
+.sidebar a[aria-current=page]{background:#fff;color:#0b3b4f;font-weight:600;box-shadow:0 1px 2px rgba(16,43,64,.08),0 0 0 1px #dbe6ee}
+.sidebar a[aria-current=page] svg{color:var(--teal)}
+.sidebar a[aria-current=page]::before{content:"";position:absolute;left:-12px;top:9px;bottom:9px;width:3px;border-radius:0 3px 3px 0;background:linear-gradient(180deg,#14a3c7,#075e79)}
+.sidebar .nav-label{overflow:hidden;text-overflow:ellipsis}
+.nav-collapse{margin-top:auto;flex:none;display:flex;align-items:center;gap:11px;height:36px;padding:0 10px;border:0;background:none;border-radius:10px;color:#7b8f9e;font-size:13px;width:100%;text-align:left}
+.nav-collapse svg{flex:none;width:19px;height:19px;transition:transform .18s}.nav-collapse:hover{background:#e7eff4;color:var(--ink)}
+body.nav-rail .sidebar{padding:14px 10px 10px}body.nav-rail .sidebar .nav-label,body.nav-rail .sidebar .grp>span,body.nav-rail .sidebar .chev{display:none}
+body.nav-rail .sidebar .grp{height:1px;margin:0 8px 8px;padding:0;background:#dbe5ec;font-size:0;overflow:hidden;pointer-events:none}body.nav-rail .sidebar .nav-sec:first-child .grp{display:none}
+body.nav-rail .sidebar a,body.nav-rail .nav-collapse{justify-content:center;padding:0}body.nav-rail .nav-collapse svg{transform:scaleX(-1)}
+body.nav-rail .sidebar .nav-count{position:absolute;top:4px;right:4px;margin:0;min-width:16px;height:16px;padding:0 4px;font-size:10px;line-height:14px;text-align:center}
 #demo-toggle{font:inherit;font-size:13px;cursor:pointer}#demo-toggle.demo-on{background:#e2a33b;border-color:#e2a33b;color:#1b1203;font-weight:600}
-.nav-count{margin-left:auto;font-size:11px;font-weight:700;line-height:17px;background:#fdf3e1;color:#6b4406;border:1px solid #e2bf85;border-radius:999px;padding:0 7px}
+.nav-count{margin-left:auto;font-size:11px;font-weight:700;line-height:18px;background:#f6b545;color:#3a2500;border-radius:999px;padding:0 7px;box-shadow:0 0 0 2px #f8fbfd}
 .content{overflow:auto;padding:20px 32px 48px;min-width:0}.content>.inner{max-width:1180px;margin:0 auto}
 .page-desc{margin:0 0 14px;color:var(--muted);font-size:14px;line-height:1.5}
 section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:0 0 16px}
@@ -256,8 +272,8 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:500px;overflow:auto;f
 #notice{position:fixed;right:20px;bottom:20px;z-index:900;max-width:min(460px,calc(100vw - 40px));background:#0d2a3f;color:#eef6fa;border-radius:10px;padding:12px 40px 12px 16px;box-shadow:0 14px 34px -12px rgba(5,25,40,.55);white-space:pre-wrap;font-size:14px;line-height:1.45;cursor:pointer;animation:notice-in .25s ease-out}#notice:empty{display:none}#notice::after{content:'\00d7';position:absolute;right:14px;top:9px;font-size:18px;opacity:.7}#notice.leaving{opacity:0;transform:translateY(8px);transition:opacity .3s,transform .3s}@keyframes notice-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}@media(prefers-reduced-motion:reduce){#notice{animation:none}#notice.leaving{transition:none}}
 .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.stat{padding:18px 20px;background:#fff;border:1px solid var(--line);border-radius:10px;text-decoration:none;display:flex;flex-direction:column;gap:4px;color:var(--ink)}
 .stat strong{font-size:30px;color:var(--teal);font-weight:600}.stat span{color:var(--muted);font-size:13px}.stat:hover{border-color:#89b1bf}
-nav{display:flex;gap:20px;flex-wrap:wrap}.sidebar nav{display:contents}
-@media(max-width:900px){body{height:auto;overflow:auto;display:block}.shell{display:block}.sidebar{flex-direction:row;flex-wrap:wrap;border-right:0;border-bottom:1px solid var(--line);padding:8px}.sidebar .grp{display:none}.sidebar a{padding:6px 9px;font-size:13px}
+nav{display:flex;gap:20px;flex-wrap:wrap}
+@media(max-width:900px){body{height:auto;overflow:auto;display:block}.shell{display:block}.sidebar{border-right:0;border-bottom:1px solid #e1e9ef;padding:8px 10px;overflow-x:auto;overflow-y:hidden;touch-action:pan-x;scrollbar-width:none}.sidebar::-webkit-scrollbar{display:none}.sidebar nav{flex-direction:row;gap:6px;flex-wrap:nowrap}.sidebar .nav-sec,.sidebar details{display:contents}.sidebar .nav-group{flex-direction:row;gap:6px}.sidebar .grp,.nav-collapse{display:none!important}.sidebar a{height:36px;padding:0 12px;border-radius:999px;background:#fff;box-shadow:0 0 0 1px #dbe6ee;font-size:13px}.sidebar a[aria-current=page]{background:var(--teal);color:#fff;box-shadow:none}.sidebar a[aria-current=page] svg{color:#fff}.sidebar a[aria-current=page]::before{display:none}.sidebar a svg{width:17px;height:17px}body.nav-rail{--nav-w:248px}body.nav-rail .sidebar .nav-label{display:inline}
  .content{padding:16px}.page-title{position:static;transform:none;font-size:16px;max-width:none;flex:1}.brand{width:auto}.brand span{display:none}.stats{gap:10px}}
 .usage-bar{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.usage-bar h2{margin:0 auto 0 0}.usage-bar label{margin:0}.usage-stats{grid-template-columns:repeat(4,minmax(0,1fr));margin-top:16px}.usage-stats .stat strong{font-size:28px;font-variant-numeric:tabular-nums}
 .table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:9px 12px;border-bottom:1px solid #a9bdcb;vertical-align:top}thead th{font-weight:650;border-bottom-width:2px;white-space:nowrap}tfoot td{font-weight:700;border-top:2px solid #a9bdcb;border-bottom:0}.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}tbody tr:hover{background:#00677a0d}#usage-savings td:nth-child(3){min-width:260px;color:var(--muted,#435a6d)}#usage-days td:last-child{width:40%}.bar{display:block;height:10px;min-width:2px;border-radius:3px;background:#00738c}
@@ -2051,8 +2067,34 @@ if(PAGE==='rules'){
 }
 """
 
-NAV_GROUPS = [('Work', ['home', 'actions', 'temple', 'memories', 'knowledge', 'documents', 'organisations', 'apps', 'archive']),
-              ('Records and settings', ['agents', 'assistants', 'rules', 'rule-packs', 'activity', 'usage', 'speed', 'signins'])]
+NAV_GROUPS = [('', ['home', 'actions']),
+              ('Workspace', ['temple', 'assistants', 'apps', 'organisations']),
+              ('Knowledge', ['memories', 'knowledge', 'documents', 'archive']),
+              ('Admin', ['agents', 'rules', 'rule-packs', 'activity', 'usage', 'speed', 'signins'])]
+NAV_FOLDS = {'Admin'}            # groups that fold away (remembered per browser; open when you are on one of their pages)
+
+_I = lambda d: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>'
+NAV_ICONS = {
+ 'home': _I('<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/><path d="M10 20v-6h4v6"/>'),
+ 'actions': _I('<path d="M4 13l2.5-8h11L20 13"/><path d="M4 13v6h16v-6"/><path d="M4 13h4.5l1.5 2.5h4l1.5-2.5H20"/>'),
+ 'temple': _I('<path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8z"/><path d="M18.5 15.5l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8z"/>'),
+ 'assistants': _I('<rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 7V4"/><circle cx="12" cy="3.5" r=".6" fill="currentColor"/><path d="M9 12.5v1M15 12.5v1"/><path d="M9.5 16h5"/>'),
+ 'apps': _I('<rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/>'),
+ 'organisations': _I('<path d="M4 20V6l7-3v17"/><path d="M11 9h9v11"/><path d="M3 20h18"/><path d="M7 8h1M7 11h1M7 14h1M15 12h1M15 15h1"/>'),
+ 'memories': _I('<path d="M12 5a3 3 0 0 0-5.6 1.4A3 3 0 0 0 4 9.5a3 3 0 0 0 .8 4.6A3.2 3.2 0 0 0 9 18.5c1.2 0 2.3-.6 3-1.5V5z"/><path d="M12 5a3 3 0 0 1 5.6 1.4A3 3 0 0 1 20 9.5a3 3 0 0 1-.8 4.6 3.2 3.2 0 0 1-4.2 4.4c-1.2 0-2.3-.6-3-1.5"/>'),
+ 'knowledge': _I('<path d="M3 5.5C5.5 4.5 8.5 4.5 12 6.5v13c-3.5-2-6.5-2-9-1z"/><path d="M21 5.5c-2.5-1-5.5-1-9 1v13c3.5-2 6.5-2 9-1z"/>'),
+ 'documents': _I('<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/>'),
+ 'archive': _I('<path d="M20 12a7.5 7.5 0 0 1-11 6.6L4 20l1.4-4.6A7.5 7.5 0 1 1 20 12z"/><path d="M9 11h6M9 14h4"/>'),
+ 'agents': _I('<rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/>'),
+ 'rules': _I('<path d="M12 3l7 3v5.5c0 4.3-3 7.7-7 9.5-4-1.8-7-5.2-7-9.5V6z"/><path d="M9 12l2 2 4-4"/>'),
+ 'rule-packs': _I('<path d="M12 3l9 4.5-9 4.5-9-4.5z"/><path d="M3 12l9 4.5 9-4.5"/><path d="M3 16.5 12 21l9-4.5"/>'),
+ 'activity': _I('<path d="M3 12h4l2.5-6 5 12L17 12h4"/>'),
+ 'usage': _I('<path d="M16 6.5A4.5 4.5 0 0 0 8.5 9.5V12"/><path d="M6.5 12H14"/><path d="M8.5 12c0 3-1 5-2.5 7h11"/>'),
+ 'speed': _I('<path d="M4.5 17a8.5 8.5 0 1 1 15 0"/><path d="M12 13l4-4.5"/><circle cx="12" cy="13" r="1.2"/>'),
+ 'signins': _I('<rect x="3" y="5" width="18" height="11" rx="2"/><path d="M2 19h20"/><rect x="9.5" y="9" width="5" height="4" rx="1"/><path d="M10.5 9V8a1.5 1.5 0 0 1 3 0v1"/>'),
+}
+NAV_ICON_DEFAULT = _I('<circle cx="12" cy="12" r="7"/>')
+NAV_COLLAPSE = _I('<rect x="3.5" y="4" width="17" height="16" rx="3"/><path d="M9 4v16"/><path d="M15.5 10l-2 2 2 2"/>')
 
 
 def render_admin(page, token):
@@ -2065,16 +2107,29 @@ def render_admin(page, token):
     heading = ('<a class="crumb" href="/admin/apps">Apps</a> › ' + escape(title)) if page in apps.PAGES else escape(title)
     listed = [k for _, keys in NAV_GROUPS for k in keys] + sorted(apps.PAGES)
     groups = NAV_GROUPS + ([('More', [k for k in PAGES if k not in listed])] if any(k not in listed for k in PAGES) else [])
-    nav = ''.join('<div class="grp">' + escape(name) + '</div>' + ''.join(
-        '<a href="' + href(k) + '" data-page="' + k + '"' + (' aria-current="page"' if k == current else '') + '>' + escape(PAGES[k][0]) + '</a>'
-        for k in keys if k in PAGES) for name, keys in groups)
+    def item(k):
+        return ('<a href="' + href(k) + '" data-page="' + k + '"' + (' aria-current="page"' if k == current else '') + ' title="' + escape(PAGES[k][0]) + '">'
+                + NAV_ICONS.get(k, NAV_ICON_DEFAULT) + '<span class="nav-label">' + escape(PAGES[k][0]) + '</span></a>')
+    nav = ''
+    for name, keys in groups:
+        keys = [k for k in keys if k in PAGES]
+        if not keys: continue
+        links = ''.join(item(k) for k in keys)
+        if name in NAV_FOLDS:
+            nav += ('<details class="nav-fold" data-fold="' + escape(name) + '"' + (' data-here="1" open' if current in keys else '') + '><summary class="grp">'
+                    + '<span>' + escape(name) + '</span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>'
+                    + '<div class="nav-group">' + links + '</div></details>')
+        else:
+            nav += '<div class="nav-sec">' + ('<div class="grp">' + escape(name) + '</div>' if name else '') + '<div class="nav-group">' + links + '</div></div>'
+    nav_foot = ('<button type="button" class="nav-collapse" id="nav-collapse" aria-pressed="false" title="Collapse the menu">' + NAV_COLLAPSE
+                + '<span class="nav-label">Collapse menu</span></button>')
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
             '<link rel="icon" href="/static/favicon.png" type="image/png">'
             '<title>' + escape(title) + ' · Alice</title><style>' + SHARED_CSS + SIGNIN_CSS + CSS + STAGE_CSS + '</style></head><body>'
             '<header class="topbar">' + brand_html('/', 'Back to chat')
             + '<h1 class="page-title">' + heading + '</h1><div class="sp"></div><button id="demo-toggle" class="bar-link" type="button" title="Demo mode: only the Agents, Rule packs and Organisations pages, with fictional or replaced names and costs hidden">Demo mode</button><a class="bar-link" href="/">← Chat</a></header>'
-            '<div class="shell"><aside class="sidebar"><nav aria-label="Command centre">' + nav + '</nav></aside>'
+            '<div class="shell"><aside class="sidebar" id="sidebar"><script>try{if(localStorage.getItem("alice-nav-rail")==="1")document.body.classList.add("nav-rail")}catch{}</script><nav aria-label="Command centre">' + nav + '</nav>' + nav_foot + '</aside>'
             '<main class="content"><div class="inner"><p class="page-desc">' + escape(description) + '</p><div id="notice" role="status" aria-live="polite" title="Click to dismiss"></div>'
             + SECTIONS[page] + '</div></main></div>' + STAGE_HTML + '<style>' + FETCH_CSS + '</style><script>' + FETCH_JS + 'const PAGE=' + json.dumps(page) + ';'
             + DEMO_PRELUDE + SCRIPT.replace('__TOKEN__', token) + NAV_SCRIPT + STAGE_JS + SIGNIN_JS.replace('__SIGNIN_TOKEN__', token) + '</script></body></html>')
@@ -2087,6 +2142,17 @@ if(DEMO&&!DEMO_PAGES.includes(PAGE)){location.replace('/admin/agents');throw new
 """
 
 NAV_SCRIPT = r"""
+// Menu: folding groups remembered per browser, the icon rail (Collapse menu), and on narrow screens one scrolling strip.
+(()=>{const sb=document.getElementById('sidebar');if(!sb)return;const get=k=>{try{return localStorage.getItem(k)}catch{return null}},put=(k,v)=>{try{localStorage.setItem(k,v)}catch{}};
+ const narrow=matchMedia('(max-width:900px)'),folds=[...sb.querySelectorAll('details.nav-fold')];
+ const apply=()=>{const all=narrow.matches||document.body.classList.contains('nav-rail');
+  for(const d of folds){d.dataset.sync='1';d.open=all||d.dataset.here==='1'||get('alice-nav-fold-'+d.dataset.fold)==='1';setTimeout(()=>delete d.dataset.sync,0)}};
+ for(const d of folds)d.addEventListener('toggle',()=>{if(d.dataset.sync||narrow.matches||document.body.classList.contains('nav-rail'))return;put('alice-nav-fold-'+d.dataset.fold,d.open?'1':'0')});
+ const btn=document.getElementById('nav-collapse');const label=()=>{const r=document.body.classList.contains('nav-rail');btn.setAttribute('aria-pressed',String(r));btn.title=r?'Expand the menu':'Collapse the menu';btn.querySelector('.nav-label').textContent=r?'Expand menu':'Collapse menu'};
+ btn.onclick=()=>{document.body.classList.toggle('nav-rail');put('alice-nav-rail',document.body.classList.contains('nav-rail')?'1':'0');label();apply()};
+ narrow.addEventListener('change',apply);label();apply();
+ const cur=sb.querySelector('a[aria-current=page]');if(cur){if(narrow.matches)sb.scrollLeft=Math.max(0,cur.offsetLeft-sb.clientWidth/2+cur.offsetWidth/2);else cur.scrollIntoView({block:'nearest'})}
+})();
 (()=>{const t=document.getElementById('demo-toggle');if(!t)return;t.textContent=DEMO?'Demo mode: on':'Demo mode';t.classList.toggle('demo-on',DEMO);
  t.onclick=()=>{try{localStorage.setItem('alice-demo',DEMO?'0':'1')}catch{}location.href=DEMO?location.href:'/admin/agents'};
  if(!DEMO)return;document.body.classList.add('demo');
