@@ -354,7 +354,9 @@ resource webAuth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (with
         }
         // Ask who you are at every new Alice session (password, Windows Hello or passkey, plus MFA), even when the browser
         // is still signed in to Microsoft. Without it, after 'Sign out of Alice' anyone at the device could sign straight back in.
-        login: { loginParameters: askEverySignIn ? ['prompt=login'] : [] }
+        // domain_hint=organizations: work or school accounts only, so an old personal Microsoft account with the same email
+        // address is never offered (AADSTS50020 'from identity provider live.com').
+        login: { loginParameters: askEverySignIn ? ['prompt=login', 'domain_hint=organizations'] : ['domain_hint=organizations'] }
       }
     }
     // A session lasts 8 hours from sign-in, then you sign in again (signins.SESSION_HOURS matches).

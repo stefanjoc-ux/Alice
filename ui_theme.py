@@ -68,3 +68,23 @@ SIGNIN_JS = r'''
   document.addEventListener('click',()=>toggle(false));document.addEventListener('keydown',ev=>{if(ev.key==='Escape')toggle(false)});
  }).catch(()=>{})})();
 '''.replace('__LOCK__', LOCK_SVG.replace("'", "\\'"))
+
+
+# ---------------- background requests and an ended session ----------------
+# Behind Container Apps sign-in, a request without a session is sent to Microsoft to sign in. For the page's own
+# background requests (menu badges, the signed-in badge, data loads) that must not happen: each one would start its own
+# sign-in and overwrite the one you are doing, so Microsoft asks again and again. X-Requested-With: XMLHttpRequest tells
+# sign-in to answer 401 instead. On a 401 the page offers "Sign in again" (a full page load, one sign-in) once.
+FETCH_JS = r"""
+(()=>{if(window.__aliceFetch)return;window.__aliceFetch=1;const f=window.fetch.bind(window);let shown=false;
+ const ended=()=>{if(shown)return;shown=true;const b=document.createElement('div');b.className='session-ended';b.setAttribute('role','alert');
+  const t=document.createElement('span');t.textContent='Your Alice session has ended.';const a=document.createElement('button');a.type='button';a.textContent='Sign in again';
+  a.onclick=()=>location.reload();b.append(t,a);(document.body||document.documentElement).append(b)};
+ window.fetch=(u,o)=>{o=Object.assign({},o||{});let same=true;
+  try{same=new URL(typeof u==='string'?u:u.url,location.href).origin===location.origin}catch{}
+  if(same){const h=new Headers(o.headers||(typeof u!=='string'&&u.headers)||undefined);h.set('X-Requested-With','XMLHttpRequest');o.headers=h;if(!o.credentials)o.credentials='same-origin'}
+  return f(u,o).then(r=>{if(same&&r.status===401&&!String(typeof u==='string'?u:u.url).includes('/me'))ended();return r})}})();
+"""
+FETCH_CSS = (".session-ended{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:999;display:flex;gap:14px;align-items:center;"
+             "padding:12px 16px;border-radius:12px;background:#0b1626;color:#e8f6ff;box-shadow:0 10px 30px rgba(0,0,0,.35);font-size:14px}"
+             ".session-ended button{background:#075e79;border:0;color:#fff;font-weight:600;padding:7px 14px;border-radius:8px}")

@@ -43,7 +43,7 @@ t('signed-out page: plain, no data, offers sign in again and the full sign-out',
 import re as _re
 bicep = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'infra', 'main.bicep')).read()
 t('every new Alice session asks who you are (not just the browser\'s Microsoft session), sessions last 8 hours',
-  "loginParameters: askEverySignIn ? ['prompt=login'] : []" in bicep and 'param askEverySignIn bool = true' in bicep and "timeToExpiration: '08:00:00'" in bicep)
+  "loginParameters: askEverySignIn ? ['prompt=login', 'domain_hint=organizations'] : ['domain_hint=organizations']" in bicep and 'param askEverySignIn bool = true' in bicep and "timeToExpiration: '08:00:00'" in bicep)
 t('only the health check and the signed-out page are outside sign-in', _re.search(r"excludedPaths: \['/healthz', '/signed-out'\]", bicep) is not None)
 
 # sign out everywhere: sessions that signed in before the moment you pressed it must sign in again, on every device
@@ -99,3 +99,11 @@ t('sign out and the signed-out page still open for old sessions', cl.get('/signo
 with s.db() as c: t('signing out everywhere is logged', c.execute("SELECT 1 FROM activity WHERE action='signed_out_everywhere'").fetchone() is not None)
 os.environ.pop('ALICE_TRUST_EASYAUTH', None)
 t('on the PC the check does nothing', cl.get('/admin/api/apps').status_code == 200)
+
+# background requests never start their own Microsoft sign-in (they would overwrite the one you are doing)
+for path in ('/', '/admin', '/admin/memories', '/admin/signins'):
+    h = cl.get(path).text
+    t(f'{path}: background requests say so (sign-in answers 401, not a new sign-in)', "h.set('X-Requested-With','XMLHttpRequest')" in h
+      and h.index('window.__aliceFetch') < (h.index("api(") if "api(" in h else len(h)) and 'Your Alice session has ended.' in h)
+sw = cl.get('/sw.js').text
+t('the offline helper never touches the sign-in pages', "startsWith('/.auth/')" in sw)

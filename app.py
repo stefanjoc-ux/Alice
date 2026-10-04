@@ -29,7 +29,7 @@ import mileage
 import apps
 import speed
 from admin_ui import render_admin, PAGES
-from ui_theme import SHARED_CSS, SIGNIN_CSS, SIGNIN_JS, brand_html
+from ui_theme import SHARED_CSS, SIGNIN_CSS, SIGNIN_JS, brand_html, FETCH_JS, FETCH_CSS
 import secrets
 import asyncio
 import time
@@ -735,6 +735,7 @@ self.addEventListener('install', e => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch', e => {
   if (e.request.mode !== 'navigate') return;
+  if (new URL(e.request.url).pathname.startsWith('/.auth/')) return;   // sign-in pages go straight to the network
   e.respondWith(fetch(e.request).catch(() => new Response(
     '<meta name=viewport content="width=device-width"><body style="font-family:system-ui;background:#02030a;color:#dbe7ff;padding:32px">'
     + '<h2>AI Substrate is offline</h2><p>Your PC may be asleep, or Tailscale is disconnected. Check both, then pull to refresh.</p>',
@@ -1239,7 +1240,7 @@ SIGNED_OUT_HTML = '''<!doctype html><html lang="en"><head><meta charset="utf-8">
 <a class="go" href="/">Sign in to Alice again</a>
 <p class="alt muted">You will be asked to sign in (password, Windows Hello or passkey), even though this browser is still signed in to Microsoft.</p>
 <p class="alt muted">On a shared computer? <a href="/.auth/logout?post_logout_redirect_uri=/signed-out">Sign out of Microsoft in this browser too</a>.</p>
-</main><script>fetch('/me',{credentials:'same-origin',redirect:'manual'}).then(r=>r.ok?r.json():null).then(m=>{if(m&&m.signed_in)document.getElementById('so-warn').hidden=false}).catch(()=>{})</script>
+</main><script>fetch('/me',{credentials:'same-origin',redirect:'manual',headers:{'X-Requested-With':'XMLHttpRequest'}}).then(r=>r.ok?r.json():null).then(m=>{if(m&&m.signed_in)document.getElementById('so-warn').hidden=false}).catch(()=>{})</script>
 </body></html>'''
 
 @app.get('/admin/api/speed')
@@ -2745,6 +2746,7 @@ body{display:grid;grid-template-rows:52px minmax(0,1fr);overflow:hidden}
  </details>
 </aside>
 <script>
+__FETCH_JS__
 let history=[],savedFiles=[],chatFiles=[],busy=false,uploading=false,chatId=null,voiceEnabled=false,recorder=null,micTimer=null,audio=null,spokenTurn=false;
 const selected=new Set();
 const byId=id=>document.getElementById(id);
@@ -2927,4 +2929,4 @@ guard(async()=>{await setupVoice();await refreshFiles();const chats=await api('/
  const asked=chats.find(c=>c.id===requested);if(asked){await loadChat(asked.id);return}
  const empty=chats.find(c=>!c.turns);if(empty)await loadChat(empty.id);else await createChat()});
 
-__SIGNIN_JS__</script></body></html>'''.replace('__SHARED_CSS__', SHARED_CSS + SIGNIN_CSS).replace('__BRAND__', brand_html('/', 'Alice')).replace('__SIGNIN_JS__', SIGNIN_JS.replace('__SIGNIN_TOKEN__', ADMIN_TOKEN)).replace('__CHAT_ADMIN_TOKEN__', ADMIN_TOKEN).replace('__BANNER_V__', str(int(BANNER.stat().st_mtime)) if BANNER.is_file() else '0')
+__SIGNIN_JS__</script></body></html>'''.replace('__SHARED_CSS__', SHARED_CSS + SIGNIN_CSS + FETCH_CSS).replace('__FETCH_JS__', FETCH_JS).replace('__BRAND__', brand_html('/', 'Alice')).replace('__SIGNIN_JS__', SIGNIN_JS.replace('__SIGNIN_TOKEN__', ADMIN_TOKEN)).replace('__CHAT_ADMIN_TOKEN__', ADMIN_TOKEN).replace('__BANNER_V__', str(int(BANNER.stat().st_mtime)) if BANNER.is_file() else '0')

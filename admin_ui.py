@@ -1016,7 +1016,7 @@ if(PAGE==='archive'){
    if(j.status==='running'){if(j.label)bar(j.pct||0,prefix+j.label);else if(j.total)bar(j.done/j.total*100,prefix+'Importing '+j.done+' of '+j.total+(j.current?': '+j.current:''));else bar(3,prefix+(j.current||'Reading the export…'));await sleep(700);continue}
    return j}}
  function upload(f,prefix){return new Promise((ok,fail)=>{const since=$('imp-since').value;const xhr=new XMLHttpRequest();xhr.open('POST','/admin/api/import/claude-export'+(since?'?since='+since:''));
-  xhr.setRequestHeader('X-Admin-Token','__TOKEN__');xhr.setRequestHeader('Content-Type','application/octet-stream');
+  xhr.setRequestHeader('X-Admin-Token','__TOKEN__');xhr.setRequestHeader('X-Requested-With','XMLHttpRequest');xhr.setRequestHeader('Content-Type','application/octet-stream');
   xhr.upload.onprogress=e=>{if(e.lengthComputable)bar(e.loaded/e.total*100,prefix+'Uploading '+f.name+': '+MB(e.loaded)+' of '+MB(e.total)+' MB')};
   xhr.onload=()=>{let x={};try{x=JSON.parse(xhr.responseText)}catch{}if(xhr.status>=400)fail(new Error(f.name+': '+(x.detail||('import failed ('+xhr.status+')'))));else ok()};
   xhr.onerror=()=>fail(new Error(f.name+': upload failed. Check the app is running and try again.'));bar(0,prefix+'Uploading '+f.name+'…');xhr.send(f)})}
@@ -2056,7 +2056,7 @@ NAV_GROUPS = [('Work', ['home', 'actions', 'temple', 'memories', 'knowledge', 'd
 
 
 def render_admin(page, token):
-    from ui_theme import SHARED_CSS, SIGNIN_CSS, SIGNIN_JS, brand_html
+    from ui_theme import SHARED_CSS, SIGNIN_CSS, SIGNIN_JS, brand_html, FETCH_JS, FETCH_CSS
     from stage_ui import STAGE_CSS, STAGE_HTML, STAGE_JS
     import apps
     title, description = PAGES[page]
@@ -2076,7 +2076,7 @@ def render_admin(page, token):
             + '<h1 class="page-title">' + heading + '</h1><div class="sp"></div><button id="demo-toggle" class="bar-link" type="button" title="Demo mode: only the Agents, Rule packs and Organisations pages, with fictional or replaced names and costs hidden">Demo mode</button><a class="bar-link" href="/">← Chat</a></header>'
             '<div class="shell"><aside class="sidebar"><nav aria-label="Command centre">' + nav + '</nav></aside>'
             '<main class="content"><div class="inner"><p class="page-desc">' + escape(description) + '</p><div id="notice" role="status" aria-live="polite" title="Click to dismiss"></div>'
-            + SECTIONS[page] + '</div></main></div>' + STAGE_HTML + '<script>const PAGE=' + json.dumps(page) + ';'
+            + SECTIONS[page] + '</div></main></div>' + STAGE_HTML + '<style>' + FETCH_CSS + '</style><script>' + FETCH_JS + 'const PAGE=' + json.dumps(page) + ';'
             + DEMO_PRELUDE + SCRIPT.replace('__TOKEN__', token) + NAV_SCRIPT + STAGE_JS + SIGNIN_JS.replace('__SIGNIN_TOKEN__', token) + '</script></body></html>')
 
 

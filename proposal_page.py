@@ -18,13 +18,13 @@ def parker_logo(size=40, uid='pk'):
 
 
 def render(a):
-    from ui_theme import SHARED_CSS
+    from ui_theme import SHARED_CSS, FETCH_JS, FETCH_CSS
     from proposal_ui import PE_CSS, PE_JS
     data = json.dumps({'id': a['id'], 'name': a['name'], 'greeting': a['greeting'], 'paused': a['status'] != 'active'})
     return ('''<!doctype html>
 <html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>''' + escape(a['name']) + '''</title>''' + __import__('stage_ui').EMBED_HEAD + '''<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,''' + quote(parker_logo(48, 'fv')) + '''">
-<style>''' + SHARED_CSS + PE_CSS + '''
+<style>''' + FETCH_CSS + SHARED_CSS + PE_CSS + '''
 body{display:grid;grid-template-rows:52px minmax(0,1fr);overflow:hidden}
 .topbar .brand{width:auto}.topbar .who{font-size:15px;font-weight:600;color:#fff;letter-spacing:0}
 main{overflow:auto;padding:24px 16px 60px}
@@ -272,7 +272,7 @@ table.t th{text-transform:uppercase;letter-spacing:.05em;font-size:11.5px}table.
 <p class="pe-note">Load your pricing tool or paste a rate card, set the target margin Alice applies to each cost, and tick the roles this proposal needs. Change any sell rate or margin to override it (\u21ba puts it back); Price book keeps the rate from your pricing tool and Change shows the difference, so you can see what applying the target margin does. Add days to fix a role's quantity; the writer suggests the rest. Cost rates never go in the document or to the writer and Argus; Parker can see them, to help you with the commercials.</p><div id="rates"></div></div></details>
 <div class="actionbar"><button class="primary" id="go" type="submit" form="f">Write proposal</button><span class="hint" id="go-note">Writing, a QA check and one revision if needed: usually two to four minutes.</span></div>
 </div></div></main>
-<script>
+<script>''' + FETCH_JS + '''
 const A=''' + data.replace('</', '<\\/') + ''';
 ''' + PE_JS + r'''
 const $=id=>document.getElementById(id),mk=PE.mk;let S=null,secEd=null,rateEd=null,timer=null;

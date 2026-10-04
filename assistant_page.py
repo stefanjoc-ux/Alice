@@ -14,7 +14,7 @@ def _topics(a):
 
 
 def render(a):
-    from ui_theme import SHARED_CSS
+    from ui_theme import SHARED_CSS, FETCH_JS, FETCH_CSS
     topics = _topics(a)
     data = json.dumps({'id': a['id'], 'name': a['name'], 'greeting': a['greeting'], 'paused': a['status'] != 'active', 'topics': topics[:8]})
     initial = escape((a['name'] or 'A').strip()[:1].upper())
@@ -24,7 +24,7 @@ def render(a):
     return ('''<!doctype html>
 <html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>''' + escape(a['name']) + '''</title>''' + __import__('stage_ui').EMBED_HEAD + '''<link rel="icon" href="/static/favicon.png" type="image/png">
-<style>''' + SHARED_CSS + '''
+<style>''' + FETCH_CSS + SHARED_CSS + '''
 body{display:grid;grid-template-rows:52px minmax(0,1fr);overflow:hidden;background:linear-gradient(180deg,#eef3f7 0,#f4f7fa 300px)}
 .topbar .brand{width:auto}.topbar .who{font-size:15px;font-weight:600;color:#fff;letter-spacing:0}
 [hidden]{display:none!important}
@@ -108,7 +108,7 @@ form#ask{padding:6px 0 16px}
 <section class="acard privacy"><h2>Your privacy</h2><p>Nothing you type is kept. Personal details such as health, casework or ID numbers are blocked or removed before anything reaches the AI.</p></section>
 ''' + (f'<section class="acard contact"><h2>About your own situation</h2><p>Contact<b>{contact}</b></p></section>' if contact else '') + '''
 </aside></div>
-<script>
+<script>''' + FETCH_JS + '''
 const A=''' + data.replace('</', '<\\/') + ''';
 const $=id=>document.getElementById(id);const turns=[];
 $('greeting').textContent=A.paused?A.name+' is paused at the moment.':A.greeting;if(A.paused){$('q').disabled=$('send').disabled=true}
