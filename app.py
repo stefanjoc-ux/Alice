@@ -1237,6 +1237,7 @@ SIGNED_OUT_HTML = '''<!doctype html><html lang="en"><head><meta charset="utf-8">
 <p class="muted" id="so-p">Your Microsoft sign-in for Outlook, Teams and the Azure portal is untouched.</p>
 <p id="so-warn" class="warn" hidden>This browser still has an Alice session. Use the link below to sign out of Microsoft too.</p>
 <a class="go" href="/">Sign in to Alice again</a>
+<p class="alt muted">You will be asked to sign in (password, Windows Hello or passkey), even though this browser is still signed in to Microsoft.</p>
 <p class="alt muted">On a shared computer? <a href="/.auth/logout?post_logout_redirect_uri=/signed-out">Sign out of Microsoft in this browser too</a>.</p>
 </main><script>fetch('/me',{credentials:'same-origin',redirect:'manual'}).then(r=>r.ok?r.json():null).then(m=>{if(m&&m.signed_in)document.getElementById('so-warn').hidden=false}).catch(()=>{})</script>
 </body></html>'''

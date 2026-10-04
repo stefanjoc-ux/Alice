@@ -42,6 +42,8 @@ t('signed-out page: plain, no data, offers sign in again and the full sign-out',
   and 'stefan' not in p.text.lower())
 import re as _re
 bicep = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'infra', 'main.bicep')).read()
+t('every new Alice session asks who you are (not just the browser\'s Microsoft session), sessions last 8 hours',
+  "loginParameters: askEverySignIn ? ['prompt=login'] : []" in bicep and 'param askEverySignIn bool = true' in bicep and "timeToExpiration: '08:00:00'" in bicep)
 t('only the health check and the signed-out page are outside sign-in', _re.search(r"excludedPaths: \['/healthz', '/signed-out'\]", bicep) is not None)
 
 # sign out everywhere: sessions that signed in before the moment you pressed it must sign in again, on every device

@@ -26,6 +26,8 @@ param ownerName string = 'Stefan'
 param ownerObjectId string = ''
 @description('Other Entra object IDs allowed to sign in (e.g. your everyday account in the same tenant). The owner is always allowed.')
 param allowedUserObjectIds array = []
+@description('Ask for your sign-in (not just reuse the browser\'s Microsoft session) at every new Alice session.')
+param askEverySignIn bool = true
 @description('Custom domain for alice-web (e.g. alice.northants.it), already bound once with a managed certificate; empty = none.')
 param customDomain string = ''
 @description('Resource ID of that domain\'s managed certificate.')
@@ -350,9 +352,13 @@ resource webAuth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (with
           allowedAudiences: [webAuthClientId, 'api://${webAuthClientId}']
           defaultAuthorizationPolicy: { allowedPrincipals: { identities: union([ownerObjectId], allowedUserObjectIds) } }
         }
+        // Ask who you are at every new Alice session (password, Windows Hello or passkey, plus MFA), even when the browser
+        // is still signed in to Microsoft. Without it, after 'Sign out of Alice' anyone at the device could sign straight back in.
+        login: { loginParameters: askEverySignIn ? ['prompt=login'] : [] }
       }
     }
-    login: { preserveUrlFragmentsForLogins: true }
+    // A session lasts 8 hours from sign-in, then you sign in again (signins.SESSION_HOURS matches).
+    login: { preserveUrlFragmentsForLogins: true, cookieExpiration: { convention: 'FixedTime', timeToExpiration: '08:00:00' } }
   }
 }
 
