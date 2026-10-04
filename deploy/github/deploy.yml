@@ -1,6 +1,6 @@
 # On every push to main: run all the tests (SQLite and PostgreSQL) INSIDE the container image, push the image, and
-# deploy it to Azure as a new revision with NO traffic. Stefan moves traffic with the "Go live" workflow (promote.yml);
-# rollback = the same button. Azure sign-in is OIDC (federated credential), so no Azure secrets are stored in GitHub.
+# deploy it to Azure as a new revision with NO traffic, then put it live automatically (same health checks as the Go live
+# button; switch off with the repository variable AUTO_PROMOTE=false). Rollback = the Go live button, rollback. Azure sign-in is OIDC (federated credential), so no Azure secrets are stored in GitHub.
 name: test-and-deploy
 on:
   push:
@@ -48,6 +48,7 @@ jobs:
     runs-on: ubuntu-24.04
     environment: production
     steps:
+      - uses: actions/checkout@v5          # for deploy/promote.sh
       - uses: actions/download-artifact@v7
         with: { name: image }
       - uses: azure/login@v3
@@ -80,3 +81,13 @@ jobs:
           done
           echo "### Ready to go live: alice:$TAG" >> "$GITHUB_STEP_SUMMARY"
           echo "To put it live: Actions > Go live (promote or roll back) > Run workflow > promote." >> "$GITHUB_STEP_SUMMARY"
+      # Automatic go-live: on unless the repository variable AUTO_PROMOTE is 'false'. Same checks as the button (both apps
+      # or neither, Healthy, /healthz answered); if they fail, nothing changes and this run shows red. Roll back with the button.
+      - name: Go live automatically
+        if: ${{ vars.AUTO_PROMOTE != 'false' }}
+        env:
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+          PROMOTE_WAIT: '1'
+        run: |
+          echo "### Going live automatically" >> "$GITHUB_STEP_SUMMARY"
+          bash deploy/promote.sh promote

@@ -4,6 +4,7 @@
 #                         answers /healthz); the one that was live stays switched on for rollback; older ones are switched off
 #   promote.sh rollback   the revision before the live one gets 100% again (switched back on first if needed)
 #   promote.sh status     just show what is live
+# PROMOTE_WAIT=1 (automatic promotion after a deploy): wait for the new version to start before checking it.
 # Needs: az signed in to the subscription, RG set (default alice-rg).
 set -euo pipefail
 WHAT="${1:-status}"
@@ -39,11 +40,16 @@ if [ "$WHAT" = "promote" ]; then   # both apps run the same image: check both fi
     ROWS=$(revisions "$APP"); LIVE=$(echo "$ROWS" | awk -F'\t' '$3+0 > 0 {print $1}' | tail -1)
     TARGET=$(echo "$ROWS" | awk -F'\t' '$2=="true" {print $1}' | tail -1)
     [ "$TARGET" = "$LIVE" ] && continue
+    if [ -n "${PROMOTE_WAIT:-}" ]; then   # straight after a deploy: give the new version up to 5 minutes to start
+      wait_healthy "$APP" "$TARGET" || true
+      ROWS=$(revisions "$APP")
+    fi
     HEALTH=$(echo "$ROWS" | awk -F'\t' -v t="$TARGET" '$1==t {print $4}')
     if [ "$HEALTH" != "Healthy" ]; then say "$APP: $TARGET is $HEALTH, not Healthy."; FAILED=1; continue; fi
     if [ "$APP" = "alice-web" ]; then
       FQDN=$(echo "$ROWS" | awk -F'\t' -v t="$TARGET" '$1==t {print $5}')
-      curl -fsS --max-time 20 "https://$FQDN/healthz" >/dev/null || { say "$APP: $TARGET did not answer its health check."; FAILED=1; }
+      OK=0; for _ in 1 2 3 4 5 6; do curl -fsS --max-time 20 "https://$FQDN/healthz" >/dev/null && { OK=1; break; }; [ -n "${PROMOTE_WAIT:-}" ] || break; sleep 10; done
+      [ "$OK" = 1 ] || { say "$APP: $TARGET did not answer its health check."; FAILED=1; }
     fi
   done
   if [ "$FAILED" = 1 ]; then
