@@ -254,6 +254,9 @@ var commonEnv = concat(
     { name: 'ALICE_DOCUMENT_LIBRARY', value: '/mnt/alice/Documents' }
     { name: 'ALICE_OWNER_NAME', value: ownerName }
     { name: 'ALICE_AUDIT_STDOUT', value: '1' }
+    // keyvault.py: optional keys added in the portal are read at run time (allow-listed names only)
+    { name: 'ALICE_KEY_VAULT_URI', value: kvUri }
+    { name: 'ALICE_IDENTITY_CLIENT_ID', value: identity.properties.clientId }
   ],
   map(keySecretNames, s => { name: s.env, secretRef: s.name })
 )
@@ -334,12 +337,14 @@ resource web 'Microsoft.App/containerApps@2024-03-01' = if (withApps) {
 
 // Entra sign-in in front of the web app: only you get in. /healthz stays open for the platform's probe; /signed-out is the
 // static page after 'Sign out of Alice' (no data), outside sign-in so it doesn't sign you straight back in.
+// /hooks/tradingview: TradingView alerts (Stefan's decision, 4 Oct 2026); it only records a signal and checks its own token,
+// size, rate and TradingView's sending addresses (trading.webhook).
 resource webAuth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (withApps) {
   parent: web
   name: 'current'
   properties: {
     platform: { enabled: true }
-    globalValidation: { unauthenticatedClientAction: 'RedirectToLoginPage', redirectToProvider: 'azureactivedirectory', excludedPaths: ['/healthz', '/signed-out'] }
+    globalValidation: { unauthenticatedClientAction: 'RedirectToLoginPage', redirectToProvider: 'azureactivedirectory', excludedPaths: ['/healthz', '/signed-out', '/hooks/tradingview'] }
     identityProviders: {
       azureActiveDirectory: {
         enabled: true

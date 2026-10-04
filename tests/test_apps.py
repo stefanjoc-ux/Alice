@@ -11,7 +11,7 @@ cl = TestClient(app.app); H = {'x-admin-token': app.ADMIN_TOKEN}
 
 t('Mileage is registered as an app with its page', apps.by_page('mileage')['name'] == 'Mileage' and 'mileage' in apps.PAGES)
 x = cl.get('/admin/api/apps').json()
-t('Apps listing: Mileage, nothing waiting yet', [a['id'] for a in x['apps']] == ['mileage'] and x['apps'][0]['waiting'] == 0
+t('Apps listing: Mileage and the Trading desk, nothing waiting yet', [a['id'] for a in x['apps']] == ['mileage', 'trading'] and x['apps'][0]['waiting'] == 0
   and x['apps'][0]['href'] == '/admin/mileage')
 
 # the menu: Apps instead of Mileage; an app's page highlights Apps and carries a breadcrumb

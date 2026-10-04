@@ -97,7 +97,7 @@ function Image-Ref {
 }
 function Key-Names {
   $map = @{}
-  foreach ($k in @('OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'XAI_API_KEY', 'ELEVENLABS_API_KEY')) {
+  foreach ($k in @('OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'XAI_API_KEY', 'ELEVENLABS_API_KEY', 'ALICE_TWELVEDATA_KEY')) {
     $n = $k.ToLower().Replace('_', '-')
     if (Kv-Has $State.keyVault $n) { $map[$k] = $n }
   }
@@ -117,7 +117,7 @@ if (Want 'infra') {
 
 if (Want 'secrets') {
   Say 'API keys into Key Vault (typed, never saved on disk; Enter skips)'
-  foreach ($k in @('OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'XAI_API_KEY', 'ELEVENLABS_API_KEY')) {
+  foreach ($k in @('OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'XAI_API_KEY', 'ELEVENLABS_API_KEY', 'ALICE_TWELVEDATA_KEY')) {
     $n = $k.ToLower().Replace('_', '-')
     if (Kv-Has $State.keyVault $n) { Write-Host "$k already stored."; continue }
     $sec = Read-Host -AsSecureString "Paste $k"

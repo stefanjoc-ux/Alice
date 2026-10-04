@@ -48,7 +48,7 @@ import uuid
 import zipfile
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Optional
 
 import anthropic
 from dotenv import load_dotenv
@@ -762,9 +762,32 @@ class Speech(BaseModel):
     text: str = Field(min_length=1,max_length=40000)
     voice_id: str = Field(min_length=1,max_length=40)
 
+VOICE_DEFAULT_NAME='Bella'          # Stefan's choice (4 Oct 2026) when none has been saved
+
+class VoiceChoice(BaseModel):
+    voice_id: str = Field(pattern=r'^[A-Za-z0-9]{8,40}$')
+
+def _saved_voice():
+    with store.db() as c:
+        r=c.execute("SELECT value FROM settings WHERE key='voice_id'").fetchone()
+    return r[0] if r else ''
+
 @app.get('/voice/status')
-def voice_status():
-    return {'enabled':voice.configured(),'default_voice':os.getenv('ELEVENLABS_VOICE_ID','')}
+async def voice_status():
+    """The voice to use on every device: the one you last chose (kept in Alice, not just this browser), else
+    ELEVENLABS_VOICE_ID, else the voice named Bella."""
+    chosen=await asyncio.to_thread(_saved_voice) or os.getenv('ELEVENLABS_VOICE_ID','')
+    if not chosen and voice.configured():
+        try: chosen=next((v['voice_id'] for v in await voice.voices() if v['name'].strip().lower().startswith(VOICE_DEFAULT_NAME.lower())),'')
+        except Exception: chosen=''
+    return {'enabled':voice.configured(),'default_voice':chosen}
+
+@app.put('/voice/default')
+def voice_default(v: VoiceChoice, request: Request):
+    if not secrets.compare_digest(request.headers.get('x-admin-token',''),ADMIN_TOKEN): raise HTTPException(403,'Refresh the page and try again.')
+    with store.db() as c:
+        c.execute("INSERT INTO settings(key,value) VALUES ('voice_id',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",(v.voice_id,))
+    return {'voice_id':v.voice_id}
 
 @app.get('/voice/voices')
 async def voice_list():
@@ -1289,6 +1312,123 @@ def admin_mileage_place_delete(pid: str):
 
 class MileageRate(BaseModel):
     rate: float = Field(0, ge=0, le=200)
+
+# ---- Trading desk (trading.py): simulation only, never a real order ----
+import trading
+import ipaddress as _ip
+
+class TpPortfolio(BaseModel):
+    name: str = Field(min_length=1,max_length=80)
+    note: str = Field(default='',max_length=300)
+
+class TpTrade(BaseModel):
+    symbol: str = Field(min_length=1,max_length=24)
+    side: Literal['buy','sell']
+    qty: float = Field(gt=0)
+    price: float = Field(gt=0)
+    ccy: str = Field(default='USD',max_length=3)
+    fx_gbp: Optional[float] = Field(default=None,gt=0)
+    fee_gbp: float = Field(default=0,ge=0)
+    at: str = Field(default='',max_length=40)
+    note: str = Field(default='',max_length=300)
+    signal_id: str = Field(default='',max_length=20)
+
+class TpUpload(BaseModel):
+    name: str = Field(default='upload.csv',max_length=200)
+    text: str = Field(min_length=1,max_length=5_000_000)
+
+class TpSignal(BaseModel):
+    symbol: str = Field(min_length=1,max_length=24)
+    side: str = Field(min_length=1,max_length=8)
+    price: Optional[float] = Field(default=None,gt=0)
+    signal: str = Field(default='',max_length=60)
+    timeframe: str = Field(default='',max_length=12)
+    time: str = Field(default='',max_length=40)
+    note: str = Field(default='',max_length=300)
+
+class TpScenario(BaseModel):
+    sell_date: str = Field(min_length=10,max_length=10)
+    symbol: str = Field(default='',max_length=24)
+    rebuy_date: str = Field(default='',max_length=10)
+    note: str = Field(default='',max_length=300)
+
+class TpSwitch(BaseModel):
+    on: bool
+
+def _tp(fn,*a,**k):
+    try: return fn(*a,**k)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+@app.get('/admin/api/trading')
+def admin_trading(): return trading.overview()
+
+@app.get('/admin/api/trading/portfolios/{pid}')
+def admin_trading_portfolio(pid: str=FPath(pattern=r'^[0-9a-f]{12}$')):
+    v=_tp(trading.portfolio_view,pid);v['scenarios']=trading.scenarios(pid);return v
+
+@app.post('/admin/api/trading/portfolios')
+def admin_trading_new_portfolio(p: TpPortfolio): return _tp(trading.create_portfolio,p.name,p.note)
+
+@app.post('/admin/api/trading/portfolios/{pid}/trades')
+def admin_trading_trade(t: TpTrade, pid: str=FPath(pattern=r'^[0-9a-f]{12}$')):
+    return _tp(trading.add_trade,pid,t.symbol,t.side,t.qty,t.price,t.ccy,t.fx_gbp,t.at or None,t.fee_gbp,t.note,signal_id=t.signal_id)
+
+@app.post('/admin/api/trading/portfolios/{pid}/import')
+def admin_trading_import(u: TpUpload, pid: str=FPath(pattern=r'^[0-9a-f]{12}$')):
+    try: return trading.import_t212(pid,u.name,u.text)
+    except rules_engine.RuleViolation as e: raise HTTPException(403,str(e)) from None
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+@app.post('/admin/api/trading/portfolios/{pid}/scenarios')
+def admin_trading_scenario(sc: TpScenario, pid: str=FPath(pattern=r'^[0-9a-f]{12}$')):
+    return _tp(trading.simulate_sell,pid,sc.sell_date,sc.symbol,sc.rebuy_date or None,sc.note)
+
+@app.get('/admin/api/trading/signals')
+def admin_trading_signals(): return {'signals':trading.signals(),'analysis':trading.analysis('signal')}
+
+@app.get('/admin/api/trading/analysis')
+def admin_trading_analysis(by: Literal['signal','symbol','timeframe','side']='signal'): return trading.analysis(by)
+
+@app.post('/admin/api/trading/signals')
+def admin_trading_add_signal(sg: TpSignal):
+    return _tp(trading.add_signal,sg.symbol,sg.side,sg.price,sg.signal,sg.timeframe,sg.time or None,source='manual',note=sg.note)
+
+@app.post('/admin/api/trading/signals/import')
+def admin_trading_signals_import(u: TpUpload):
+    try: return trading.import_signals_csv(u.text,u.name)
+    except rules_engine.RuleViolation as e: raise HTTPException(403,str(e)) from None
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+@app.post('/admin/api/trading/prices/refresh')
+def admin_trading_refresh(force: bool=False):
+    if not trading.td_key(): raise HTTPException(400,'No Twelve Data key yet: in the Azure portal, open Key Vault, then Secrets, and add alice-twelvedata-key. Alice picks it up within 10 minutes.')
+    return trading.refresh_in_background(force)
+
+@app.post('/admin/api/trading/webhook-token')
+def admin_trading_token(): return _tp(trading.new_webhook_token)
+
+@app.get('/admin/api/trading/webhook-token')
+def admin_trading_token_show(): return {'token':trading.webhook_token()}
+
+@app.put('/admin/api/trading/ip-check')
+def admin_trading_ip_check(s: TpSwitch): return trading.set_ip_check(s.on)
+
+def _caller_ip(request: Request):
+    """The caller's public address: the last public one in X-Forwarded-For (the one Azure's front door added; a caller
+    can put anything at the start), else the direct peer."""
+    chain=[a.strip() for a in request.headers.get('x-forwarded-for','').split(',') if a.strip()]
+    for a in reversed(chain):
+        try:
+            if _ip.ip_address(a.split('%')[0]).is_global: return a
+        except ValueError: continue
+    return request.client.host if request.client else ''
+
+@app.post('/hooks/tradingview')
+async def tradingview_webhook(request: Request):
+    """TradingView alerts (outside Microsoft sign-in by Stefan's decision): records a signal, nothing else."""
+    body=await request.body()
+    code,msg=await asyncio.to_thread(trading.webhook,body[:8192],_caller_ip(request))
+    return JSONResponse({'detail':msg},status_code=code)
 
 @app.put('/admin/api/mileage/rate')
 def admin_mileage_rate(r: MileageRate):
@@ -2887,7 +3027,7 @@ async function toggleMic(){if(recorder){recorder.stop();return;}if(busy||uploadi
  rec.onstop=async()=>{clearTimeout(micTimer);stream.getTracks().forEach(t=>t.stop());recorder=null;micState(false);const mime=rec.mimeType||type||'audio/webm';const blob=new Blob(chunks,{type:mime});if(blob.size<2000){byId('status').textContent='Recording too short. Hold on a moment longer.';return;}
   byId('status').textContent='Transcribing…';try{const data=await blobBase64(blob);const r=await api('/voice/transcribe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data,mime})});if(!r.text){byId('status').textContent='No speech detected.';return;}byId('prompt').value=r.text;spokenTurn=true;byId('chat-form').requestSubmit();}catch(e){byId('status').textContent=e.message;}};
  rec.start();micState(true);byId('status').textContent='Listening… press Stop and send when you finish (2-minute limit).';micTimer=setTimeout(()=>{if(recorder)recorder.stop()},120000);}
-async function setupVoice(){try{const st=await api('/voice/status');if(!st.enabled)return;const voices=await api('/voice/voices');if(!voices.length)return;const sel=byId('voice-select');for(const v of voices){const o=document.createElement('option');o.value=v.voice_id;o.textContent=v.name;sel.append(o);}let saved='';try{saved=localStorage.getItem('substrate-voice')||''}catch{}sel.value=voices.some(v=>v.voice_id===saved)?saved:(voices.some(v=>v.voice_id===st.default_voice)?st.default_voice:voices[0].voice_id);sel.onchange=()=>{try{localStorage.setItem('substrate-voice',sel.value)}catch{}};try{byId('speak-replies').checked=localStorage.getItem('substrate-speak')==='1'}catch{}byId('speak-replies').onchange=()=>{try{localStorage.setItem('substrate-speak',byId('speak-replies').checked?'1':'0')}catch{}};voiceEnabled=true;byId('voice-controls').hidden=false;byId('mic').onclick=toggleMic;byId('stop-audio').onclick=stopAudio;}catch(e){byId('status').textContent='Voice unavailable: '+e.message;}}
+async function setupVoice(){try{const st=await api('/voice/status');if(!st.enabled)return;const voices=await api('/voice/voices');if(!voices.length)return;const sel=byId('voice-select');for(const v of voices){const o=document.createElement('option');o.value=v.voice_id;o.textContent=v.name;sel.append(o);}let saved='';try{saved=localStorage.getItem('substrate-voice')||''}catch{}sel.value=voices.some(v=>v.voice_id===st.default_voice)?st.default_voice:(voices.some(v=>v.voice_id===saved)?saved:voices[0].voice_id);sel.onchange=()=>{try{localStorage.setItem('substrate-voice',sel.value)}catch{}fetch('/voice/default',{method:'PUT',headers:{'Content-Type':'application/json','X-Admin-Token':'__CHAT_ADMIN_TOKEN__'},body:JSON.stringify({voice_id:sel.value})}).catch(()=>{})};try{byId('speak-replies').checked=localStorage.getItem('substrate-speak')==='1'}catch{}byId('speak-replies').onchange=()=>{try{localStorage.setItem('substrate-speak',byId('speak-replies').checked?'1':'0')}catch{}};voiceEnabled=true;byId('voice-controls').hidden=false;byId('mic').onclick=toggleMic;byId('stop-audio').onclick=stopAudio;}catch(e){byId('status').textContent='Voice unavailable: '+e.message;}}
 
 let templeTimer=null,templeLoading=false;
 function templeNode(tag,text,cls){const e=document.createElement(tag);e.textContent=text;if(cls)e.className=cls;return e;}

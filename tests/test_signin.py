@@ -44,7 +44,8 @@ import re as _re
 bicep = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'infra', 'main.bicep')).read()
 t('every new Alice session asks who you are (not just the browser\'s Microsoft session), sessions last 8 hours',
   "loginParameters: askEverySignIn ? ['prompt=login', 'domain_hint=organizations'] : ['domain_hint=organizations']" in bicep and 'param askEverySignIn bool = true' in bicep and "timeToExpiration: '08:00:00'" in bicep)
-t('only the health check and the signed-out page are outside sign-in', _re.search(r"excludedPaths: \['/healthz', '/signed-out'\]", bicep) is not None)
+t('only the health check, the signed-out page and the TradingView webhook are outside sign-in',
+  _re.search(r"excludedPaths: \['/healthz', '/signed-out', '/hooks/tradingview'\]", bicep) is not None)
 
 # sign out everywhere: sessions that signed in before the moment you pressed it must sign in again, on every device
 import base64, json as _json, time as _time
@@ -116,4 +117,5 @@ t('version: the release code, when it was built, the running revision and a link
 t('version: on the PC it says local, with no link', version_info({}) == {'version': 'local', 'built': '', 'revision': '', 'link': ''})
 t('version: anything odd is not shown', version_info({'ALICE_VERSION': '<script>'})['version'] == 'local')
 h = cl.get('/admin/memories').text
-t('the menu shows the version at the bottom', 'class="nav-version"' in h and h.index('class="nav-version"') > h.index('aria-label="Command centre"') and '>local</b>' in h)
+t('the menu shows the version at the bottom', 'class="nav-version"' in h and h.index('class="nav-version"') > h.index('aria-label="Command centre"')
+  and '>' + version_info()['version'] + '</b>' in h)

@@ -17,10 +17,23 @@ def _mileage_summary():
     return mileage.tile()
 
 
+def _trading_waiting():
+    import trading
+    return trading.waiting()
+
+
+def _trading_summary():
+    import trading
+    return trading.tile()
+
+
 APPS = [
     {'id': 'mileage', 'name': 'Mileage', 'mark': 'Mi', 'page': 'mileage', 'agent': 'Mileage Clerk',
      'description': 'Business mileage for TMC from your vehicle tracker export: classify places, approve each exact entry.',
      'waiting': _mileage_waiting, 'summary': _mileage_summary},
+    {'id': 'trading', 'name': 'Trading desk', 'mark': 'Td', 'page': 'trading', 'agent': 'Trading desk',
+     'description': 'Paper trading and algo signals: simulated buys and sells, "what if I had sold" against holding, and how each signal turned out. Simulation only.',
+     'waiting': _trading_waiting, 'summary': _trading_summary},
 ]
 PAGES = {a['page'] for a in APPS}
 

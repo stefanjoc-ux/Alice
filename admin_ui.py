@@ -16,6 +16,7 @@ PAGES = {
  'assistants': ('Assistants','Focused assistants built on Alice, such as Alex (HR policies) and Parker (proposals). Each has its own rule packs, model and knowledge, and staff use it on its own page without seeing the rest of Alice.'),
  'rule-packs': ('Rule packs','Ready-made safeguards for teams adopting AI. Switch each one on or off, test a message against the pack (a sandbox: no AI is called), and apply a pack to Alice\'s live rules when you want it enforced.'),
  'rules': ('Rules','Rule sets in precedence order. Enforced rules are checked in code; guidance rules are instructions to the model.'),
+ 'trading': ('Trading desk','Paper trading and algo signals: simulated buys and sells, "what if I had sold" against simply holding, and how each signal turned out over the following days. Simulation only: nothing here places or changes a real order, and nothing in it is advice.'),
  'mileage': ('Mileage','Mileage Clerk: load a tracker export, tell Alice which places are home, personal or business, and approve the TMC entries she prepares. Nothing reaches TMC without your approval of that exact entry.'),
  'apps': ('Apps','Apps built on Alice that each do one job end to end. Each keeps its approvals on its own page; anything waiting for you also shows on Actions.'),
  'signins': ('Sign-ins and devices','Where Alice is signed in: each device and browser, the address it was used from, and when. Sign out one device, or every device at once (this one too). Your Microsoft sign-in for Outlook, Teams and the portal is not affected.'),
@@ -37,6 +38,21 @@ SECTIONS = {
 'home': r'''<section class="hm-hero"><div><h2 id="hm-hello">Hello</h2><p id="hm-sub" class="muted"></p></div>
 <div class="hm-go"><a class="hm-btn primary" href="/?new=1"><span>&#9998;</span>New chat</a><a class="hm-btn" id="hm-prop" href="/admin/assistants"><span>&#10064;</span>Write a proposal</a><a class="hm-btn" href="/admin/temple?tab=ask"><span>?</span>Ask Temple</a><a class="hm-btn" href="/admin/knowledge"><span>+</span>Add knowledge</a></div></section>
 <div id="hm" class="hm"></div>''',
+'trading': r'''<section><div class="mem-head"><h2>At a glance</h2><span id="tp-asof" class="muted small"></span></div><div id="tp-tiles" class="mi-tiles"></div></section>
+<section><div class="mem-head"><h2>Paper portfolios</h2><span class="muted small">Simulation only</span></div>
+<div id="tp-pfs" class="mem-tabs"></div>
+<div id="tp-pf"></div>
+<details class="tp-more"><summary>New paper portfolio</summary><div class="tp-form"><input id="tp-pf-name" placeholder="Name, e.g. T212 Invest (paper)" maxlength="80"><button type="button" id="tp-pf-add">Create</button></div></details></section>
+<section><div class="mem-head"><h2>Signals</h2><span class="muted small">Each signal followed for 20 trading days</span></div>
+<div class="table-wrap"><table id="tp-sig" class="mem-table"></table></div>
+<details class="tp-more"><summary>Log a signal by hand, or import a CSV</summary>
+<div class="tp-form"><input id="tp-s-sym" placeholder="Ticker, e.g. NVDA" maxlength="24"><select id="tp-s-side"><option value="buy">Buy</option><option value="sell">Sell</option></select>
+<input id="tp-s-price" type="number" step="any" min="0" placeholder="Price"><input id="tp-s-name" placeholder="Signal, e.g. RayAlgo" maxlength="60" value="RayAlgo"><input id="tp-s-tf" placeholder="Timeframe, e.g. 240" maxlength="12" value="240"><input id="tp-s-time" type="datetime-local"><button type="button" id="tp-s-add">Log signal</button></div>
+<p class="small muted">CSV columns: symbol, side, price, signal, timeframe, time (and optionally exchange).</p><input type="file" id="tp-s-csv" accept=".csv,text/csv"></details></section>
+<section><div class="mem-head"><h2>How the signals turned out</h2><div id="tp-by" class="mem-tabs tp-by"></div></div>
+<p class="small muted">Moves are in the signal's direction: a sell signal counts as right when the price fell. "Went its way" is how often that was so at each point. Past results describe what happened, not what will.</p>
+<div class="table-wrap"><table id="tp-an" class="mem-table"></table></div></section>
+<section><div class="mem-head"><h2>Set-up</h2></div><div id="tp-setup"></div></section>''',
 'mileage': r'''<section id="mi-ov" class="mi-ov"><div class="mem-head"><h2>Your mileage</h2><span id="mi-ov-to" class="muted small"></span></div>
 <div id="mi-ov-tiles" class="mi-ov-tiles"></div>
 <div class="mi-chart-head"><h3>Last 12 months</h3><div class="mi-legend" aria-label="Legend"><span><i class="sw bus"></i>Business</span><span><i class="sw per"></i>Personal</span></div></div>
@@ -347,6 +363,12 @@ nav{display:flex;gap:20px;flex-wrap:wrap}
 .ag-card-flags{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;color:#6b4406}
 .ag-head{padding-bottom:6px}.ag-head>button{margin:0 0 10px}.ag-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.ag-title h2{margin:0;font-size:20px}
 .si-list{display:grid;gap:10px;margin-top:12px}.si-row{display:grid;grid-template-columns:40px 1fr auto;gap:12px;align-items:center;padding:12px 14px;border:1px solid #d3dee6;border-radius:12px;background:#fff}.si-row.me{border-color:#075e79;box-shadow:0 0 0 1px #075e79}.si-row.old{background:#f7f9fb;color:#5d7385}.si-ico{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:#e3f1f6;color:#075e79}.si-ico svg{width:22px;height:22px}.si-row.old .si-ico{background:#eef2f5;color:#8aa0b0}.si-row b{display:block;color:#102b40}.si-row.old b{color:#3d5566}.si-meta{font-size:13px;color:#5d7385}.si-tag{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600;background:#075e79;color:#fff;vertical-align:1px}@media(max-width:600px){.si-row{grid-template-columns:34px 1fr}.si-row>button{grid-column:1/-1;justify-self:start}}
+.tp-form{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0}.tp-form input,.tp-form select{width:auto;min-width:0;flex:1 1 120px;margin:0}.tp-form button{flex:none}
+.tp-more{margin-top:12px}.tp-more>summary{font-weight:600;color:var(--teal)}
+.tp-up{color:#1e6b3a;font-weight:600}.tp-down{color:#9a2b2b;font-weight:600}.tp-flat{color:#5d7385}
+.tp-code{display:block;white-space:pre-wrap;word-break:break-all;font:12px/1.5 ui-monospace,Consolas,monospace;background:#f4f7fa;border:1px solid #d3dee6;border-radius:8px;padding:8px 10px;margin:6px 0}
+.tp-kv{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;font-size:14px;margin:8px 0}.tp-kv dt{color:#5d7385}.tp-kv dd{margin:0}
+.tp-nowrap,#tp-sig td:first-child{white-space:nowrap}.tp-sc{border:1px solid #d3dee6;border-radius:10px;padding:10px 14px;margin:8px 0;background:#fff}.tp-by{margin:0}
 .ag-ctl{display:flex;gap:6px;margin-top:10px}.ag-ack{margin:12px 0 0;padding:12px 14px;border-radius:10px;background:#fdf3e1;border:1px solid #e2bf85;color:#4a3004}.ag-ack-top{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}.ag-ack-err{margin:6px 0 10px;font-size:13px;font-family:ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-word;background:#fff8ec;border-radius:6px;padding:6px 8px}.ag-ack-form{display:grid;gap:8px}.ag-ack-kinds{display:flex;gap:8px;flex-wrap:wrap}.ag-ack-kind{display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid #d9b77c;border-radius:8px;background:#fff;cursor:pointer}.ag-ack-kind small{color:#7a5a20}.ag-ack-kind:has(input:checked){border-color:#075e79;box-shadow:0 0 0 1px #075e79}.ag-ack-form textarea{width:100%;box-sizing:border-box}.ag-ack-form button{justify-self:start}.ag-ack-dec{display:flex;gap:6px;align-items:center}.ag-acked{margin-top:4px;color:#2f6b3a}.ag-reason{margin:10px 0 0;padding:8px 12px;border-radius:8px;background:#fdf3e1;border:1px solid #e2bf85;color:#4a3004;font-size:13px}
 .ag-tabs{margin:14px 0 0}.ag-purpose{font-size:15px;margin:0 0 14px}.ag-stats{grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:16px}
 .ag-facts{display:grid;grid-template-columns:160px 1fr;gap:6px 14px;margin:0 0 16px;font-size:14px}.ag-facts dt{color:var(--muted)}.ag-facts dd{margin:0}
@@ -1548,6 +1570,75 @@ if(PAGE==='apps'){
 }
 """
 SCRIPT += r"""
+if(PAGE==='trading'){
+ const gbp=v=>v==null?'–':(v<0?'−':'')+'£'+Math.abs(v).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2});
+ const pct=v=>{if(v==null)return el('span','–','tp-flat');const x=el('span',(v>0?'+':v<0?'−':'')+Math.abs(v).toFixed(1)+'%',v>0?'tp-up':v<0?'tp-down':'tp-flat');return x};
+ const day=iso=>{if(!iso)return '–';const d=new Date(iso),y=d.getFullYear()!==new Date().getFullYear();return d.toLocaleString('en-GB',{day:'numeric',month:'short',...(y?{year:'numeric'}:{}),hour:'2-digit',minute:'2-digit'})};
+ const table=(id,head,rows,empty)=>{const t=$(id);t.replaceChildren();const th=document.createElement('thead'),hr=document.createElement('tr');for(const h of head){const c=el('th',h);c.scope='col';hr.append(c)}th.append(hr);t.append(th);const b=document.createElement('tbody');
+  if(!rows.length){const tr=document.createElement('tr'),td=el('td',empty,'muted');td.colSpan=head.length;tr.append(td);b.append(tr)}
+  for(const r of rows){const tr=document.createElement('tr');for(const v of r){const td=document.createElement('td');if(v instanceof Node)td.append(v);else td.textContent=v==null?'–':v;tr.append(td)}b.append(tr)}t.append(b)};
+ const readFile=f=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=()=>no(Error('Could not read the file.'));r.readAsText(f)});
+ let O=null,cur=null,by='signal';
+ async function load(){O=await api('/admin/api/trading');if(!cur&&O.portfolios.length)cur=O.portfolios[0].id;
+  $('tp-pfs').replaceChildren(...O.portfolios.map(p=>{const b=el('button',p.name,'chip'+(p.id===cur?' on':''));b.type='button';b.onclick=()=>{cur=p.id;run(load)};return b}));
+  if(!O.portfolios.length)$('tp-pf').replaceChildren(el('p','No paper portfolio yet. Create one below, then import your Trading 212 history into it.','muted'));
+  const pv=cur?await api('/admin/api/trading/portfolios/'+cur):null;if(pv)portfolio(pv);
+  const sg=await api('/admin/api/trading/signals');signals(sg.signals);await analysis();setup();
+  const tile=(v,l,cls)=>{const x=el('div','','mi-tile'+(cls?' '+cls:''));x.append(el('strong',v),el('span',l));return x};
+  $('tp-tiles').replaceChildren(tile(pv?gbp(pv.totals.value_gbp):'–',pv?pv.portfolio.name+' value':'Paper value','mi-biz'),tile(pv&&pv.totals.unrealised_gbp!=null?gbp(pv.totals.unrealised_gbp):'–','Unrealised on paper'),tile(String(O.signals),'Signals logged'),tile(O.last_signal?day(O.last_signal):'none yet','Last signal'));
+  $('tp-asof').textContent=O.refresh.finished_at?'Prices refreshed '+day(O.refresh.finished_at):''}
+ function portfolio(v){const box=$('tp-pf');box.replaceChildren();
+  if(v.totals.missing_prices.length)box.append(el('p','No price yet for '+v.totals.missing_prices.join(', ')+': refresh prices in Set-up.','small flag'));
+  const t=document.createElement('table');t.id='tp-pos';t.className='mem-table';const w=el('div','','table-wrap');w.append(t);box.append(w);
+  table('tp-pos',['Holding','Quantity','Average cost','Last close','Value','Profit or loss',''],v.positions.map(p=>[el('strong',p.symbol+(p.exchange?':'+p.exchange:'')),String(p.qty),gbp(p.avg_cost_gbp),p.last!=null?p.last+' '+p.ccy:'–',gbp(p.value_gbp),(()=>{const s=el('span','');s.append(document.createTextNode(gbp(p.pl_gbp)+' '),pct(p.pl_pct));return s})(),(()=>{const b=el('button','Simulate selling','secondary mini');b.type='button';b.onclick=()=>{$('tp-sc-sym').value=p.symbol;$('tp-sc-date').focus()};return b})()]),'Nothing held. Import your Trading 212 history, or add a paper trade.');
+  box.append(el('p','Realised on paper: '+gbp(v.totals.realised_gbp)+' · cost of holdings '+gbp(v.totals.cost_gbp),'small muted'));
+  const tr=document.createElement('details');tr.className='tp-more';tr.append(el('summary','Paper trade'));const f=el('div','','tp-form');
+  f.innerHTML='<input id="tp-t-sym" placeholder="Ticker" maxlength="24"><select id="tp-t-side"><option value="buy">Buy</option><option value="sell">Sell</option></select><input id="tp-t-qty" type="number" step="any" min="0" placeholder="Quantity"><input id="tp-t-price" type="number" step="any" min="0" placeholder="Price"><select id="tp-t-ccy"><option>USD</option><option>GBP</option><option>GBX</option><option>EUR</option></select><input id="tp-t-at" type="datetime-local"><button type="button" id="tp-t-add">Record paper trade</button>';
+  tr.append(f,el('p','Price in its own currency; Alice converts to pounds with the latest rate she has (refresh prices first).','small muted'));box.append(tr);
+  $('tp-t-add').onclick=()=>run(async()=>{await api('/admin/api/trading/portfolios/'+cur+'/trades','POST',{symbol:$('tp-t-sym').value,side:$('tp-t-side').value,qty:+$('tp-t-qty').value,price:+$('tp-t-price').value,ccy:$('tp-t-ccy').value,at:$('tp-t-at').value?new Date($('tp-t-at').value).toISOString():''});$('notice').textContent='Paper trade recorded.';await load()});
+  const im=document.createElement('details');im.className='tp-more';im.append(el('summary','Import Trading 212 history'));const fi=document.createElement('input');fi.type='file';fi.accept='.csv,text/csv';
+  fi.onchange=()=>run(async()=>{const f=fi.files[0];if(!f)return;const r=await api('/admin/api/trading/portfolios/'+cur+'/import','POST',{name:f.name,text:await readFile(f)});$('notice').textContent=r.added+' trades imported, '+r.skipped+' already there, '+r.other+' other rows (deposits, dividends, interest).';await load()});
+  im.append(el('p','In Trading 212: History, then Export, then choose the dates and download the CSV. Importing again adds only new rows.','small muted'),fi);box.append(im);
+  const sc=document.createElement('details');sc.className='tp-more';sc.open=v.scenarios.length>0;sc.append(el('summary','What if I had sold?'));const sf=el('div','','tp-form');
+  sf.innerHTML='<input id="tp-sc-sym" placeholder="One holding (blank = whole portfolio)" maxlength="24"><label class="small">Sell on <input id="tp-sc-date" type="date"></label><label class="small">Buy back on (optional) <input id="tp-sc-rebuy" type="date"></label><button type="button" id="tp-sc-go">Simulate</button>';
+  sc.append(sf);for(const x of v.scenarios){const c=el('div','','tp-sc');c.append(el('strong',(x.symbol||'Whole portfolio')+': sold on '+x.sell_date+(x.rebuy_date?', bought back '+x.rebuy_date:'')));
+   const dl=document.createElement('dl');dl.className='tp-kv';const kv=(k,val)=>{dl.append(el('dt',k));const dd=document.createElement('dd');if(val instanceof Node)dd.append(val);else dd.textContent=val;dl.append(dd)};
+   kv('Sold for',gbp(x.proceeds_gbp));kv('Worth now if held',gbp(x.held_gbp));
+   if(x.selling_vs_holding_gbp!=null)kv('Selling vs holding',el('span',(x.selling_vs_holding_gbp>=0?'Selling ahead by ':'Holding ahead by ')+gbp(Math.abs(x.selling_vs_holding_gbp)),x.selling_vs_holding_gbp>=0?'tp-up':'tp-down'));
+   if(x.rebuy_date){kv('Round trip worth now',gbp(x.round_trip_gbp));if(x.round_trip_vs_holding_gbp!=null)kv('Round trip vs holding',el('span',(x.round_trip_vs_holding_gbp>=0?'Round trip ahead by ':'Holding ahead by ')+gbp(Math.abs(x.round_trip_vs_holding_gbp)),x.round_trip_vs_holding_gbp>=0?'tp-up':'tp-down'))}
+   c.append(dl);sc.append(c)}
+  box.append(sc);
+  $('tp-sc-go').onclick=()=>run(async()=>{await api('/admin/api/trading/portfolios/'+cur+'/scenarios','POST',{sell_date:$('tp-sc-date').value,symbol:$('tp-sc-sym').value,rebuy_date:$('tp-sc-rebuy').value});$('notice').textContent='Scenario recorded; it updates with each price refresh.';await load()})}
+ function signals(list){const H=O.horizons;
+  table('tp-sig',['When','Signal','Price',...H.map(h=>h+'d'),'Best','Worst','Status'],list.map(s=>{const o=s.outcome||{},R=o.returns||{};const sig=el('span','');sig.append(el('strong',s.symbol+' '),el('span',s.side==='buy'?'Buy':'Sell',s.side==='buy'?'tp-up':'tp-down'),document.createTextNode(' · '+s.signal+(s.timeframe?' · '+s.timeframe:'')+(s.source==='webhook'?' · TradingView':'')));
+   return [day(s.bar_time),sig,s.price!=null?String(s.price):'–',...H.map(h=>R[String(h)]!=null?pct(R[String(h)]):'–'),o.best_pct!=null?pct(o.best_pct):'–',o.worst_pct!=null?pct(o.worst_pct):'–',{complete:'Done',following:'Following ('+(o.days_seen||0)+' days)',no_prices:'Waiting for prices'}[o.status]||'New']}),'No signals yet. Set up the TradingView webhook below, or log one by hand.')}
+ async function analysis(){const a=await api('/admin/api/trading/analysis?by='+by);
+  $('tp-by').replaceChildren(...[['signal','By signal'],['symbol','By ticker'],['timeframe','By timeframe'],['side','Buy vs sell']].map(([k,l])=>{const b=el('button',l,'chip'+(by===k?' on':''));b.type='button';b.onclick=()=>{by=k;run(analysis)};return b}));
+  table('tp-an',['Group','Signals',...a.horizons.map(h=>'After '+h+'d'),'Avg best','Avg worst'],a.rows.map(r=>[el('strong',r.group),String(r.signals),...a.horizons.map(h=>{const x=r.horizons[String(h)];if(!x)return '–';const s=el('span','');s.append(pct(x.avg),el('div','went its way '+x.hit_pct+'% · '+x.n+(x.n===1?' signal':' signals'),'small muted'));return s}),r.avg_best!=null?pct(r.avg_best):'–',r.avg_worst!=null?pct(r.avg_worst):'–']),'Nothing to analyse yet: results appear once signals have a few days of prices behind them.')}
+ function setup(){const box=$('tp-setup');box.replaceChildren();
+  const pr=el('div','');pr.append(el('h3','Prices (Twelve Data)'));
+  if(!O.prices_ready)pr.append(el('p','No Twelve Data key yet. Get a free key at twelvedata.com, then in the Azure portal (works on the tablet) open the Key Vault, then Secrets, then Generate/Import: name alice-twelvedata-key, paste the key, Create. Alice picks it up within 10 minutes; no restart needed.','small'));
+  else{const st=O.refresh;pr.append(el('p',st.running?'Refreshing prices: '+st.done+' of '+st.total+' (8 a minute on the free plan)…':'Daily prices for your holdings, every signal being followed and the currency rates.','small'));
+   if(O.price_errors.length)pr.append(el('p','Could not get: '+O.price_errors.map(e=>e.symbol+' ('+e.error+')').join('; '),'small flag'));
+   const b=el('button',st.running?'Refreshing…':'Refresh prices');b.type='button';b.disabled=st.running;b.onclick=()=>run(async()=>{await api('/admin/api/trading/prices/refresh','POST',{});$('notice').textContent='Refreshing prices in the background.';setTimeout(()=>run(load),5000)});pr.append(b);
+   if(st.running)setTimeout(()=>run(load),8000)}
+  box.append(pr);
+  const wh=el('div','');wh.append(el('h3','TradingView alerts (webhook)'));const url=location.origin+'/hooks/tradingview';
+  wh.append(el('p','In TradingView, create an alert on your RayAlgo indicator, tick Webhook URL and paste the address below, and put the message below in the alert’s Message box (one alert for buy signals, one for sell). Each alert is then logged here as it fires. Webhooks need a paid TradingView plan (Essential or above).','small'));
+  const code=(t)=>el('code',t,'tp-code');wh.append(el('strong','Webhook URL','small'),code(url));
+  if(!O.webhook_ready){const b=el('button','Make the webhook token');b.type='button';b.onclick=()=>run(async()=>{await api('/admin/api/trading/webhook-token','POST',{});await load()});wh.append(el('p','No token yet: the webhook refuses everything until you make one.','small flag'),b)}
+  else{const show=el('button','Show the alert messages (contain the secret token)','secondary');show.type='button';const out=el('div','');
+   show.onclick=()=>run(async()=>{const t=(await api('/admin/api/trading/webhook-token')).token;out.replaceChildren();for(const side of ['buy','sell']){out.append(el('strong','Message for '+side+' alerts','small'),code(JSON.stringify({token:t,symbol:'{{ticker}}',exchange:'{{exchange}}',side,signal:'RayAlgo',timeframe:'{{interval}}',price:'__P__',time:'{{timenow}}'}).replace('"__P__"','{{close}}')))}show.hidden=true});
+   const nw=el('button','Make a new token','secondary');nw.type='button';nw.onclick=()=>{if(!confirm('Make a new token? Alerts still using the old one will stop being accepted until you update them.'))return;run(async()=>{await api('/admin/api/trading/webhook-token','POST',{});$('notice').textContent='New token made: update your TradingView alerts.';await load()})};
+   wh.append(show,nw,out)}
+  const ip=document.createElement('label');ip.className='small';const cb=document.createElement('input');cb.type='checkbox';cb.checked=O.ip_check;cb.onchange=()=>run(async()=>{await api('/admin/api/trading/ip-check','PUT',{on:cb.checked});await load()});
+  ip.append(cb,document.createTextNode(' Only accept alerts from TradingView’s published sending addresses (recommended)'));wh.append(ip);
+  box.append(wh)}
+ $('tp-pf-add').onclick=()=>run(async()=>{const r=await api('/admin/api/trading/portfolios','POST',{name:$('tp-pf-name').value});cur=r.id;$('tp-pf-name').value='';await load()});
+ $('tp-s-add').onclick=()=>run(async()=>{const r=await api('/admin/api/trading/signals','POST',{symbol:$('tp-s-sym').value,side:$('tp-s-side').value,price:$('tp-s-price').value?+$('tp-s-price').value:null,signal:$('tp-s-name').value,timeframe:$('tp-s-tf').value,time:$('tp-s-time').value?new Date($('tp-s-time').value).toISOString():''});$('notice').textContent=r.duplicate?'That signal is already logged.':'Signal logged.';await load()});
+ $('tp-s-csv').onchange=()=>run(async()=>{const f=$('tp-s-csv').files[0];if(!f)return;const r=await api('/admin/api/trading/signals/import','POST',{name:f.name,text:await readFile(f)});$('notice').textContent=r.added+' signals added, '+r.duplicates+' already there, '+r.refused+' refused.';await load()});
+ run(load);
+}
 if(PAGE==='mileage'){
  const st={imp:new URLSearchParams(location.search).get('import_id')||'',d:null,open:new Set()};const KIND={home:'Home',personal:'Personal',business:'Business'};
  const ST={draft:['Draft: waiting for you','v-warn'],fill_approved:['Approved for filling','v-run'],save_approved:['Approved for saving','v-run'],saved:['Saved in TMC','v-ok'],verified:['Verified in TMC','v-ok'],rejected:['Not claimed','v-none'],withdrawn:['No longer a business day','v-none']};
