@@ -248,11 +248,12 @@ body{display:grid;grid-template-rows:52px minmax(0,1fr);height:100vh;height:100d
 .sidebar a[aria-current=page] svg{color:var(--teal)}
 .sidebar a[aria-current=page]::before{content:"";position:absolute;left:-12px;top:9px;bottom:9px;width:3px;border-radius:0 3px 3px 0;background:linear-gradient(180deg,#14a3c7,#075e79)}
 .sidebar .nav-label{overflow:hidden;text-overflow:ellipsis}
-.nav-collapse{margin-top:auto;flex:none;display:flex;align-items:center;gap:11px;height:36px;padding:0 10px;border:0;background:none;border-radius:10px;color:#7b8f9e;font-size:13px;width:100%;text-align:left}
+.nav-collapse{align-self:flex-end;flex:none;display:flex;align-items:center;justify-content:center;width:34px;height:30px;margin:-6px 0 6px;padding:0;border:0;background:none;border-radius:8px;color:#7b8f9e}
+.nav-collapse .nav-label{display:none}
 .nav-collapse svg{flex:none;width:19px;height:19px;transition:transform .18s}.nav-collapse:hover{background:#e7eff4;color:var(--ink)}
 body.nav-rail .sidebar{padding:14px 10px 10px}body.nav-rail .sidebar .nav-label,body.nav-rail .sidebar .grp>span,body.nav-rail .sidebar .chev{display:none}
 body.nav-rail .sidebar .grp{height:1px;margin:0 8px 8px;padding:0;background:#dbe5ec;font-size:0;overflow:hidden;pointer-events:none}body.nav-rail .sidebar .nav-sec:first-child .grp{display:none}
-body.nav-rail .sidebar a,body.nav-rail .nav-collapse{justify-content:center;padding:0}body.nav-rail .nav-collapse svg{transform:scaleX(-1)}
+body.nav-rail .sidebar a{justify-content:center;padding:0}body.nav-rail .nav-collapse{align-self:center}body.nav-rail .nav-collapse svg{transform:scaleX(-1)}
 body.nav-rail .sidebar .nav-count{position:absolute;top:4px;right:4px;margin:0;min-width:16px;height:16px;padding:0 4px;font-size:10px;line-height:14px;text-align:center}
 #demo-toggle{font:inherit;font-size:13px;cursor:pointer}#demo-toggle.demo-on{background:#e2a33b;border-color:#e2a33b;color:#1b1203;font-weight:600}
 .nav-count{margin-left:auto;font-size:11px;font-weight:700;line-height:18px;background:#f6b545;color:#3a2500;border-radius:999px;padding:0 7px;box-shadow:0 0 0 2px #f8fbfd}
@@ -2129,7 +2130,7 @@ def render_admin(page, token):
             '<title>' + escape(title) + ' · Alice</title><style>' + SHARED_CSS + SIGNIN_CSS + CSS + STAGE_CSS + '</style></head><body>'
             '<header class="topbar">' + brand_html('/', 'Back to chat')
             + '<h1 class="page-title">' + heading + '</h1><div class="sp"></div><button id="demo-toggle" class="bar-link" type="button" title="Demo mode: only the Agents, Rule packs and Organisations pages, with fictional or replaced names and costs hidden">Demo mode</button><a class="bar-link" href="/">← Chat</a></header>'
-            '<div class="shell"><aside class="sidebar" id="sidebar"><script>try{if(localStorage.getItem("alice-nav-rail")==="1")document.body.classList.add("nav-rail")}catch{}</script><nav aria-label="Command centre">' + nav + '</nav>' + nav_foot + '</aside>'
+            '<div class="shell"><aside class="sidebar" id="sidebar"><script>try{if(localStorage.getItem("alice-nav-rail")==="1")document.body.classList.add("nav-rail")}catch{}</script>' + nav_foot + '<nav aria-label="Command centre">' + nav + '</nav></aside>'
             '<main class="content"><div class="inner"><p class="page-desc">' + escape(description) + '</p><div id="notice" role="status" aria-live="polite" title="Click to dismiss"></div>'
             + SECTIONS[page] + '</div></main></div>' + STAGE_HTML + '<style>' + FETCH_CSS + '</style><script>' + FETCH_JS + 'const PAGE=' + json.dumps(page) + ';'
             + DEMO_PRELUDE + SCRIPT.replace('__TOKEN__', token) + NAV_SCRIPT + STAGE_JS + SIGNIN_JS.replace('__SIGNIN_TOKEN__', token) + '</script></body></html>')
