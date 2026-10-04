@@ -129,6 +129,8 @@ def automatic_review(rid):
         temple_categorise.schedule([rid])   # category assignment runs in the background, separately
         import clients
         clients.schedule_tagging()          # client tagging: alias matches free, then Temple
+        import temple_taxonomy
+        temple_taxonomy.note_new_memory()   # counts towards Temple's next category/tag review (weekly, or after 20)
     except Exception:
         pass
     import autoapprove

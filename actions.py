@@ -80,6 +80,19 @@ def summary():
                             ' · '.join(f'{n} {names[k][0] if n == 1 else names[k][1]}' for k, n in by.items() if k in names)
                             + ('. Undo retires it (history kept).' if recent else ''), top=60, info=True))
 
+    # 2c. Temple's category and tag housekeeping: changes waiting for you, and what it did itself (Undo for 7 days)
+    import temple_taxonomy
+    tx_wait = temple_taxonomy.changes('proposed', days=3650)
+    out.append(_section('taxonomy', 'Category and tag changes to approve', len(tx_wait), '/admin/memories#organise',
+                        [{'type': 'taxonomy', 'id': r['id'], 'title': r['summary'], 'detail': (r['why_waiting'] + ' ' if r['why_waiting'] else '') + r['reason']}
+                         for r in tx_wait],
+                        'Temple keeps categories and tags tidy. Changes to ones you created, or to a category a rule uses, wait for you.', top=20))
+    tx_done = [r for r in temple_taxonomy.changes('applied', days=7) if r['decided_by'] == 'Temple']
+    out.append(_section('taxonomy_done', 'Category and tag housekeeping by Temple in the last 7 days', len(tx_done), '/admin/memories#organise',
+                        [{'type': 'taxonomy_done', 'id': r['id'], 'title': r['summary'], 'detail': r['reason'] + ' · ' + r['created_at'][:16].replace('T', ' '),
+                          'can_undo': r['can_undo']} for r in tx_done],
+                        'For information. Undo puts things back as they were.', top=40, info=True))
+
     # 2b. Older knowledge that a newer, approved item replaces (proposer's word or Temple's suggestion)
     reps = [p for p in knowledge.replacements('pending') if p['new_status'] == 'active']
     out.append(_section('replacements', 'Older knowledge that may be replaced', len(reps), '/admin/knowledge',

@@ -63,6 +63,11 @@ BUILTIN = [
      'Looks for older knowledge a newer item replaces; suggests retiring it, quoting the newer item.',
      'When knowledge becomes active, or Find replaced items', ['Temple replacement check'],
      'Active knowledge items of the same client', 'Replacement suggestions', False),
+    ('temple-taxonomy', 'Temple: category and tag housekeeping', 'internal',
+     'Creates, fills and tidies categories and tags (merge, rename, retire, split, describe). Its own changes apply with Undo; '
+     'anything you created, or any category a rule uses, waits for you.',
+     'Weekly, after 20 new memories, or Review now', ['Temple taxonomy review'],
+     'Category and tag lists; titles and the start of up to 150 memories', 'Categories, tags and their assignments (with Undo), or proposals', False),
     ('temple-discuss', 'Temple: decision discussions', 'internal',
      'Talks a proposed decision through with you before you decide: explains clashes, suggests a note. Advisory; changes nothing.',
      'When you ask (Discuss with Temple on Actions)', ['Temple decision discussion'],
@@ -152,6 +157,10 @@ ANATOMY = {
                             'tools': ['Wording and title matching (free, no model)', 'Quote check'], 'data': ['knowledge'],
                             'guardrails': ['spend_cap', 'provider_allow', 'protective_marking', 'secret_detection', 'client_separation'],
                             'outputs': ['Suggestion to retire the older item, with a quote'], 'gate': 'You retire it or keep both'},
+    'temple-taxonomy': {'model': 'temple', 'instructions': 'Keep categories few and broad, tags specific; prefer existing names; never name a client or person.',
+                        'tools': ['None'], 'data': ['memories'], 'guardrails': ['spend_cap', 'secret_detection', 'protective_marking', 'client_separation'],
+                        'outputs': ['Category and tag changes with Undo', 'Proposals on Actions'],
+                        'gate': 'Yours and rule-protected categories wait for you; limits, names and near-duplicates checked in code'},
     'temple-discuss': {'model': 'temple', 'instructions': 'Discuss a waiting decision with Stefan; explain clashes, say what would resolve them, '
                                                        'optionally a new recommendation and a suggested note. Never approves.',
                        'tools': ['None'], 'data': ['memories'], 'guardrails': ['spend_cap', 'secret_detection', 'protective_marking'],
@@ -225,7 +234,7 @@ GROUPS = [
     ('conversations', 'Learning from conversations', 'Suggest memories, decisions and knowledge from chats, saved conversations and meetings.',
      ['temple-chat', 'temple-chat-review', 'temple-meeting']),
     ('stewardship', 'Keeping memory and knowledge tidy', 'Review proposed memories, categorise and tag them, tag clients and spot replaced knowledge.',
-     ['temple-review', 'temple-discuss', 'temple-categorise', 'temple-memory-tags', 'temple-tagging', 'temple-replacements']),
+     ['temple-review', 'temple-discuss', 'temple-taxonomy', 'temple-categorise', 'temple-memory-tags', 'temple-tagging', 'temple-replacements']),
     ('answers', 'Answering questions', 'Staff assistants that answer from approved knowledge, and Ask Temple for your own questions.',
      ['alice-assistants', 'temple-ask']),
 ]

@@ -23,6 +23,7 @@ import actions
 import activity_log
 import temple_ask
 import temple_discuss
+import temple_taxonomy
 import memory_tags
 import refs
 import autoapprove
@@ -2704,6 +2705,32 @@ async def admin_discuss(rid: str, q: DiscussIn):
     except (APIError, anthropic.APIError) as e:
         if any(k in type(e).__name__ for k in ('Timeout','Connection','InternalServer')): router.note_failure(temple.reviewer())
         raise HTTPException(502,'Temple: '+provider_error(e)) from None
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+class TaxonomyMode(BaseModel):
+    mode: str = Field(pattern='^(auto|suggest|off)$')
+
+class TaxonomyDecision(BaseModel):
+    action: str = Field(pattern='^(approve|reject|undo)$')
+    note: str = Field(default='', max_length=500)
+
+@app.get('/admin/api/taxonomy')
+def admin_taxonomy():
+    temple_taxonomy.maybe_review()          # weekly review catches up when the page is opened
+    return {**temple_taxonomy.status(), 'changes': temple_taxonomy.changes(days=30)}
+
+@app.put('/admin/api/taxonomy/mode')
+def admin_taxonomy_mode(q: TaxonomyMode): return temple_taxonomy.set_mode(q.mode)
+
+@app.post('/admin/api/taxonomy/review')
+async def admin_taxonomy_review():
+    try: return await asyncio.to_thread(temple_taxonomy.review, True)
+    except (APIError, anthropic.APIError) as e: raise HTTPException(502,'Temple: '+provider_error(e)) from None
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+@app.post('/admin/api/taxonomy/{cid}')
+def admin_taxonomy_decide(cid: str, q: TaxonomyDecision):
+    try: return temple_taxonomy.decide(cid, q.action, q.note)
     except ValueError as e: raise HTTPException(400,str(e)) from None
 
 @app.get('/admin/api/actions')
