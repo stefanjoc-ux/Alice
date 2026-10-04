@@ -21,12 +21,14 @@ CLAUDE = 'https://claude.ai/api/mcp/auth_callback'
 ENV = {'ALICE_EXT_TENANT_ID': TEN, 'ALICE_EXT_APP_ID': APP, 'ALICE_EXT_ALLOWED_USERS': ME,
        'ALICE_EXT_CALLERS': f'{COPILOT}=Microsoft Copilot:copilot', 'ALICE_EXT_BASE_URL': BASE,
        'ALICE_EXT_CONNECTOR_CLIENT_ID': CONNECTOR, 'ALICE_EXT_CONNECTOR_SECRET': 'test-secret-not-real',
-       'ALICE_EXT_CONNECTOR_KEY': 'k' * 16 + secrets.token_hex(16)}
+       'ALICE_EXT_CONNECTOR_KEY': 'k' * 16 + secrets.token_hex(16),
+       'ALICE_EXT_CONNECTOR_STORE': os.path.join(_util.DATA, 'oauth-connector')}   # the throwaway folder, never the real data
 
 # 1. settings
 cfg = X.load_config(ENV)
 t('connector settings load; Claude is added as a caller', cfg.connector_client_id == CONNECTOR and cfg.callers[CONNECTOR] == X.Caller('Claude', 'claude')
-  and cfg.connector_redirects == (CLAUDE,) and cfg.connector_store.endswith('oauth-connector'))
+  and cfg.connector_redirects == (CLAUDE,) and cfg.connector_store.startswith(_util.DATA))
+t('by default sign-ins are kept in the data folder', X.load_config({**ENV, 'ALICE_EXT_CONNECTOR_STORE': '', 'AISUBSTRATE_DATA_DIR': '/mnt/alice'}).connector_store == os.path.join('/mnt/alice', 'oauth-connector'))
 t('without connector settings nothing changes', X.load_config({k: v for k, v in ENV.items() if 'CONNECTOR' not in k}).connector_client_id == '')
 for label, change in [('only some connector settings refused', {'ALICE_EXT_CONNECTOR_KEY': ''}),
                       ('a short key refused', {'ALICE_EXT_CONNECTOR_KEY': 'short-key'}),

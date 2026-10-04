@@ -12,10 +12,15 @@ def _mileage_waiting():
     return mileage.waiting()
 
 
+def _mileage_summary():
+    import mileage
+    return mileage.tile()
+
+
 APPS = [
     {'id': 'mileage', 'name': 'Mileage', 'mark': 'Mi', 'page': 'mileage', 'agent': 'Mileage Clerk',
      'description': 'Business mileage for TMC from your vehicle tracker export: classify places, approve each exact entry.',
-     'waiting': _mileage_waiting},
+     'waiting': _mileage_waiting, 'summary': _mileage_summary},
 ]
 PAGES = {a['page'] for a in APPS}
 
@@ -34,7 +39,13 @@ def waiting():
     return out
 
 
+def summary(a):
+    """An app's headline figures for its tile ({stats, spark, note}); optional, and a failure never breaks the page."""
+    try: return a['summary']() if a.get('summary') else None
+    except Exception: return None
+
+
 def listing():
     items = waiting()
     return [{'id': a['id'], 'name': a['name'], 'mark': a['mark'], 'description': a['description'], 'href': '/admin/' + a['page'],
-             'agent': a['agent'], 'waiting': sum(1 for i in items if i['app'] == a['name'])} for a in APPS]
+             'agent': a['agent'], 'waiting': sum(1 for i in items if i['app'] == a['name']), 'summary': summary(a)} for a in APPS]

@@ -174,3 +174,36 @@ t('route refuses a bad registration', r.status_code == 400)
 r = cl.delete(f'/admin/api/mileage/places/{shop}', headers=H)
 t('a place can be deleted', r.status_code == 200 and len(MI.places()) == 4)
 t('Mileage page served', cl.get('/admin/mileage', headers=H).status_code in (200, 307, 302) or cl.get('/admin/mileage').status_code in (200, 401, 403))
+
+# ---- overview: the Apps tile and the top of the Mileage page ----
+from datetime import date
+o = MI.overview(today=date(2026, 9, 30))
+t('overview: 12 months ending this month', len(o['months']) == 12 and o['months'][-1]['month'] == '2026-09' and o['months'][0]['month'] == '2025-10')
+t('overview: business miles this month match the months chart', o['this_month']['business'] == o['months'][-1]['business'] > 0)
+t('overview: tax year runs from 6 April, against the 10,000 mile mark', o['tax_year']['since'] == '2026-04-06' and o['tax_year']['threshold'] == 10000
+  and o['tax_year']['business'] == o['this_month']['business'])
+t('tax year before 6 April belongs to the previous year', MI._tax_year_start(date(2026, 4, 5)) == date(2025, 4, 6) and MI._tax_year_start(date(2026, 4, 6)) == date(2026, 4, 6))
+t('overview: a day in several exports is counted once', o['last_12']['business'] == round(sum(m['business'] for m in o['months']), 1))
+e = o['entries']
+t('overview: entries grouped, each day from its newest export', e['waiting']['count'] == 2 and e['not_claimed'] == {'count': 1, 'miles': 75.5} and e['in_tmc']['count'] == 0)
+t('overview: no money shown until you set a rate', o['rate'] == 0 and o['to_claim_value'] is None)
+t('overview: tracked to the last day of the newest export', o['tracked_to'] == '2026-09-05' and o['has_data'])
+for bad in (-1, 201, 'lots'):
+    refused(f'a rate of {bad!r} is refused', lambda bad=bad: MI.set_rate(bad))
+MI.set_rate(45)
+o2 = MI.overview(today=date(2026, 9, 30))
+t('with a rate set, entries show what they are worth', o2['rate'] == 45 and o2['to_claim_value'] == round((e['waiting']['miles'] + e['approved']['miles']) * 0.45, 2))
+with s.db() as c: t('setting the rate is logged', c.execute("SELECT 1 FROM activity WHERE action='mileage_rate_set'").fetchone() is not None)
+t('rate route needs the admin token', cl.put('/admin/api/mileage/rate', json={'rate': 40}).status_code == 403)
+t('rate route refuses nonsense', cl.put('/admin/api/mileage/rate', headers=H, json={'rate': 500}).status_code in (400, 422))
+t('rate route saves', cl.put('/admin/api/mileage/rate', headers=H, json={'rate': 40}).json()['rate'] == 40 and MI.rate() == 40)
+t('page data includes the overview', 'months' in cl.get('/admin/api/mileage', headers=H).json()['overview'])
+o3 = MI.overview(today=date(2026, 10, 4))
+t('early in a month with nothing tracked yet, the headline shows the last tracked month', o3['this_month']['label'] == 'in September'
+  and o3['this_month']['business'] == o['this_month']['business'] and o['this_month']['label'] == 'this month')
+tl = MI.tile()
+t('Apps tile: two figures, a 12-month sparkline, a note', len(tl['stats']) == 2 and len(tl['spark']) == 12 and tl['note'] == 'Tracked to 5 Sep 2026')
+ap = next(a for a in cl.get('/admin/api/apps', headers=H).json()['apps'] if a['id'] == 'mileage')
+t('Apps page carries the tile summary', ap['summary'] and ap['summary']['stats'][0]['label'].startswith('Business miles '))
+import apps as A
+t('a failing app summary never breaks the Apps page', A.summary({'summary': lambda: 1 / 0}) is None)

@@ -32,7 +32,13 @@ SECTIONS = {
 'home': r'''<section class="hm-hero"><div><h2 id="hm-hello">Hello</h2><p id="hm-sub" class="muted"></p></div>
 <div class="hm-go"><a class="hm-btn primary" href="/?new=1"><span>&#9998;</span>New chat</a><a class="hm-btn" id="hm-prop" href="/admin/assistants"><span>&#10064;</span>Write a proposal</a><a class="hm-btn" href="/admin/temple?tab=ask"><span>?</span>Ask Temple</a><a class="hm-btn" href="/admin/knowledge"><span>+</span>Add knowledge</a></div></section>
 <div id="hm" class="hm"></div>''',
-'mileage': r'''<section><div class="mem-head"><h2>Tracker export</h2><span id="mi-sum" class="muted small"></span></div>
+'mileage': r'''<section id="mi-ov" class="mi-ov"><div class="mem-head"><h2>Your mileage</h2><span id="mi-ov-to" class="muted small"></span></div>
+<div id="mi-ov-tiles" class="mi-ov-tiles"></div>
+<div class="mi-chart-head"><h3>Last 12 months</h3><div class="mi-legend" aria-label="Legend"><span><i class="sw bus"></i>Business</span><span><i class="sw per"></i>Personal</span></div></div>
+<div id="mi-chart" class="mi-chart" role="img" aria-label="Business and personal miles by month for the last 12 months"></div>
+<details class="mi-table"><summary class="small">Show as a table</summary><div class="table-wrap"><table id="mi-ov-table" class="mem-table"></table></div></details>
+<div class="mi-rate small"><label>Claim rate <input id="mi-rate" type="number" min="0" max="200" step="0.5" inputmode="decimal" aria-label="Claim rate in pence per mile"> p per mile</label><button id="mi-rate-save" type="button" class="secondary mini-act">Save</button><span class="muted">Optional: shows what your entries are worth. 0 hides money.</span></div></section>
+<section><div class="mem-head"><h2>Tracker export</h2><span id="mi-sum" class="muted small"></span></div>
 <div class="mi-top"><label class="mi-file"><input id="mi-file" type="file" accept=".csv,text/csv"><span class="primary-btn">Load a tracker export (CSV)</span></label>
 <label class="small">Showing <select id="mi-imp" aria-label="Export"></select></label>
 <label class="small">Vehicle <input id="mi-veh" maxlength="12" placeholder="e.g. AB12 CDE" aria-label="Vehicle registration"></label><button id="mi-veh-save" type="button" class="secondary mini-act">Save</button></div>
@@ -403,6 +409,14 @@ a.av-tile:hover{border-color:var(--teal)}.av-tile b{font-size:28px;line-height:1
 .act-info{background:#f7fafc}.mi-top{display:flex;gap:14px;align-items:center;flex-wrap:wrap}.mi-top input,.mi-top select{margin:0;width:auto}.mi-file input{display:none}.mi-file .primary-btn{display:inline-block;background:#075e79;color:#fff;border-radius:8px;padding:9px 16px;font-weight:600;cursor:pointer}
 .mi-tiles{display:flex;gap:12px;flex-wrap:wrap;margin-top:14px}.mi-tile{background:#f4f7fa;border:1px solid #d3dee6;border-radius:10px;padding:10px 16px;min-width:120px}.mi-tile strong{display:block;font-size:20px;color:#102b40}.mi-tile span{font-size:12px;color:#5d7385}.mi-tile.mi-biz{background:#e6f0f8;border-color:#9cc0db}.mi-biz{color:#1d6fa5;font-weight:600}
 .mi-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 12px;margin:6px 0 10px;background:#f4f7fa;border:1px solid #d3dee6;border-radius:8px}.mi-form input,.mi-form select{margin:0;width:auto;flex:1 1 180px}.mi-form .mi-pc{flex:0 0 100px}.mi-form [hidden]{display:none!important}
+:root{--mi-bus:#1679a3;--mi-per:#eb6834;--mi-grid:#e3eaef}
+.mi-ov-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(135px,1fr));gap:10px;margin:6px 0 18px}.mi-k{border:1px solid #d3dee6;border-radius:12px;padding:12px 14px;background:#fff}.mi-k b{display:block;font-size:24px;line-height:1.15;color:#102b40;font-variant-numeric:tabular-nums}.mi-k span{display:block;font-size:12px;line-height:1.35;color:#5d7385}.mi-k .sub{display:block;margin-top:4px;font-size:12px;line-height:1.35;color:#3d5566}
+.mi-prog{height:6px;border-radius:3px;background:var(--mi-grid);margin-top:8px;overflow:hidden}.mi-prog i{display:block;height:100%;border-radius:3px;background:var(--mi-bus)}
+.mi-chart-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.mi-chart-head h3{margin:0;font-size:14px;color:#3d5566}.mi-legend{display:flex;gap:14px;font-size:12px;color:#3d5566}.mi-legend .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}.sw.bus{background:var(--mi-bus)}.sw.per{background:var(--mi-per)}
+.mi-chart{position:relative;margin-top:8px}.mi-chart svg{display:block;width:100%;height:220px;overflow:visible}.mi-chart text{font-size:11px;fill:#5d7385;font-family:inherit}.mi-chart .hit{fill:transparent;cursor:default}.mi-chart .col:hover .mi-bar,.mi-chart .col:focus .mi-bar{opacity:.85}
+.mi-tip{position:absolute;pointer-events:none;background:#102b40;color:#fff;font-size:12px;line-height:1.5;padding:7px 10px;border-radius:8px;white-space:nowrap;transform:translate(-50%,-100%);box-shadow:0 4px 14px rgba(0,0,0,.18)}.mi-tip[hidden]{display:none}.mi-tip i{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px}
+.mi-table{margin-top:10px}.mi-rate{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}.mi-rate input{width:80px;margin:0}
+.ap-stats{display:flex;gap:16px;margin:8px 0 2px}.ap-stats b{display:block;font-size:18px;color:#102b40;font-variant-numeric:tabular-nums}.ap-stats span{display:block;font-size:11px;line-height:1.3;color:#5d7385}.ap-spark{display:block;width:100%;height:34px;margin-top:6px}.ap-note{font-size:11px;color:#5d7385}
 .ap-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-top:10px}.ap-tile{display:flex;gap:14px;align-items:flex-start;padding:16px;border:1px solid #d3dee6;border-radius:12px;background:#fff;color:inherit;text-decoration:none;transition:box-shadow .15s,border-color .15s}.ap-tile:hover,.ap-tile:focus-visible{border-color:#7fa9c4;box-shadow:0 2px 10px rgba(16,43,64,.08)}.ap-mark{flex:0 0 44px;height:44px;border-radius:10px;background:#075e79;color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:15px}.ap-tile h3{margin:0 0 4px;font-size:16px}.ap-tile p{margin:0;font-size:13px;color:#5d7385}.ap-tile .badge{margin-top:8px;display:inline-block}.crumb{color:inherit;text-decoration:none;opacity:.75}.crumb:hover{opacity:1;text-decoration:underline}
 .mi-warn{display:block;margin:6px 0;font-weight:400;white-space:normal;overflow-wrap:anywhere;box-sizing:border-box;max-width:100%}#mi-days td:first-child,#mi-days th:first-child{white-space:nowrap;width:130px}.mi-legs{display:grid;gap:4px;padding:6px 0}.mi-leg{display:grid;grid-template-columns:60px 1fr 70px 70px;gap:10px;font-size:13px;padding:4px 8px;border-radius:6px}.mi-leg.biz{background:#e6f0f8}.o-watch{align-items:center;gap:10px;flex-wrap:wrap}.o-watch select{width:auto;margin:0}.o-watch select:disabled{opacity:.5}
 .o-flag.o-watched{background:#e6f0f8;color:#1d6fa5;border-color:#9cc0db}.opp-sched-row input[type=checkbox]{width:auto;margin:0}
@@ -1438,10 +1452,37 @@ if(PAGE==='speed'){
 }
 """
 SCRIPT += r"""
+const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MONTHS_LONG=['January','February','March','April','May','June','July','August','September','October','November','December'];
+const monthName=(k,long)=>long?MONTHS_LONG[+k.slice(5,7)-1]+' '+k.slice(0,4):MONTHS[+k.slice(5,7)-1]+' '+k.slice(0,4);
+const fmtMi=n=>Math.round(n).toLocaleString('en-GB');
+function svgEl(n,a){const e=document.createElementNS('http://www.w3.org/2000/svg',n);for(const k in a)e.setAttribute(k,a[k]);return e}
+function niceMax(v){if(v<=0)return 100;const p=Math.pow(10,Math.floor(Math.log10(v)));for(const m of [1,2,2.5,5,10])if(m*p>=v)return m*p;return 10*p}
+// Stacked monthly bars: business (bottom) and personal (top), 2px gap, rounded top, recessive grid, tooltip per column.
+function mileageChart(box,months){box.replaceChildren();const W=Math.max(320,box.clientWidth||640),H=220,L=44,R=8,T=10,B=26;
+ const max=niceMax(Math.max(...months.map(m=>m.business+m.personal)));const svg=svgEl('svg',{viewBox:`0 0 ${W} ${H}`,preserveAspectRatio:'none'});
+ const y=v=>T+(H-T-B)*(1-v/max);for(let i=0;i<=4;i++){const v=max*i/4,yy=y(v);svg.append(svgEl('line',{x1:L,x2:W-R,y1:yy,y2:yy,stroke:'var(--mi-grid)','stroke-width':1}));const tx=svgEl('text',{x:L-8,y:yy+4,'text-anchor':'end'});tx.textContent=fmtMi(v);svg.append(tx)}
+ const slot=(W-L-R)/months.length,bw=Math.max(6,Math.min(28,slot*0.56));const tip=document.createElement('div');tip.className='mi-tip';tip.hidden=true;
+ const round=(x,yTop,w,h)=>{const r=Math.min(4,h,w/2);return `M${x},${yTop+h}V${yTop+r}Q${x},${yTop} ${x+r},${yTop}H${x+w-r}Q${x+w},${yTop} ${x+w},${yTop+r}V${yTop+h}Z`};
+ months.forEach((m,i)=>{const cx=L+slot*i+slot/2,x=cx-bw/2,g=svgEl('g',{class:'col',tabindex:'0','aria-label':monthName(m.month)+': '+fmtMi(m.business)+' business, '+fmtMi(m.personal)+' personal miles'});
+  const yb=y(m.business),hb=y(0)-yb,yp=y(m.business+m.personal),hp=Math.max(0,yb-yp-(m.business>0&&m.personal>0?2:0));const topIsPer=m.personal>0;
+  if(m.business>0)g.append(topIsPer?svgEl('rect',{class:'mi-bar',x,y:yb,width:bw,height:hb,fill:'var(--mi-bus)'}):svgEl('path',{class:'mi-bar',d:round(x,yb,bw,hb),fill:'var(--mi-bus)'}));
+  if(m.personal>0&&hp>0)g.append(svgEl('path',{class:'mi-bar',d:round(x,yp,bw,hp),fill:'var(--mi-per)'}));
+  const lab=svgEl('text',{x:cx,y:H-8,'text-anchor':'middle'});lab.textContent=MONTHS[+m.month.slice(5,7)-1];g.append(lab);
+  g.append(svgEl('rect',{class:'hit',x:cx-slot/2,y:T,width:slot,height:H-T-B}));
+  const show=()=>{tip.replaceChildren();const h=el('div',monthName(m.month,true));h.style.fontWeight='600';tip.append(h);for(const [n,v,c] of [['Business',m.business,'var(--mi-bus)'],['Personal',m.personal,'var(--mi-per)']]){const r=document.createElement('div');const sw=document.createElement('i');sw.style.background=c;r.append(sw,document.createTextNode(n+': '+fmtMi(v)+' mi'));tip.append(r)}
+   const bx=box.getBoundingClientRect(),sx=bx.width/W;tip.style.left=(cx*sx)+'px';tip.style.top=(Math.min(yp,yb)*220/H-8)+'px';tip.hidden=false};
+  g.addEventListener('mouseenter',show);g.addEventListener('focus',show);g.addEventListener('mouseleave',()=>tip.hidden=true);g.addEventListener('blur',()=>tip.hidden=true);svg.append(g)});
+ box.append(svg,tip)}
+function sparkBars(values){const W=200,H=34,n=values.length,max=Math.max(1,...values.map(v=>v.value)),slot=W/n,bw=slot*0.6;const svg=svgEl('svg',{class:'ap-spark',viewBox:`0 0 ${W} ${H}`,preserveAspectRatio:'none','aria-hidden':'true'});
+ values.forEach((v,i)=>{const h=v.value>0?Math.max(2,(H-2)*v.value/max):1;const r=svgEl('rect',{x:slot*i+(slot-bw)/2,y:H-h,width:bw,height:h,rx:1.5,fill:v.value>0?'var(--mi-bus)':'var(--mi-grid)'});const t=svgEl('title',{});t.textContent=monthName(v.label)+': '+fmtMi(v.value)+' business miles';r.append(t);svg.append(r)});return svg}
+"""
+SCRIPT += r"""
 if(PAGE==='apps'){
  run(async()=>{const d=await api('/admin/api/apps');const g=$('ap-grid');g.replaceChildren();let w=0;
   for(const a of d.apps){w+=a.waiting;const t=document.createElement('a');t.className='ap-tile';t.href=a.href;t.dataset.app=a.id;
    const m=el('div',a.mark,'ap-mark');m.setAttribute('aria-hidden','true');const tx=el('div','');tx.append(el('h3',a.name),el('p',a.description));
+   if(a.summary){const st=el('div','','ap-stats');for(const x of a.summary.stats||[]){const d=el('div','');d.append(el('b',x.value),el('span',x.label));st.append(d)}tx.append(st);if(a.summary.spark&&a.summary.spark.length)tx.append(sparkBars(a.summary.spark));if(a.summary.note)tx.append(el('div',a.summary.note,'ap-note'))}
    tx.append(a.waiting?el('span',a.waiting+' waiting for you','badge v-warn'):el('span','Nothing waiting','badge v-none'));t.append(m,tx);g.append(t)}
   $('ap-sum').textContent=d.apps.length+' app'+(d.apps.length===1?'':'s')+(w?' · '+w+' waiting':'')})
 }
@@ -1452,7 +1493,23 @@ if(PAGE==='mileage'){
  const ST={draft:['Draft: waiting for you','v-warn'],fill_approved:['Approved for filling','v-run'],save_approved:['Approved for saving','v-run'],saved:['Saved in TMC','v-ok'],verified:['Verified in TMC','v-ok'],rejected:['Not claimed','v-none'],withdrawn:['No longer a business day','v-none']};
  const fmt=d=>new Date(d+'T12:00:00').toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'});
  const map=c=>{const a=document.createElement('a');a.href='https://www.google.com/maps?q='+encodeURIComponent(c);a.target='_blank';a.rel='noopener noreferrer';a.textContent='map';a.className='small';return a};
- async function load(){const d=await api('/admin/api/mileage'+(st.imp?'?import_id='+st.imp:''));st.d=d;render()}
+ async function load(){const d=await api('/admin/api/mileage'+(st.imp?'?import_id='+st.imp:''));st.d=d;render();overview(d.overview)}
+ function overview(o){if(!o)return;const money=v=>v==null?'':' · £'+v.toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2});
+  $('mi-ov-to').textContent=o.tracked_to?'Tracked to '+new Date(o.tracked_to+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'Load a tracker export to start';
+  const k=(v,l,sub,prog)=>{const d=el('div','','mi-k');d.append(el('b',v),el('span',l));if(sub)d.append(el('span',sub,'sub'));if(prog!=null){const p=el('div','','mi-prog');const i=document.createElement('i');i.style.width=Math.min(100,prog)+'%';p.append(i);d.append(p)}return d};
+  const e=o.entries,ty=o.tax_year;
+  $('mi-ov-tiles').replaceChildren(
+   k(fmtMi(o.this_month.business),'Business miles '+(o.this_month.label||'this month'),fmtMi(o.this_month.personal)+' personal'),
+   k(fmtMi(ty.business),'Business miles, tax year so far',fmtMi(Math.max(0,ty.threshold-ty.business))+' to HMRC\'s 10,000 mark',100*ty.business/ty.threshold),
+   k(fmtMi(o.last_12.business),'Business miles, last 12 months',fmtMi(o.last_12.personal)+' personal'),
+   k(String(e.waiting.count+e.approved.count),'Entries still to claim',(e.waiting.count?e.waiting.count+' waiting for you':'none waiting')+money(o.to_claim_value)),
+   k(String(e.in_tmc.count),'Entries in TMC',fmtMi(e.in_tmc.miles)+' miles'+money(o.claimed_value)));
+  mileageChart($('mi-chart'),o.months);
+  const t=$('mi-ov-table');t.replaceChildren();const hr=document.createElement('tr');for(const h of ['Month','Business miles','Personal miles'])hr.append(el('th',h));const th=document.createElement('thead');th.append(hr);t.append(th);const b=document.createElement('tbody');
+  for(const m of o.months){const r=document.createElement('tr');r.append(el('td',monthName(m.month)),el('td',fmtMi(m.business)),el('td',fmtMi(m.personal)));b.append(r)}t.append(b);
+  if(document.activeElement!==$('mi-rate'))$('mi-rate').value=o.rate||''}
+ $('mi-rate-save').onclick=()=>run(async()=>{await api('/admin/api/mileage/rate','PUT',{rate:+($('mi-rate').value||0)});$('notice').textContent='Claim rate saved.';await load()});
+ window.addEventListener('resize',()=>{if(st.d&&st.d.overview)mileageChart($('mi-chart'),st.d.overview.months)});
  function placeForm(init,onDone){const f=el('div','','mi-form');const n=document.createElement('input');n.maxLength=80;n.placeholder='Name, e.g. Hamilton office';n.value=init.name||'';
   const k=document.createElement('select');for(const [v,l] of [['personal','Personal'],['business','Business'],['home','Home']]){const o=el('option',l);o.value=v;k.append(o)}k.value=init.kind||'personal';
   const pu=document.createElement('input');pu.maxLength=200;pu.placeholder='Purpose wording for TMC';pu.value=init.purpose||'';

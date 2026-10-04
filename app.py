@@ -1183,7 +1183,7 @@ def admin_mileage(import_id: str=Query('',max_length=40)):
     imps=mileage.imports();cur=import_id or (imps[0]['id'] if imps else '')
     try: summ=mileage.summary(cur) if cur else None
     except ValueError: summ=None
-    return {'imports':imps,'places':mileage.places(),'vehicle':mileage.vehicle(),'current':summ}
+    return {'imports':imps,'places':mileage.places(),'vehicle':mileage.vehicle(),'current':summ,'overview':mileage.overview()}
 
 @app.post('/admin/api/mileage/import')
 def admin_mileage_import(m: MileageImport):
@@ -1203,6 +1203,14 @@ def admin_mileage_place_delete(pid: str):
     try: r=mileage.delete_place(pid)
     except ValueError as e: raise HTTPException(404,str(e)) from None
     _mileage_refresh();return r
+
+class MileageRate(BaseModel):
+    rate: float = Field(0, ge=0, le=200)
+
+@app.put('/admin/api/mileage/rate')
+def admin_mileage_rate(r: MileageRate):
+    try: return mileage.set_rate(r.rate)
+    except ValueError as e: raise HTTPException(400, str(e))
 
 @app.put('/admin/api/mileage/vehicle')
 def admin_mileage_vehicle(v: MileageVehicle):

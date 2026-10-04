@@ -196,9 +196,10 @@ def connector_store(cfg):
     os.makedirs(cfg.connector_store, exist_ok=True)
     try: os.chmod(cfg.connector_store, 0o700)
     except OSError: pass
-    files = FileTreeStore(data_directory=cfg.connector_store,
-                          key_sanitization_strategy=FileTreeV1KeySanitizationStrategy(cfg.connector_store),
-                          collection_sanitization_strategy=FileTreeV1CollectionSanitizationStrategy(cfg.connector_store))
+    from pathlib import Path
+    root = Path(cfg.connector_store)
+    files = FileTreeStore(data_directory=root, key_sanitization_strategy=FileTreeV1KeySanitizationStrategy(root),
+                          collection_sanitization_strategy=FileTreeV1CollectionSanitizationStrategy(root))
     fkey = derive_jwt_key(high_entropy_material=cfg.connector_key, salt='alice-connector-storage')
     return FernetEncryptionWrapper(key_value=files, fernet=Fernet(key=fkey), raise_on_decryption_error=False)
 

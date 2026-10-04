@@ -404,3 +404,91 @@ def waiting():
                                             "JOIN mileage_imports i ON i.id = d.import_id WHERE d.status = 'draft' ORDER BY d.day")]
     return [{'title': datetime.strptime(r['day'], '%Y-%m-%d').strftime('%a %d %b %Y').replace(' 0', ' ') + f": {r['miles']} business miles",
              'detail': 'TMC entry waiting for your approval (' + r['name'] + ')', 'href': '/admin/mileage?import_id=' + r['import_id']} for r in rows]
+
+
+# ---------------- overview (Apps tile and the top of the Mileage page) ----------------
+def set_rate(pence):
+    """Your claim rate in pence per mile, only to show what entries are worth (0 = don't show money)."""
+    try: p = round(float(pence or 0), 1)
+    except (TypeError, ValueError): raise ValueError('Give the rate in pence per mile, e.g. 45.') from None
+    if not 0 <= p <= 200: raise ValueError('A rate between 0 and 200 pence per mile, please.')
+    with store.db() as c:
+        c.execute("INSERT INTO settings(key,value) VALUES ('mileage_rate_ppm',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (str(p),))
+        store.audit(c, 'mileage_rate_set', 'settings', 'human_review', f'{p}p per mile')
+    return {'rate': p}
+
+
+def rate():
+    with store.db() as c:
+        r = c.execute("SELECT value FROM settings WHERE key='mileage_rate_ppm'").fetchone()
+    try: return float(r[0]) if r else 0.0
+    except (TypeError, ValueError): return 0.0
+
+
+def _tax_year_start(d):
+    start = d.replace(month=4, day=6)
+    return start if d >= start else start.replace(year=d.year - 1)
+
+
+def overview(today=None):
+    """Mileage at a glance: business and personal miles per month for the last 12 months, this month, the tax year
+    so far (HMRC's approved rate changes after 10,000 business miles in a tax year), and the entries: waiting for you,
+    approved, in TMC, not claimed. A day covered by several exports is counted once, from the newest export."""
+    from datetime import date
+    today = today or date.today()
+    pl = places()
+    with store.db() as c:
+        imps = [dict(r) for r in c.execute('SELECT id, legs, created_at, last_date FROM mileage_imports ORDER BY created_at')]
+        drafts = [dict(r) for r in c.execute('SELECT import_id, day, miles, status FROM mileage_drafts')]
+    by_day, newest = {}, {}
+    for imp in imps:
+        for d in classify(json.loads(imp['legs']), pl)['days']:
+            by_day[d['day']] = (d['business'], d['personal']); newest[d['day']] = imp['id']
+    status = {}
+    for d in drafts:
+        if newest.get(d['day']) == d['import_id']: status[d['day']] = (d['status'], d['miles'])
+    months = []
+    y, m = today.year, today.month
+    for _ in range(12):
+        months.append(f'{y:04d}-{m:02d}')
+        y, m = (y - 1, 12) if m == 1 else (y, m - 1)
+    months.reverse()
+    per = {k: [0.0, 0.0] for k in months}
+    for day, (b, p) in by_day.items():
+        if day[:7] in per: per[day[:7]][0] += b; per[day[:7]][1] += p
+    ty0 = _tax_year_start(today).isoformat()
+    tax_year = round(sum(b for day, (b, _p) in by_day.items() if ty0 <= day <= today.isoformat()), 1)
+    groups = {'waiting': ('draft',), 'approved': ('fill_approved', 'save_approved'), 'in_tmc': ('saved', 'verified'), 'not_claimed': ('rejected',)}
+    entries = {k: {'count': 0, 'miles': 0.0} for k in groups}
+    for st, miles in status.values():
+        for k, sts in groups.items():
+            if st in sts: entries[k]['count'] += 1; entries[k]['miles'] = round(entries[k]['miles'] + miles, 1)
+    r = rate()
+    money = (lambda miles: round(miles * r / 100, 2)) if r else (lambda miles: None)
+    last = max((i['last_date'] or '' for i in imps), default='')
+    # 'this month' until it has any tracking; before that, the latest month the tracker covers (e.g. September in early October)
+    focus = months[-1] if (sum(per[months[-1]]) or not last or last[:7] >= months[-1]) else (last[:7] if last[:7] in per else months[-1])
+    this_month = per[focus]
+    return {'months': [{'month': k, 'business': round(v[0], 1), 'personal': round(v[1], 1)} for k, v in per.items()],
+            'this_month': {'business': round(this_month[0], 1), 'personal': round(this_month[1], 1), 'month': focus,
+                           'label': 'this month' if focus == months[-1] else 'in ' + datetime.strptime(focus, '%Y-%m').strftime('%B')},
+            'tax_year': {'business': tax_year, 'since': ty0, 'threshold': 10000},
+            'last_12': {'business': round(sum(v[0] for v in per.values()), 1), 'personal': round(sum(v[1] for v in per.values()), 1)},
+            'entries': entries, 'rate': r,
+            'to_claim_value': money(entries['waiting']['miles'] + entries['approved']['miles']),
+            'claimed_value': money(entries['in_tmc']['miles']),
+            'tracked_to': last, 'has_data': bool(imps)}
+
+
+def tile():
+    """For the Apps page tile."""
+    o = overview()
+    return {'stats': [{'label': 'Business miles ' + o['this_month']['label'], 'value': f"{o['this_month']['business']:,.0f}"},
+                      {'label': 'Tax year so far', 'value': f"{o['tax_year']['business']:,.0f}"}],
+            'spark': [{'label': m['month'], 'value': m['business']} for m in o['months']],
+            'note': ('Tracked to ' + _nice_date(o['tracked_to'])) if o['tracked_to'] else 'No tracker export yet'}
+
+
+def _nice_date(iso):
+    d = datetime.strptime(iso, '%Y-%m-%d')
+    return f"{d.day} {d.strftime('%b %Y')}"
