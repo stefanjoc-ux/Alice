@@ -73,7 +73,8 @@ jobs:
           RG="${{ vars.AZURE_RESOURCE_GROUP }}"
           az extension add --name containerapp --upgrade --only-show-errors
           for APP in alice-web alice-mcp; do
-            LIVE=$(az containerapp ingress traffic show -n "$APP" -g "$RG" --query "[?weight>\`0\`].revisionName | [0]" -o tsv)
+            # The revision taking traffic, by name (traffic may be set as "latest revision", e.g. after the setup script's apps step)
+            LIVE=$(az containerapp revision list -n "$APP" -g "$RG" --query "[?properties.trafficWeight>\`0\`].name | [0]" -o tsv)
             if [ -n "$LIVE" ]; then   # pin traffic to the live revision before adding the new one
               az containerapp ingress traffic set -n "$APP" -g "$RG" --revision-weight "$LIVE=100" --only-show-errors -o none
             fi

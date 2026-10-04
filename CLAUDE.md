@@ -73,7 +73,9 @@ knowledge note "AI Substrate: status summary" through the `alice` connector, or 
   read by a managed identity; `Documents\` and `data\images` on an Azure Files share mounted at `/mnt/alice`.
 - `deploy/azure-setup.ps1` builds it in steps (infra, secrets, image, files, migrate, signin, apps, github; `connector` on its own); it never reads .env. Steps deploy the LIVE image unless `-Step image` just built one (`Image-Ref`), so re-running a step never rolls back a promoted version.
 - Pipeline (`.github/workflows/deploy.yml`): all suites inside the image (SQLite and PostgreSQL), push, then a new revision
-  with no traffic, then automatic go-live (`promote.sh promote` with `PROMOTE_WAIT=1`, same checks; off when the repository
+  with no traffic, then automatic go-live (the deploy step first pins traffic to the live revision BY NAME, found with `revision list`, because Bicep's
+  `latestRevision: true` (set again by `azure-setup -Step apps`) would otherwise put every new revision live at once; then
+  `promote.sh promote` with `PROMOTE_WAIT=1`, same checks; off when the repository
   variable `AUTO_PROMOTE` is `false`). Going live by hand or rolling back: the "Go live (promote or roll back)" workflow (`.github/workflows/promote.yml`, the button;
   runs `deploy/promote.sh promote|rollback|status`: both apps or neither, newest must be Healthy and web must answer /healthz at its own revision address,
   allowed via `app.revision_hosts()` from Azure's CONTAINER_APP_* variables, exact host, never a wildcard;
