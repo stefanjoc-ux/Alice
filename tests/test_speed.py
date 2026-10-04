@@ -65,3 +65,10 @@ async def nd(req):
 kw = next(mw.kwargs for mw in app.app.user_middleware if mw.cls is GZipMiddleware)
 mini = GZipMiddleware(Starlette(routes=[Route('/s', nd)]), **kw)
 t('an NDJSON stream passes through uncompressed with the same settings', TestClient(mini).get('/s', headers={'Accept-Encoding': 'gzip'}).headers.get('content-encoding') is None)
+
+# a new revision can be checked at its own address before it goes live (the Go live button)
+rh = app.revision_hosts({'CONTAINER_APP_REVISION': 'alice-web--r596067d', 'CONTAINER_APP_ENV_DNS_SUFFIX': 'orangecoast-1.uksouth.azurecontainerapps.io',
+                         'CONTAINER_APP_HOSTNAME': '*.evil.example.com'})
+t("a revision's own address is allowed, exactly, never a wildcard", rh == ['alice-web--r596067d.orangecoast-1.uksouth.azurecontainerapps.io'])
+t('outside Azure no extra address is added', app.revision_hosts({}) == [])
+t('any other host is still refused', cl.get('/healthz', headers={'Host': 'alice-web--r1234567.orangecoast-1.uksouth.azurecontainerapps.io'}).status_code == 400)

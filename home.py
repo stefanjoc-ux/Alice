@@ -38,8 +38,8 @@ def summary(tz=0):
     ag = _safe(lambda: agents.listing()['agents'], [])
     attention = [{'id': a['id'], 'name': a['name'],
                   'why': (a['status'] + (': ' + a['status_reason'] if a['status_reason'] else '')) if a['status'] != 'active'
-                  else 'last run failed' if (a.get('last_run') or {}).get('status') == 'failed' else 'review date passed'}
-                 for a in ag if a['status'] != 'active' or (a.get('last_run') or {}).get('status') == 'failed' or a.get('review_overdue')]
+                  else 'last run failed' if a.get('failure_open') else 'review date passed'}
+                 for a in ag if a['status'] != 'active' or a.get('failure_open') or a.get('review_overdue')]
     asst = _safe(lambda: assistants.listing()['assistants'], [])
     hour = (datetime.now(timezone.utc).hour - (tz or 0) // 60) % 24
     return {

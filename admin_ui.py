@@ -318,7 +318,7 @@ nav{display:flex;gap:20px;flex-wrap:wrap}.sidebar nav{display:contents}
 .ag-card-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:auto}.ag-card-stat{margin-left:auto}
 .ag-card-flags{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;color:#6b4406}
 .ag-head{padding-bottom:6px}.ag-head>button{margin:0 0 10px}.ag-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.ag-title h2{margin:0;font-size:20px}
-.ag-ctl{display:flex;gap:6px;margin-top:10px}.ag-reason{margin:10px 0 0;padding:8px 12px;border-radius:8px;background:#fdf3e1;border:1px solid #e2bf85;color:#4a3004;font-size:13px}
+.ag-ctl{display:flex;gap:6px;margin-top:10px}.ag-ack{margin:12px 0 0;padding:12px 14px;border-radius:10px;background:#fdf3e1;border:1px solid #e2bf85;color:#4a3004}.ag-ack-top{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}.ag-ack-err{margin:6px 0 10px;font-size:13px;font-family:ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-word;background:#fff8ec;border-radius:6px;padding:6px 8px}.ag-ack-form{display:grid;gap:8px}.ag-ack-kinds{display:flex;gap:8px;flex-wrap:wrap}.ag-ack-kind{display:flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid #d9b77c;border-radius:8px;background:#fff;cursor:pointer}.ag-ack-kind small{color:#7a5a20}.ag-ack-kind:has(input:checked){border-color:#075e79;box-shadow:0 0 0 1px #075e79}.ag-ack-form textarea{width:100%;box-sizing:border-box}.ag-ack-form button{justify-self:start}.ag-ack-dec{display:flex;gap:6px;align-items:center}.ag-acked{margin-top:4px;color:#2f6b3a}.ag-reason{margin:10px 0 0;padding:8px 12px;border-radius:8px;background:#fdf3e1;border:1px solid #e2bf85;color:#4a3004;font-size:13px}
 .ag-tabs{margin:14px 0 0}.ag-purpose{font-size:15px;margin:0 0 14px}.ag-stats{grid-template-columns:repeat(3,minmax(0,1fr));margin-bottom:16px}
 .ag-facts{display:grid;grid-template-columns:160px 1fr;gap:6px 14px;margin:0 0 16px;font-size:14px}.ag-facts dt{color:var(--muted)}.ag-facts dd{margin:0}
 .ag-mini{display:grid;grid-template-columns:120px 90px 130px 1fr;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}.ag-mini-sum{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1734,14 +1734,14 @@ if(PAGE==='agents'){
   if(lr)foot.append(badge(a.kind==='app'&&lr.status==='running'?'today':lr.status,RUNST[lr.status]||'v-none'));
   foot.append(el('span',a.kind==='app'?plural('call',a.calls_month)+' this month':plural('run',a.runs_month)+(DEMO?'':' · '+usd(a.cost_month)),'ag-card-stat'));
   c.append(foot);
-  const flags=el('div','','ag-card-flags');if(a.status_reason&&a.status!=='active')flags.append(el('span',a.status_reason,'small'));if(a.external_content)flags.append(el('span','Reads outside content','tag'));if(a.review_overdue)flags.append(el('span','⚑ Review overdue','flag'));if(a.waiting)flags.append(el('span',a.waiting+' waiting for you','flag'));if(flags.childElementCount)c.append(flags);
+  const flags=el('div','','ag-card-flags');if(a.status_reason&&a.status!=='active')flags.append(el('span',a.status_reason,'small'));if(a.external_content)flags.append(el('span','Reads outside content','tag'));if(a.failure_open)flags.append(el('span','⚑ Last run failed','flag'));if(a.review_overdue)flags.append(el('span','⚑ Review overdue','flag'));if(a.waiting)flags.append(el('span',a.waiting+' waiting for you','flag'));if(flags.childElementCount)c.append(flags);
   return c}
  function list(){$('ag-view').replaceChildren(...[['cards','Cards'],['list','List'],['map','System map']].map(([k,l])=>{const b=el('button',l,'chip'+(st.view===k?' on':''));b.type='button';b.onclick=()=>{st.view=k;try{localStorage.setItem('alice-agents-view',k)}catch{}list()};return b}));
   $('ag-cards-wrap').hidden=st.view==='map';$('ag-map-wrap').hidden=st.view!=='map';if(st.view==='map'){drawMap();return}
   const L=st.L,internal=L.agents.filter(a=>a.kind!=='app'),apps=L.agents.filter(a=>a.kind==='app'),off=L.agents.filter(a=>a.status!=='active').length;
   $('ag-summary').textContent=internal.length+' automations · '+apps.length+' connected apps'+(off?' · '+off+' paused or stopped':'');
   const q=($('ag-search').value||'').trim().toLowerCase();
-  const attn=a=>a.status!=='active'||a.review_overdue||a.waiting>0||(a.last_run&&a.last_run.status==='failed');
+  const attn=a=>a.status!=='active'||a.review_overdue||a.waiting>0||a.failure_open;
   const gname=Object.fromEntries((L.groups||[]).map(g=>[g.id,g.name]));
   const match=a=>!q||(a.name+' '+a.purpose+' '+a.id+' '+(gname[a.group]||'')).toLowerCase().includes(q);
   const closed=(()=>{try{return JSON.parse(localStorage.getItem('alice-agents-closed')||'[]')}catch{return []}})();
@@ -1751,7 +1751,7 @@ if(PAGE==='agents'){
   if(st.view==='list'){const t=el('table','','mem-table ag-table');const h=document.createElement('tr');for(const x of ['Agent','Status','Last run','This month','Cost'])h.append(el('th',x));const th=document.createElement('thead');th.append(h);t.append(th);const tb=document.createElement('tbody');let any=false;
    for(const g of groups){const rows=sorted(g.rows);if(!rows.length)continue;any=true;const gr=document.createElement('tr');gr.className='ag-trow-g';const gc=el('td','');gc.colSpan=5;gc.append(el('strong',g.name),el('span',' '+rows.length,'ag-count'));gr.append(gc);tb.append(gr);
     for(const a of rows){const tr=document.createElement('tr');tr.className='ag-trow'+(a.status!=='active'?' off':'');tr.tabIndex=0;tr.onclick=()=>go(a.id);tr.onkeydown=e=>{if(e.key==='Enter')go(a.id)};
-     const c1=document.createElement('td');c1.append(el('strong',a.name),el('div',a.purpose,'muted small ag-tpurpose'));if(attn(a))c1.append(el('div','⚑ needs attention'+(a.status_reason&&a.status!=='active'?': '+a.status_reason:a.waiting?': '+a.waiting+' waiting for you':''),'small ag-tattn'));
+     const c1=document.createElement('td');c1.append(el('strong',a.name),el('div',a.purpose,'muted small ag-tpurpose'));if(attn(a))c1.append(el('div','⚑ needs attention'+(a.status_reason&&a.status!=='active'?': '+a.status_reason:a.failure_open?': last run failed':a.waiting?': '+a.waiting+' waiting for you':''),'small ag-tattn'));
      const c2=document.createElement('td');c2.append(pill(a));const lr=a.last_run;const c3=document.createElement('td');c3.className='small';if(lr){c3.append(document.createTextNode(when(lr.started_at)+' '),badge(a.kind==='app'&&lr.status==='running'?'today':lr.status,RUNST[lr.status]||'v-none'))}else c3.append(el('span',a.kind==='app'?'No calls yet':'Not run yet','muted'));
      tr.append(c1,c2,c3,el('td',a.kind==='app'?plural('call',a.calls_month):plural('run',a.runs_month)+(a.failed_month?' · '+a.failed_month+' failed':''),'small'),el('td',DEMO?'—':usd(a.cost_month),'num'));tb.append(tr)}}
    if(!any){const tr=document.createElement('tr');const td=el('td',q?'No match.':'No agents yet.','muted');td.colSpan=5;tr.append(td);tb.append(tr)}
@@ -1764,6 +1764,22 @@ if(PAGE==='agents'){
    d.ontoggle=()=>{if(q)return;try{const c=new Set(JSON.parse(localStorage.getItem('alice-agents-closed')||'[]'));d.open?c.delete(gid):c.add(gid);localStorage.setItem('alice-agents-closed',JSON.stringify([...c]))}catch{}};
    box.append(d)}}
  $('ag-search').oninput=()=>list();
+ // ---- a failed run stays flagged until you acknowledge it: seen, fixed or accepted, with a note (optionally a decision)
+ function ackBox(a){const lr=a.last_run||{};const box=el('div','','ag-ack');box.id='ag-ack';
+  const top=el('div','','ag-ack-top');top.append(el('strong','⚑ Last run failed'),el('span',when(lr.started_at),'small muted'));box.append(top);
+  if(lr.error&&!DEMO)box.append(el('p',lr.error,'ag-ack-err'));
+  const form=document.createElement('form');form.className='ag-ack-form';
+  const kinds=el('div','','ag-ack-kinds');kinds.setAttribute('role','radiogroup');kinds.setAttribute('aria-label','What happened');
+  for(const [k,l,d] of [['seen','Seen','I know about it'],['fixed','Fixed','The cause is sorted'],['accepted','Accepted','Expected, no change needed']]){const lb=document.createElement('label');lb.className='ag-ack-kind';const r=document.createElement('input');r.type='radio';r.name='ack-kind';r.value=k;if(k==='seen')r.checked=true;lb.append(r,el('span',l),el('small',d));kinds.append(lb)}
+  const note=document.createElement('textarea');note.id='ag-ack-note';note.rows=2;note.maxLength=500;note.placeholder='Note (optional): what you found or did';
+  note.setAttribute('aria-label','Note');
+  const dec=document.createElement('label');dec.className='ag-ack-dec small';const cb=document.createElement('input');cb.type='checkbox';cb.id='ag-ack-decision';dec.append(cb,document.createTextNode(' Also record the note as a decision (waits for your approval in Memories)'));
+  const save=el('button','Clear it','');save.type='submit';
+  form.append(kinds,note,dec,save);
+  form.onsubmit=e=>{e.preventDefault();run(async()=>{const kind=form.querySelector('input[name=ack-kind]:checked').value;
+   const r=await api('/admin/api/agents/'+a.id+'/acknowledge','POST',{kind,note:note.value,decision:cb.checked});
+   $('notice').textContent=a.name+': '+(r.acknowledged===1?'failure':r.acknowledged+' failures')+' cleared'+(r.decision?'; decision waiting for approval in Memories.':'.');await load();navCounts()})};
+  box.append(form);return box}
  // ---- detail: header, tabs, one tab at a time
  function detail(a){const box=$('ag-detail');box.replaceChildren();
   const head=el('section','','ag-head');const back=el('button','← All agents','secondary');back.type='button';back.onclick=()=>go('');
@@ -1774,6 +1790,7 @@ if(PAGE==='agents'){
   if(a.status!=='stopped')ctl.append(btn('Stop',async()=>{if(!confirm('Stop '+a.name+'? It will not run, and an app will be refused every call, until you resume it.'))return;await api('/admin/api/agents/'+a.id+'/status','POST',{status:'stopped',reason:'stopped by you'});await load()},'secondary'));
   head.append(back,title,ctl);
   if(a.status_reason&&a.status!=='active')head.append(el('p',a.status==='paused'?'Paused: '+a.status_reason:a.status_reason,'ag-reason'));
+  if(a.failure_open)head.append(ackBox(a));
   const tabs=el('div','','mem-tabs ag-tabs');for(const [k,l] of TABS){const b=el('button',l,'chip'+(st.tab===k?' on':''));b.type='button';b.onclick=()=>go(a.id,k,false);tabs.append(b)}head.append(tabs);
   box.append(head);const body=el('section','');box.append(body);
   ({overview,runs:runsTab,data:dataTab,settings,history:historyTab}[st.tab]||overview)(a,body)}
@@ -1793,7 +1810,8 @@ if(PAGE==='agents'){
   if(!r.runs.length){body.append(el('p',a.kind==='app'?'No tool calls yet.':'No runs yet. Runs that had nothing to do are not kept.','muted'));return}
   const t=el('table','','mem-table');const h=document.createElement('tr');for(const x of ['Started','Trigger','Outcome','Cost / calls','Summary'])h.append(el('th',x));t.append(h);
   for(const x of r.runs){const tr=document.createElement('tr');const b=el('button',when(x.started_at),'mem-title');b.type='button';const c1=document.createElement('td');c1.append(b);const c3=document.createElement('td');c3.append(badge(a.kind==='app'&&x.status==='running'?'today':x.status,RUNST[x.status]||'v-none'));
-   tr.append(c1,el('td',x.trigger,'small'),c3,el('td',(x.cost_usd&&!DEMO?usd(x.cost_usd)+' · ':'')+x.calls+' calls','small'),el('td',DEMO?'':(x.error||x.summary||''),'small'));t.append(tr);
+   const c5=el('td',DEMO?'':(x.error||x.summary||''),'small');if(x.ack_at){const ak={seen:'Seen',fixed:'Fixed',accepted:'Accepted'}[x.ack_kind]||'Cleared';c5.append(el('div','✓ '+ak+' '+when(x.ack_at)+(x.ack_note&&!DEMO?': '+x.ack_note:''),'ag-acked'))}
+   tr.append(c1,el('td',x.trigger,'small'),c3,el('td',(x.cost_usd&&!DEMO?usd(x.cost_usd)+' · ':'')+x.calls+' calls','small'),c5);t.append(tr);
    const dr=document.createElement('tr');dr.hidden=true;const dtd=document.createElement('td');dtd.colSpan=5;dr.append(dtd);t.append(dr);
    b.onclick=()=>run(async()=>{if(!dr.hidden){dr.hidden=true;return}const d=await api('/admin/api/agent-runs/'+x.id+(dq?'?'+dq:''));dtd.replaceChildren();
     const tch=Object.entries(d.touched).map(([k,v])=>(k==='read'?'Read ':'Wrote ')+Object.entries(v).map(([ty,n])=>plural(ty,n)).join(', ')).join(' · ');if(tch)dtd.append(el('p',tch,'small'));
@@ -2042,9 +2060,10 @@ NAV_SCRIPT = r"""
 window.addEventListener('load',()=>setTimeout(()=>{try{const nav=performance.getEntriesByType('navigation')[0];if(!nav)return;
  let end=nav.loadEventEnd||nav.domComplete;for(const r of performance.getEntriesByType('resource'))if(r.initiatorType==='fetch'&&r.name.includes('/admin/api/')&&!r.name.includes('/speed')&&r.startTime<6000)end=Math.max(end,r.responseEnd);
  api('/admin/api/speed/page','POST',{page:location.pathname,ms:Math.round(end),kb:Math.round((nav.transferSize||0)/1024)}).catch(()=>{})}catch{}},4000));
-(async()=>{try{const d=await api('/admin/api/actions');const n={};for(const s of d.sections)n[s.key]=s.count;
- if(DEMO)return;const counts={agents:n.agents||0,actions:d.total,memories:n.proposals||0,knowledge:(n.drafts||0)+(n.replacements||0),organisations:(n.orgfacts||0)+(n.opportunities||0),temple:n.suggestions||0,archive:n.chats||0,rules:n.rules||0,apps:n.apps||0};
- for(const [k,v] of Object.entries(counts)){if(!v)continue;const a=document.querySelector('.sidebar a[data-page="'+k+'"]');if(!a)continue;const c=document.createElement('span');c.className='nav-count';c.textContent=v;a.append(c)}}catch{}})();
+async function navCounts(){try{const d=await api('/admin/api/actions');const n={};for(const s of d.sections)n[s.key]=s.count;
+ if(DEMO)return;document.querySelectorAll('.sidebar .nav-count').forEach(x=>x.remove());const counts={agents:n.agents||0,actions:d.total,memories:n.proposals||0,knowledge:(n.drafts||0)+(n.replacements||0),organisations:(n.orgfacts||0)+(n.opportunities||0),temple:n.suggestions||0,archive:n.chats||0,rules:n.rules||0,apps:n.apps||0};
+ for(const [k,v] of Object.entries(counts)){if(!v)continue;const a=document.querySelector('.sidebar a[data-page="'+k+'"]');if(!a)continue;const c=document.createElement('span');c.className='nav-count';c.textContent=v;a.append(c)}}catch{}}
+navCounts();
 """
 
 SCRIPT += r"""

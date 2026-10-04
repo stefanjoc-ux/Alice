@@ -274,6 +274,9 @@ with store.db() as c:
     c.execute('CREATE INDEX IF NOT EXISTS agent_events_run ON agent_events(run_id)')
     if 'anatomy' not in {r['name'] for r in c.execute('PRAGMA table_info(agents)')}:
         c.execute("ALTER TABLE agents ADD COLUMN anatomy TEXT NOT NULL DEFAULT '{}'")
+    _run_cols = {r['name'] for r in c.execute('PRAGMA table_info(agent_runs)')}
+    for _col, _ddl in (('ack_at', 'TEXT'), ('ack_kind', "TEXT NOT NULL DEFAULT ''"), ('ack_note', "TEXT NOT NULL DEFAULT ''")):
+        if _col not in _run_cols: c.execute(f'ALTER TABLE agent_runs ADD COLUMN {_col} {_ddl}')
     for _aid, _name, _kind, _purpose, _trigger, _workloads, _reads, _writes, _ext in BUILTIN:
         if not c.execute('SELECT 1 FROM agents WHERE id=?', (_aid,)).fetchone():
             _perms = json.dumps(_default_perms(_kind))
@@ -374,6 +377,7 @@ def listing():
         a.update(runs_month=s.get('runs') or 0, failed_month=s.get('failed') or 0, cost_month=round(s.get('cost') or 0, 4),
                  calls_month=s.get('calls') or 0, last_run=last.get(a['id']), waiting=proposals.get(a['id'], 0),
                  review_overdue=bool(a['review_by'] and a['review_by'] < today))
+        a['failure_open'] = failure_open(a.get('last_run'))
     order = {aid: n for _, _, _, ids in GROUPS for n, aid in enumerate(ids)}
     for a in agents: a['anatomy_live'] = live_anatomy(a); a['group'] = group_of(a); a['group_order'] = order.get(a['id'], 99)
     try:
@@ -780,8 +784,11 @@ def _finish(a, rid, status, error, result):
             c.execute('DELETE FROM agent_events WHERE run_id=?', (rid,)); c.execute('DELETE FROM agent_runs WHERE id=?', (rid,))
             return
         c.execute('UPDATE agent_runs SET finished_at=?,status=?,error=?,summary=? WHERE id=?', (_now(), status, error, _summary(result), rid))
-        streak = [r[0] for r in c.execute("SELECT status FROM agent_runs WHERE agent_id=? AND status NOT IN ('skipped','running','blocked') "
-                                          "ORDER BY started_at DESC LIMIT ?", (a['id'], FAIL_LIMIT))]
+        streak = []
+        for r in c.execute("SELECT status, ack_kind FROM agent_runs WHERE agent_id=? AND status NOT IN ('skipped','running','blocked') "
+                           "ORDER BY started_at DESC LIMIT ?", (a['id'], FAIL_LIMIT)):
+            if r[1] == 'fixed': break           # failures before a fix you recorded don't count towards pausing
+            streak.append(r[0])
     if status == 'failed' and len(streak) == FAIL_LIMIT and all(s == 'failed' for s in streak):
         set_status(a['id'], 'paused', f'{FAIL_LIMIT} failed runs in a row; last error: {error[:120]}', by='Alice')
 
@@ -859,11 +866,52 @@ def label_allowed(a, label):
 
 
 # ---------------- what needs your attention ----------------
+ACK_KINDS = {'seen': 'Seen', 'fixed': 'Fixed', 'accepted': 'Accepted, no change needed'}
+
+
+def failure_open(run):
+    """A failed last run needs you until you acknowledge it (seen, fixed or accepted)."""
+    return bool(run) and run.get('status') == 'failed' and not run.get('ack_at')
+
+
+def acknowledge(aid, kind, note='', run_id='', decision=False):
+    """Clear a failure once you have seen, fixed or accepted it, with an optional note. Without a run id, every failed run
+    of this agent not yet acknowledged is covered. The run keeps its 'failed' outcome (history stays true); the note is kept
+    on the run and in the activity log. With decision=True the note is also proposed as a decision (waits in Memories)."""
+    if kind not in ACK_KINDS: raise ValueError('Choose seen, fixed or accepted.')
+    a = get(aid)
+    note = ' '.join((note or '').split())[:500]
+    if note:
+        import rules_engine
+        if rules_engine.find_secrets(note): raise ValueError('The note looks like it contains a key or password. Leave that out.')
+    if decision and len(note) < 8: raise ValueError('Write the decision in the note (what you decided), then save.')
+    q, args = "SELECT id, started_at, error FROM agent_runs WHERE agent_id=? AND status='failed' AND ack_at IS NULL", [aid]
+    if run_id: q += ' AND id=?'; args.append(run_id)
+    with store.db() as c:
+        rows = [dict(r) for r in c.execute(q + ' ORDER BY started_at', args)]
+    if not rows: raise ValueError('There is no unacknowledged failure to clear.' if not run_id else 'That run is not an unacknowledged failure.')
+    out = {'acknowledged': len(rows), 'kind': kind}
+    if decision:          # first, so a decision the rules refuse leaves the failure as it was
+        last = rows[-1]
+        r = store.propose_decision(f'{a["name"]}: failed run {ACK_KINDS[kind].lower()}', note,
+                                   f'Agents page, {a["name"]} run {last["id"]} ({last["started_at"][:10]}); error: {(last["error"] or "")[:160]}')
+        out['decision'] = r.get('id')
+    at = _now()
+    with store.db() as c:
+        for r in rows:
+            c.execute('UPDATE agent_runs SET ack_at=?, ack_kind=?, ack_note=? WHERE id=? AND ack_at IS NULL', (at, kind, note, r['id']))
+        store.audit(c, 'agent_failure_' + kind, aid, 'human_review',
+                    f'{a["name"]}: {len(rows)} failed run{"s" if len(rows) != 1 else ""} marked {ACK_KINDS[kind].lower()}' + (f' ({note})' if note else ''))
+    return out
+
+
 def alerts():
     out = []
     for a in listing()['agents']:
         if a['status'] == 'paused' and a['status_reason'] and a['status_reason'] != 'by you':
             out.append({'id': a['id'], 'title': a['name'] + ' paused itself', 'detail': a['status_reason']})
+        elif a['failure_open'] and a['status'] == 'active':
+            out.append({'id': a['id'], 'title': a['name'] + ': last run failed', 'detail': (a['last_run'].get('error') or 'Failed.')[:200] + ' · Acknowledge it on the agent\'s page once seen or fixed.'})
         elif a['review_overdue'] and a['status'] != 'stopped':
             out.append({'id': a['id'], 'title': a['name'] + ': review its access', 'detail': 'Review-by date ' + a['review_by'] + ' has passed.'})
     return out
