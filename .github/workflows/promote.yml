@@ -1,0 +1,38 @@
+# The Promote button: Actions > "Go live (promote or roll back)" > Run workflow.
+# After a green "Test and deploy" run the new version waits with no traffic; this moves traffic to it, or back.
+# Copy to .github/workflows/promote.yml (same as deploy.yml). The work itself is in deploy/promote.sh.
+name: Go live (promote or roll back)
+
+on:
+  workflow_dispatch:
+    inputs:
+      what:
+        description: 'promote = newest version goes live · rollback = previous version goes live again · status = just show'
+        type: choice
+        options: [promote, rollback, status]
+        default: promote
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: alice-live
+  cancel-in-progress: false
+
+jobs:
+  live:
+    if: ${{ vars.AZURE_CLIENT_ID != '' }}
+    runs-on: ubuntu-24.04
+    environment: production
+    steps:
+      - uses: actions/checkout@v5
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: ${{ inputs.what }}
+        env:
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+        run: bash deploy/promote.sh "${{ inputs.what }}"

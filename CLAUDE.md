@@ -73,7 +73,9 @@ knowledge note "AI Substrate: status summary" through the `alice` connector, or 
   read by a managed identity; `Documents\` and `data\images` on an Azure Files share mounted at `/mnt/alice`.
 - `deploy/azure-setup.ps1` builds it in steps (infra, secrets, image, files, migrate, signin, apps, github; `connector` on its own); it never reads .env. Steps deploy the LIVE image unless `-Step image` just built one (`Image-Ref`), so re-running a step never rolls back a promoted version.
 - Pipeline (`.github/workflows/deploy.yml`): all suites inside the image (SQLite and PostgreSQL), push, then a new revision
-  with no traffic; `deploy/promote.ps1` moves traffic (or `-Rollback`). The opportunity scheduler holds a database lease
+  with no traffic. Going live: the "Go live (promote or roll back)" workflow (`.github/workflows/promote.yml`, the button;
+  runs `deploy/promote.sh promote|rollback|status`: both apps or neither, newest must be Healthy and web must answer /healthz;
+  keeps the previous revision on for rollback, switches older ones off). `deploy/promote.ps1` does the same from the PC. The opportunity scheduler holds a database lease
   (`scheduler_lease`), so only one process runs it even while two revisions are up.
 
 ### Restarting after a change
@@ -258,8 +260,7 @@ To undo uncommitted changes to a file: `git restore <file>`. To see what changed
 ## Roadmap (not yet built)
 
 - pgvector search in PostgreSQL; ChatGPT as a second connector client (it can use the same OAuth proxy).
-- Build and release without the PC: Claude works on the GitHub repo directly; Promote and Rollback as manual GitHub
-  workflows (promote also switches off all but the previous revision).
+- Build and release without the PC: Claude works on the GitHub repo directly (Promote/Rollback button done).
 - TypeScript front end against the existing API; split `substrate_store.py` into modules.
 - OpenAI image pricing once the usage export arrives (`IMAGE_PRICE_OPENAI`).
 - Opportunity and news digests by email to each organisation's account manager (Stefan, 3 Oct 2026). Build on
