@@ -40,6 +40,8 @@ param extAppId string = ''
 param extAllowedUsers string = ''
 @description('External endpoint: allowed client apps, <client app id>=<label>:<provider>;...')
 param extCallers string = ''
+@description('Claude connector: client ID of the "Alice connector sign-in" app registration (its secret and signing key are in Key Vault); empty = off.')
+param connectorClientId string = ''
 
 var suffix = take(uniqueString(resourceGroup().id), 6)
 var acrName = '${prefix}${suffix}acr'
@@ -234,6 +236,15 @@ var secrets = concat(
   [{ name: 'database-url', keyVaultUrl: '${kvUri}secrets/database-url', identity: identity.id }],
   map(keySecretNames, s => { name: s.name, keyVaultUrl: '${kvUri}secrets/${s.kv}', identity: identity.id })
 )
+var connectorSecrets = empty(connectorClientId) ? [] : [
+  { name: 'connector-secret', keyVaultUrl: '${kvUri}secrets/connector-secret', identity: identity.id }
+  { name: 'connector-key', keyVaultUrl: '${kvUri}secrets/connector-key', identity: identity.id }
+]
+var connectorEnv = empty(connectorClientId) ? [] : [
+  { name: 'ALICE_EXT_CONNECTOR_CLIENT_ID', value: connectorClientId }
+  { name: 'ALICE_EXT_CONNECTOR_SECRET', secretRef: 'connector-secret' }
+  { name: 'ALICE_EXT_CONNECTOR_KEY', secretRef: 'connector-key' }
+]
 var commonEnv = concat(
   [
     { name: 'ALICE_DATABASE_URL', secretRef: 'database-url' }
@@ -355,7 +366,7 @@ resource mcp 'Microsoft.App/containerApps@2024-03-01' = if (withApps) {
       activeRevisionsMode: 'Multiple'
       ingress: { external: true, targetPort: 8002, transport: 'auto', allowInsecure: false, traffic: [{ latestRevision: true, weight: 100 }] }
       registries: registries
-      secrets: secrets
+      secrets: concat(secrets, connectorSecrets)
     }
     template: {
       containers: [{
@@ -373,7 +384,7 @@ resource mcp 'Microsoft.App/containerApps@2024-03-01' = if (withApps) {
           { name: 'ALICE_EXT_HOST', value: '0.0.0.0' }
           { name: 'ALICE_EXT_PORT', value: '8002' }
           { name: 'ALICE_NO_SCHEDULER', value: '1' }
-        ])
+        ], connectorEnv)
         volumeMounts: mounts
         probes: [for p in tcpProbes: union(p, { tcpSocket: { port: 8002 } })]
       }]

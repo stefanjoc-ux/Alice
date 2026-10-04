@@ -13,6 +13,8 @@ Steps (all by default, or one with -Step):
   signin   creates the "Alice web sign-in" app registration (only you can sign in) and stores its secret in Key Vault
   apps     starts alice-web and alice-mcp
   github   lets the GitHub pipeline deploy (OIDC, no stored secrets) and prints the repo variables to set
+  connector  (run on its own) the Claude connector: an "Alice connector sign-in" app registration, its secret and a
+           signing key in Key Vault, then alice-mcp updated so Claude can sign in through Alice
 Nothing here reads .env: keys are typed in once and live only in Key Vault.
 #>
 param(
@@ -26,7 +28,7 @@ param(
   [string]$AlsoAllow = '',      # other accounts allowed to sign in, comma separated (e.g. stefan@yourdomain); remembered
   [string]$CustomDomain = '',
   [string]$GitHubSubject = '',  # the exact OIDC subject GitHub presents, if it uses owner and repo IDs (shown in a failed deploy log)   # e.g. alice.northants.it, after binding it once with a managed certificate; remembered
-  [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github')][string]$Step = 'all'
+  [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github', 'connector')][string]$Step = 'all'
 )
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
@@ -36,7 +38,7 @@ $StateFile = Join-Path $PSScriptRoot 'azure-state.json'
 function Say($text) { Write-Host "`n== $text" -ForegroundColor Cyan }
 function AzCli { $out = & az @args; if ($LASTEXITCODE -ne 0) { throw "az $($args -join ' ') failed" }; return $out }   # not named Az: PowerShell names ignore case, so it would call itself
 function AzTry { $ErrorActionPreference = 'Continue'; & az @args 2>$null }   # may fail (e.g. "does it exist?"): Windows PowerShell 5.1 otherwise turns az's error text into a stop
-function Want($name) { return ($Step -eq 'all' -or $Step -eq $name) }
+function Want($name) { return (($Step -eq 'all' -and $name -ne 'connector') -or $Step -eq $name) }
 function Load-State { if (Test-Path $StateFile) { return Get-Content $StateFile -Raw | ConvertFrom-Json } else { return [pscustomobject]@{} } }
 function Save-State($s) { $s | ConvertTo-Json -Depth 5 | Set-Content $StateFile -Encoding UTF8 }
 function Set-Prop($obj, $name, $value) { $obj | Add-Member -NotePropertyName $name -NotePropertyValue $value -Force }
@@ -84,7 +86,15 @@ function Deploy($stage, $extra) {
   Save-State $State
 }
 
-function Image-Ref { if (-not $State.image) { throw 'No image yet: run -Step image first.' }; return $State.image }
+function Image-Ref {
+  # A freshly built image (from -Step image) goes out once; otherwise keep the image that is LIVE now, so re-running a
+  # step never rolls back a version the pipeline deployed and you promoted.
+  if ($State.imageFresh -and $State.image) { return $State.image }
+  $live = AzTry containerapp revision list -n alice-web -g $ResourceGroup --query 'max_by([?properties.active], &properties.trafficWeight).properties.template.containers[0].image' -o tsv
+  if ($live) { return "$live".Trim() }
+  if (-not $State.image) { throw 'No image yet: run -Step image first.' }
+  return $State.image
+}
 function Key-Names {
   $map = @{}
   foreach ($k in @('OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'XAI_API_KEY', 'ELEVENLABS_API_KEY')) {
@@ -137,7 +147,7 @@ if (Want 'image') {
       Write-Host "The build did not succeed ($status). See its log with:  az acr task list-runs -r $($State.acrName) --top 1 -o table   then   az acr task logs -r $($State.acrName) --run-id <RUN ID>" -ForegroundColor Yellow
       throw 'Image build failed.'
     }
-    Set-Prop $State 'image' ($State.acrLoginServer + '/alice:' + $tag); Save-State $State
+    Set-Prop $State 'image' ($State.acrLoginServer + '/alice:' + $tag); Set-Prop $State 'imageFresh' $true; Save-State $State
     Write-Host "Image $($State.image)"
   } finally { Pop-Location }
 }
@@ -224,10 +234,61 @@ if (Want 'apps') {
   $users = if ($ExtAllowedUsers) { $ExtAllowedUsers } else { (@($Me) + $also | Select-Object -Unique) -join ',' }
   Deploy 'apps' @{ image = (Image-Ref); webAuthClientId = $State.webAuthClientId; keyVaultSecretNames = (Key-Names)
                    extAppId = $State.extAppId; extAllowedUsers = $users; extCallers = $State.extCallers
-                   allowedUserObjectIds = $also; customDomain = "$($State.customDomain)"; customDomainCertificateId = "$certId" }
+                   allowedUserObjectIds = $also; customDomain = "$($State.customDomain)"; customDomainCertificateId = "$certId"
+                   connectorClientId = "$($State.connectorClientId)" }
+  if ($State.imageFresh) { $State.PSObject.Properties.Remove('imageFresh'); Save-State $State }
   if ($State.customDomain) { Write-Host "Also at: https://$($State.customDomain)" }
   Write-Host "Web:  $($State.webUrl)"
   Write-Host "MCP:  $($State.mcpUrl)/mcp   (set this as the Copilot plugin URL, and run Test-External against it)"
+}
+
+if (Want 'connector') {
+  Say 'Claude connector: Alice signs Claude in (through your Entra tenant)'
+  if (-not $State.mcpUrl -or -not $State.extAppId) { throw 'Run -Step apps first (it remembers the Alice API app and the MCP address).' }
+  function Retry($what, [scriptblock]$do) {
+    for ($i = 1; $i -le 12; $i++) { try { return (& $do) } catch { if ($i -eq 12) { throw "$what failed: $_" }; Start-Sleep -Seconds 10 } }
+  }
+  $callback = "$($State.mcpUrl)/auth/callback"
+  if (-not $State.connectorClientId) {
+    $cid = AzCli ad app create --display-name 'Alice connector sign-in' --sign-in-audience AzureADMyOrg --web-redirect-uris $callback --query appId -o tsv
+    Set-Prop $State 'connectorClientId' $cid; Save-State $State
+  }
+  $cid = $State.connectorClientId
+  AzCli ad app update --id $cid --web-redirect-uris $callback | Out-Null
+  if (-not (AzTry ad sp show --id $cid --query id -o tsv)) { Retry 'Creating the connector service principal' { AzCli ad sp create --id $cid --output none | Out-Null } }
+  # It may ask for exactly one thing: Alice's own scope (plus sign-in basics), consented once for the tenant.
+  $scopeId = AzCli ad app show --id $State.extAppId --query "api.oauth2PermissionScopes[?value=='access_as_user'].id | [0]" -o tsv
+  if (-not $scopeId) { throw 'The Alice API app has no access_as_user scope.' }
+  $graph = '00000003-0000-0000-c000-000000000000'
+  $access = @(@{ resourceAppId = $State.extAppId; resourceAccess = @(@{ id = $scopeId; type = 'Scope' }) },
+              @{ resourceAppId = $graph; resourceAccess = @(@{ id = '37f7f235-527c-4136-accd-4a02d197296e'; type = 'Scope' }, @{ id = '7427e0e9-2fba-42fe-b0c0-848c9e6a8182'; type = 'Scope' }) })   # openid, offline_access
+  $tmp = New-TemporaryFile
+  try { [IO.File]::WriteAllText($tmp, (ConvertTo-Json -InputObject $access -Depth 5 -Compress)); AzCli ad app update --id $cid --required-resource-accesses "@$tmp" | Out-Null }
+  finally { Remove-Item $tmp -ErrorAction SilentlyContinue }
+  Retry 'Granting consent for the tenant' { AzCli ad app permission admin-consent --id $cid --output none | Out-Null }
+  if (-not (Kv-Has $State.keyVault 'connector-secret')) {
+    $secret = AzCli ad app credential reset --id $cid --append --display-name 'alice-connector' --years 2 --query password -o tsv
+    Kv-Set $State.keyVault 'connector-secret' $secret; $secret = $null
+  }
+  if (-not (Kv-Has $State.keyVault 'connector-key')) {
+    $bytes = New-Object byte[] 48; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+    Kv-Set $State.keyVault 'connector-key' ([Convert]::ToBase64String($bytes)); $bytes = $null
+  }
+  Write-Host "Connector app $cid; its secret and signing key are in Key Vault (renew the secret every 2 years: delete connector-secret and run this step)."
+  Write-Host 'Now updating alice-mcp...'
+  $users = (@($Me) + @($State.alsoAllow | Where-Object { $_ }) | Select-Object -Unique) -join ','
+  $certId = ''
+  if ($State.customDomain) {
+    $envName = AzCli containerapp env list -g $ResourceGroup --query '[0].name' -o tsv
+    $certId = AzCli containerapp env certificate list -g $ResourceGroup -n $envName --managed-certificates-only --query "[?properties.subjectName=='$($State.customDomain)'].id | [0]" -o tsv
+  }
+  Deploy 'apps' @{ image = (Image-Ref); webAuthClientId = $State.webAuthClientId; keyVaultSecretNames = (Key-Names)
+                   extAppId = $State.extAppId; extAllowedUsers = $users; extCallers = $State.extCallers
+                   allowedUserObjectIds = @($State.alsoAllow | Where-Object { $_ }); customDomain = "$($State.customDomain)"; customDomainCertificateId = "$certId"
+                   connectorClientId = $cid }
+  Write-Host ''
+  Write-Host 'In Claude: Settings > Connectors > Add custom connector' -ForegroundColor Green
+  Write-Host "  Name: Alice     URL: $($State.mcpUrl)/mcp     (leave the OAuth fields empty)" -ForegroundColor Green
 }
 
 if (Want 'github') {

@@ -27,6 +27,7 @@ import refs
 import autoapprove
 import mileage
 import apps
+import speed
 from admin_ui import render_admin, PAGES
 from ui_theme import SHARED_CSS, SIGNIN_CSS, SIGNIN_JS, brand_html
 import secrets
@@ -893,6 +894,32 @@ async def who_is_acting(request: Request, call_next):
         if token is not None: store.ACTOR.reset(token)
 
 @app.middleware("http")
+async def time_requests(request: Request, call_next):
+    """Speed page: total server time, database time, queries and connections for each request (routes only, no content).
+    For streamed answers this is the time to the first byte."""
+    path = request.url.path
+    if speed.skip(path): return await call_next(request)
+    meter = speed.Meter(); token = speed.CURRENT.set(meter); t0 = time.perf_counter()
+    status = 500
+    try:
+        response = await call_next(request)
+        status = response.status_code
+        total = time.perf_counter() - t0
+        response.headers['Server-Timing'] = f'app;dur={total * 1000:.0f}, db;dur={meter.db_s * 1000:.0f};desc="{meter.queries} queries"'
+        return response
+    finally:
+        speed.CURRENT.reset(token)
+        try: speed.record(request.method, speed.route_name(request.scope, path), status, time.perf_counter() - t0, meter)
+        except Exception: pass
+
+
+# Compress pages and JSON (a Command centre page is ~340 KB, ~95 KB compressed). Streamed answers are left alone so
+# they still arrive word by word.
+from starlette.middleware.gzip import GZipMiddleware, DEFAULT_EXCLUDED_CONTENT_TYPES
+app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=6,
+                   exclude_content_types=tuple(DEFAULT_EXCLUDED_CONTENT_TYPES) + ('application/x-ndjson',))
+
+@app.middleware("http")
 async def protect_admin(request: Request, call_next):
     if request.url.path.startswith('/admin/api') and request.method != 'GET':
         if not secrets.compare_digest(request.headers.get('x-admin-token',''), ADMIN_TOKEN):
@@ -1132,6 +1159,20 @@ def me(request: Request):
         name = next((c.get('val', '') for c in claims.get('claims', []) if c.get('typ') == 'name'), '')
     except Exception: name = ''
     return {'signed_in': True, 'email': email, 'name': ' '.join(str(name).split())[:120], 'provider': 'Microsoft Entra ID'}
+
+@app.get('/admin/api/speed')
+def admin_speed(days: int=Query(7,ge=1,le=30)):
+    return speed.report(days)
+
+class PageLoad(BaseModel):
+    page: str = Field(..., max_length=120)
+    ms: float = Field(..., ge=0, le=600000)
+    kb: float = Field(0, ge=0, le=100000)
+
+@app.post('/admin/api/speed/page')
+def admin_speed_page(p: PageLoad):
+    if not re.fullmatch(r'/[A-Za-z0-9/_-]{0,118}', p.page): raise HTTPException(400,'Not a page address.')
+    speed.page_load('page ' + p.page, p.ms, p.kb); return {'ok': True}
 
 @app.get('/admin/api/apps')
 def admin_apps():
@@ -2273,7 +2314,7 @@ def provider_error(error, image_mode=False):
         inner = body.get("error", body)
         detail = (inner.get("message") if isinstance(inner, dict) else str(inner)) or ""
     detail = " ".join((detail or getattr(error, "message", "") or str(error)).split())[:220]
-    if status == 401: why = "API key rejected. Check .env and restart."
+    if status == 401: why = "API key rejected. Replace the key (Azure: Key Vault, then restart the app; PC: .env, then restart)."
     elif status == 403: why = "Access denied for this key or account (permissions or region)."
     elif status == 404: why = "Model unavailable to your account."
     elif status == 429: why = "Rate limit or credit exhausted. Check your balance or try again shortly."

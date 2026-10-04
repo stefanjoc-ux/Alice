@@ -16,6 +16,7 @@ Nothing here reads credentials itself: the connection string comes from the envi
 import re
 import sqlite3
 import threading
+import time
 from functools import lru_cache
 
 try:                        # only needed when ALICE_DATABASE_URL is set; SQLite installs don't need it
@@ -171,13 +172,20 @@ class _BoolAsInt(Dumper):
     def dump(self, obj): return b'1' if obj else b'0'
 
 
+# Timing hooks (set by speed.py): called with seconds spent per query / per pool checkout.
+ON_QUERY = None
+ON_CONNECT = None
+
+
 # ---------------- connection ----------------
 class PgConnection:
     """One pooled PostgreSQL connection that behaves like the sqlite3 connections Alice uses."""
 
     def __init__(self, pool, readonly=False):
         self._pool, self._readonly = pool, readonly
+        t0 = time.perf_counter()
         self._conn = pool.getconn()
+        if ON_CONNECT: ON_CONNECT(time.perf_counter() - t0)
         self._tx = None
         self.row_factory = None          # accepted and ignored; rows always behave like sqlite3.Row
         if readonly: self._conn.execute('SET default_transaction_read_only = on')
@@ -225,6 +233,13 @@ class PgConnection:
     def _run(self, sql, params):
         q = translate(sql)
         if q is None: return Cursor()
+        t0 = time.perf_counter()
+        try:
+            return self._run_query(q, params)
+        finally:
+            if ON_QUERY: ON_QUERY(time.perf_counter() - t0)
+
+    def _run_query(self, q, params):
         try:
             if self._tx is not None:
                 with self._conn.transaction():      # savepoint: a caught error leaves the transaction usable

@@ -18,10 +18,16 @@ PAGES = {
  'rules': ('Rules','Rule sets in precedence order. Enforced rules are checked in code; guidance rules are instructions to the model.'),
  'mileage': ('Mileage','Mileage Clerk: load a tracker export, tell Alice which places are home, personal or business, and approve the TMC entries she prepares. Nothing reaches TMC without your approval of that exact entry.'),
  'apps': ('Apps','Apps built on Alice that each do one job end to end. Each keeps its approvals on its own page; anything waiting for you also shows on Actions.'),
+ 'speed': ('Speed','Where Alice\'s time goes: how long pages take to load in your browser, how long each request takes on the server, and how much of that is the database. Only addresses and timings are kept, never what you asked or saw.'),
  'activity': ('Activity','Everything Alice and Temple did, and every decision you made: filter by type, date or words, and export for an audit trail.'),
 }
 
 SECTIONS = {
+'speed': r'''<section><div class="mem-head"><h2>Overview</h2><label class="small">Period <select id="sp-days"><option value="1">Today</option><option value="7" selected>Last 7 days</option><option value="30">Last 30 days</option></select></label></div>
+<div id="sp-tiles" class="mi-tiles"></div><p class="small muted" id="sp-note"></p></section>
+<section><div class="mem-head"><h2>Pages in your browser</h2><span class="small muted">Until the page and its data are on screen, average and slowest</span></div><div class="table-wrap"><table id="sp-pages" class="mem-table"></table></div></section>
+<section><div class="mem-head"><h2>Requests on the server</h2><span class="small muted">Most total time first; database share shows where it goes</span></div><div class="table-wrap"><table id="sp-server" class="mem-table"></table></div></section>
+<section><div class="mem-head"><h2>Recent slow requests</h2><span class="small muted">Over 1 second</span></div><div class="table-wrap"><table id="sp-slow" class="mem-table"></table></div></section>''',
 'apps': r'''<section><div class="mem-head"><h2>Your apps</h2><span id="ap-sum" class="muted small"></span></div><div id="ap-grid" class="ap-grid"></div></section>''',
 'home': r'''<section class="hm-hero"><div><h2 id="hm-hello">Hello</h2><p id="hm-sub" class="muted"></p></div>
 <div class="hm-go"><a class="hm-btn primary" href="/?new=1"><span>&#9998;</span>New chat</a><a class="hm-btn" id="hm-prop" href="/admin/assistants"><span>&#10064;</span>Write a proposal</a><a class="hm-btn" href="/admin/temple?tab=ask"><span>?</span>Ask Temple</a><a class="hm-btn" href="/admin/knowledge"><span>+</span>Add knowledge</a></div></section>
@@ -1415,6 +1421,23 @@ if(PAGE==='temple')run(async()=>{const d=await api('/admin/api/temple/auto-appro
 '''
 
 SCRIPT += r"""
+if(PAGE==='speed'){
+ const fmt=ms=>ms>=1000?(ms/1000).toFixed(1)+' s':Math.round(ms)+' ms';
+ function table(id,head,rows){const t=$(id);t.replaceChildren();const th=document.createElement('thead'),hr=document.createElement('tr');for(const h of head){const c=el('th',h);c.scope='col';hr.append(c)}th.append(hr);t.append(th);const b=document.createElement('tbody');
+  if(!rows.length){const tr=document.createElement('tr'),td=el('td','Nothing measured yet. Use Alice for a while and come back.','muted');td.colSpan=head.length;tr.append(td);b.append(tr)}
+  for(const r of rows){const tr=document.createElement('tr');for(const v of r){const td=document.createElement('td');if(v instanceof Node)td.append(v);else td.textContent=v;tr.append(td)}b.append(tr)}t.append(b)}
+ const flag=(ms)=>{const s=el('span',fmt(ms),ms>=2000?'badge v-bad':ms>=800?'badge v-warn':'badge v-ok');return s};
+ async function load(){const d=await api('/admin/api/speed?days='+$('sp-days').value);const m=d.summary;
+  const tile=(v,l,cls)=>{const x=el('div','','mi-tile'+(cls?' '+cls:''));x.append(el('strong',v),el('span',l));return x};
+  $('sp-tiles').replaceChildren(tile(m.page_loads?fmt(m.avg_page_ms):'–','Average page load','mi-biz'),tile(String(m.requests),'Server requests'),tile(m.db_share+'%','Server time in the database'),tile(String(m.slow),'Slow requests (> 1 s)'));
+  $('sp-note').textContent=m.requests?'Server time '+m.server_s+' s in total, of which database '+m.db_s+' s.':'';
+  table('sp-pages',['Page','Loads','Average','Slowest'],d.pages.map(r=>[r.route.replace(/^page /,''),String(r.count),flag(r.avg_ms),fmt(r.max_ms)]));
+  table('sp-server',['Request','Count','Average','Slowest','Database','Queries','Connections','Slow'],d.server.map(r=>[r.method+' '+r.route,String(r.count),flag(r.avg_ms),fmt(r.max_ms),r.db_share+'% ('+fmt(r.avg_db_ms)+')',String(r.avg_queries),String(r.avg_conns),String(r.slow)]));
+  table('sp-slow',['When','Request','Time','Database','Queries','Note'],d.slow.map(r=>[new Date(r.at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),r.method+' '+r.route,fmt(r.ms),fmt(r.db_ms),String(r.queries),r.note||'']))}
+ $('sp-days').onchange=()=>run(load);run(load);
+}
+"""
+SCRIPT += r"""
 if(PAGE==='apps'){
  run(async()=>{const d=await api('/admin/api/apps');const g=$('ap-grid');g.replaceChildren();let w=0;
   for(const a of d.apps){w+=a.waiting;const t=document.createElement('a');t.className='ap-tile';t.href=a.href;t.dataset.app=a.id;
@@ -1917,7 +1940,7 @@ if(PAGE==='rules'){
 """
 
 NAV_GROUPS = [('Work', ['home', 'actions', 'temple', 'memories', 'knowledge', 'documents', 'organisations', 'apps', 'archive']),
-              ('Records and settings', ['agents', 'assistants', 'rules', 'rule-packs', 'activity', 'usage'])]
+              ('Records and settings', ['agents', 'assistants', 'rules', 'rule-packs', 'activity', 'usage', 'speed'])]
 
 
 def render_admin(page, token):
@@ -1958,6 +1981,10 @@ NAV_SCRIPT = r"""
  document.querySelectorAll('.sidebar a').forEach(a=>{if(!DEMO_PAGES.includes(a.dataset.page))a.hidden=true});document.querySelectorAll('.sidebar .grp').forEach(g=>g.hidden=true);
  document.querySelectorAll('.bar-link[href="/"]').forEach(a=>a.hidden=true);
  if(!DEMO_PAGES.includes(PAGE)){const inner=document.querySelector('.content .inner');inner.replaceChildren();const s=document.createElement('section');const h=document.createElement('h2');h.textContent='Demo mode is on';const p=document.createElement('p');p.textContent='Only the Agents, Rule packs and Organisations pages are shown, with fictional or replaced names and costs hidden. Turn demo mode off in the top bar to see this page.';const a=document.createElement('a');a.href='/admin/agents';a.textContent='Go to Agents';s.append(h,p,a);inner.append(s)}})();
+// Speed: report how long this page took until it and its first data were on screen (navigation + early API calls).
+window.addEventListener('load',()=>setTimeout(()=>{try{const nav=performance.getEntriesByType('navigation')[0];if(!nav)return;
+ let end=nav.loadEventEnd||nav.domComplete;for(const r of performance.getEntriesByType('resource'))if(r.initiatorType==='fetch'&&r.name.includes('/admin/api/')&&!r.name.includes('/speed')&&r.startTime<6000)end=Math.max(end,r.responseEnd);
+ api('/admin/api/speed/page','POST',{page:location.pathname,ms:Math.round(end),kb:Math.round((nav.transferSize||0)/1024)}).catch(()=>{})}catch{}},4000));
 (async()=>{try{const d=await api('/admin/api/actions');const n={};for(const s of d.sections)n[s.key]=s.count;
  if(DEMO)return;const counts={agents:n.agents||0,actions:d.total,memories:n.proposals||0,knowledge:(n.drafts||0)+(n.replacements||0),organisations:(n.orgfacts||0)+(n.opportunities||0),temple:n.suggestions||0,archive:n.chats||0,rules:n.rules||0,apps:n.apps||0};
  for(const [k,v] of Object.entries(counts)){if(!v)continue;const a=document.querySelector('.sidebar a[data-page="'+k+'"]');if(!a)continue;const c=document.createElement('span');c.className='nav-count';c.textContent=v;a.append(c)}}catch{}})();

@@ -71,7 +71,7 @@ knowledge note "AI Substrate: status summary" through the `alice` connector, or 
   (`ALICE_ROLE=mcp`: `mcp_server.py --external` on 8002). `deploy/start.sh` starts the role; roles `migrate` and `test` too.
 - PostgreSQL Flexible Server on a private network (point-in-time restore replaces "back up data\"); secrets in Key Vault,
   read by a managed identity; `Documents\` and `data\images` on an Azure Files share mounted at `/mnt/alice`.
-- `deploy/azure-setup.ps1` builds it in steps (infra, secrets, image, files, migrate, signin, apps, github); it never reads .env.
+- `deploy/azure-setup.ps1` builds it in steps (infra, secrets, image, files, migrate, signin, apps, github; `connector` on its own); it never reads .env. Steps deploy the LIVE image unless `-Step image` just built one (`Image-Ref`), so re-running a step never rolls back a promoted version.
 - Pipeline (`.github/workflows/deploy.yml`): all suites inside the image (SQLite and PostgreSQL), push, then a new revision
   with no traffic; `deploy/promote.ps1` moves traffic (or `-Rollback`). The opportunity scheduler holds a database lease
   (`scheduler_lease`), so only one process runs it even while two revisions are up.
@@ -114,7 +114,7 @@ A browser refresh is not enough: the old server process keeps running the old co
 | `substrate_store.py` | Database, chats, memories, categories, archive, decisions, quote matching |
 | `rules_engine.py` | Rule sets, detectors, spending caps, retention, guidance compilation |
 | `mcp_server.py` | MCP tools for models (read tools, including get_organisation, list_organisations and search_opportunities; propose_record/decision/knowledge, save/append_conversation); `--external` runs the signed-in endpoint. Alice's web chat uses the tools in `app.ALLOWED_TOOLS`; organisation and opportunity results pass client separation (`clients.filter_tool_output`) and secret/marking checks; account managers are never returned |
-| `external_auth.py` | Entra ID sign-in for the external endpoint (Copilot): settings `ALICE_EXT_*`, token checks, caller label and provider |
+| `external_auth.py` | Entra ID sign-in for the external endpoint: settings `ALICE_EXT_*`, token checks (`EntraVerifier`: tenant, allowed user, scope, allowed client app), caller label and provider. Copilot sends Entra tokens directly. **Claude** cannot complete an Entra sign-in itself (open Claude issue), so with `ALICE_EXT_CONNECTOR_*` set Alice runs her own OAuth server in front of Entra (`connector_proxy`: FastMCP's `AzureProvider` OAuth proxy; Claude's published identity (CIMD) or registration; callback limited to `https://claude.ai/api/mcp/auth_callback`; consent page; `forward_resource=False` to avoid AADSTS9010010; sign-in records encrypted on the share in `<data>/oauth-connector`). The Entra token that comes back is checked by the same `EntraVerifier` (`proxy._token_validator`), so the same rules apply; `MultiAuth` keeps direct tokens working. Claude's proposals are labelled `[via Claude]` (provider `claude`). App registration "Alice connector sign-in", secret and signing key in Key Vault: `azure-setup.ps1 -Step connector`. Test: `test_claude_connector.py` runs the whole flow against a stand-in Microsoft |
 | `temple.py` | Temple memory reviews, queue, settings, `reviewer()` (effective provider) |
 | `temple_chat.py` | Temple's suggestions after chat answers |
 | `temple_categorise.py` | Temple category assignment |
@@ -148,6 +148,7 @@ A browser refresh is not enough: the old server process keeps running the old co
 | `activity_log.py` | Activity log labels, types, filters, CSV; `overview()` feeds the Activity page's picture (`/admin/api/activity-overview`): tiles, activity over time by area (blocks counted separately), the approval gate, blocks by rule, agent runs, AI calls by model, a weekday-by-hour heatmap in the browser's time zone, most frequent actions |
 | `router.py` | Auto model routing, provider failure memory |
 | `usage_meter.py` | Token/cost ledger, timings, savings |
+| `speed.py` | The Speed page (`/admin/speed`, Records and settings): the `time_requests` middleware in app.py times every request (not static files or `/healthz`) and adds a `Server-Timing` header; `dbcompat.ON_QUERY`/`ON_CONNECT` and `store.ON_SQLITE_QUERY` count queries, database time and pool checkouts per request (context variable `speed.CURRENT`); each Command centre page reports its own load time from the browser (`/admin/api/speed/page`: until the page and its first API data are on screen). Kept in memory, written once a minute by a background thread to `speed_routes` (per day and route) and `speed_slow` (last 500 over 1 s); 30 days; routes and timings only, never query strings or content. Pages and JSON are gzip-compressed (`GZipMiddleware`, NDJSON streams excluded so answers still stream) |
 | `images.py`, `voice.py` | Generated images; ElevenLabs speech |
 | `desktop.py`, `connect_claude.py` | Tray launcher; Claude Desktop connector setup |
 
@@ -256,9 +257,9 @@ To undo uncommitted changes to a file: `git restore <file>`. To see what changed
 
 ## Roadmap (not yet built)
 
-- Azure hosting: Container Apps, Entra ID sign-in, PostgreSQL + pgvector, remote MCP endpoint with OAuth
-  for Claude web/mobile and ChatGPT. Test Entra OAuth with a Claude custom connector early (a known issue
-  has been reported).
+- pgvector search in PostgreSQL; ChatGPT as a second connector client (it can use the same OAuth proxy).
+- Build and release without the PC: Claude works on the GitHub repo directly; Promote and Rollback as manual GitHub
+  workflows (promote also switches off all but the previous revision).
 - TypeScript front end against the existing API; split `substrate_store.py` into modules.
 - OpenAI image pricing once the usage export arrives (`IMAGE_PRICE_OPENAI`).
 - Opportunity and news digests by email to each organisation's account manager (Stefan, 3 Oct 2026). Build on

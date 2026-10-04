@@ -32,6 +32,9 @@ def demo_active():
     return DATASET.get() == 'demo'   # set: PostgreSQL (Azure); unset: SQLite file in data\\
 
 
+ON_SQLITE_QUERY = None
+
+
 def connect(readonly=False):
     """A connection that behaves like sqlite3 (rows by name, ? placeholders, `with` commits). Close it when done.
     SQLite by default; PostgreSQL when ALICE_DATABASE_URL is set (see dbcompat.py)."""
@@ -56,6 +59,7 @@ def connect(readonly=False):
         return c
     c = sqlite3.connect(DB, timeout=15)
     c.row_factory = sqlite3.Row
+    if ON_SQLITE_QUERY: c.set_trace_callback(ON_SQLITE_QUERY)     # speed.py counts queries (SQLite has no per-query timing)
     return c
 
 
