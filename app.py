@@ -22,6 +22,7 @@ import agents
 import actions
 import activity_log
 import temple_ask
+import temple_discuss
 import memory_tags
 import refs
 import autoapprove
@@ -2683,6 +2684,20 @@ async def admin_ask_temple(q: AskTemple):
         logging.exception('Ask Temple failed')
         reason=' '.join(str(e).split())[:300]
         raise HTTPException(502,f'Temple could not answer ({type(e).__name__}: {reason}). Full details are in the logs folder.') from None
+
+class DiscussIn(BaseModel):
+    message: str = Field(min_length=1,max_length=4000)
+
+@app.get('/admin/api/records/{rid}/discussion')
+def admin_discussion(rid: str): return {'messages': temple_discuss.history(rid)}
+
+@app.post('/admin/api/records/{rid}/discussion')
+async def admin_discuss(rid: str, q: DiscussIn):
+    try: return await asyncio.to_thread(temple_discuss.ask,rid,q.message)
+    except (APIError, anthropic.APIError) as e:
+        if any(k in type(e).__name__ for k in ('Timeout','Connection','InternalServer')): router.note_failure(temple.reviewer())
+        raise HTTPException(502,'Temple: '+provider_error(e)) from None
+    except ValueError as e: raise HTTPException(400,str(e)) from None
 
 @app.get('/admin/api/actions')
 def admin_actions(): return actions.summary()

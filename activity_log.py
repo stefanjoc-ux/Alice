@@ -39,7 +39,7 @@ LABELS = {
     'knowledge_replacement_dismissed': ('knowledge', 'Replacement suggestion dismissed (kept both)'),
     'temple_replacement_suggested': ('temple', 'Temple suggested retiring a replaced item'),
     'temple_replacements_checked': ('temple', 'Temple checked for replaced items'),
-    'temple_complete': ('temple', 'Temple reviewed a memory'), 'temple_failed': ('temple', 'Temple review failed'),
+    'temple_complete': ('temple', 'Temple reviewed a memory'), 'temple_failed': ('temple', 'Temple review failed'), 'temple_decision_chat': ('temple', 'Discussed a decision with Temple'),
     'temple_chat_complete': ('temple', 'Temple analysed a chat answer'), 'temple_chat_review_complete': ('temple', 'Temple reviewed a whole chat'),
     'temple_chat_review_failed': ('temple', 'Temple chat review failed'), 'temple_chat_review_blocked': ('temple', 'Temple chat review blocked by a rule'),
     'temple_suggestion_accepted': ('temple', 'Temple suggestion accepted'), 'temple_categorised': ('temple', 'Temple categorised items'), 'temple_tagged': ('temple', 'Temple tagged memories'), 'temple_tags_mode': ('rules', 'Temple tagging mode changed'),
