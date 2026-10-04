@@ -2,6 +2,7 @@
 import csv
 import io
 import re
+import urllib.parse
 from datetime import datetime, timedelta, timezone
 import substrate_store as store
 
@@ -128,7 +129,9 @@ def query(kind='', preset='7d', start='', end='', q='', offset=0, limit=100, eve
     since, until = period(preset, start, end)
     with store.db() as c:
         actions_all = [r[0] for r in c.execute('SELECT DISTINCT action FROM activity')]
-        where, args = _where(since, until, q.strip(), actions_all)
+        m = REF.match(q or '')
+        if m: where, args = ' WHERE id=?', [int(m.group(1))]
+        else: where, args = _where(since, until, q.strip(), actions_all)
         counts = {}
         for action, n in c.execute('SELECT action,count(*) FROM activity' + where + ' GROUP BY action', args):
             k = classify(action)[0]; counts[k] = counts.get(k, 0) + n
@@ -144,12 +147,12 @@ def query(kind='', preset='7d', start='', end='', q='', offset=0, limit=100, eve
         rows = [dict(r) for r in c.execute(sql, args2 + ([] if everything else [limit, offset]))]
     names = _names(r['target'] for r in rows)
     for r in rows:
-        r['type'], r['label'] = classify(r['action'])
+        r['type'], r['label'] = classify(r['action']); r['ref'] = ref_of(r['id'])
         r['type_name'] = TYPE_NAMES[r['type']]
         r['target_name'] = names.get(r['target'], '' if HEX.match(r['target'] or '') else r['target'])
         r['rule_name'] = RULE_NAMES.get(r['rule'], r['rule'].replace('_', ' '))
         if r['action'] == 'rule_blocked':        # the rule is the headline; details say what it caught
-            r['label'] = 'Blocked: ' + r['rule_name']; r['rule_name'] = ''
+            r['label'] = 'Blocked: ' + (_control(r['rule'], 'blocks', '')[0][-1][0] if r['rule'].startswith('rule_pack:') else r['rule_name']); r['rule_name'] = ''
     return {'rows': rows, 'total': total, 'total_all': total_all, 'counts': counts, 'types': TYPES,
             'next_offset': None if everything or offset + len(rows) >= total else offset + len(rows)}
 
@@ -266,3 +269,125 @@ def overview(preset='7d', start='', end='', tz=0):
             'models': [{'name': mname(m['provider'], m['model']), 'calls': m['calls'], 'cost': round(m['cost'] or 0, 4)} for m in models][:8],
             'heat': heat, 'weekdays': WEEKDAYS,
             'top': sorted(({'label': k, 'n': v} for k, v in top.items()), key=lambda x: -x['n'])[:8]}
+
+
+# ---------------- the information card (standard format, see CLAUDE.md "Information cards") ----------------
+REF = re.compile(r'^\s*L-?0*(\d{1,12})\s*$', re.I)
+AREA = {'memories': ('Memories', '/admin/memories'), 'knowledge': ('Knowledge summaries', '/admin/knowledge'),
+        'organisations': ('Organisations', '/admin/organisations'), 'agents': ('Agents', '/admin/agents'), 'temple': ('Temple', '/admin/temple'),
+        'rules': ('Rules', '/admin/rules'), 'clients': ('Organisations', '/admin/organisations'), 'chats': ('Chats', '/admin/archive'),
+        'routing': ('Chat · model routing', '/'), 'tools': ('Chat · tools', '/'), 'blocks': ('Rules', '/admin/rules'), 'other': ('Alice', '/admin')}
+PLACES = {'chat message': [('Chat', '/'), ('A message', '')], 'opportunity scan': [('Organisations', '/admin/organisations'), ('Opportunity scan', '/admin/organisations?tracker=1')],
+          'external endpoint': [('Connected apps', '/admin/apps'), ('Outside connector (Copilot, Claude)', '/admin/agents')],
+          'proposal writer': [('Assistants', '/admin/assistants'), ('Proposal writer (Parker)', '/admin/assistants')]}
+HOW = {'human_review': 'Your decision at an approval gate', 'human_control': 'A change you made to a setting',
+       'advisory_only': 'Temple (advisory: changes nothing)', 'assistant': 'An assistant', 'automatic': 'Alice, automatically'}
+
+
+def ref_of(row_id):
+    return 'L-%06d' % int(row_id)
+
+
+def _place(target, kind):
+    """Where it happened, as a path from Alice down to the item: [(label, href), ...]."""
+    t = (target or '').strip()
+    if not t: return [AREA.get(kind, AREA['other'])]
+    if t.lower() in PLACES: return PLACES[t.lower()]
+    if HEX.match(t):
+        with store.db() as c:
+            for sql, area, href in (('SELECT title FROM records WHERE id=?', ('Memories', '/admin/memories'), '/admin/memories?status=all&q='),
+                                    ('SELECT title FROM chats WHERE id=?', ('Chats', '/admin/archive'), '/#'),
+                                    ('SELECT title FROM knowledge_meta WHERE file_id=?', ('Knowledge summaries', '/admin/knowledge'), '/admin/knowledge?status=all&q='),
+                                    ('SELECT title FROM temple_suggestions WHERE id=?', ('Temple', '/admin/temple?tab=suggestions'), '')):
+                try: r = c.execute(sql, (t,)).fetchone()
+                except Exception: r = None
+                if r:
+                    link = (href + t) if href == '/#' else (href + urllib.parse.quote(r[0][:40]) if href else '')
+                    return [area, (r[0], link)]
+        return [AREA.get(kind, AREA['other']), ('Item ' + t[:8] + ' (no longer exists)', '')]
+    try:
+        with store.db() as c:
+            a = c.execute('SELECT id, name FROM assistants WHERE id=? OR lower(name)=lower(?)', (t, t)).fetchone()
+        if a: return [('Assistants', '/admin/assistants'), (a['name'], '/assistant/' + a['id'])]
+    except Exception: pass
+    try:
+        import agents
+        for a in agents.listing():
+            if t in (a.get('id'), a.get('name')): return [('Agents', '/admin/agents'), (a['name'], '/admin/agents?agent=' + a['id'])]
+    except Exception: pass
+    try:
+        with store.db() as c:
+            o = c.execute('SELECT name FROM organisations WHERE lower(name)=lower(?)', (t,)).fetchone()
+        if o: return [('Organisations', '/admin/organisations'), (o[0], '/admin/organisations?org=' + urllib.parse.quote(o[0]))]
+    except Exception: pass
+    return [AREA.get(kind, AREA['other']), (t[:120], '')]
+
+
+def _control(rule, kind, label):
+    """What logged it: the rule (set › rule) or rule pack (pack › safeguard) that fired, or the part of Alice that acted."""
+    rule = rule or ''
+    if rule.startswith('rule_pack:'):
+        try:
+            import rule_packs
+            for p in rule_packs.PACKS.values():
+                for r in p['rules']:
+                    if r['id'] == rule[10:]:
+                        return ([('Rule packs', '/admin/rule-packs'), (p['name'] + ' pack', '/admin/rule-packs?pack=' + p['id']), (r['name'], '')],
+                                r.get('why') or r.get('what') or '', 'Rule pack safeguard')
+        except Exception: pass
+        return [('Rule packs', '/admin/rule-packs'), (rule[10:].replace('_', ' '), '')], '', 'Rule pack safeguard'
+    try:
+        import rules_engine
+        rules = {r['id']: r for r in rules_engine.all_rules()}
+        if rule in rules:
+            r = rules[rule]; sets = {k: n for k, n, _ in rules_engine.SETS}
+            return ([('Rules', '/admin/rules#rules'), (sets.get(r['set_key'], r['set_key']), '/admin/rules#rules'), (r['name'], '/admin/rules?rule=' + r['id'] + '#rules')],
+                    r.get('description') or r.get('text') or '', ('Enforced rule' if r['kind'] == 'enforced' else 'Guidance rule'))
+    except Exception: pass
+    area = AREA.get(kind, AREA['other'])
+    return [area, (label, '')], '', HOW.get(rule, '')
+
+
+def card(ref_or_id):
+    """One activity row as a standard information card: ref, title, tone, sections in the standard order
+    (What happened, Where, When, Who, Why, Related, Technical). Raises ValueError when not found."""
+    m = REF.match(str(ref_or_id))
+    if not m: raise ValueError('Give a log reference such as L-000123.')
+    rid = int(m.group(1))
+    with store.db() as c:
+        r = c.execute('SELECT * FROM activity WHERE id=?', (rid,)).fetchone()
+        if not r: raise ValueError('No log entry ' + ref_of(rid) + '.')
+        r = dict(r)
+        same = [dict(x) for x in c.execute('SELECT id, created_at, action, rule FROM activity WHERE target=? AND id<>? ORDER BY id DESC LIMIT 8',
+                                           (r['target'], rid))] if r['target'] else []
+    kind, label = classify(r['action'])
+    rule_name = RULE_NAMES.get(r['rule'], (r['rule'] or '').replace('_', ' '))
+    if r['action'] == 'rule_blocked': label = 'Blocked: ' + (rule_name if not r['rule'].startswith('rule_pack:') else _control(r['rule'], kind, '')[0][-1][0])
+    place = _place(r['target'], kind)
+    control, why_rule, control_kind = _control(r['rule'], kind, label)
+    actor = (r.get('actor') or '').strip()
+    who_how = ('Signed in with Microsoft (Entra ID)' if '@' in actor else 'The person using Alice on this computer' if actor else
+               'Not recorded (logged before Alice recorded who acted, or by an automatic process)')
+    blocked = kind == 'blocks'
+    sections = [
+        {'key': 'what', 'title': 'What happened', 'text': r['detail'] or label},
+        {'key': 'where', 'title': 'Where', 'paths': [{'label': 'Happened in', 'path': [{'label': a, 'href': b} for a, b in [('Alice', '/admin')] + place]},
+                                                    {'label': 'Logged by', 'path': [{'label': a, 'href': b} for a, b in [('Alice', '/admin')] + control]}]},
+        {'key': 'when', 'title': 'When', 'rows': [['Time', {'time': r['created_at']}], ['Recorded (UTC)', r['created_at'][:19].replace('T', ' ')]]},
+        {'key': 'who', 'title': 'Who', 'rows': [['Acting', actor or 'Not recorded'], ['How Alice knows', who_how]]},
+        {'key': 'why', 'title': 'Why', 'rows': [x for x in [['Reason given', r.get('note')] if r.get('note') else None,
+                                                             ['Triggered by', control_kind] if control_kind else None,
+                                                             ['What the rule is for', why_rule] if why_rule else None,
+                                                             ['Outcome', 'Stopped: nothing was sent or saved' if blocked else ''] if blocked else None] if x]
+         or [['Reason given', 'None recorded']]},
+        {'key': 'related', 'title': 'Related', 'items': [{'ref': ref_of(x['id']), 'label': classify(x['action'])[1] if x['action'] != 'rule_blocked'
+                                                          else 'Blocked: ' + (_control(x['rule'], 'blocks', '')[0][-1][0] if x['rule'].startswith('rule_pack:') else RULE_NAMES.get(x['rule'], x['rule'].replace('_', ' '))), 'time': x['created_at']} for x in same],
+         'empty': 'Nothing else logged for this item.'},
+        {'key': 'technical', 'title': 'Technical', 'collapsed': True,
+         'rows': [['Log entry', ref_of(rid)], ['Action code', r['action']], ['Rule code', r['rule'] or '–'], ['Target', r['target'] or '–']]},
+    ]
+    actions = [{'label': 'Open ' + place[-1][0], 'href': place[-1][1]}] if place[-1][1] else []
+    if control[-1][1] and control[-1][1] != (place[-1][1] if place else ''): actions.append({'label': 'Open the rule', 'href': control[-1][1]})
+    return {'ref': ref_of(rid), 'kind': 'log', 'kind_label': 'Activity log', 'title': label,
+            'subtitle': place[-1][0], 'badge': TYPE_NAMES[kind], 'tone': 'bad' if blocked else 'warn' if kind == 'rules' else '',
+            'sections': sections, 'actions': actions}

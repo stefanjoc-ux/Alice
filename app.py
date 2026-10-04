@@ -2651,6 +2651,13 @@ def admin_home(tz: int=Query(0,ge=-840,le=840)):
 @app.get('/admin/overview')
 def admin_overview_redirect(): return RedirectResponse('/admin',status_code=307)
 
+@app.get('/admin/api/cards/{kind}/{ref}')
+def admin_card(kind: str, ref: str):
+    """Standard information card (see CLAUDE.md, Information cards). Kinds so far: log (activity log entries, L-000123)."""
+    if kind != 'log': raise HTTPException(404, 'No card of that kind.')
+    try: return activity_log.card(ref)
+    except ValueError as e: raise HTTPException(404, str(e)) from None
+
 @app.get('/admin/api/activity-log')
 def admin_activity_log(type: str=Query('',max_length=20), preset: Literal['today','7d','30d','all','custom']='7d',
                        start: str=Query('',max_length=10), end: str=Query('',max_length=10),
