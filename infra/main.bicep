@@ -330,13 +330,14 @@ resource web 'Microsoft.App/containerApps@2024-03-01' = if (withApps) {
   dependsOn: [identityAcrPull, identityKvRead, dbUrlSecret, pgDatabase]
 }
 
-// Entra sign-in in front of the web app: only you get in. /healthz stays open for the platform's probe.
+// Entra sign-in in front of the web app: only you get in. /healthz stays open for the platform's probe; /signed-out is the
+// static page after 'Sign out of Alice' (no data), outside sign-in so it doesn't sign you straight back in.
 resource webAuth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (withApps) {
   parent: web
   name: 'current'
   properties: {
     platform: { enabled: true }
-    globalValidation: { unauthenticatedClientAction: 'RedirectToLoginPage', redirectToProvider: 'azureactivedirectory', excludedPaths: ['/healthz'] }
+    globalValidation: { unauthenticatedClientAction: 'RedirectToLoginPage', redirectToProvider: 'azureactivedirectory', excludedPaths: ['/healthz', '/signed-out'] }
     identityProviders: {
       azureActiveDirectory: {
         enabled: true

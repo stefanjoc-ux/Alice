@@ -34,7 +34,7 @@ SIGNIN_CSS = r'''
 .signin,.signin:hover:not(:disabled),.signin:focus{background:none;border:0;padding:0;border-radius:3px}.signin svg,.signin-pop svg{flex:none;width:11px;height:11px}.signin-pop .ok svg{width:14px;height:14px}.signin.local{color:#a9bfd0;cursor:default}.signin:hover span,.signin:focus-visible span{text-decoration:underline}
 .signin-pop{position:absolute;top:46px;left:0;z-index:60;width:280px;padding:14px 16px;border-radius:10px;background:#fff;color:var(--ink);box-shadow:0 8px 28px rgba(10,30,50,.25);font-size:13px;letter-spacing:0;font-weight:400;text-align:left}
 .signin-pop[hidden]{display:none}.signin-pop b{display:block;font-size:14px;margin-bottom:2px}.signin-pop .muted{color:var(--muted)}
-.signin-pop .ok{display:flex;gap:6px;align-items:center;margin:10px 0;color:#1e7b4f;font-weight:600}.signin-pop a.out{display:inline-block;margin-top:4px}
+.signin-pop .ok{display:flex;gap:6px;align-items:center;margin:10px 0;color:#1e7b4f;font-weight:600}.signin-pop a.out{display:block;margin-top:8px;font-weight:600}.signin-pop a.out.btn{margin:14px 0 8px;padding:9px 12px;border-radius:8px;background:var(--teal);color:#fff;text-align:center;text-decoration:none}.signin-pop a.out.btn:hover{background:var(--teal-d)}.signin-pop a.out.all{margin-top:4px;font-weight:400;font-size:12px;color:var(--muted)}
 @media(max-width:900px){.brand .brand-text{display:flex}.brand .brand-text>a{display:none}.brand .signin span{display:none}.signin svg{width:14px;height:14px}.signin-pop{top:50px}}
 '''
 LOCK_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 7V5a4 4 0 1 1 8 0v2h.5A1.5 1.5 0 0 1 14 8.5v6A1.5 1.5 0 0 1 12.5 16h-9A1.5 1.5 0 0 1 2 14.5v-6A1.5 1.5 0 0 1 3.5 7H4Zm2 0h4V5a2 2 0 1 0-4 0v2Z"/></svg>'
@@ -54,8 +54,14 @@ SIGNIN_JS = r'''
   const n=document.createElement('b');n.textContent=me.name||me.email;const e=document.createElement('div');e.className='muted';e.textContent=me.email;
   const ok=document.createElement('div');ok.className='ok';ok.innerHTML=lock;const t=document.createElement('span');t.textContent='Signed in securely with Microsoft Entra ID';ok.append(t);
   const note=document.createElement('div');note.className='muted';note.textContent='Only the accounts you allowed can open Alice. Every action you take is recorded under this name.';
-  const out=document.createElement('a');out.className='out';out.href='/.auth/logout?post_logout_redirect_uri=/';out.textContent='Sign out';
-  pop.append(n,e,ok,note,out);brand.append(pop);
+  const out=document.createElement('a');out.className='out btn';out.href='/signout';out.setAttribute('role','button');out.textContent='Sign out of Alice';
+  const all=document.createElement('a');all.className='out all';all.href='/.auth/logout?post_logout_redirect_uri=/signed-out';all.textContent='Sign out of Microsoft too';all.title='Also signs this browser out of Outlook, Teams and the Azure portal';
+  const every=document.createElement('a');every.className='out all';every.href='#';every.textContent='Sign out of Alice on all devices';every.title='Your phone, tablet and other computers will have to sign in to Alice again';
+  every.addEventListener('click',ev=>{ev.preventDefault();if(!confirm('Sign out of Alice on every device, including this one? Each will have to sign in again. Your Microsoft sign-in elsewhere is not affected.'))return;
+   const tok='__SIGNIN_TOKEN__';
+   fetch('/admin/api/signout-everywhere',{method:'POST',credentials:'same-origin',headers:{'x-admin-token':tok}}).then(r=>r.json().then(j=>({ok:r.ok,j}))).then(({ok,j})=>{if(ok)location.href=j.next;else alert(j.detail||'Could not sign out everywhere.')}).catch(()=>alert('Could not sign out everywhere.'))});
+  const dev=document.createElement('a');dev.className='out all';dev.href='/admin/signins';dev.textContent='Where you are signed in';
+  pop.append(n,e,ok,note,out,dev,every,all);brand.append(pop);
   const toggle=(show)=>{pop.hidden=!show;b.setAttribute('aria-expanded',String(show))};
   b.addEventListener('click',ev=>{ev.preventDefault();ev.stopPropagation();toggle(pop.hidden)});
   pop.addEventListener('click',ev=>ev.stopPropagation());

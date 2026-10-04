@@ -52,7 +52,7 @@ from typing import Annotated, Literal
 
 import anthropic
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request, Query
+from fastapi import FastAPI, HTTPException, Request, Query, Path as FPath
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from openai import AsyncOpenAI, APIError
@@ -934,6 +934,37 @@ from starlette.middleware.gzip import GZipMiddleware, DEFAULT_EXCLUDED_CONTENT_T
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=6,
                    exclude_content_types=tuple(DEFAULT_EXCLUDED_CONTENT_TYPES) + ('application/x-ndjson',))
 
+# ---- sign-ins and devices (signins.py): sign out one device or all of them ----
+import signins
+
+@app.middleware("http")
+async def signed_out_here(request: Request, call_next):
+    """Behind Entra sign-in: turn away a session you signed out on the Sign-ins page (one device, or everywhere), and
+    note where Alice is signed in (device and address, at most every few minutes)."""
+    if signins.trusted() and not request.url.path.startswith(signins.OPEN):
+        state = await asyncio.to_thread(signins.check, request.headers, request.headers.get('user-agent', ''),
+                                        request.client.host if request.client else '')
+        if state == 'out':
+            if request.method == 'GET' and not request.url.path.startswith(('/admin/api', '/api/', '/me')):
+                return RedirectResponse('/signout?everywhere=1', status_code=303)
+            return JSONResponse({'detail': 'This device was signed out of Alice. Sign in again.'}, status_code=401)
+    return await call_next(request)
+
+@app.get('/admin/api/signins')
+def admin_signins(request: Request):
+    return signins.listing(request.headers)
+
+@app.post('/admin/api/signins/{sid}/signout')
+def admin_signin_signout(sid: str = FPath(pattern=r'^[0-9a-f]{20}$')):
+    try: return signins.sign_out(sid)
+    except ValueError as e: raise HTTPException(404, str(e)) from None
+
+@app.post('/admin/api/signout-everywhere')
+def admin_signout_everywhere(request: Request):
+    """Every Alice session on every device that signed in before now has to sign in again (this one too)."""
+    try: return signins.sign_out_everywhere(request.headers)
+    except ValueError as e: raise HTTPException(400, str(e)) from None
+
 @app.middleware("http")
 async def protect_admin(request: Request, call_next):
     if request.url.path.startswith('/admin/api') and request.method != 'GET':
@@ -1174,6 +1205,41 @@ def me(request: Request):
         name = next((c.get('val', '') for c in claims.get('claims', []) if c.get('typ') == 'name'), '')
     except Exception: name = ''
     return {'signed_in': True, 'email': email, 'name': ' '.join(str(name).split())[:120], 'provider': 'Microsoft Entra ID'}
+
+# ---- signing out of Alice only ----
+# /.auth/logout (Container Apps sign-in) also signs you out of Microsoft in this browser (Outlook, Teams, the portal).
+# /signout ends only Alice's session: it expires Alice's own sign-in cookie and shows /signed-out, a static page that
+# is left outside sign-in (infra: excludedPaths) so it does not sign you straight back in. It holds no data.
+AUTH_COOKIES = ('AppServiceAuthSession', 'AppServiceAuthSession1', 'AppServiceAuthSession2', 'AppServiceAuthSession3')
+
+@app.get('/signout')
+def signout(request: Request, everywhere: int = 0):
+    r = RedirectResponse('/signed-out' + ('?everywhere=1' if everywhere else ''), status_code=303)
+    for name in sorted(set(AUTH_COOKIES) | {c for c in request.cookies if c.lower().startswith('appserviceauth')}):
+        r.delete_cookie(name, path='/', secure=True, httponly=True, samesite='lax')
+    r.headers['Cache-Control'] = 'no-store'
+    return r
+
+@app.get('/signed-out')
+def signed_out(everywhere: int = 0):
+    from ui_theme import SHARED_CSS
+    page = SIGNED_OUT_HTML.replace('__CSS__', SHARED_CSS)
+    if everywhere: page = page.replace('<h1 id="so-t">Signed out of Alice</h1>', '<h1 id="so-t">Signed out of Alice everywhere</h1>').replace(
+        'Your Microsoft sign-in for Outlook', 'Every device that was signed in to Alice now has to sign in again. Your Microsoft sign-in for Outlook')
+    return HTMLResponse(page, headers={'Cache-Control': 'no-store'})
+
+SIGNED_OUT_HTML = '''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Signed out of Alice</title><link rel="icon" href="/static/favicon.png"><style>__CSS__
+.so{max-width:460px;margin:12vh auto 0;padding:28px 30px;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 6px 24px rgba(10,30,50,.08)}
+.so h1{margin:0 0 6px;font-size:22px}.so p{margin:8px 0}.so .go{display:inline-block;margin:14px 0 4px;padding:9px 18px;border-radius:9px;background:var(--teal);color:#fff;text-decoration:none;font-weight:600}
+.so .warn{padding:8px 12px;border-radius:8px;background:#fdf3e1;border:1px solid #e2bf85;color:#4a3004;font-size:13px}.so .alt{font-size:13px}
+</style></head><body><main class="so"><h1 id="so-t">Signed out of Alice</h1>
+<p class="muted" id="so-p">Your Microsoft sign-in for Outlook, Teams and the Azure portal is untouched.</p>
+<p id="so-warn" class="warn" hidden>This browser still has an Alice session. Use the link below to sign out of Microsoft too.</p>
+<a class="go" href="/">Sign in to Alice again</a>
+<p class="alt muted">On a shared computer? <a href="/.auth/logout?post_logout_redirect_uri=/signed-out">Sign out of Microsoft in this browser too</a>.</p>
+</main><script>fetch('/me',{credentials:'same-origin',redirect:'manual'}).then(r=>r.ok?r.json():null).then(m=>{if(m&&m.signed_in)document.getElementById('so-warn').hidden=false}).catch(()=>{})</script>
+</body></html>'''
 
 @app.get('/admin/api/speed')
 def admin_speed(days: int=Query(7,ge=1,le=30)):
@@ -2860,4 +2926,4 @@ guard(async()=>{await setupVoice();await refreshFiles();const chats=await api('/
  const asked=chats.find(c=>c.id===requested);if(asked){await loadChat(asked.id);return}
  const empty=chats.find(c=>!c.turns);if(empty)await loadChat(empty.id);else await createChat()});
 
-__SIGNIN_JS__</script></body></html>'''.replace('__SHARED_CSS__', SHARED_CSS + SIGNIN_CSS).replace('__BRAND__', brand_html('/', 'Alice')).replace('__SIGNIN_JS__', SIGNIN_JS).replace('__CHAT_ADMIN_TOKEN__', ADMIN_TOKEN).replace('__BANNER_V__', str(int(BANNER.stat().st_mtime)) if BANNER.is_file() else '0')
+__SIGNIN_JS__</script></body></html>'''.replace('__SHARED_CSS__', SHARED_CSS + SIGNIN_CSS).replace('__BRAND__', brand_html('/', 'Alice')).replace('__SIGNIN_JS__', SIGNIN_JS.replace('__SIGNIN_TOKEN__', ADMIN_TOKEN)).replace('__CHAT_ADMIN_TOKEN__', ADMIN_TOKEN).replace('__BANNER_V__', str(int(BANNER.stat().st_mtime)) if BANNER.is_file() else '0')
