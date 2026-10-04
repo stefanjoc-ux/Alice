@@ -250,6 +250,12 @@ body{display:grid;grid-template-rows:52px minmax(0,1fr);height:100vh;height:100d
 .sidebar .nav-label{overflow:hidden;text-overflow:ellipsis}
 .nav-collapse{align-self:flex-end;flex:none;display:flex;align-items:center;justify-content:center;width:34px;height:30px;margin:-6px 0 6px;padding:0;border:0;background:none;border-radius:8px;color:#7b8f9e}
 .nav-collapse .nav-label{display:none}
+.nav-version{margin-top:auto;padding:14px 10px 2px;font-size:12px;color:#8a9caa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nav-version a,.nav-version span{color:inherit;text-decoration:none}.nav-version a:hover{color:var(--teal);text-decoration:underline}
+.nav-version b{font-family:ui-monospace,Consolas,monospace;font-weight:600;color:#5d7385}
+.sidebar .nav-version a{display:block;height:auto;padding:0;border-radius:0;font-size:inherit;font-weight:400;color:inherit;background:none;white-space:normal}.sidebar .nav-version a:hover{background:none}.sidebar .nav-version a::before{display:none}
+.nav-version .nav-label{overflow:visible}.nav-version [data-built]{display:block;margin-top:1px;font-size:11px}
+body.nav-rail .nav-version{padding:14px 0 2px;text-align:center;font-size:10px}body.nav-rail .nav-version .nav-label{display:none}
 .nav-collapse svg{flex:none;width:19px;height:19px;transition:transform .18s}.nav-collapse:hover{background:#e7eff4;color:var(--ink)}
 body.nav-rail .sidebar{padding:14px 10px 10px}body.nav-rail .sidebar .nav-label,body.nav-rail .sidebar .grp>span,body.nav-rail .sidebar .chev{display:none}
 body.nav-rail .sidebar .grp{height:1px;margin:0 8px 8px;padding:0;background:#dbe5ec;font-size:0;overflow:hidden;pointer-events:none}body.nav-rail .sidebar .nav-sec:first-child .grp{display:none}
@@ -274,7 +280,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:500px;overflow:auto;f
 .stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.stat{padding:18px 20px;background:#fff;border:1px solid var(--line);border-radius:10px;text-decoration:none;display:flex;flex-direction:column;gap:4px;color:var(--ink)}
 .stat strong{font-size:30px;color:var(--teal);font-weight:600}.stat span{color:var(--muted);font-size:13px}.stat:hover{border-color:#89b1bf}
 nav{display:flex;gap:20px;flex-wrap:wrap}
-@media(max-width:900px){body{height:auto;overflow:auto;display:block}.shell{display:block}.sidebar{border-right:0;border-bottom:1px solid #e1e9ef;padding:8px 10px;overflow-x:auto;overflow-y:hidden;touch-action:pan-x;scrollbar-width:none}.sidebar::-webkit-scrollbar{display:none}.sidebar nav{flex-direction:row;gap:6px;flex-wrap:nowrap}.sidebar .nav-sec,.sidebar details{display:contents}.sidebar .nav-group{flex-direction:row;gap:6px}.sidebar .grp,.nav-collapse{display:none!important}.sidebar a{height:36px;padding:0 12px;border-radius:999px;background:#fff;box-shadow:0 0 0 1px #dbe6ee;font-size:13px}.sidebar a[aria-current=page]{background:var(--teal);color:#fff;box-shadow:none}.sidebar a[aria-current=page] svg{color:#fff}.sidebar a[aria-current=page]::before{display:none}.sidebar a svg{width:17px;height:17px}body.nav-rail{--nav-w:248px}body.nav-rail .sidebar .nav-label{display:inline}
+@media(max-width:900px){body{height:auto;overflow:auto;display:block}.shell{display:block}.sidebar{border-right:0;border-bottom:1px solid #e1e9ef;padding:8px 10px;overflow-x:auto;overflow-y:hidden;touch-action:pan-x;scrollbar-width:none}.sidebar::-webkit-scrollbar{display:none}.sidebar nav{flex-direction:row;gap:6px;flex-wrap:nowrap}.sidebar .nav-sec,.sidebar details{display:contents}.sidebar .nav-group{flex-direction:row;gap:6px}.sidebar .grp,.nav-collapse,.nav-version{display:none!important}.sidebar a{height:36px;padding:0 12px;border-radius:999px;background:#fff;box-shadow:0 0 0 1px #dbe6ee;font-size:13px}.sidebar a[aria-current=page]{background:var(--teal);color:#fff;box-shadow:none}.sidebar a[aria-current=page] svg{color:#fff}.sidebar a[aria-current=page]::before{display:none}.sidebar a svg{width:17px;height:17px}body.nav-rail{--nav-w:248px}body.nav-rail .sidebar .nav-label{display:inline}
  .content{padding:16px}.page-title{position:static;transform:none;font-size:16px;max-width:none;flex:1}.brand{width:auto}.brand span{display:none}.stats{gap:10px}}
 .usage-bar{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.usage-bar h2{margin:0 auto 0 0}.usage-bar label{margin:0}.usage-stats{grid-template-columns:repeat(4,minmax(0,1fr));margin-top:16px}.usage-stats .stat strong{font-size:28px;font-variant-numeric:tabular-nums}
 .table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:9px 12px;border-bottom:1px solid #a9bdcb;vertical-align:top}thead th{font-weight:650;border-bottom-width:2px;white-space:nowrap}tfoot td{font-weight:700;border-top:2px solid #a9bdcb;border-bottom:0}.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}tbody tr:hover{background:#00677a0d}#usage-savings td:nth-child(3){min-width:260px;color:var(--muted,#435a6d)}#usage-days td:last-child{width:40%}.bar{display:block;height:10px;min-width:2px;border-radius:3px;background:#00738c}
@@ -2099,7 +2105,7 @@ NAV_COLLAPSE = _I('<rect x="3.5" y="4" width="17" height="16" rx="3"/><path d="M
 
 
 def render_admin(page, token):
-    from ui_theme import SHARED_CSS, SIGNIN_CSS, SIGNIN_JS, brand_html, FETCH_JS, FETCH_CSS
+    from ui_theme import SHARED_CSS, SIGNIN_CSS, SIGNIN_JS, brand_html, FETCH_JS, FETCH_CSS, version_info
     from stage_ui import STAGE_CSS, STAGE_HTML, STAGE_JS
     import apps
     title, description = PAGES[page]
@@ -2122,6 +2128,11 @@ def render_admin(page, token):
                     + '<div class="nav-group">' + links + '</div></details>')
         else:
             nav += '<div class="nav-sec">' + ('<div class="grp">' + escape(name) + '</div>' if name else '') + '<div class="nav-group">' + links + '</div></div>'
+    vi = version_info()
+    vtitle = 'Version ' + vi['version'] + (' · built ' + vi['built'] if vi['built'] else '') + (' · running as ' + vi['revision'] if vi['revision'] else '') + (' · open this change on GitHub' if vi['link'] else '')
+    vtag = 'a href="' + escape(vi['link']) + '" target="_blank" rel="noopener"' if vi['link'] else 'span'
+    version_html = ('<div class="nav-version"><' + vtag + ' title="' + escape(vtitle) + '"><span class="nav-label">Alice </span><b>' + escape(vi['version']) + '</b>'
+                    + ('<span class="nav-label" data-built="' + escape(vi['built']) + '"></span>' if vi['built'] else '') + '</' + vtag.split()[0] + '></div>')
     nav_foot = ('<button type="button" class="nav-collapse" id="nav-collapse" aria-pressed="false" title="Collapse the menu">' + NAV_COLLAPSE
                 + '<span class="nav-label">Collapse menu</span></button>')
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
@@ -2130,7 +2141,7 @@ def render_admin(page, token):
             '<title>' + escape(title) + ' · Alice</title><style>' + SHARED_CSS + SIGNIN_CSS + CSS + STAGE_CSS + '</style></head><body>'
             '<header class="topbar">' + brand_html('/', 'Back to chat')
             + '<h1 class="page-title">' + heading + '</h1><div class="sp"></div><button id="demo-toggle" class="bar-link" type="button" title="Demo mode: only the Agents, Rule packs and Organisations pages, with fictional or replaced names and costs hidden">Demo mode</button><a class="bar-link" href="/">← Chat</a></header>'
-            '<div class="shell"><aside class="sidebar" id="sidebar"><script>try{if(localStorage.getItem("alice-nav-rail")==="1")document.body.classList.add("nav-rail")}catch{}</script>' + nav_foot + '<nav aria-label="Command centre">' + nav + '</nav></aside>'
+            '<div class="shell"><aside class="sidebar" id="sidebar"><script>try{if(localStorage.getItem("alice-nav-rail")==="1")document.body.classList.add("nav-rail")}catch{}</script>' + nav_foot + '<nav aria-label="Command centre">' + nav + '</nav>' + version_html + '</aside>'
             '<main class="content"><div class="inner"><p class="page-desc">' + escape(description) + '</p><div id="notice" role="status" aria-live="polite" title="Click to dismiss"></div>'
             + SECTIONS[page] + '</div></main></div>' + STAGE_HTML + '<style>' + FETCH_CSS + '</style><script>' + FETCH_JS + 'const PAGE=' + json.dumps(page) + ';'
             + DEMO_PRELUDE + SCRIPT.replace('__TOKEN__', token) + NAV_SCRIPT + STAGE_JS + SIGNIN_JS.replace('__SIGNIN_TOKEN__', token) + '</script></body></html>')
@@ -2152,6 +2163,7 @@ NAV_SCRIPT = r"""
  const btn=document.getElementById('nav-collapse');const label=()=>{const r=document.body.classList.contains('nav-rail');btn.setAttribute('aria-pressed',String(r));btn.title=r?'Expand the menu':'Collapse the menu';btn.querySelector('.nav-label').textContent=r?'Expand menu':'Collapse menu'};
  btn.onclick=()=>{document.body.classList.toggle('nav-rail');put('alice-nav-rail',document.body.classList.contains('nav-rail')?'1':'0');label();apply()};
  narrow.addEventListener('change',apply);label();apply();
+ const vb=sb.querySelector('.nav-version [data-built]');if(vb){const d=new Date(vb.dataset.built);if(!isNaN(d))vb.textContent='released '+d.toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}
  const cur=sb.querySelector('a[aria-current=page]');if(cur){if(narrow.matches)sb.scrollLeft=Math.max(0,cur.offsetLeft-sb.clientWidth/2+cur.offsetWidth/2);else cur.scrollIntoView({block:'nearest'})}
 })();
 (()=>{const t=document.getElementById('demo-toggle');if(!t)return;t.textContent=DEMO?'Demo mode: on':'Demo mode';t.classList.toggle('demo-on',DEMO);

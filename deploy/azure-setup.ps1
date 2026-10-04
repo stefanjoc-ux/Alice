@@ -141,7 +141,7 @@ if (Want 'image') {
     Expand-Archive -Path $zip -DestinationPath $src
     try {
       Write-Host "Building in Azure from commit $tag (about 5-10 minutes; the log is not streamed: az crashes printing it on the Windows console)..."
-      $status = AzCli acr build --registry $State.acrName --image ("alice:" + $tag) --file Dockerfile $src --no-logs --query status -o tsv
+      $status = AzCli acr build --registry $State.acrName --image ("alice:" + $tag) --file Dockerfile --build-arg ("ALICE_VERSION=" + $tag) --build-arg ("ALICE_BUILT=" + (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")) $src --no-logs --query status -o tsv
     } finally { Remove-Item $src, $zip -Recurse -Force -ErrorAction SilentlyContinue }
     if ("$status".Trim() -ne 'Succeeded') {
       Write-Host "The build did not succeed ($status). See its log with:  az acr task list-runs -r $($State.acrName) --top 1 -o table   then   az acr task logs -r $($State.acrName) --run-id <RUN ID>" -ForegroundColor Yellow

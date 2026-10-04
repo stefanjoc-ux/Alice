@@ -88,3 +88,18 @@ FETCH_JS = r"""
 FETCH_CSS = (".session-ended{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:999;display:flex;gap:14px;align-items:center;"
              "padding:12px 16px;border-radius:12px;background:#0b1626;color:#e8f6ff;box-shadow:0 10px 30px rgba(0,0,0,.35);font-size:14px}"
              ".session-ended button{background:#075e79;border:0;color:#fff;font-weight:600;padding:7px 14px;border-radius:8px}")
+
+
+# ---------------- which release is running ----------------
+def version_info(env=None):
+    """The release this image is (ALICE_VERSION, set when the pipeline builds it), when it was built, and in Azure the
+    running revision. 'local' on the PC. Nothing secret: a commit code and a time."""
+    import os, re
+    env = os.environ if env is None else env
+    v = (env.get('ALICE_VERSION') or 'local').strip()[:40]
+    if not re.fullmatch(r'[0-9A-Za-z._-]{1,40}', v): v = 'local'
+    built = (env.get('ALICE_BUILT') or '').strip()[:25]
+    rev = (env.get('CONTAINER_APP_REVISION') or '').strip()[:80]
+    repo = (env.get('ALICE_REPO_URL') or 'https://github.com/stefanjoc-ux/Alice').rstrip('/')
+    link = repo + '/commit/' + v if re.fullmatch(r'[0-9a-f]{7,40}', v) else ''
+    return {'version': v, 'built': built, 'revision': rev, 'link': link}

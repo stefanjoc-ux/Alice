@@ -11,6 +11,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
+# Which release this image is (shown at the bottom of the Command centre menu). Set by the pipeline; 'local' otherwise.
+ARG ALICE_VERSION=local
+ARG ALICE_BUILT=
+ENV ALICE_VERSION=$ALICE_VERSION ALICE_BUILT=$ALICE_BUILT
+
 COPY . .
 RUN useradd --create-home --uid 10001 alice && mkdir -p /mnt/alice/data /mnt/alice/Documents \
     && chown -R alice:alice /mnt/alice && chmod +x deploy/start.sh
