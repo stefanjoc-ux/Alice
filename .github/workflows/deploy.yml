@@ -1,9 +1,12 @@
-# On every push to main: run all the tests (SQLite and PostgreSQL) INSIDE the container image, push the image, and
+# On a pull request into main: run all the tests only (nothing is deployed), so a change can be checked before Stefan merges it.
+# On every push to main (a merged pull request): run all the tests (SQLite and PostgreSQL) INSIDE the container image, push the image, and
 # deploy it to Azure as a new revision with NO traffic, then put it live automatically (same health checks as the Go live
 # button; switch off with the repository variable AUTO_PROMOTE=false). Rollback = the Go live button, rollback. Azure sign-in is OIDC (federated credential), so no Azure secrets are stored in GitHub.
 name: test-and-deploy
 on:
   push:
+    branches: [main]
+  pull_request:
     branches: [main]
   workflow_dispatch:
 
@@ -12,8 +15,9 @@ permissions:
   contents: read
 
 # A newer push cancels an older run still going, so an older build can never end up as the "newest" revision.
+# Pull requests have their own lane, so checking one never cancels a release.
 concurrency:
-  group: test-and-deploy
+  group: test-and-deploy-${{ github.event_name == 'pull_request' && github.head_ref || 'main' }}
   cancel-in-progress: true
 
 jobs:
@@ -44,7 +48,7 @@ jobs:
 
   deploy:
     needs: test-image
-    if: ${{ vars.AZURE_CLIENT_ID != '' }}
+    if: ${{ vars.AZURE_CLIENT_ID != '' && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     environment: production
     steps:

@@ -252,6 +252,10 @@ call real AI services. Never read the demo store anywhere else, and never let a 
 
 ## Git
 
+**Working on the GitHub repo directly (Claude):** never push to `main`. Push a branch (`claude/<short-topic>`) and open a
+pull request into `main`; the pipeline runs every test on it without deploying. Stefan reviews and merges; the merge is what
+goes live (automatic go-live). Files under `.github/` are changed by Stefan only: change `deploy/github/*.yml` and ask him to copy.
+
 `.gitignore` excludes `.env`, `data\`, `.venv\`, caches and downloads. Commit after each passing change:
 ```
 git add -A
@@ -263,7 +267,7 @@ To undo uncommitted changes to a file: `git restore <file>`. To see what changed
 ## Roadmap (not yet built)
 
 - pgvector search in PostgreSQL; ChatGPT as a second connector client (it can use the same OAuth proxy).
-- Build and release without the PC: Claude works on the GitHub repo directly (Promote/Rollback button done).
+- Build and release without the PC: Claude works on the GitHub repo directly (Promote/Rollback button and automatic go-live done; waiting on GitHub access for Claude).
 - TypeScript front end against the existing API; split `substrate_store.py` into modules.
 - OpenAI image pricing once the usage export arrives (`IMAGE_PRICE_OPENAI`).
 - Opportunity and news digests by email to each organisation's account manager (Stefan, 3 Oct 2026). Build on
