@@ -159,6 +159,49 @@ def _positions(c, pid):
     return pos
 
 
+def _fx_series(ccy):
+    """GBP per unit of ccy by day (as of each day's latest rate)."""
+    ccy = (ccy or 'USD').upper()
+    if ccy in ('GBP', 'GBX'): return None
+    return {b['day']: 1.0 / b['close'] for b in _bars('GBP/' + ccy, 'FX') if b['close']}
+
+
+def history(pid, days=365):
+    """The paper portfolio's value and cost in GBP for each trading day with prices, oldest first (up to `days`)."""
+    with store.db() as c:
+        _portfolio(c, pid)
+        trades = [dict(r) for r in c.execute('SELECT symbol,exchange,side,qty,total_gbp,fee_gbp,ccy,at FROM tp_trades WHERE portfolio_id=? ORDER BY at, created_at', (pid,))]
+    if not trades: return []
+    syms = {(t['symbol'], t['exchange']): t['ccy'] for t in trades}
+    closes = {k: {b['day']: b['close'] for b in _bars(*k)} for k in syms}
+    fxs = {ccy: _fx_series(ccy) for ccy in set(syms.values())}
+    all_days = sorted({d for v in closes.values() for d in v if d >= trades[0]['at'][:10]})[-days:]
+    out, i, pos, last_px, last_fx = [], 0, {}, {}, {}
+    # walk the days; apply each trade on its day (average cost, as in _positions)
+    for d in all_days:
+        while i < len(trades) and trades[i]['at'][:10] <= d:
+            t = trades[i]; k = (t['symbol'], t['exchange']); p = pos.setdefault(k, [0.0, 0.0])
+            if t['side'] == 'buy': p[0] += t['qty']; p[1] += t['total_gbp'] + t['fee_gbp']
+            else:
+                avg = p[1] / p[0] if p[0] else 0.0; p[1] -= avg * t['qty']; p[0] -= t['qty']
+                if p[0] < 1e-9: p[0], p[1] = 0.0, 0.0
+            i += 1
+        value, cost, complete = 0.0, 0.0, True
+        for k, (qty, cst) in pos.items():
+            if qty <= 0: continue
+            if d in closes[k]: last_px[k] = closes[k][d]
+            ccy = syms[k].upper()
+            if ccy in ('GBP', 'GBX'): rate = 1.0 if ccy == 'GBP' else 0.01
+            else:
+                fx = fxs.get(ccy) or {}
+                if d in fx: last_fx[ccy] = fx[d]
+                rate = last_fx.get(ccy)
+            if k not in last_px or not rate: complete = False; continue
+            value += qty * last_px[k] * rate; cost += cst
+        if complete and cost: out.append({'day': d, 'value_gbp': round(value, 2), 'cost_gbp': round(cost, 2)})
+    return out
+
+
 def portfolio_view(pid):
     """Holdings with average cost, latest close, value and unrealised profit in GBP; totals."""
     with store.db() as c:
@@ -175,7 +218,8 @@ def portfolio_view(pid):
         if val is None: missing.append(s)
         else: value += val
         cost += p['cost_gbp']
-        rows.append({'symbol': s, 'exchange': e, 'qty': round(p['qty'], 6), 'ccy': p['ccy'], 'avg_cost_gbp': round(p['cost_gbp'] / p['qty'], 4),
+        spark = [b['close'] for b in _bars(s, e)][-30:]
+        rows.append({'spark': spark, 'symbol': s, 'exchange': e, 'qty': round(p['qty'], 6), 'ccy': p['ccy'], 'avg_cost_gbp': round(p['cost_gbp'] / p['qty'], 4),
                      'cost_gbp': round(p['cost_gbp'], 2), 'last': last['close'] if last else None, 'last_day': last['day'] if last else None,
                      'value_gbp': round(val, 2) if val is not None else None,
                      'pl_gbp': round(val - p['cost_gbp'], 2) if val is not None else None,

@@ -62,6 +62,13 @@ v = T.portfolio_view(pf)
 nv = next(p for p in v['positions'] if p['symbol'] == 'ZZNV')
 t('valued in pounds at the latest close and rate: 6 × $123 × 0.8 = £590.40', nv['value_gbp'] == 590.4 and nv['pl_gbp'] == 108.0)
 
+hist = T.history(pf)
+t('value over time: one point per trading day from the first trade, in pounds', hist[0]['day'] == '2026-09-01' and hist[-1]['day'] == '2026-10-02'
+  and hist[-1]['value_gbp'] == round(6 * 123 * 0.8 + 2 * 154 * 0.8, 2) and hist[-1]['cost_gbp'] == 802.4)
+t('a sell on a day lowers the holding from that day', next(h for h in hist if h['day'] == '2026-09-03')['cost_gbp'] == 802.4
+  and next(h for h in hist if h['day'] == '2026-09-02')['cost_gbp'] == 963.2)
+t('each holding carries its last 30 closes for a small chart', len(nv['spark']) == 24 and nv['spark'][-1] == 123.0)
+
 # ---- paper trades ----
 refused('cannot sell more than is held', lambda: T.add_trade(pf, 'ZZNV', 'sell', 50, 120))
 refused('a nonsense ticker is refused', lambda: T.add_trade(pf, 'NOT A TICKER!', 'buy', 1, 1))

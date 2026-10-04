@@ -1364,7 +1364,7 @@ def admin_trading(): return trading.overview()
 
 @app.get('/admin/api/trading/portfolios/{pid}')
 def admin_trading_portfolio(pid: str=FPath(pattern=r'^[0-9a-f]{12}$')):
-    v=_tp(trading.portfolio_view,pid);v['scenarios']=trading.scenarios(pid);return v
+    v=_tp(trading.portfolio_view,pid);v['scenarios']=trading.scenarios(pid);v['history']=trading.history(pid);return v
 
 @app.post('/admin/api/trading/portfolios')
 def admin_trading_new_portfolio(p: TpPortfolio): return _tp(trading.create_portfolio,p.name,p.note)

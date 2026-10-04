@@ -38,12 +38,15 @@ SECTIONS = {
 'home': r'''<section class="hm-hero"><div><h2 id="hm-hello">Hello</h2><p id="hm-sub" class="muted"></p></div>
 <div class="hm-go"><a class="hm-btn primary" href="/?new=1"><span>&#9998;</span>New chat</a><a class="hm-btn" id="hm-prop" href="/admin/assistants"><span>&#10064;</span>Write a proposal</a><a class="hm-btn" href="/admin/temple?tab=ask"><span>?</span>Ask Temple</a><a class="hm-btn" href="/admin/knowledge"><span>+</span>Add knowledge</a></div></section>
 <div id="hm" class="hm"></div>''',
-'trading': r'''<section><div class="mem-head"><h2>At a glance</h2><span id="tp-asof" class="muted small"></span></div><div id="tp-tiles" class="mi-tiles"></div></section>
+'trading': r'''<section class="tp-hero-sec"><div class="tp-hero-grid"><div id="tp-hero" class="tp-hero"></div>
+<div class="tp-chart-card"><div class="tp-chart-head"><h3 id="tp-chart-title">Paper portfolio value</h3><div class="tp-legend"><span><i class="tp-sw-val"></i>Value</span><span><i class="tp-sw-cost"></i>What it cost</span></div></div><div id="tp-chart" class="tp-chart" role="img"></div></div></div>
+<div id="tp-tiles" class="tp-tiles"></div><p id="tp-asof" class="muted small"></p></section>
 <section><div class="mem-head"><h2>Paper portfolios</h2><span class="muted small">Simulation only</span></div>
 <div id="tp-pfs" class="mem-tabs"></div>
 <div id="tp-pf"></div>
 <details class="tp-more"><summary>New paper portfolio</summary><div class="tp-form"><input id="tp-pf-name" placeholder="Name, e.g. T212 Invest (paper)" maxlength="80"><button type="button" id="tp-pf-add">Create</button></div></details></section>
 <section><div class="mem-head"><h2>Signals</h2><span class="muted small">Each signal followed for 20 trading days</span></div>
+<div class="tp-chart-card"><div class="tp-chart-head"><h3>Average move after each signal, in its direction</h3><div class="tp-legend"><span><i class="tp-sw-val"></i>Buy signals</span><span><i class="tp-sw-sell"></i>Sell signals</span></div></div><div id="tp-sigchart" class="tp-chart tp-chart-sm" role="img"></div></div>
 <div class="table-wrap"><table id="tp-sig" class="mem-table"></table></div>
 <details class="tp-more"><summary>Log a signal by hand, or import a CSV</summary>
 <div class="tp-form"><input id="tp-s-sym" placeholder="Ticker, e.g. NVDA" maxlength="24"><select id="tp-s-side"><option value="buy">Buy</option><option value="sell">Sell</option></select>
@@ -266,12 +269,12 @@ body{display:grid;grid-template-rows:52px minmax(0,1fr);height:100vh;height:100d
 .sidebar .nav-label{overflow:hidden;text-overflow:ellipsis}
 .nav-collapse{align-self:flex-end;flex:none;display:flex;align-items:center;justify-content:center;width:34px;height:30px;margin:-6px 0 6px;padding:0;border:0;background:none;border-radius:8px;color:#7b8f9e}
 .nav-collapse .nav-label{display:none}
-.nav-version{margin-top:auto;padding:14px 10px 2px;font-size:12px;color:#8a9caa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nav-version{margin-top:auto;position:sticky;bottom:-10px;padding:8px 10px 20px;margin-bottom:-10px;background:#f2f6f9;border-top:1px solid #e1e9ef;box-shadow:0 -8px 10px -6px #f2f6f9;font-size:12px;color:#8a9caa;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;z-index:2}
 .nav-version a,.nav-version span{color:inherit;text-decoration:none}.nav-version a:hover{color:var(--teal);text-decoration:underline}
 .nav-version b{font-family:ui-monospace,Consolas,monospace;font-weight:600;color:#5d7385}
 .sidebar .nav-version a{display:block;height:auto;padding:0;border-radius:0;font-size:inherit;font-weight:400;color:inherit;background:none;white-space:normal}.sidebar .nav-version a:hover{background:none}.sidebar .nav-version a::before{display:none}
 .nav-version .nav-label{overflow:visible}.nav-version [data-built]{display:block;margin-top:1px;font-size:11px}
-body.nav-rail .nav-version{padding:14px 0 2px;text-align:center;font-size:10px}body.nav-rail .nav-version .nav-label{display:none}
+body.nav-rail .nav-version{padding:8px 0 20px;text-align:center;font-size:10px}body.nav-rail .nav-version .nav-label{display:none}
 .nav-collapse svg{flex:none;width:19px;height:19px;transition:transform .18s}.nav-collapse:hover{background:#e7eff4;color:var(--ink)}
 body.nav-rail .sidebar{padding:14px 10px 10px}body.nav-rail .sidebar .nav-label,body.nav-rail .sidebar .grp>span,body.nav-rail .sidebar .chev{display:none}
 body.nav-rail .sidebar .grp{height:1px;margin:0 8px 8px;padding:0;background:#dbe5ec;font-size:0;overflow:hidden;pointer-events:none}body.nav-rail .sidebar .nav-sec:first-child .grp{display:none}
@@ -363,6 +366,25 @@ nav{display:flex;gap:20px;flex-wrap:wrap}
 .ag-card-flags{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;color:#6b4406}
 .ag-head{padding-bottom:6px}.ag-head>button{margin:0 0 10px}.ag-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.ag-title h2{margin:0;font-size:20px}
 .si-list{display:grid;gap:10px;margin-top:12px}.si-row{display:grid;grid-template-columns:40px 1fr auto;gap:12px;align-items:center;padding:12px 14px;border:1px solid #d3dee6;border-radius:12px;background:#fff}.si-row.me{border-color:#075e79;box-shadow:0 0 0 1px #075e79}.si-row.old{background:#f7f9fb;color:#5d7385}.si-ico{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:#e3f1f6;color:#075e79}.si-ico svg{width:22px;height:22px}.si-row.old .si-ico{background:#eef2f5;color:#8aa0b0}.si-row b{display:block;color:#102b40}.si-row.old b{color:#3d5566}.si-meta{font-size:13px;color:#5d7385}.si-tag{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600;background:#075e79;color:#fff;vertical-align:1px}@media(max-width:600px){.si-row{grid-template-columns:34px 1fr}.si-row>button{grid-column:1/-1;justify-self:start}}
+.tp-hero-grid{display:grid;grid-template-columns:minmax(220px,300px) 1fr;gap:18px;align-items:stretch}@media(max-width:900px){.tp-hero-grid{grid-template-columns:1fr}}
+.tp-hero{border-radius:14px;padding:20px 22px;background:linear-gradient(145deg,#0b3b4f,#075e79 60%,#1679a3);color:#e8f6ff;display:flex;flex-direction:column;gap:6px;box-shadow:0 10px 24px -14px rgba(7,94,121,.7)}
+.tp-hero .k{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#a9dcef}.tp-hero .v{font-size:34px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums;color:#fff}
+.tp-hero .d{display:inline-flex;align-items:center;gap:6px;font-size:14px;font-weight:600;padding:3px 10px;border-radius:999px;background:rgba(255,255,255,.14);width:fit-content;max-width:100%;flex-wrap:wrap}
+.tp-hero .s{font-size:13px;color:#cfe9f4;margin-top:auto}.tp-hero select{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.25);border-radius:8px;padding:4px 8px;margin-top:6px}
+.tp-hero select option{color:#102b40}
+.tp-chart-card{border:1px solid #dde7ee;border-radius:14px;padding:12px 14px 6px;background:#fff;position:relative}.tp-chart-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.tp-chart-head h3{margin:0;font-size:14px;color:#3d5566}.tp-legend{display:flex;gap:14px;font-size:12px;color:#5d7385}.tp-legend span{display:inline-flex;align-items:center;gap:6px}
+.tp-legend i{display:inline-block;width:14px;height:3px;border-radius:2px}.tp-sw-val{background:#1679a3}.tp-sw-sell{background:#eb6834;height:10px!important;width:10px!important}.tp-legend .tp-sw-val{height:3px}
+.tp-sw-cost{background:repeating-linear-gradient(90deg,#8aa0b0 0 4px,transparent 4px 7px)}
+.tp-chart{position:relative;height:210px;margin-top:6px}.tp-chart-sm{height:190px}.tp-chart svg{display:block;width:100%;height:100%;overflow:visible}.tp-chart text{font-size:11px;fill:#5d7385}
+.tp-tip{position:absolute;pointer-events:none;background:#0b1626;color:#e8f6ff;border-radius:8px;padding:7px 10px;font-size:12px;line-height:1.5;white-space:nowrap;transform:translate(-50%,-100%);z-index:5;box-shadow:0 6px 18px rgba(0,0,0,.25)}
+.tp-tip b{color:#fff}.tp-empty{display:grid;place-items:center;height:100%;color:#8aa0b0;font-size:13px;text-align:center;padding:0 20px}
+.tp-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:16px 0 4px}
+.tp-tile{border:1px solid #dde7ee;border-radius:12px;padding:12px 14px;background:#fff;display:flex;gap:12px;align-items:center}.tp-tile .ic{flex:none;width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:#e3f1f6;color:#075e79}
+.tp-tile .ic svg{width:20px;height:20px}.tp-tile b{display:block;white-space:nowrap;font-size:20px;color:#102b40;font-variant-numeric:tabular-nums;line-height:1.2}.tp-tile span{font-size:12px;color:#5d7385}
+.tp-alloc{margin:14px 0 6px;display:grid;gap:6px}.tp-arow{display:grid;grid-template-columns:90px 1fr 64px;gap:10px;align-items:center;font-size:13px}.tp-arow .bar-bg{height:10px;border-radius:5px;background:#eef3f6;overflow:hidden}
+.tp-arow .bar-fg{height:100%;border-radius:5px;background:#1679a3}.tp-arow .pc{text-align:right;color:#3d5566;font-variant-numeric:tabular-nums}
+.tp-spark{display:block;width:90px;height:26px}
 .tp-form{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0}.tp-form input,.tp-form select{width:auto;min-width:0;flex:1 1 120px;margin:0}.tp-form button{flex:none}
 .tp-more{margin-top:12px}.tp-more>summary{font-weight:600;color:var(--teal)}
 .tp-up{color:#1e6b3a;font-weight:600}.tp-down{color:#9a2b2b;font-weight:600}.tp-flat{color:#5d7385}
@@ -1584,14 +1606,89 @@ if(PAGE==='trading'){
   if(!O.portfolios.length)$('tp-pf').replaceChildren(el('p','No paper portfolio yet. Create one below, then import your Trading 212 history into it.','muted'));
   const pv=cur?await api('/admin/api/trading/portfolios/'+cur):null;if(pv)portfolio(pv);
   const sg=await api('/admin/api/trading/signals');signals(sg.signals);await analysis();setup();
-  const tile=(v,l,cls)=>{const x=el('div','','mi-tile'+(cls?' '+cls:''));x.append(el('strong',v),el('span',l));return x};
-  $('tp-tiles').replaceChildren(tile(pv?gbp(pv.totals.value_gbp):'–',pv?pv.portfolio.name+' value':'Paper value','mi-biz'),tile(pv&&pv.totals.unrealised_gbp!=null?gbp(pv.totals.unrealised_gbp):'–','Unrealised on paper'),tile(String(O.signals),'Signals logged'),tile(O.last_signal?day(O.last_signal):'none yet','Last signal'));
+  const sa=await api('/admin/api/trading/analysis?by=side');LAST={pv,sa};draw();
+  let hit=0,hn=0;for(const r of sa.rows){const x=r.horizons['5'];if(x){hit+=x.hit_pct*x.n/100;hn+=x.n}}
+  const u=pv?pv.totals.unrealised_gbp:null,rl=pv?pv.totals.realised_gbp:null;
+  $('tp-tiles').replaceChildren(
+   tile('pl',u==null?'–':(u>=0?'▲ ':'▼ ')+gbp(Math.abs(u)),'Unrealised on paper'+(u==null?'':u>=0?' (up)':' (down)')),
+   tile('bank',rl==null?'–':gbp(rl),'Realised on paper'),
+   tile('bolt',String(O.signals),'Signals logged'),
+   tile('target',hn?Math.round(100*hit/hn)+'%':'–',hn?'Went their way after 5 days ('+hn+')':'Went their way after 5 days'),
+   tile('clock',O.last_signal?day(O.last_signal):'none yet','Last signal'));
   $('tp-asof').textContent=O.refresh.finished_at?'Prices refreshed '+day(O.refresh.finished_at):''}
+ const IC={pl:'<path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/>',bank:'<path d="M3 10l9-6 9 6"/><path d="M5 10v8M10 10v8M14 10v8M19 10v8M3 20h18"/>',
+  bolt:'<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',target:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/>',clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'};
+ function tile(ic,v,l){const x=el('div','','tp-tile'),i=el('div','','ic');i.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+IC[ic]+'</svg>';
+  const t=el('div','');t.append(el('b',v),el('span',l));x.append(i,t);return x}
+ let LAST=null,rz=0;
+ function draw(){if(!LAST)return;const {pv,sa}=LAST;hero(pv);
+  const h=pv?pv.history||[]:[];$('tp-chart-title').textContent=h.length>1?'Paper portfolio value since '+sday(h[0].day):'Paper portfolio value';
+  valueChart($('tp-chart'),h);sigChart($('tp-sigchart'),sa)}
+ window.addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(draw,150)});
+ const sday=d=>new Date(d+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+ const short=v=>{const a=Math.abs(v);return (v<0?'−':'')+'£'+(a>=1e6?(a/1e6).toFixed(1)+'m':a>=1e4?Math.round(a/1e3)+'k':Math.round(a).toLocaleString('en-GB'))};
+ function hero(pv){const h=$('tp-hero');h.replaceChildren(el('div',pv?pv.portfolio.name:'Paper portfolio','k'),el('div',pv?gbp(pv.totals.value_gbp):'–','v'));
+  if(pv&&pv.totals.unrealised_gbp!=null&&pv.totals.cost_gbp){const u=pv.totals.unrealised_gbp,p=100*u/pv.totals.cost_gbp;
+   h.append(el('div',(u>=0?'▲ ':'▼ ')+gbp(Math.abs(u))+' ('+(u>=0?'+':'−')+Math.abs(p).toFixed(1)+'%) '+(u>=0?'up':'down')+' on cost','d'))}
+  else if(pv&&pv.totals.missing_prices.length)h.append(el('div','Waiting for prices','d'));
+  if(O.portfolios.length>1){const s=document.createElement('select');s.setAttribute('aria-label','Paper portfolio');for(const p of O.portfolios){const o=document.createElement('option');o.value=p.id;o.textContent=p.name;o.selected=p.id===cur;s.append(o)}s.onchange=()=>{cur=s.value;run(load)};h.append(s)}
+  h.append(el('div',pv?'Cost of holdings '+gbp(pv.totals.cost_gbp)+' · simulation only':'Simulation only: no real orders','s'))}
+ function tipAt(box,tip,x,y,W){const bw=box.clientWidth,sx=bw/W;let l=x*sx;l=Math.max(70,Math.min(bw-70,l));tip.style.left=l+'px';tip.style.top=Math.max(0,y-8)+'px';tip.hidden=false}
+ // Value over time: teal 2px line with a light area, cost as a dashed grey line, crosshair and tooltip (mouse and arrow keys).
+ function valueChart(box,hist){box.replaceChildren();
+  if(hist.length<2){box.append(el('div',hist.length?'One day of prices so far: the line appears after the next refresh.':'No history yet. Import trades and refresh prices to draw the value over time.','tp-empty'));return}
+  const W=Math.max(300,box.clientWidth||640),H=box.clientHeight||210,L=52,R=10,T=10,B=24,n=hist.length;
+  const vals=hist.flatMap(d=>[d.value_gbp,d.cost_gbp]);let lo=Math.min(...vals),hi=Math.max(...vals);const step=niceMax(((hi-lo)||hi||1)/4);
+  lo=Math.max(0,Math.floor(lo/step)*step);hi=Math.ceil(hi/step)*step;if(hi<=lo)hi=lo+step;
+  const x=i=>L+(W-L-R)*i/(n-1),y=v=>T+(H-T-B)*(1-(v-lo)/(hi-lo));
+  const svg=svgEl('svg',{viewBox:`0 0 ${W} ${H}`,tabindex:'0','aria-label':'Paper portfolio value from '+sday(hist[0].day)+' ('+gbp(hist[0].value_gbp)+') to '+sday(hist[n-1].day)+' ('+gbp(hist[n-1].value_gbp)+'). Use the arrow keys to read each day.'});
+  for(let v=lo;v<=hi+step/2;v+=step){const yy=y(v);svg.append(svgEl('line',{x1:L,x2:W-R,y1:yy,y2:yy,stroke:'#e6edf2','stroke-width':1}));const t=svgEl('text',{x:L-8,y:yy+4,'text-anchor':'end'});t.textContent=short(v);svg.append(t)}
+  const ticks=Math.min(5,n);for(let k=0;k<ticks;k++){const i=Math.round(k*(n-1)/Math.max(1,ticks-1));const t=svgEl('text',{x:x(i),y:H-6,'text-anchor':k===0?'start':k===ticks-1?'end':'middle'});t.textContent=new Date(hist[i].day+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short'});svg.append(t)}
+  const line=k=>hist.map((d,i)=>(i?'L':'M')+x(i).toFixed(1)+','+y(d[k]).toFixed(1)).join('');
+  const vl=line('value_gbp');svg.append(svgEl('path',{d:vl+`L${x(n-1)},${y(lo)}L${x(0)},${y(lo)}Z`,fill:'#1679a3','fill-opacity':'.10'}));
+  svg.append(svgEl('path',{d:line('cost_gbp'),fill:'none',stroke:'#8aa0b0','stroke-width':1.5,'stroke-dasharray':'4 3'}));
+  svg.append(svgEl('path',{d:vl,fill:'none',stroke:'#1679a3','stroke-width':2,'stroke-linejoin':'round','stroke-linecap':'round'}));
+  const xh=svgEl('line',{y1:T,y2:H-B,stroke:'#3d5566','stroke-width':1,'stroke-dasharray':'2 3',visibility:'hidden'}),dot=svgEl('circle',{r:5,fill:'#1679a3',stroke:'#fff','stroke-width':2,visibility:'hidden'});svg.append(xh,dot);
+  const tip=document.createElement('div');tip.className='tp-tip';tip.hidden=true;let cur=n-1;
+  const show=i=>{cur=i;const d=hist[i],cx=x(i),cy=y(d.value_gbp);xh.setAttribute('x1',cx);xh.setAttribute('x2',cx);dot.setAttribute('cx',cx);dot.setAttribute('cy',cy);xh.setAttribute('visibility','visible');dot.setAttribute('visibility','visible');
+   const diff=d.value_gbp-d.cost_gbp;tip.replaceChildren(el('b',sday(d.day)),el('div','Value '+gbp(d.value_gbp)),el('div','What it cost '+gbp(d.cost_gbp)),el('div',(diff>=0?'▲ up ':'▼ down ')+gbp(Math.abs(diff))));tipAt(box,tip,cx,cy*box.clientHeight/H,W)};
+  const hide=()=>{tip.hidden=true;xh.setAttribute('visibility','hidden');dot.setAttribute('visibility','hidden')};
+  const hit=svgEl('rect',{x:L,y:T,width:W-L-R,height:H-T-B,fill:'transparent'});svg.append(hit);
+  svg.addEventListener('mousemove',e=>{const r=svg.getBoundingClientRect(),px=(e.clientX-r.left)*W/r.width;show(Math.max(0,Math.min(n-1,Math.round((px-L)/(W-L-R)*(n-1)))))});
+  svg.addEventListener('mouseleave',hide);svg.addEventListener('blur',hide);svg.addEventListener('focus',()=>show(cur));
+  svg.addEventListener('keydown',e=>{if(e.key==='ArrowLeft'){show(Math.max(0,cur-1));e.preventDefault()}else if(e.key==='ArrowRight'){show(Math.min(n-1,cur+1));e.preventDefault()}});
+  box.append(svg,tip)}
+ const barPath=(x,w,y0,y1)=>{const h=Math.abs(y1-y0),r=Math.min(4,h,w/2);if(y1<y0)return `M${x},${y0}V${y1+r}Q${x},${y1} ${x+r},${y1}H${x+w-r}Q${x+w},${y1} ${x+w},${y1+r}V${y0}Z`;return `M${x},${y0}V${y1-r}Q${x},${y1} ${x+r},${y1}H${x+w-r}Q${x+w},${y1} ${x+w},${y1-r}V${y0}Z`};
+ // Signals: average move in the signal's direction at each horizon, buy (teal) beside sell (orange), zero baseline.
+ function sigChart(box,a){box.replaceChildren();const S=[['buy','Buy signals','#1679a3'],['sell','Sell signals','#eb6834']];const rows={};for(const r of a.rows)rows[r.group]=r;
+  const H_=a.horizons,vals=[];for(const [k] of S)for(const h of H_){const x=rows[k]&&rows[k].horizons[String(h)];if(x)vals.push(x.avg)}
+  if(!vals.length){box.append(el('div','Nothing to chart yet: each signal needs a few days of prices after it.','tp-empty'));return}
+  const W=Math.max(300,box.clientWidth||640),H=box.clientHeight||190,L=44,R=8,T=10,B=24;const mx=Math.max(0,...vals),mn=Math.min(0,...vals);
+  const hi=mx>0?niceMax(mx):0,lo=mn<0?-niceMax(-mn):0,top=hi===lo?1:hi,y=v=>T+(H-T-B)*(top-v)/(top-lo),y0=y(0);
+  const svg=svgEl('svg',{viewBox:`0 0 ${W} ${H}`});
+  const step=niceMax((top-lo)/4);for(let v=lo;v<=top+step/2;v+=step){const yy=y(v);svg.append(svgEl('line',{x1:L,x2:W-R,y1:yy,y2:yy,stroke:Math.abs(v)<1e-9?'#8aa0b0':'#e6edf2','stroke-width':1}));const t=svgEl('text',{x:L-8,y:yy+4,'text-anchor':'end'});t.textContent=(v>0?'+':v<0?'−':'')+Math.abs(+v.toFixed(2))+'%';svg.append(t)}
+  const slot=(W-L-R)/H_.length,bw=Math.max(6,Math.min(26,slot*0.3));const tip=document.createElement('div');tip.className='tp-tip';tip.hidden=true;
+  H_.forEach((h,i)=>{const cx=L+slot*i+slot/2;const lab=svgEl('text',{x:cx,y:H-6,'text-anchor':'middle'});lab.textContent='after '+h+'d';svg.append(lab);
+   S.forEach(([k,name,c],j)=>{const d=rows[k]&&rows[k].horizons[String(h)];if(!d)return;const xx=j?cx+1:cx-bw-1,yv=y(d.avg);
+    const g=svgEl('g',{tabindex:'0','aria-label':name+' after '+h+' days: average '+(d.avg>=0?'+':'')+d.avg+'%, went their way '+d.hit_pct+'% of '+d.n});
+    g.append(Math.abs(yv-y0)<2?svgEl('rect',{x:xx,y:y0-1,width:bw,height:2,fill:c}):svgEl('path',{d:barPath(xx,bw,y0,yv),fill:c}));
+    g.append(svgEl('rect',{x:xx-2,y:T,width:bw+4,height:H-T-B,fill:'transparent'}));
+    const show=()=>{tip.replaceChildren(el('b',name+', after '+h+' days'),el('div','Average move '+(d.avg>0?'+':d.avg<0?'−':'')+Math.abs(d.avg)+'%'),el('div','Went their way '+d.hit_pct+'% · '+d.n+(d.n===1?' signal':' signals')));tipAt(box,tip,xx+bw/2,Math.min(yv,y0)*box.clientHeight/H,W)};
+    g.addEventListener('mouseenter',show);g.addEventListener('focus',show);g.addEventListener('mouseleave',()=>tip.hidden=true);g.addEventListener('blur',()=>tip.hidden=true);svg.append(g)})});
+  box.append(svg,tip)}
+ function spark(v){if(!v||v.length<2)return '–';const W=90,H=26,lo=Math.min(...v),hi=Math.max(...v),r=hi-lo||1;const svg=svgEl('svg',{class:'tp-spark',viewBox:`0 0 ${W} ${H}`,role:'img','aria-label':'Last '+v.length+' closes: from '+v[0]+' to '+v[v.length-1]});
+  svg.append(svgEl('polyline',{points:v.map((p,i)=>(1+(W-2)*i/(v.length-1)).toFixed(1)+','+(2+(H-4)*(1-(p-lo)/r)).toFixed(1)).join(' '),fill:'none',stroke:'#1679a3','stroke-width':1.5,'stroke-linejoin':'round'}));
+  svg.append(svgEl('circle',{cx:W-1,cy:2+(H-4)*(1-(v[v.length-1]-lo)/r),r:2.5,fill:'#1679a3'}));return svg}
+ function alloc(v){const ps=v.positions.filter(p=>p.value_gbp>0).sort((a,b)=>b.value_gbp-a.value_gbp);const tot=ps.reduce((s,p)=>s+p.value_gbp,0);if(ps.length<2||!tot)return null;
+  let rows=ps.map(p=>[p.symbol,p.value_gbp]);if(rows.length>8){const rest=rows.slice(7).reduce((s,r)=>s+r[1],0);rows=rows.slice(0,7).concat([['Other',rest]])}
+  const box=el('div','','tp-alloc');box.append(el('strong','Share of the portfolio','small'));
+  for(const [s,val] of rows){const r=el('div','','tp-arow'),bg=el('div','','bar-bg'),fg=el('div','','bar-fg');fg.style.width=Math.max(1,100*val/tot)+'%';bg.append(fg);bg.title=s+': '+gbp(val);r.append(el('span',s),bg,el('span',(100*val/tot).toFixed(1)+'%','pc'));box.append(r)}
+  return box}
  function portfolio(v){const box=$('tp-pf');box.replaceChildren();
   if(v.totals.missing_prices.length)box.append(el('p','No price yet for '+v.totals.missing_prices.join(', ')+': refresh prices in Set-up.','small flag'));
   const t=document.createElement('table');t.id='tp-pos';t.className='mem-table';const w=el('div','','table-wrap');w.append(t);box.append(w);
-  table('tp-pos',['Holding','Quantity','Average cost','Last close','Value','Profit or loss',''],v.positions.map(p=>[el('strong',p.symbol+(p.exchange?':'+p.exchange:'')),String(p.qty),gbp(p.avg_cost_gbp),p.last!=null?p.last+' '+p.ccy:'–',gbp(p.value_gbp),(()=>{const s=el('span','');s.append(document.createTextNode(gbp(p.pl_gbp)+' '),pct(p.pl_pct));return s})(),(()=>{const b=el('button','Simulate selling','secondary mini');b.type='button';b.onclick=()=>{$('tp-sc-sym').value=p.symbol;$('tp-sc-date').focus()};return b})()]),'Nothing held. Import your Trading 212 history, or add a paper trade.');
-  box.append(el('p','Realised on paper: '+gbp(v.totals.realised_gbp)+' · cost of holdings '+gbp(v.totals.cost_gbp),'small muted'));
+  table('tp-pos',['Holding','Quantity','Average cost','Last close','Last 30 days','Value','Profit or loss',''],v.positions.map(p=>[el('strong',p.symbol+(p.exchange?':'+p.exchange:'')),String(p.qty),gbp(p.avg_cost_gbp),p.last!=null?p.last+' '+p.ccy:'–',spark(p.spark),gbp(p.value_gbp),(()=>{const s=el('span','');s.append(document.createTextNode(gbp(p.pl_gbp)+' '),pct(p.pl_pct));return s})(),(()=>{const b=el('button','Simulate selling','secondary mini');b.type='button';b.onclick=()=>{$('tp-sc-sym').value=p.symbol;$('tp-sc-date').focus()};return b})()]),'Nothing held. Import your Trading 212 history, or add a paper trade.');
+  const al=alloc(v);if(al)box.append(al);
   const tr=document.createElement('details');tr.className='tp-more';tr.append(el('summary','Paper trade'));const f=el('div','','tp-form');
   f.innerHTML='<input id="tp-t-sym" placeholder="Ticker" maxlength="24"><select id="tp-t-side"><option value="buy">Buy</option><option value="sell">Sell</option></select><input id="tp-t-qty" type="number" step="any" min="0" placeholder="Quantity"><input id="tp-t-price" type="number" step="any" min="0" placeholder="Price"><select id="tp-t-ccy"><option>USD</option><option>GBP</option><option>GBX</option><option>EUR</option></select><input id="tp-t-at" type="datetime-local"><button type="button" id="tp-t-add">Record paper trade</button>';
   tr.append(f,el('p','Price in its own currency; Alice converts to pounds with the latest rate she has (refresh prices first).','small muted'));box.append(tr);
