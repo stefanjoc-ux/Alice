@@ -1,7 +1,11 @@
 """Automatic approval (Stefan's decision, 3 Oct 2026): to keep Alice from being admin, memories, knowledge drafts,
 organisation facts and Temple's memory/knowledge suggestions go live without a click. What still waits for him:
 
-- Decisions: always. Shown on Actions with why it is a decision, what it is for, and Temple's recommendation.
+- Decisions: Temple manages them (Stefan's decision, 5 Oct 2026). They are working decisions made by signed-in people, not
+  board decisions, so Temple records each one once checked, with who made it, clashes included (Alice records, she does not
+  mediate: a clash is noted with the decision). The only decisions that wait are the ones the decision policy asks for:
+  categories that always need approval, and/or Temple's impact rating at or above a level. Those are held on Actions and
+  emailed to the category's owner (or the default approver) by notify.py. Settings key 'decision_policy' (JSON).
 - Anything that changes behaviour or removes something: rule and guidance suggestions, and "this replaces that"
   suggestions (retiring older knowledge or memories). Their existing approval paths are unchanged.
 - A new memory that clashes: Temple's review says it contradicts an approved memory or decision ('Conflict: yes'),
@@ -24,6 +28,10 @@ import substrate_store as store
 _outside = contextvars.ContextVar('alice_auto_outside', default='')
 _deciding = contextvars.ContextVar('alice_auto_deciding', default=False)
 TYPES = {'memory': 'Memory', 'knowledge': 'Knowledge', 'orgfact': 'Organisation fact', 'chat': 'Saved conversation'}
+IMPACT = re.compile(r'^\W*impact\W*[:\-]?\s*(low|medium|high)\b', re.I | re.M)
+LEVELS = {'low': 1, 'medium': 2, 'high': 3}
+EMAIL = re.compile(r"[A-Za-z0-9._%+'\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+OLD_HOLD = 'A decision: decisions always wait for you.'
 CONFLICT = re.compile(r'^\W*conflict\W*(yes|no)\b', re.I | re.M)
 WHY = re.compile(r'^\W*why it is a decision\W*[:\-]\s*(.+)$', re.I | re.M)
 FOR = re.compile(r'^\W*what it is for\W*[:\-]\s*(.+)$', re.I | re.M)
@@ -35,6 +43,8 @@ def _schema():
                   "reason TEXT NOT NULL DEFAULT '', at TEXT NOT NULL, undone_at TEXT, PRIMARY KEY (item_type,item_id))")
         default = 'false' if os.getenv('ALICE_AUTO_APPROVE_DEFAULT') == 'off' else 'true'   # only for a brand-new database
         c.execute("INSERT OR IGNORE INTO settings VALUES ('auto_approve',?)", (default,))
+        c.execute("INSERT OR IGNORE INTO settings VALUES ('decision_policy',?)",
+                  (json.dumps({'auto': True, 'categories': {}, 'impact': 'off', 'approver': ''}),))
 
 
 _schema()
@@ -107,11 +117,13 @@ def _title(c, rid):
 def after_review(rid, reviewed=True):
     """Called once Temple's review of a new memory has finished (or straight away when reviews are off)."""
     import temple
-    if not on() or _state('memory', rid): return
+    if not on(): return
+    st = _state('memory', rid)
+    if st and not (st['state'] == 'held' and st['reason'] == OLD_HOLD and managing_decisions()): return
     with store.db() as c:
         row = c.execute("SELECT r.status,coalesce(m.kind,'fact') AS kind FROM records r LEFT JOIN record_meta m ON m.record_id=r.id WHERE r.id=?", (rid,)).fetchone()
     if not row or row['status'] != 'proposed': return
-    if row['kind'] == 'decision': hold('memory', rid, 'A decision: decisions always wait for you.'); return
+    if row['kind'] == 'decision': decide_decision(rid, reviewed); return
     note = 'not checked for clashes (Temple reviews are off)'
     if reviewed:
         rv = _latest_review(rid)
@@ -267,6 +279,8 @@ def backlog():
     with store.db() as c:
         mems = [r[0] for r in c.execute("SELECT r.id FROM records r LEFT JOIN memory_archive a ON a.record_id=r.id LEFT JOIN record_meta m ON m.record_id=r.id "
                                         "WHERE coalesce(a.state,r.status)='proposed' AND coalesce(m.kind,'fact')<>'decision'")]
+        decs = [r[0] for r in c.execute("SELECT r.id FROM records r LEFT JOIN memory_archive a ON a.record_id=r.id JOIN record_meta m ON m.record_id=r.id "
+                                        "WHERE coalesce(a.state,r.status)='proposed' AND m.kind='decision'")]
         chats = [r[0] for r in c.execute("SELECT DISTINCT chat_id FROM temple_suggestions WHERE status='pending' AND kind IN ('memory','knowledge','decision')")]
     mems = [m for m in mems if ('memory', m) not in hl]
     started = 0
@@ -285,7 +299,17 @@ def backlog():
     for fid in facts: org_fact(fid)
     sugg = 0
     for cid in chats: sugg += suggestions_for_chat(cid)['accepted']
-    return {'memories': len(mems), 'checking': started, 'drafts': len(drafts), 'facts': len(facts), 'suggestions': sugg}
+    ndec = 0
+    if managing_decisions():                   # decisions waiting from before Temple managed them: same checks as new ones
+        for rid in decs:
+            st = _state('memory', rid)
+            if st and st['state'] == 'held' and st['reason'] != OLD_HOLD: continue      # held by the policy: stays
+            ndec += 1
+            rv = _latest_review(rid)
+            if rv and rv['status'] == 'complete': decide_decision(rid, force=True)
+            elif temple.settings()['enabled']: review_then_decide(rid); started += 1
+            else: decide_decision(rid, reviewed=False, force=True)
+    return {'memories': len(mems), 'checking': started, 'drafts': len(drafts), 'facts': len(facts), 'suggestions': sugg, 'decisions': ndec}
 
 
 # ---------------- decisions, explained ----------------
@@ -317,22 +341,121 @@ def explain_decision(item):
             'clash': bool(clash and clash.group(1).lower() == 'yes')}
 
 
-# ---------------- decisions: held as soon as they are proposed, then reviewed by Temple ----------------
+# ---------------- decisions: Temple manages them ----------------
+def policy():
+    with store.db() as c:
+        row = c.execute("SELECT value FROM settings WHERE key='decision_policy'").fetchone()
+    try: p = json.loads(row[0]) if row else {}
+    except ValueError: p = {}
+    return {'auto': p.get('auto', True) is not False, 'categories': dict(p.get('categories') or {}),
+            'impact': p.get('impact') if p.get('impact') in ('off', 'high', 'medium') else 'off', 'approver': p.get('approver') or ''}
+
+
+def set_policy(auto=True, categories=None, impact='off', approver=''):
+    """categories: {category name: owner email ('' = the default approver)}; impact: 'off', 'high' or 'medium' (and above)."""
+    known = {x['name'] for x in store.list_categories()['categories']}
+    cats = {}
+    for name, mail in (categories or {}).items():
+        name = ' '.join(str(name).split())
+        if name not in known: raise ValueError(f'No category called {name}.')
+        mail = (mail or '').strip()
+        if mail and not EMAIL.fullmatch(mail): raise ValueError(f'"{mail[:80]}" is not an email address (owner of {name}).')
+        cats[name] = mail
+    if impact not in ('off', 'high', 'medium'): raise ValueError('Impact is off, high, or medium (and above).')
+    approver = (approver or '').strip()
+    if approver and not EMAIL.fullmatch(approver): raise ValueError(f'"{approver[:80]}" is not an email address.')
+    p = {'auto': bool(auto), 'categories': cats, 'impact': impact, 'approver': approver}
+    with store.db() as c:
+        c.execute("INSERT INTO settings(key,value) VALUES ('decision_policy',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (json.dumps(p),))
+        store.audit(c, 'decision_policy', 'Alice', 'human_control',
+                    ('Temple manages decisions' if p['auto'] else 'Decisions wait for you') +
+                    (f"; approval needed in {', '.join(cats)}" if cats else '') + (f"; and at {impact} impact" + (' and above' if impact == 'medium' else '') if impact != 'off' else ''))
+    return p
+
+
+def managing_decisions():
+    return on() and policy()['auto']
+
+
+def _made_by(rid):
+    meta = (store.record_kinds([rid]).get(rid) or {}).get('decision') or {}
+    return meta.get('made_by') or store.owner_name(), meta.get('via') or ''
+
+
+def decide_decision(rid, reviewed=True, force=False):
+    """Once Temple has checked a decision: recorded (approved) with who made it, unless the decision policy asks for approval."""
+    import temple
+    if not on(): return 'off'
+    st = _state('memory', rid)
+    if st and st['state'] == 'approved': return 'already'
+    if st and st['state'] == 'held' and not force and st['reason'] != OLD_HOLD: return 'held'
+    with store.db() as c:
+        row = c.execute("SELECT r.status,r.title,coalesce(m.category,'') AS category FROM records r "
+                        "LEFT JOIN record_meta m ON m.record_id=r.id WHERE r.id=?", (rid,)).fetchone()
+    if not row or row['status'] != 'proposed': return 'gone'
+    p = policy()
+    if not p['auto']:
+        hold('memory', rid, 'A decision: decisions wait for you (Temple does not manage decisions).'); return 'held'
+    rv = _latest_review(rid) if reviewed else None
+    report = rv['report'] if rv and rv['status'] == 'complete' else ''
+    im = IMPACT.search(report)
+    impact = im.group(1).lower() if im else ''
+    cat = row['category'] or ''
+    why = ''
+    if cat in p['categories']: why = f'Decisions in {cat} need approval.'
+    elif p['impact'] != 'off':
+        if not impact: why = 'Temple could not rate its impact, and impact-rated decisions need approval.'
+        elif LEVELS[impact] >= LEVELS[p['impact']]: why = f'Temple rated it {impact} impact: decisions at that level need approval.'
+    if why:
+        hold('memory', rid, why)
+        owner = p['categories'].get(cat) or p['approver']
+        try:
+            import notify
+            notify.decision_held(rid, why, owner)
+        except Exception:
+            pass
+        return 'held'
+    who, via = _made_by(rid)
+    clash = CONFLICT.search(report)
+    note = f'Decision recorded by Temple for {who}' + (f' (via {via})' if via else '') + \
+           (f', {impact} impact' if impact else '') + ('' if reviewed and report else ', not checked by Temple')
+    if clash and clash.group(1).lower() == 'yes':
+        note += '. Contradicts an earlier decision or memory, kept as made: ' + (temple.reason_line(report) or 'see Temple\'s review')
+    try:
+        with store.acting('Alice', note='Recorded automatically: ' + note):
+            store.review(rid, 'approved')
+    except ValueError as e:
+        hold('memory', rid, f'Not recorded automatically: {e}'); return 'held'
+    _approved('memory', rid, note)
+    return 'approved'
+
+
 _propose_decision = store.propose_decision
 
 
 def propose_decision(*args, **kwargs):
+    who, via = store.actor(), outside()
     token = _deciding.set(True)
     try: result = _propose_decision(*args, **kwargs)
     finally: _deciding.reset(token)
     rid = result.get('id')
     if rid and not result.get('duplicate') and not _state('memory', rid):
-        hold('memory', rid, 'A decision: decisions always wait for you.')
+        with store.db() as c:          # who made it, kept with the decision
+            r = c.execute('SELECT decision FROM record_meta WHERE record_id=?', (rid,)).fetchone()
+            meta = json.loads(r[0]) if r and r[0] else {}
+            meta.update(made_by=who, via=via)
+            c.execute('UPDATE record_meta SET decision=? WHERE record_id=?', (json.dumps(meta), rid))
         import temple
-        if temple.settings()['enabled']:         # reviewed now that its decision details are saved
+        managed, reviewing = managing_decisions(), temple.settings()['enabled']
+        if not managed: hold('memory', rid, 'A decision: decisions wait for you (Temple does not manage decisions).')
+        if reviewing or managed:
             def work():
-                try: temple.review_record(rid)
-                except Exception: pass
+                if reviewing:
+                    try: temple.review_record(rid)
+                    except Exception: pass
+                if managed:
+                    try: decide_decision(rid, reviewed=reviewing)
+                    except Exception: pass
             threading.Thread(target=work, daemon=True).start()
     return result
 

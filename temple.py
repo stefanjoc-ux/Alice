@@ -33,7 +33,8 @@ is now out of date), end the report with a line exactly "Replaces: <ID>" using t
 If the proposal's kind is "decision", judge it as a decision: is a clear choice stated, is the reason given, and does it
 clash with or overturn an earlier decision? Recommend approve only for a clear, reasoned choice that does not clash.
 For a decision also give two lines: "Why it is a decision: <one sentence: the choice it makes and what it rules out>" and
-"What it is for: <one sentence: the client, project or area of work or life it governs>".
+"What it is for: <one sentence: the client, project or area of work or life it governs>", and a line "Impact: low", "Impact: medium"
+or "Impact: high": how much later work, money, clients or other people depend on it (low = a working choice easily changed).
 Always finish with a line exactly "Conflict: yes" if the proposal definitely contradicts an approved memory or decision
 supplied to you, otherwise "Conflict: no".'''
 

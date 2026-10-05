@@ -1194,6 +1194,25 @@ def admin_auto_approve(): return {'on':autoapprove.on(),'recent':autoapprove.rec
 @app.put('/admin/api/auto-approve')
 def admin_auto_approve_set(update: AutoSetting): return autoapprove.set_on(update.on)
 
+class DecisionPolicyIn(BaseModel):
+    auto: bool = True
+    categories: dict[str, str] = Field(default_factory=dict)
+    impact: str = Field(default='off', max_length=10)
+    approver: str = Field(default='', max_length=200)
+
+@app.get('/admin/api/decision-policy')
+def admin_decision_policy():
+    import notify
+    return {**autoapprove.policy(), 'email_ready': notify.configured(), 'mail_from': os.environ.get('ALICE_MAIL_FROM', '') if notify.configured() else '',
+            'category_names': [c['name'] for c in store.list_categories()['categories']]}
+
+@app.put('/admin/api/decision-policy')
+def admin_decision_policy_set(update: DecisionPolicyIn):
+    if len(update.categories) > 50: raise HTTPException(400, 'Too many categories.')
+    try: autoapprove.set_policy(update.auto, update.categories, update.impact, update.approver)
+    except ValueError as e: raise HTTPException(400, str(e)) from None
+    return admin_decision_policy()
+
 @app.post('/admin/api/auto-approve/undo')
 def admin_auto_undo(change: AutoUndo):
     try: return autoapprove.undo(change.item_type,change.id)

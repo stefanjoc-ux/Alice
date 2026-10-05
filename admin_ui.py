@@ -117,7 +117,8 @@ SECTIONS = {
 <div class="row" style="margin-top:10px"><button id="rp-run" type="button" class="primary">Run through the rules</button></div>
 <div id="rp-result" aria-live="polite"></div></section></aside></div>''',
 'actions': r'''<section><div class="mem-head"><h2 id="act-total">Actions</h2><button id="act-refresh" type="button" class="secondary">Refresh</button></div>
-<div class="act-auto"><label class="act-switch"><input id="act-auto" type="checkbox"> <strong>Automatic approval</strong></label><span id="act-auto-text" class="muted small"></span></div></section><div id="act-sections"></div>''' ,
+<div class="act-auto"><label class="act-switch"><input id="act-auto" type="checkbox"> <strong>Automatic approval</strong></label><span id="act-auto-text" class="muted small"></span></div>
+<details id="act-dec" class="act-dec"><summary><strong>Decisions</strong> <span id="act-dec-sum" class="muted small"></span></summary><div id="act-dec-body" class="act-dec-body"></div></details></section><div id="act-sections"></div>''' ,
 'usage': r'''<section><div class="usage-bar"><h2>Spend</h2><label>Period <select id="usage-period"><option value="7d">Last 7 days</option><option value="30d" selected>Last 30 days</option><option value="month">This month</option><option value="all">All time</option></select></label><button id="usage-refresh" type="button">Refresh</button></div><div id="usage-stats" class="stats usage-stats"></div><p id="usage-caveat" class="muted"></p></section>
 <section><div class="mem-head"><h2>Provider connections</h2><button id="prov-check" type="button" class="secondary">Check connections</button></div><p class="muted small">Sends one tiny request to each provider you have a key for (a fraction of a penny each) and reports key, credit and model-access problems in plain words.</p><div id="prov-results"></div></section>
 <section><h2>Cost by model and workload</h2><div class="table-wrap"><table id="usage-groups"></table></div></section>
@@ -562,7 +563,13 @@ a.av-tile:hover{border-color:var(--teal)}.av-tile b{font-size:28px;line-height:1
 .badge.k-lab-general{background:#e6f4ea;color:#1e5b31;border-color:#9fcfaf}.badge.k-lab-internal{background:#e3f1f6;color:#064b63;border-color:#89b1bf}.badge.k-lab-client{background:#fdf3e1;color:#6b4406;border-color:#e2bf85}.badge.k-lab-local{background:#fbeaea;color:#7a1f1f;border-color:#e0aaaa}
 #k-table td:nth-child(2){min-width:260px}
 .tag.k-decision{background:#ede7f6;color:#4b2f73;border-color:#c7b8dd}
-.act-auto{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-top:6px}.act-switch{display:inline-flex;align-items:center;gap:6px;margin:0;white-space:nowrap}.act-switch input{width:auto;margin:0}
+.act-auto{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-top:6px}
+.act-dec{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}.act-dec>summary{cursor:pointer;list-style:none}.act-dec>summary::-webkit-details-marker{display:none}
+.act-dec>summary::before{content:'▸ ';color:var(--muted)}.act-dec[open]>summary::before{content:'▾ '}.act-dec-body{display:grid;gap:12px;padding:10px 0 4px;max-width:760px}
+.act-dec-body>button{justify-self:start;min-width:120px}.act-dec-body p{margin:0}.act-dec-cats{display:grid;gap:6px}.act-dec-cat{display:grid;grid-template-columns:minmax(160px,220px) minmax(0,1fr);gap:10px;align-items:center}
+.act-dec-cat label{display:flex;gap:6px;align-items:center;margin:0;font-weight:600}.act-dec-cat input[type=checkbox]{width:auto;margin:0}
+.act-dec-cat input[type=email]{max-width:340px}.act-dec-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.act-dec-row select,.act-dec-row input{width:auto;min-width:220px}
+@media(max-width:700px){.act-dec-cat{grid-template-columns:1fr}}.act-switch{display:inline-flex;align-items:center;gap:6px;margin:0;white-space:nowrap}.act-switch input{width:auto;margin:0}
 .act-info{background:#f7fafc}.mi-top{display:flex;gap:14px;align-items:center;flex-wrap:wrap}.mi-top input,.mi-top select{margin:0;width:auto}.mi-file input{display:none}.mi-file .primary-btn{display:inline-block;background:#075e79;color:#fff;border-radius:8px;padding:9px 16px;font-weight:600;cursor:pointer}
 .mi-tiles{display:flex;gap:12px;flex-wrap:wrap;margin-top:14px}.mi-tile{background:#f4f7fa;border:1px solid #d3dee6;border-radius:10px;padding:10px 16px;min-width:120px}.mi-tile strong{display:block;font-size:20px;color:#102b40}.mi-tile span{font-size:12px;color:#5d7385}.mi-tile.mi-biz{background:#e6f0f8;border-color:#9cc0db}.mi-biz{color:#1d6fa5;font-weight:600}
 .mi-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 12px;margin:6px 0 10px;background:#f4f7fa;border:1px solid #d3dee6;border-radius:8px}.mi-form input,.mi-form select{margin:0;width:auto;flex:1 1 180px}.mi-form .mi-pc{flex:0 0 100px}.mi-form [hidden]{display:none!important}
@@ -1187,7 +1194,7 @@ if(PAGE==='actions'){
   const box=$('act-sections');box.replaceChildren();
   const open=d.sections.filter(s=>s.count),clear=d.sections.filter(s=>!s.count&&s.key!=='decisions');
   const nodec=d.sections.find(s=>s.key==='decisions'&&!s.count);
-  if(nodec){const sec=el('section','','act-sec act-nodec');const h=el('div','','mem-head');h.append(el('h2','Decisions to approve'),el('span','✓ None waiting','dec-none'));sec.append(h,el('p','No decisions need you right now. When one is proposed (by you in Claude, from a saved conversation or from Temple\u2019s chat suggestions) it appears here first, explained, with Temple\u2019s recommendation.','muted small'));box.append(sec)}
+  if(nodec){const sec=el('section','','act-sec act-nodec');const h=el('div','','mem-head');h.append(el('h2','Decisions to approve'),el('span','✓ None waiting','dec-none'));sec.append(h,el('p','No decisions need you right now. Temple records decisions once checked; the ones your Decisions settings hold for approval appear here first, explained, with Temple\u2019s recommendation.','muted small'));box.append(sec)}
   for(const s of open.filter(s=>!s.info).concat(open.filter(s=>s.info))){const sec=el('section','','act-sec act-'+s.level+(s.info?' act-info':''));const h=el('div','','mem-head');const t=el('h2','');t.append(document.createTextNode(s.title+' '),el('span',String(s.count),'act-count'));const a=document.createElement('a');a.href=s.link;a.textContent=s.count>s.items.length?'Open all '+s.count+' ↗':'Open ↗';h.append(t,a);sec.append(h);
    if(s.note)sec.append(el('p',s.note,'muted small'));
    if(s.key==='waiting'&&d.auto_on){const go=btn('Approve these automatically',async()=>{const x=await api('/admin/api/auto-approve/backlog','POST',{});$('notice').textContent='Checked '+x.memories+' memories ('+x.checking+' being reviewed by Temple), '+x.drafts+' knowledge drafts, '+x.facts+' organisation facts'+(x.suggestions?', accepted '+x.suggestions+' suggestions':'')+'. Anything that failed a check is held back for you.'});go.classList.remove('secondary');sec.append(go)}
@@ -1199,8 +1206,29 @@ if(PAGE==='actions'){
     if(i.detail)txt.append(el('div',i.detail,'small muted'));row.append(txt,actionsFor(i));list.append(row)}
    box.append(sec)}
   if(clear.length){const sec=el('section','','act-sec');sec.append(el('h2','All clear'),el('p',clear.map(s=>s.title).join(' · '),'muted small'));box.append(sec)}
-  $('act-auto').checked=!!d.auto_on;$('act-auto-text').textContent=d.auto_on?'On: memories, knowledge and organisation facts go live after Alice\u2019s checks. Decisions, clashes, replacements, rule changes and anything from the outside connector wait for you here.':'Off: everything waits for your approval.'}
- $('act-auto').onchange=()=>run(async()=>{const on=$('act-auto').checked;if(!confirm(on?'Turn automatic approval on? Decisions and anything that clashes still wait for you.':'Turn automatic approval off? Everything new will wait for your approval.')){$('act-auto').checked=!on;return}await api('/admin/api/auto-approve','PUT',{on});await load()});
+  $('act-auto').checked=!!d.auto_on;$('act-auto-text').textContent=d.auto_on?'On: memories, knowledge and organisation facts go live after Alice\u2019s checks, and Temple records decisions (see Decisions below). Clashing memories, replacements, rule changes and anything the outside connector saves as a memory or note wait for you here.':'Off: everything waits for your approval.'}
+
+ async function decPolicy(){const p=await api('/admin/api/decision-policy');const body=$('act-dec-body');body.replaceChildren();
+  const held=Object.keys(p.categories);
+  $('act-dec-sum').textContent=!p.auto?'· wait for you':('· Temple records them'+(held.length||p.impact!=='off'?', except '+[held.length?held.length+' categor'+(held.length===1?'y':'ies'):'',p.impact==='high'?'high impact':p.impact==='medium'?'medium and high impact':''].filter(Boolean).join(' and '):''));
+  const auto=document.createElement('input');auto.type='checkbox';auto.checked=p.auto;const al=el('label','','act-switch');al.append(auto,document.createTextNode(' Temple records decisions for you'));
+  body.append(al,el('p','Working decisions made by signed-in people are recorded once Temple has checked them, with who made them. A clash with an earlier decision is noted, not held: Alice records, she does not mediate. Undo is on each one for 7 days.','muted small'));
+  const box=el('div','','act-dec-cats');box.append(el('strong','Always ask for approval in these categories'),el('p','Held decisions are emailed to the category’s owner (or the default approver below).','muted small'));
+  const rows=[];for(const name of p.category_names){const r=el('div','','act-dec-cat');const cb=document.createElement('input');cb.type='checkbox';cb.checked=name in p.categories;
+   const lb=el('label','');lb.append(cb,document.createTextNode(' '+name));const em=document.createElement('input');em.type='email';em.maxLength=200;em.placeholder='Owner email (optional)';em.value=p.categories[name]||'';em.hidden=!cb.checked;em.setAttribute('aria-label','Owner email for '+name);
+   cb.onchange=()=>{em.hidden=!cb.checked;if(cb.checked)em.focus()};r.append(lb,em);rows.push([name,cb,em]);box.append(r)}
+  if(!p.category_names.length)box.append(el('p','No categories yet.','muted small'));
+  const imp=document.createElement('select');for(const [v,t] of [['off','Off'],['high','High impact only'],['medium','Medium and high impact']]){const o=document.createElement('option');o.value=v;o.textContent=t;imp.append(o)}imp.value=p.impact;
+  const ir=el('div','','act-dec-row');ir.append(el('strong','Also ask by Temple’s impact rating'),imp);
+  const ap=document.createElement('input');ap.type='email';ap.maxLength=200;ap.placeholder='name@yourdomain';ap.value=p.approver;ap.setAttribute('aria-label','Default approver email');
+  const ar=el('div','','act-dec-row');ar.append(el('strong','Default approver'),ap);
+  const mail=el('p',p.email_ready?'Emails are sent from '+p.mail_from+'.':'Email is not set up yet: held decisions wait here on Actions (set it up with azure-setup.ps1 -Step mail).','muted small');
+  const save=btn('Save',async()=>{const cats={};for(const [n,cb,em] of rows)if(cb.checked)cats[n]=em.value.trim();
+   await api('/admin/api/decision-policy','PUT',{auto:auto.checked,categories:cats,impact:imp.value,approver:ap.value.trim()});$('notice').textContent='Decision settings saved.';await decPolicy();await load()});save.classList.remove('secondary');
+  const sets=[box,ir,ar,mail];const showSets=()=>{for(const x of sets)x.hidden=!auto.checked};auto.onchange=showSets;showSets();
+  body.append(...sets,save)}
+ run(decPolicy);
+ $('act-auto').onchange=()=>run(async()=>{const on=$('act-auto').checked;if(!confirm(on?'Turn automatic approval on? Temple records decisions as set under Decisions; clashing memories still wait for you.':'Turn automatic approval off? Everything new will wait for your approval.')){$('act-auto').checked=!on;return}await api('/admin/api/auto-approve','PUT',{on});await load()});
  $('act-refresh').onclick=()=>run(load);run(load);
 }
 """

@@ -67,7 +67,8 @@ with A.from_outside('Microsoft Copilot'):
 wait(m7['id']); time.sleep(0.2)
 t('a memory from the outside connector waits, even with a clean review', status(m7['id']) == 'proposed' and 'outside connector' in A._state('memory', m7['id'])['reason'])
 
-# 4. decisions always wait, and are explained
+# 4. with Temple not managing decisions (the decision policy switched off), decisions wait, and are explained
+A.set_policy(auto=False)
 REPORTS['Carport roof'] = ('Recommendation: approve\nReasons: a clear choice with a reason; no earlier decision on the roof.\n'
                            'Why it is a decision: It chooses polycarbonate over EPDM and cedar for the carport roof.\n'
                            'What it is for: The larch carport build at home.\nConflict: no')
@@ -93,6 +94,7 @@ t('Actions: what went live automatically, with references, not counted as waitin
 t('decision explained without a review too (from its options)', A.explain_decision({'id': d1['id'], 'content': '', 'reviews': [], 'source': 'x'})['why_decision'].startswith('It chooses one option'))
 cl.post(f"/admin/api/records/{d1['id']}/review", json={'decision': 'approved', 'note': 'Agreed'}, headers=H)
 t('you approve the decision', status(d1['id']) == 'approved')
+A.set_policy(auto=True)
 
 # 5. knowledge drafts and organisation facts
 C.create_client('Fife Council', ['Fife'])
@@ -126,7 +128,11 @@ with s.db() as c:
 t('memory and knowledge suggestions accepted, decision proposed, guidance left for you', r['accepted'] == 3
   and st[s1][0] == st[s2][0] == st[s3][0] == 'accepted' and st[s4][0] == 'pending')
 t('the accepted memory is live', status(st[s1][1]) == 'approved')
-t('the decision from a suggestion waits for you', status(st[s3][1]) == 'proposed' and state('memory', st[s3][1]) == 'held')
+for _ in range(60):
+    if state('memory', st[s3][1]) == 'approved': break
+    time.sleep(0.05)
+t('the decision from a suggestion is recorded by Temple (decisions are managed), saying it was not checked', status(st[s3][1]) == 'approved'
+  and 'not checked by Temple' in A._state('memory', st[s3][1])['reason'])
 cid2 = s.create_chat()['id']
 A.hold('chat', cid2, 'Saved by Microsoft Copilot through the outside connector.')
 with s.db() as c:

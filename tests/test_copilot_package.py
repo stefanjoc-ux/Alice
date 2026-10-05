@@ -28,8 +28,9 @@ t('every function has its tool, and the runtime runs them all', fn_names == tool
 t('the tools are Alice\'s own, with their input schemas', {'search_records', 'propose_record', 'propose_decision', 'read_file'} <= set(tool_names)
   and all('inputSchema' in x for x in rt['spec']['mcp_tool_description']['tools']))
 t('health tools are left out: health data never goes to Copilot', not ({'get_health_context', 'propose_health_note'} & set(tool_names)))
-t('every function has response semantics, without a card that would show empty placeholders', all(f['capabilities']['response_semantics']['data_path'] == '$'
-  and 'static_template' not in f['capabilities']['response_semantics'] for f in plug['functions']) and '${' not in json.dumps(plug))
+t('every function has response semantics with a card (Copilot needs one), fixed text only: no placeholders', all(
+  f['capabilities']['response_semantics']['data_path'] == '$' and f['capabilities']['response_semantics']['static_template']['body'][0]['text'] == 'From Alice'
+  for f in plug['functions']) and '${' not in json.dumps(plug))
 def png_info(b):
     assert b[:8] == b'\x89PNG\r\n\x1a\n'
     w, h, depth, colour = struct.unpack('>IIBB', b[16:26]); return w, h, depth, colour

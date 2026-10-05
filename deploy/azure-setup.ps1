@@ -23,6 +23,9 @@ Steps (all by default, or one with -Step):
            in dist\ to upload in Teams. First register the sign-on in the Teams Developer Portal (see CLAUDE.md), then:
              -Step copilot -CopilotAudience <Application ID URI> -CopilotAuthId <auth config ID>
              [-CopilotDemoAudience <URI> -CopilotDemoAuthId <ID>] [-AlsoAllow you@yourdomain]
+  mail     (run on its own) lets Alice email (held decisions go to their owner): -Step mail -MailFrom alice@yourdomain
+           gives Alice's managed identity the Microsoft Graph permission Mail.Send (no password or secret) and sets the
+           sending mailbox on alice-web and alice-mcp. The mailbox must exist (a shared mailbox needs no licence).
 Nothing here reads .env: keys are typed in once and live only in Key Vault.
 #>
 param(
@@ -40,7 +43,8 @@ param(
   [string]$CopilotAuthId = '',        # its auth config ID (live Alice)
   [string]$CopilotDemoAudience = '',
   [string]$CopilotDemoAuthId = '',    # the demo Alice's registration
-  [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github', 'connector', 'demo', 'copilot')][string]$Step = 'all'
+  [string]$MailFrom = '',             # -Step mail: the mailbox Alice sends from
+  [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github', 'connector', 'demo', 'copilot', 'mail')][string]$Step = 'all'
 )
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
@@ -50,7 +54,8 @@ $StateFile = Join-Path $PSScriptRoot 'azure-state.json'
 function Say($text) { Write-Host "`n== $text" -ForegroundColor Cyan }
 function AzCli { $out = & az @args; if ($LASTEXITCODE -ne 0) { throw "az $($args -join ' ') failed" }; return $out }   # not named Az: PowerShell names ignore case, so it would call itself
 function AzTry { $ErrorActionPreference = 'Continue'; & az @args 2>$null }   # may fail (e.g. "does it exist?"): Windows PowerShell 5.1 otherwise turns az's error text into a stop
-function Want($name) { return (($Step -eq 'all' -and $name -notin @('connector', 'demo', 'copilot')) -or $Step -eq $name) }
+function Want($name) { return (($Step -eq 'all' -and $name -notin @('connector', 'demo', 'copilot', 'mail')) -or $Step -eq $name) }
+function Public-Url { if ($State.customDomain) { return "https://$($State.customDomain)" } else { return "$($State.webUrl)" } }
 function Audiences { return (@($State.extAudiences | Where-Object { $_ }) -join ',') }   # Copilot's SSO audiences, kept on every redeploy
 function Add-AlsoAllow {
   $also = @($State.alsoAllow | Where-Object { $_ })
@@ -251,7 +256,7 @@ if (Want 'apps') {
   Save-State $State
   $users = if ($ExtAllowedUsers) { $ExtAllowedUsers } else { (@($Me) + $also | Select-Object -Unique) -join ',' }
   Deploy 'apps' @{ image = (Image-Ref); webAuthClientId = $State.webAuthClientId; keyVaultSecretNames = (Key-Names)
-                   extAppId = $State.extAppId; extAllowedUsers = $users; extCallers = $State.extCallers; extAudiences = (Audiences)
+                   extAppId = $State.extAppId; extAllowedUsers = $users; extCallers = $State.extCallers; extAudiences = (Audiences); mailFrom = "$($State.mailFrom)"; publicUrl = (Public-Url)
                    allowedUserObjectIds = $also; customDomain = "$($State.customDomain)"; customDomainCertificateId = "$certId"
                    connectorClientId = "$($State.connectorClientId)" }
   if ($State.imageFresh) { $State.PSObject.Properties.Remove('imageFresh'); Save-State $State }
@@ -301,7 +306,7 @@ if (Want 'connector') {
     $certId = AzCli containerapp env certificate list -g $ResourceGroup -n $envName --managed-certificates-only --query "[?properties.subjectName=='$($State.customDomain)'].id | [0]" -o tsv
   }
   Deploy 'apps' @{ image = (Image-Ref); webAuthClientId = $State.webAuthClientId; keyVaultSecretNames = (Key-Names)
-                   extAppId = $State.extAppId; extAllowedUsers = $users; extCallers = $State.extCallers; extAudiences = (Audiences)
+                   extAppId = $State.extAppId; extAllowedUsers = $users; extCallers = $State.extCallers; extAudiences = (Audiences); mailFrom = "$($State.mailFrom)"; publicUrl = (Public-Url)
                    allowedUserObjectIds = @($State.alsoAllow | Where-Object { $_ }); customDomain = "$($State.customDomain)"; customDomainCertificateId = "$certId"
                    connectorClientId = $cid }
   Write-Host ''
@@ -394,7 +399,7 @@ if (Want 'copilot') {
     $certId = AzCli containerapp env certificate list -g $ResourceGroup -n $envName --managed-certificates-only --query "[?properties.subjectName=='$($State.customDomain)'].id | [0]" -o tsv
   }
   Deploy 'apps' @{ image = (Image-Ref); webAuthClientId = $State.webAuthClientId; keyVaultSecretNames = (Key-Names)
-                   extAppId = $State.extAppId; extAllowedUsers = $users; extCallers = $State.extCallers; extAudiences = (Audiences)
+                   extAppId = $State.extAppId; extAllowedUsers = $users; extCallers = $State.extCallers; extAudiences = (Audiences); mailFrom = "$($State.mailFrom)"; publicUrl = (Public-Url)
                    allowedUserObjectIds = $also; customDomain = "$($State.customDomain)"; customDomainCertificateId = "$certId"
                    connectorClientId = "$($State.connectorClientId)" }
   if ($State.demoMcpUrl) { Write-Host 'Updating the demo Alice...'; Deploy-Demo }
@@ -418,6 +423,43 @@ if (Want 'copilot') {
     Write-Host 'In Teams: Apps > Manage your apps > Upload an app > Upload a custom app, pick the zip, then Add.' -ForegroundColor Green
     Write-Host 'Then in Microsoft 365 Copilot (signed in with your work account) choose Alice under Agents.' -ForegroundColor Green
   } else { Write-Host 'No package built: give -CopilotAuthId (and -CopilotDemoAuthId for the demo).' -ForegroundColor Yellow }
+}
+
+if (Want 'mail') {
+  Say 'Email: Alice sends from a mailbox in your tenant (held decisions go to their owner)'
+  if (-not $State.webAuthClientId -or -not $State.extAppId) { throw 'Run -Step apps first.' }
+  if ($MailFrom) { Set-Prop $State 'mailFrom' $MailFrom.Trim() }
+  if (-not ($State.mailFrom -match '^[^@\s]+@[^@\s]+\.[^@\s]+$')) { throw 'Give -MailFrom: the mailbox Alice sends from, e.g. alice@yourdomain (a shared mailbox is fine).' }
+  if (-not (AzTry ad user show --id $State.mailFrom --query id -o tsv)) { Write-Host "Note: $($State.mailFrom) was not found as a user; make sure the mailbox (or shared mailbox) exists before Alice sends." -ForegroundColor Yellow }
+  $mi = AzCli identity show -g $ResourceGroup -n 'alice-identity' -o json | ConvertFrom-Json
+  $graphSp = AzCli ad sp show --id '00000003-0000-0000-c000-000000000000' --query id -o tsv
+  $mailSend = 'b633e1c5-b582-4048-a93e-9f11b44c7e96'      # Microsoft Graph application permission Mail.Send
+  $have = AzCli rest --method GET --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$($mi.principalId)/appRoleAssignments" -o json | ConvertFrom-Json
+  if (-not (@($have.value) | Where-Object { $_.appRoleId -eq $mailSend -and $_.resourceId -eq $graphSp })) {
+    $tmp = New-TemporaryFile
+    try {
+      [IO.File]::WriteAllText($tmp, (ConvertTo-Json -InputObject @{ principalId = $mi.principalId; resourceId = $graphSp; appRoleId = $mailSend } -Compress))
+      AzCli rest --method POST --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$($mi.principalId)/appRoleAssignments" --headers 'Content-Type=application/json' --body "@$tmp" | Out-Null
+    } finally { Remove-Item $tmp -Force -ErrorAction SilentlyContinue }
+    Write-Host "Alice's managed identity can now send mail (Microsoft Graph Mail.Send)."
+  } else { Write-Host 'Mail.Send already granted.' }
+  Save-State $State
+  Write-Host 'Updating alice-web and alice-mcp (do not run this while a test-and-deploy run is in progress)...'
+  $also = @($State.alsoAllow | Where-Object { $_ })
+  $users = (@($Me) + $also | Select-Object -Unique) -join ','
+  $certId = ''
+  if ($State.customDomain) {
+    $envName = AzCli containerapp env list -g $ResourceGroup --query '[0].name' -o tsv
+    $certId = AzCli containerapp env certificate list -g $ResourceGroup -n $envName --managed-certificates-only --query "[?properties.subjectName=='$($State.customDomain)'].id | [0]" -o tsv
+  }
+  Deploy 'apps' @{ image = (Image-Ref); webAuthClientId = $State.webAuthClientId; keyVaultSecretNames = (Key-Names)
+                   extAppId = $State.extAppId; extAllowedUsers = $users; extCallers = $State.extCallers; extAudiences = (Audiences); mailFrom = "$($State.mailFrom)"; publicUrl = (Public-Url)
+                   allowedUserObjectIds = $also; customDomain = "$($State.customDomain)"; customDomainCertificateId = "$certId"
+                   connectorClientId = "$($State.connectorClientId)" }
+  Write-Host ''
+  Write-Host "Alice sends from $($State.mailFrom). Held decisions are emailed to their owner (Actions > Decisions)." -ForegroundColor Green
+  Write-Host 'Recommended: limit the permission to that one mailbox (Exchange Online PowerShell, once):' -ForegroundColor Green
+  Write-Host "  New-ApplicationAccessPolicy -AppId $($mi.clientId) -PolicyScopeGroupId <a mail-enabled security group holding $($State.mailFrom)> -AccessRight RestrictAccess -Description 'Alice sends only as her own mailbox'"
 }
 
 if (Want 'github') {

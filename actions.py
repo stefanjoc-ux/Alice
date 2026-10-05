@@ -29,7 +29,9 @@ def summary():
     out.append(_section('decisions', 'Decisions to approve', len(dec), '/admin/memories?status=proposed&kind=decision',
                         [{'type': 'decision', 'id': i['id'], 'title': i['title'], 'ref': rmap.get(i['id'], ''), 'verdict': i['verdict'],
                           'replaces': i.get('replaces'), 'discussion': talked.get(i['id'], 0), **autoapprove.explain_decision(i)} for i in dec],
-                        'Decisions always wait for you. Temple checks each one against your earlier decisions and memories.', top=20))
+                        ('Temple records decisions once checked, with who made them; these are being checked, or need approval under your '
+                         'Decisions settings (a category or Temple\'s impact rating).' if autoapprove.managing_decisions() else
+                         'Decisions wait for you. Temple checks each one against your earlier decisions and memories.'), top=20))
 
     # 2. Held back: automatic approval stopped, and says why
     mems = [i for i in q['items'] if i not in dec]

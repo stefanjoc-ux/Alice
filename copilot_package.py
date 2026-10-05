@@ -25,9 +25,11 @@ NAMESPACE_LIVE, NAMESPACE_DEMO = 'alice', 'alicedemo'
 # fixed app IDs, so uploading a newer package updates the same app in Teams instead of adding a second one
 APP_ID_LIVE = 'a11ce000-5ab5-4c0e-9a11-ce0000000001'
 APP_ID_DEMO = 'a11ce000-5ab5-4c0e-9a11-ce0000000002'
-VERSION = '1.2.1'           # raise it whenever the package changes, so Teams takes the upload as an update
-DEFAULT_TEMPLATE = {'type': 'AdaptiveCard', '$schema': 'https://adaptivecards.io/schemas/adaptive-card.json', 'version': '1.6',
-                    'body': [{'type': 'TextBlock', 'text': '${if(title, title, description)}', 'wrap': True}]}
+VERSION = '1.2.3'           # raise it whenever the package changes, so Teams takes the upload as an update
+# Copilot needs a card template on every tool (without one the whole agent fails to run). Fixed text only: a template that reads
+# fields from Alice's answers showed '${description}', because her answers do not have those fields at the top.
+RESULT_CARD = {'type': 'AdaptiveCard', '$schema': 'https://adaptivecards.io/schemas/adaptive-card.json', 'version': '1.6',
+               'body': [{'type': 'TextBlock', 'text': 'From Alice', 'wrap': True, 'size': 'Small', 'isSubtle': True}]}
 
 AGENT_INSTRUCTIONS = """You are Alice, Stefan's personal AI substrate, used here from Microsoft 365 Copilot. Alice holds approved memories,
 decisions, organisation profiles, opportunities and a knowledge library (saved files, notes, meeting extracts). It is the system of
@@ -110,8 +112,7 @@ def plugin(url, auth_id, demo=False, tool_list=None):
     url, auth_id = _check_url(url), _check_auth_id(auth_id)
     tl = tool_list if tool_list is not None else tools()
     fns = [{'name': t['name'], 'description': (t.get('description') or t['name'])[:1000],
-            'capabilities': {'response_semantics': {'data_path': '$', 'properties': {}}}} for t in tl]   # no card: Copilot
-    # writes the answer from Alice's results (a template needs fields Alice's answers do not have at the top, and showed '${description}')
+            'capabilities': {'response_semantics': {'data_path': '$', 'properties': {}, 'static_template': RESULT_CARD}}} for t in tl]
     return {'$schema': 'https://developer.microsoft.com/json-schemas/copilot/plugin/v2.4/schema.json', 'schema_version': 'v2.4',
             'name_for_human': 'Alice (demo)' if demo else 'Alice',
             'description_for_human': ('Demo data: a fictional team built around public information. ' if demo else '') +

@@ -44,6 +44,10 @@ param extAllowedUsers string = ''
 param extCallers string = ''
 @description('More token audiences: the Application ID URIs from Microsoft 365 Copilot\'s Entra SSO registrations (comma separated).')
 param extAudiences string = ''
+@description('Mailbox Alice sends from (notify.py, through Microsoft Graph with the managed identity): set by azure-setup -Step mail.')
+param mailFrom string = ''
+@description('Alice\'s public address, for links in emails (e.g. https://alice.northants.it).')
+param publicUrl string = ''
 @description('Claude connector: client ID of the "Alice connector sign-in" app registration (its secret and signing key are in Key Vault); empty = off.')
 param connectorClientId string = ''
 
@@ -259,6 +263,9 @@ var commonEnv = concat(
     // keyvault.py: optional keys added in the portal are read at run time (allow-listed names only)
     { name: 'ALICE_KEY_VAULT_URI', value: kvUri }
     { name: 'ALICE_IDENTITY_CLIENT_ID', value: identity.properties.clientId }
+    // notify.py: held decisions emailed to their owner (only once -Step mail has set the mailbox)
+    { name: 'ALICE_MAIL_FROM', value: mailFrom }
+    { name: 'ALICE_PUBLIC_URL', value: publicUrl }
   ],
   map(keySecretNames, s => { name: s.env, secretRef: s.name })
 )
