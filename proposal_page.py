@@ -65,6 +65,7 @@ table.t td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}ta
 .issues li.brief{border-color:#7a5bb0}.st.brief{background:#f1ecfa;color:#4a2f7a;border-color:#c7b8dd}.issues li.none{border:0;padding:0;color:var(--muted)}
 .qa-minor,.qa-ok{margin-top:10px}.qa-met{margin:6px 0 0;padding-left:4px;list-style:none;display:grid;gap:4px;font-size:13.5px;color:#2d4a3a}
 .retpl{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}.retpl label{display:flex;gap:8px;align-items:center;margin:0}.retpl select{width:auto;min-width:240px;max-width:100%}
+.pk-model{border-left:3px solid #7a5bb0}.pk-model strong{display:block;margin-bottom:4px}.pk-mnote{white-space:pre-wrap}.pk-mbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
 .rounds{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--muted);margin:4px 0}.rounds b{color:var(--ink)}
 .act{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px}.act label.btnlike{cursor:pointer;border:1px solid var(--line2,#b9cbd8);border-radius:8px;padding:8px 14px;font-weight:600;font-size:14px;background:#fff}
 .edit-sec{display:grid;gap:4px;margin:12px 0}.edit-sec textarea{min-height:140px;font-size:14px;line-height:1.5}
@@ -532,6 +533,16 @@ async function pkSend(text){if(PK.busy||A.paused)return;text=(text||'').trim();i
   if(!r.saved_to){if(WORK)api('/parker/keep','POST',{work_id:WORK,you,reply:r.reply,cost_usd:r.cost_usd||0}).catch(()=>{});else PK.cost=(PK.cost||0)+(r.cost_usd||0)}}
  catch(e){ty.remove();pkSay('pk-p err',e.message)}
  finally{PK.busy=false;$('pk-send').disabled=A.paused;$('pk-msg').focus()}}
+function pkSuggestions(p){const list=((p.context||{}).model_suggestions||[]).filter(x=>x.state==='pending');
+ for(const sg of list){const m=pkSay('pk-p pk-model','');m.append(mk('strong',sg.from+' suggested changes'),mk('div',sg.note||'','pk-mnote'));
+  const ch=mk('div','','pk-ch');for(const c of sg.changed||[])ch.append(mk('span',c));m.append(ch);
+  const bar=mk('div','','pk-mbar');const ap=mk('button','Apply','primary');const di=mk('button','Dismiss','secondary');ap.type=di.type='button';
+  ap.onclick=async()=>{ap.disabled=di.disabled=true;try{const before=snap();await applyParker(sg.updates);changed();await api('/proposals/'+p.id+'/suggestions/'+sg.id,'POST',{action:'applied'});
+    const un=mk('button','Undo these changes','pk-undo');un.type='button';un.onclick=async()=>{await restore(before);un.replaceWith(mk('span','Undone.','hint'))};
+    bar.replaceChildren(mk('span','Applied. Check it, then save or send it to Argus as usual.','hint'),un)}catch(e){ap.disabled=di.disabled=false;alertBox(e.message)}};
+  di.onclick=async()=>{ap.disabled=di.disabled=true;try{await api('/proposals/'+p.id+'/suggestions/'+sg.id,'POST',{action:'dismissed'});bar.replaceChildren(mk('span','Dismissed.','hint'))}catch(e){ap.disabled=di.disabled=false;alertBox(e.message)}};
+  bar.append(ap,di);m.append(bar)}
+ if(list.length)pkScroll()}
 $('pk-send').onclick=()=>{const t=$('pk-msg').value;$('pk-msg').value='';pkGrow();pkSend(t)};
 $('pk-msg').addEventListener('input',pkGrow);
 $('pk-msg').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('pk-send').click()}});
@@ -615,7 +626,7 @@ async function resetForm(){LOADING++;try{clearInterval(timer);$('result').replac
 async function flush(){if(saveT){await saveNow()}}
 async function openNew(){await flush();stashChat();await resetForm();WORK=null;OPEN=null;DIRTY=false;setState('Saves itself as you work');history.replaceState(null,'',location.pathname);restoreChat(null);updateBar();drawItems();document.querySelector('main').scrollTop=0}
 async function openItem(id){await flush();stashChat();let p;try{p=await api('/proposals/'+id)}catch(e){alertBox(e.message);return}
- await resetForm();OPEN=id;DIRTY=false;history.replaceState(null,'','?p='+id);restoreChat(id,p);
+ await resetForm();OPEN=id;DIRTY=false;history.replaceState(null,'','?p='+id);restoreChat(id,p);setTimeout(()=>pkSuggestions(p),0);
  if(p.status==='form'){WORK=id;await loadIntoForm(p,true,true);setState('Saved '+new Date(p.updated_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),'ok');
   if(!PK.history.length)pkSay('pk-p','Back to “'+(p.title||'this proposal')+'”. Everything you had is here. What would you like to change?')}
  else{WORK=null;setState('');follow(id)}

@@ -398,6 +398,7 @@ def knowledge_filter(name, output, provider):
 
 MCP_URL = "http://127.0.0.1:8001/mcp"
 ALLOWED_TOOLS = {"list_files", "search_files", "read_file", "search_records", "propose_record", "propose_knowledge",
+                 "list_proposals", "get_proposal", "propose_proposal_changes",
                  "get_organisation", "list_organisations", "search_opportunities"}
 MAX_CALLS = 10
 HEALTH_TOOL_DESCRIPTION = ("Stefan's blood test results from Health Insights (confirmed values only, with the lab's own ranges, status, history and change) "
@@ -557,6 +558,8 @@ async def chat_events(request):
                                     "list_files": "Listing saved files…", "search_files": "Searching saved files…",
                                     "read_file": "Reading file…", "search_records": "Searching approved memories…",
                                     "propose_record": "Proposing a record for approval…",
+                                    "list_proposals": "Looking at Parker's proposals…", "get_proposal": "Reading the proposal…",
+                                    "propose_proposal_changes": "Suggesting changes to the proposal…",
                                     "propose_knowledge": "Saving a knowledge draft for approval…",
                                     "get_organisation": "Reading an organisation profile…",
                                     "list_organisations": "Listing organisations…",
@@ -2347,6 +2350,15 @@ def proposal_retemplate(aid: str, pid: str, x: ProposalTemplate, request: Reques
     import proposals
     _same_origin(request); _proposal_writer(aid)
     return _proposal_call(lambda: proposals.retemplate(aid,pid,x.template))
+
+class SuggestionDecision(BaseModel):
+    action: str = Field(pattern='^(applied|dismissed)$')
+
+@app.post('/assistant/{aid}/proposals/{pid}/suggestions/{sid}')
+def proposal_suggestion_decide(aid: str, pid: str, sid: str, x: SuggestionDecision, request: Request):
+    import proposal_share
+    _same_origin(request); _proposal_writer(aid)
+    return _proposal_call(lambda: proposal_share.decide(aid,pid,sid,x.action))
 
 @app.post('/assistant/{aid}/work')
 def proposal_work_save(aid: str, x: ProposalWork, request: Request):

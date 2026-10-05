@@ -6,6 +6,7 @@ No model API key is required. Keep bound to localhost until authentication is ad
 """
 import argparse
 import asyncio
+import json
 import os
 import re
 import sqlite3
@@ -586,6 +587,83 @@ def search_opportunities(query: Annotated[str, Field(max_length=200)] = '',
     if blocked: res['withheld_by_rules'] = f'{blocked} opportunit(ies) withheld: they contain a secret or a protective marking.'
     return res
 
+
+
+# ---------------- Parker's proposals (Stefan's decision, 5 Oct 2026: every model gets the same access) ----------------
+def _caller_label(who):
+    return who.label if who else (CLIENT or "Alice's chat")
+
+
+@mcp.tool(annotations={'readOnlyHint': True, 'destructiveHint': False})
+@_marked
+def list_proposals(query: Annotated[str, Field(max_length=200)] = '',
+                   limit: Annotated[int, Field(ge=1, le=50)] = 20) -> dict:
+    """The proposals Parker (Alice's proposal writer) is working on: written ones and forms still in progress. Each has a
+    reference (P-1A2B3C), title, organisation, status, template, Argus's QA verdict and score, the sell total and how many
+    model suggestions are waiting. query: words from the title, organisation, reference or brief. Use get_proposal for one in full."""
+    import proposal_share
+    who = _who()
+    agent, run = _app('list_proposals')
+    rows, hidden = [], 0
+    for r in proposal_share.listing(query, 200):
+        if _client_hidden(r['organisation'], who) or not _passes(r['title'] + ' ' + r['organisation'], 'proposal ' + r['proposal']):
+            hidden += 1; continue
+        rows.append(r)
+        if len(rows) >= limit: break
+    agents.app_note(run, 'read', 'proposal', [r['proposal'] for r in rows], f'{len(rows)} listed')
+    return {'proposals': rows, 'withheld': hidden,
+            'note': 'Withheld: proposals for clients this connection may not see, or that failed the security checks.' if hidden else ''}
+
+
+@mcp.tool(annotations={'readOnlyHint': True, 'destructiveHint': False})
+@_marked
+def get_proposal(proposal: Annotated[str, Field(min_length=1, max_length=200)]) -> dict:
+    """One of Parker's proposals in full: brief, notes, structure, template, sections (with guidance), reference documents, the
+    draft as written (each section's text), gaps, the rate card (roles ticked, days, cost rate, sell rate, margin), the pricing
+    (each role's quantity, sell, cost and margin, totals), Argus's latest QA (verdict, score, brief requirements met, what to fix)
+    and any model suggestions waiting. proposal: its reference (P-1A2B3C), or words from its title.
+    To change it, use propose_proposal_changes: the user applies changes on the Parker page."""
+    import proposal_share
+    who = _who()
+    agent, run = _app('get_proposal')
+    try: d = proposal_share.detail(proposal)
+    except LookupError as e: raise ValueError(str(e)) from None
+    if _client_hidden(d['organisation'], who):
+        raise ValueError('That proposal is for a client this connection may not see.')
+    if not _passes(json.dumps(d), 'proposal ' + d['proposal']):
+        raise ValueError(f'{d["proposal"]} was withheld: it contains something Alice never sends to a model (a secret or a protective marking).')
+    agents.app_note(run, 'read', 'proposal', d['proposal'], d['title'])
+    return d
+
+
+@mcp.tool(annotations={'readOnlyHint': False, 'destructiveHint': False})
+@_marked
+def propose_proposal_changes(proposal: Annotated[str, Field(min_length=1, max_length=200)],
+                             note: Annotated[str, Field(min_length=1, max_length=1000)],
+                             updates: dict) -> dict:
+    """Suggest changes to one of Parker's proposals. Nothing changes until the user clicks Apply on the Parker page (with Undo).
+    note: one or two sentences for the user: what you changed and why.
+    updates: any of
+      title, organisation, brief, notes (text);
+      template (a template path, as get_proposal shows it or one from the writer's templates folder);
+      structure ([{"heading": "...", "points": ["..."]}]);
+      references (document paths);
+      roles ([{"role": a role already on the rate card, "use": true/false, "days": number, "sell": sell rate in GBP}]);
+      draft ([{"title": an existing section of the draft that is not standard text, "body": the full new text in simple markdown}]).
+    Anything not on offer (unknown roles, templates or sections) is left out and listed in left_out. Pass on the message returned."""
+    import proposal_share
+    who = _who()
+    agent, run = _app('propose_proposal_changes')
+    try: d = proposal_share.find(proposal)
+    except LookupError as e: raise ValueError(str(e)) from None
+    if _client_hidden(d['organisation'] or '', who): raise ValueError('That proposal is for a client this connection may not see.')
+    try: r = proposal_share.suggest(proposal, note, updates, _caller_label(who))
+    except rules_engine.RuleViolation as e:
+        raise ValueError(str(e) + ' Tell the user why the changes were not saved.') from None
+    except LookupError as e:
+        raise ValueError(str(e)) from None
+    agents.app_note(run, 'wrote', 'proposal', r['proposal'], 'changes suggested: ' + ', '.join(r['changes']))
+    return r
 
 @mcp.tool(annotations={'readOnlyHint': False, 'destructiveHint': False})
 @_marked

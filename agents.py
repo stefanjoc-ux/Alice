@@ -26,8 +26,10 @@ TRANSIENT = {'APIConnectionError', 'APITimeoutError', 'RateLimitError', 'Interna
              'ConnectError', 'ConnectTimeout', 'ReadTimeout', 'TimeoutError', 'OperationalError'}
 TOOLS = ['list_files', 'read_file', 'search_files', 'search_records', 'get_organisation', 'list_organisations',
          'search_opportunities', 'propose_record',
-         'propose_decision', 'propose_knowledge', 'propose_org_fact', 'save_conversation', 'append_conversation']
-WRITE_TOOLS = {'propose_record', 'propose_decision', 'propose_knowledge', 'propose_org_fact', 'save_conversation', 'append_conversation'}
+         'propose_decision', 'propose_knowledge', 'propose_org_fact', 'save_conversation', 'append_conversation',
+         'list_proposals', 'get_proposal', 'propose_proposal_changes']
+WRITE_TOOLS = {'propose_record', 'propose_decision', 'propose_knowledge', 'propose_org_fact', 'save_conversation', 'append_conversation',
+               'propose_proposal_changes'}
 LABELS = ['general', 'internal', 'client']
 
 # id, name, kind, purpose, trigger, usage workloads, reads, writes, reads outside content

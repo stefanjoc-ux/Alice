@@ -18,7 +18,7 @@ man, agent, plug = (json.loads(z.read(n)) for n in ('manifest.json', 'declarativ
 t('the manifest declares the agent and its icons', man['copilotAgents']['declarativeAgents'][0]['file'] == 'declarativeAgent.json'
   and man['icons'] == {'color': 'color.png', 'outline': 'outline.png'} and man['id'] == CP.APP_ID_LIVE and man['name']['short'] == 'Alice')
 t('the agent uses the plugin, with instructions within the limit', agent['actions'] == [{'id': 'alicePlugin', 'file': 'alice-plugin.json'}]
-  and len(agent['instructions']) <= 8000 and 'search_records' in agent['instructions'] and 'approval' in agent['instructions'] and len(agent['conversation_starters']) == 4)
+  and len(agent['instructions']) <= 8000 and 'not kept between turns' in agent['instructions'] and 'code interpreter' in agent['instructions'] and 'search_records' in agent['instructions'] and 'approval' in agent['instructions'] and len(agent['conversation_starters']) == 4)
 rt = plug['runtimes'][0]
 t('the plugin runs on Alice\'s endpoint with Entra SSO', rt['type'] == 'RemoteMCPServer' and rt['spec']['url'] == URL
   and rt['auth'] == {'type': 'OAuthPluginVault', 'reference_id': AUTH} and plug['schema_version'] == 'v2.4')
@@ -50,12 +50,12 @@ t('the outline icon is white on transparent, with something drawn', all(a == 0 o
 
 d = zipfile.ZipFile(io.BytesIO(CP.build(URL.replace('alice-mcp', 'alice-demo-mcp'), AUTH, demo=True)))
 dm, da, dp = (json.loads(d.read(n)) for n in ('manifest.json', 'declarativeAgent.json', 'alice-plugin.json'))
-t('live Alice can use your email, chats, meetings, people, files and the web', {c['name'] for c in agent['capabilities']} ==
-  {'Email', 'TeamsMessages', 'Meetings', 'People', 'OneDriveAndSharePoint', 'WebSearch'} and 'Never save anything from email' in agent['instructions'])
-t('the demo agent never gets them: it is shown to clients', 'capabilities' not in da and 'Never save anything from email' not in da['instructions'])
+t('live Alice can use your email, chats, meetings, people, files and the web, and create files', {c['name'] for c in agent['capabilities']} ==
+  {'Email', 'TeamsMessages', 'Meetings', 'People', 'OneDriveAndSharePoint', 'WebSearch', 'CodeInterpreter'} and 'Never save anything from email' in agent['instructions'])
+t('the demo agent never gets them (it is shown to clients), only file creation', da['capabilities'] == [{'name': 'CodeInterpreter'}] and 'Never save anything from email' not in da['instructions'])
 lite = zipfile.ZipFile(io.BytesIO(CP.build(URL, AUTH, work_data=False, version='1.2.2')))
 la, lm = json.loads(lite.read('declarativeAgent.json')), json.loads(lite.read('manifest.json'))
-t('--alice-only leaves out Copilot\'s own data (for a user without the full licence), with its own version', 'capabilities' not in la
+t('--alice-only leaves out Copilot\'s own data (for a user without the full licence), keeps file creation, with its own version', la['capabilities'] == [{'name': 'CodeInterpreter'}]
   and 'Never save anything from email' not in la['instructions'] and lm['version'] == '1.2.2')
 try: CP.build(URL, AUTH, version='v2'); t('refused: a version that is not three numbers', False)
 except ValueError: t('refused: a version that is not three numbers', True)

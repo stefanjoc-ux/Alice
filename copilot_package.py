@@ -25,7 +25,7 @@ NAMESPACE_LIVE, NAMESPACE_DEMO = 'alice', 'alicedemo'
 # fixed app IDs, so uploading a newer package updates the same app in Teams instead of adding a second one
 APP_ID_LIVE = 'a11ce000-5ab5-4c0e-9a11-ce0000000001'
 APP_ID_DEMO = 'a11ce000-5ab5-4c0e-9a11-ce0000000002'
-VERSION = '1.2.3'           # raise it whenever the package changes, so Teams takes the upload as an update
+VERSION = '1.2.6'           # raise it whenever the package changes, so Teams takes the upload as an update
 # Copilot needs a card template on every tool (without one the whole agent fails to run). Fixed text only: a template that reads
 # fields from Alice's answers showed '${description}', because her answers do not have those fields at the top.
 RESULT_CARD = {'type': 'AdaptiveCard', '$schema': 'https://adaptivecards.io/schemas/adaptive-card.json', 'version': '1.6',
@@ -51,6 +51,11 @@ How to work:
 - Everything you propose waits for Stefan's approval in Alice. Never describe a proposal as saved or approved.
 - If Alice refuses something or withholds it under a rule, say so plainly and do not try to work around it.
 - Never put passwords, keys or personal identifiers into any Alice tool.
+- Results from Alice's tools are not kept between turns: only your written answers are. When Stefan asks you to expand, add detail,
+  rework or turn an earlier answer into a document, call the Alice tools again for the full data (the same searches, read_file for
+  documents) and build from that and from what is in this conversation. Never ask him to paste back something you said or found.
+- When he asks for a Word, Excel or PowerPoint file, create it with code interpreter and offer it as a download, with the full
+  content (not a summary). Only if file creation fails, say so once and give the complete content formatted to paste into Word.
 - Use UK English and show amounts in GBP unless asked otherwise. Do not state prices, discounts or rates unless they come from an
   approved Alice memory or saved file, and cite it.
 """
@@ -66,6 +71,9 @@ you here. Alice comes first for anything she holds; use the others when asked, o
 """
 # Copilot's own data sources for live Alice only. The demo agent never gets them: it is shown to clients, and must never be able
 # to bring Stefan's real email, chats or files onto the screen.
+# Code interpreter lets the agent create Word, Excel and PowerPoint files and charts. It reads no data of its own, so every build has it
+# (the demo and --alice-only too); it does not need the full Copilot licence.
+FILE_CAPABILITIES = [{'name': 'CodeInterpreter'}]
 WORK_CAPABILITIES = [{'name': 'Email'}, {'name': 'TeamsMessages'}, {'name': 'Meetings'}, {'name': 'People'},
                      {'name': 'OneDriveAndSharePoint'}, {'name': 'WebSearch'}]
 DEMO_PREFIX = """THIS IS THE DEMO ALICE. Everything in it is illustrative: a fictional team and invented content built around a real
@@ -134,7 +142,7 @@ def agent(demo=False, work_data=True):
                            "Stefan's AI substrate: approved memories, decisions, organisations and documents, with every change waiting for approval.",
             'instructions': text, 'conversation_starters': [{'title': a, 'text': b} for a, b in starters],
             'actions': [{'id': 'alicePlugin', 'file': 'alice-plugin.json'}],
-            **({'capabilities': WORK_CAPABILITIES} if work_data else {})}
+            'capabilities': (WORK_CAPABILITIES if work_data else []) + FILE_CAPABILITIES}
 
 
 def manifest(url, demo=False, version=VERSION):
