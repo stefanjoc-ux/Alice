@@ -60,6 +60,11 @@ table.t td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}ta
 [hidden]{display:none!important}.qa-mode .w-only{display:none!important}
 .mode{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.mode h2{margin:0}.chips{display:flex;gap:6px;flex-wrap:wrap}
 .chip{border:1px solid var(--line2,#b9cbd8);background:#fff;border-radius:999px;padding:6px 14px;font-weight:600;font-size:13.5px;cursor:pointer;color:var(--ink)}.mode .chip.on{background:var(--teal)!important;border-color:var(--teal)!important;color:#fff!important}.mode .chip:not(.on){background:#fff!important;color:var(--ink)!important}
+.qa-simple h2{margin-bottom:2px}.qa-cov{margin:0 0 10px;color:var(--muted);font-size:14px}.qa-cov strong{color:var(--ink)}
+.qa-line{font-size:14.5px;line-height:1.45}.qa-where{font-size:12px;color:var(--muted)}.qa-fix{font-size:13.5px;color:#234;background:#f4f8fa;border-radius:8px;padding:6px 10px;margin-top:3px}
+.issues li.brief{border-color:#7a5bb0}.st.brief{background:#f1ecfa;color:#4a2f7a;border-color:#c7b8dd}.issues li.none{border:0;padding:0;color:var(--muted)}
+.qa-minor,.qa-ok{margin-top:10px}.qa-met{margin:6px 0 0;padding-left:4px;list-style:none;display:grid;gap:4px;font-size:13.5px;color:#2d4a3a}
+.retpl{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}.retpl label{display:flex;gap:8px;align-items:center;margin:0}.retpl select{width:auto;min-width:240px;max-width:100%}
 .rounds{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--muted);margin:4px 0}.rounds b{color:var(--ink)}
 .act{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px}.act label.btnlike{cursor:pointer;border:1px solid var(--line2,#b9cbd8);border-radius:8px;padding:8px 14px;font-weight:600;font-size:14px;background:#fff}
 .edit-sec{display:grid;gap:4px;margin:12px 0}.edit-sec textarea{min-height:140px;font-size:14px;line-height:1.5}
@@ -431,26 +436,43 @@ function show(p){CUR=p;EDS=null;if(formEmpty()&&!p.inputs.qa_only&&S)setTimeout(
  const ul_=mk('label','Upload a revised version for QA','btnlike');const fi=document.createElement('input');fi.type='file';fi.accept='.docx,.pdf,.txt,.md';fi.hidden=true;ul_.append(fi);
  fi.onchange=async()=>{const f=fi.files[0];fi.value='';if(!f)return;try{await api('/proposals/'+p.id+'/qa-upload','POST',{name:f.name,data:await fileData(f)});follow(p.id)}catch(e){alertBox(e.message)}};act.append(ul_);
  act.append(mk('span',p.inputs.qa_only?'Changed it? Upload the new version and Argus checks it again.':'Edited it in Word? Upload it and Argus checks your version against the brief (it is not kept).','hint'));top.append(act);
+ if(!p.inputs.qa_only&&(p.draft.sections||[]).length&&S){const tr=mk('div','','retpl');const ts2=document.createElement('select');ts2.setAttribute('aria-label','Template');
+  const cur=p.inputs.template||'';const opt=(v,t)=>{const o=document.createElement('option');o.value=v;o.textContent=t;return o};
+  ts2.append(...(S.templates||[]).map(x=>opt(x.path,x.name)),opt('','Alice’s own Word layout'));if(cur&&![...ts2.options].some(o=>o.value===cur))ts2.prepend(opt(cur,cur.split('/').pop()));ts2.value=cur;
+  const mv=mk('button','Move the content to this template','secondary');mv.type='button';mv.disabled=true;ts2.onchange=()=>{mv.disabled=ts2.value===cur||p.status==='running'};
+  mv.onclick=async()=>{mv.disabled=true;try{await api('/proposals/'+p.id+'/template','POST',{template:ts2.value});follow(p.id);document.querySelector('main').scrollTop=0}catch(e){mv.disabled=false;alertBox(e.message)}};
+  const lb=mk('label','','');lb.append(mk('strong','Template '),ts2);tr.append(lb,mv,mk('span','The content you have is kept: sections with the same name carry over as they are, the rest is moved into the new template’s sections, Argus checks it and the Word document is rebuilt on the new template.','hint'));top.append(tr)}
  const mn=k=>(S&&S.models.find(m=>m.key===k)||{}).name||k;if(p.inputs&&p.inputs.writer)top.append(mk('p','Written by '+mn(p.inputs.writer)+'; checked by Argus ('+mn(p.inputs.qa)+').','hint'));
  const ac=(p.context||{}).ai_cost;if(ac&&ac.total)top.append(mk('p','Alice AI cost for this proposal so far: $'+ac.total.toFixed(2)+(ac.parker?' (writing and Argus $'+(ac.writing||0).toFixed(2)+', Parker $'+ac.parker.toFixed(2)+')':''),'hint'));
  top.append(mk('p','Read it before it goes anywhere: Argus is a second pair of eyes, not a sign-off.','hint'));box.append(top);
  if(p.inputs.qa_only&&p.inputs.file)top.insertBefore(mk('p','Checked: '+p.inputs.file,'hint'),top.children[2]||null);
- const cols=mk('div','','cols');
- const rq=mk('section','','card');rq.append(mk('h2','Meets the brief?'));if((qa.requirements||[]).length)rq.append(table(['Requirement','','Where'],qa.requirements.map(r=>({cells:[r.requirement+(r.note?' — '+r.note:''),{node:mk('span',{met:'Met',partly:'Partly',missing:'Missing'}[r.status],'st '+r.status)},r.where||'']}))));else rq.append(mk('p','QA listed no requirements.','hint'));
- const is=mk('section','','card');is.append(mk('h2','Issues to look at'));const ul=mk('ul','','issues');const pickF=new Map(),NOTES=new Map();
- const fbar=mk('div','','fixbar');const fgo=mk('button','','primary');fgo.type='button';const fnote=mk('span','','hint');
- const syncF=()=>{const n=[...pickF.values()].filter(v=>v==='yes').length,r=[...pickF.values()].filter(v=>v==='no').length;fgo.disabled=(!n&&!r)||p.status==='running';fgo.textContent=n?'Revise with '+n+' accepted fix'+(n>1?'es':''):r?'Check again with your decisions':'Accept or reject fixes';fnote.textContent=n?n+' accepted, '+r+' rejected. The writer applies only the accepted fixes; Argus checks they were made and won\u2019t raise the rejected ones again. The Word document is then rebuilt.':r?r+' rejected. Nothing is rewritten: Argus checks again with your reasons and won\u2019t raise these again.':'Accept the fixes you want and reject the rest, with a note on why if it helps, then revise.'};
- (qa.issues||[]).forEach((i,k)=>{const li=mk('li','',i.severity);const h=mk('div');h.append(mk('span',i.severity,'st '+i.severity),document.createTextNode(' '+(i.section?i.section+': ':'')+i.issue));li.append(h);if(i.fix)li.append(mk('span','Fix: '+i.fix,'hint'));
-  if(i.fix&&!p.inputs.qa_only&&(p.draft.sections||[]).length){const ch=mk('div','','fixch');const y=mk('button','Accept','fx-y'),nn=mk('button','Reject','fx-n');y.type=nn.type='button';
-   const why=document.createElement('textarea');why.className='fixwhy';why.rows=2;why.maxLength=600;why.hidden=true;why.setAttribute('aria-label','Why, for '+(i.issue||'this fix'));
-   const set=v=>{if(pickF.get(k)===v)pickF.delete(k);else pickF.set(k,v);const d=pickF.get(k);y.classList.toggle('on',d==='yes');nn.classList.toggle('on',d==='no');li.classList.toggle('rej',d==='no');
-    why.hidden=!d;why.placeholder=d==='yes'?'Optional: how you want it done (e.g. name the roles, not people)':'Optional: why not (e.g. the client asked for no expenses detail; Argus and the writer will take this forward)';if(d)why.focus();syncF()};
-   y.onclick=()=>set('yes');nn.onclick=()=>set('no');ch.append(y,nn);li.append(ch,why);NOTES.set(k,why)}ul.append(li)});
- if(!(qa.issues||[]).length)ul.append(mk('li','None.'));is.append(ul);
+ const reqs=qa.requirements||[],metR=reqs.filter(r=>r.status==='met');const items=[];
+ for(const r of reqs)if(r.status!=='met')items.push({severity:r.status==='missing'?'high':'medium',section:r.where||'',brief:true,
+   issue:'The brief asks for '+r.requirement.replace(/^[A-Z](?=[a-z ])/,c=>c.toLowerCase()).replace(/[.\s]+$/,'')+(r.status==='missing'?': not covered.':': only partly covered.'),
+   fix:r.note||('Cover it'+(r.where?' in '+r.where:'')+'.')});
+ for(const i of qa.issues||[])items.push({...i,brief:false});
+ const ORD={high:0,medium:1,low:2},LAB={high:'Must fix',medium:'Should fix',low:'Polish'};items.sort((a,b)=>ORD[a.severity]-ORD[b.severity]);
+ const can=!p.inputs.qa_only&&(p.draft.sections||[]).length;const is=mk('section','','card qa-simple');const main=items.filter(i=>i.severity!=='low'),minor=items.filter(i=>i.severity==='low');
+ const hd=mk('h2',main.length?'What to fix ('+main.length+')':'Nothing important to fix');is.append(hd);
+ const cov=mk('p','','qa-cov');cov.append(mk('strong',reqs.length?metR.length+' of '+reqs.length+' brief requirements met':'Argus listed no brief requirements'));
+ if(reqs.length&&metR.length===reqs.length)cov.append(document.createTextNode(' ✓'));is.append(cov);
+ const pickF=new Map(),NOTES=new Map();const fbar=mk('div','','fixbar');const fgo=mk('button','','primary');fgo.type='button';const fnote=mk('span','','hint');
+ const syncF=()=>{const n=[...pickF.values()].filter(v=>v==='yes').length,r=[...pickF.values()].filter(v=>v==='no').length;fgo.disabled=(!n&&!r)||p.status==='running';fgo.textContent=n?'Revise with '+n+' accepted fix'+(n>1?'es':''):r?'Check again with your decisions':'Accept or reject fixes';fnote.textContent=n?n+' accepted, '+r+' rejected. The writer makes only the accepted changes, Argus checks them and won’t raise the rejected ones again, and the Word document is rebuilt.':r?r+' rejected. Nothing is rewritten: Argus checks again with your reasons and won’t raise these again.':'Accept the changes you want and reject the rest (a note on why helps), then revise.'};
+ const row=(i,k)=>{const li=mk('li','',i.severity+(i.brief?' brief':''));const h=mk('div','','qa-line');h.append(mk('span',i.brief?'Brief gap':LAB[i.severity],'st '+(i.brief?'brief':i.severity)));
+   h.append(document.createTextNode(' '+i.issue));li.append(h);if(i.section)li.append(mk('span','In: '+i.section,'qa-where'));if(i.fix)li.append(mk('div','Change: '+i.fix,'qa-fix'));
+   if(i.fix&&can){const ch=mk('div','','fixch');const y=mk('button','Accept','fx-y'),nn=mk('button','Reject','fx-n');y.type=nn.type='button';
+    const why=document.createElement('textarea');why.className='fixwhy';why.rows=2;why.maxLength=600;why.hidden=true;why.setAttribute('aria-label','Why, for '+(i.issue||'this fix'));
+    const set=v=>{if(pickF.get(k)===v)pickF.delete(k);else pickF.set(k,v);const d=pickF.get(k);y.classList.toggle('on',d==='yes');nn.classList.toggle('on',d==='no');li.classList.toggle('rej',d==='no');
+     why.hidden=!d;why.placeholder=d==='yes'?'Optional: how you want it done (e.g. name the roles, not people)':'Optional: why not (e.g. the client asked for no expenses detail; Argus and the writer will take this forward)';if(d)why.focus();syncF()};
+    y.onclick=()=>set('yes');nn.onclick=()=>set('no');ch.append(y,nn);li.append(ch,why);NOTES.set(k,why)}return li};
+ const ul=mk('ul','','issues');main.forEach(i=>ul.append(row(i,items.indexOf(i))));if(!main.length)ul.append(mk('li',items.length?'Only minor polish below.':'Argus found nothing to change.','none'));is.append(ul);
+ if(minor.length){const md=document.createElement('details');md.className='fold qa-minor';md.append(mk('summary','Minor polish ('+minor.length+')'));const ml=mk('ul','','issues');minor.forEach(i=>ml.append(row(i,items.indexOf(i))));md.append(ml);is.append(md)}
  if(qa.rejected_not_raised)is.append(mk('p',qa.rejected_not_raised+' point'+(qa.rejected_not_raised>1?'s':'')+' you rejected earlier came up again and '+(qa.rejected_not_raised>1?'were':'was')+' left out.','hint'));
- if((qa.issues||[]).some(i=>i.fix)&&!p.inputs.qa_only&&(p.draft.sections||[]).length){fgo.onclick=async()=>{const withNote=k=>({...qa.issues[k],note:(NOTES.get(k)||{}).value||''});const fixes=[...pickF.entries()].filter(([,v])=>v==='yes').map(([k])=>withNote(k)),rejected=[...pickF.entries()].filter(([,v])=>v==='no').map(([k])=>withNote(k));fgo.disabled=true;
-   try{await api('/proposals/'+p.id+'/revise','POST',{fixes,rejected});follow(p.id);document.querySelector('main').scrollTop=0}catch(e){fgo.disabled=false;alertBox(e.message)}};fbar.append(fgo,fnote);is.append(fbar);syncF()}if((qa.strengths||[]).length)is.append(mk('p','Strengths: '+qa.strengths.join('; '),'hint'));
- cols.append(rq,is);box.append(cols);
+ if(items.some(i=>i.fix)&&can){fgo.onclick=async()=>{const withNote=k=>{const {brief,...x}=items[k];return {...x,note:(NOTES.get(k)||{}).value||''}};const fixes=[...pickF.entries()].filter(([,v])=>v==='yes').map(([k])=>withNote(k)),rejected=[...pickF.entries()].filter(([,v])=>v==='no').map(([k])=>withNote(k));fgo.disabled=true;
+   try{await api('/proposals/'+p.id+'/revise','POST',{fixes,rejected});follow(p.id);document.querySelector('main').scrollTop=0}catch(e){fgo.disabled=false;alertBox(e.message)}};fbar.append(fgo,fnote);is.append(fbar);syncF()}
+ if(metR.length||(qa.strengths||[]).length){const ok=document.createElement('details');ok.className='fold qa-ok';ok.append(mk('summary','What already meets the brief'));const ol=mk('ul','','qa-met');
+  for(const r of metR)ol.append(mk('li','✓ '+r.requirement+(r.where?' (in '+r.where+')':'')));for(const x of qa.strengths||[])ol.append(mk('li','+ '+x));ok.append(ol);is.append(ok)}
+ box.append(is);
  const pr=p.pricing||{};if((pr.lines||[]).length||(!p.inputs.qa_only&&(p.draft.sections||[]).length)){const c=mk('section','','card internal');c.append(mk('h2','Commercials'));
   const pd=mk('div','','pdiff');pd.id='pdiff';c.append(pd);PRICED=pr;drawPriceDiff(pd);if(!(pr.lines||[]).length){box.append(c);c.append(mk('p','Not priced yet: tick roles with days on the rate card, then Update the pricing.','hint'))}else{
   c.append(table(['Role','Quantity','Sell rate','Sell','Cost','Margin'],pr.lines.map(l=>({cells:[l.role,n(l.quantity+' '+l.unit+(l.quantity===1?'':'s'),1),n(PE.gbp(l.sell_rate),1),n(PE.gbp(l.sell),1),n(PE.gbp(l.cost),1),n(l.margin==null?'—':l.margin.toFixed(1)+'%',1)]})).concat([{cls:'tot',cells:['Total','','',n(PE.gbp(pr.sell),1),n(PE.gbp(pr.cost),1),n(pr.margin==null?'—':pr.margin.toFixed(1)+'%',1)]}])));

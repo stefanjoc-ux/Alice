@@ -2339,6 +2339,15 @@ def proposal_revise(aid: str, pid: str, x: ProposalFixes, request: Request):
     _same_origin(request); _proposal_writer(aid)
     return _proposal_call(lambda: proposals.revise(aid,pid,x.fixes,x.rejected))
 
+class ProposalTemplate(BaseModel):
+    template: str = Field(default='',max_length=300)
+
+@app.post('/assistant/{aid}/proposals/{pid}/template')
+def proposal_retemplate(aid: str, pid: str, x: ProposalTemplate, request: Request):
+    import proposals
+    _same_origin(request); _proposal_writer(aid)
+    return _proposal_call(lambda: proposals.retemplate(aid,pid,x.template))
+
 @app.post('/assistant/{aid}/work')
 def proposal_work_save(aid: str, x: ProposalWork, request: Request):
     import proposals
