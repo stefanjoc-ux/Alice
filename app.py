@@ -24,6 +24,7 @@ import activity_log
 import temple_ask
 import temple_discuss
 import temple_taxonomy
+import health
 import memory_tags
 import refs
 import autoapprove
@@ -398,6 +399,11 @@ MCP_URL = "http://127.0.0.1:8001/mcp"
 ALLOWED_TOOLS = {"list_files", "search_files", "read_file", "search_records", "propose_record", "propose_knowledge",
                  "get_organisation", "list_organisations", "search_opportunities"}
 MAX_CALLS = 10
+HEALTH_TOOL_DESCRIPTION = ("Stefan's blood test results from Health Insights (confirmed values only, with the lab's own ranges, status, history and change) "
+                           "and the decisions, experiments, supplements and clinician advice he is tracking. Use it when he asks about his health or results. "
+                           "Informational only: never diagnose, never suggest changing prescribed medication, separate the lab value, the range, the trend and your interpretation.")
+HEALTH_TOOL_SCHEMA = {"type": "object", "properties": {"marker": {"type": "string", "description": "Optional: one marker, e.g. Ferritin or Vitamin D"},
+                                                       "since": {"type": "string", "description": "Optional: only history from this date, YYYY-MM-DD"}}}
 IMAGE_TOOL = {"type": "image_generation"}
 IMAGE_NOTE = "[An image was generated and shown to the user in the chat.]"
 
@@ -476,6 +482,10 @@ async def chat_events(request):
                 tools += ([{"type": "function", "name": "create_document", "description": documents.TOOL_DESCRIPTION,
                             "parameters": documents.TOOL_SCHEMA, "strict": False}] if provider != "claude" else
                           [{"name": "create_document", "description": documents.TOOL_DESCRIPTION, "input_schema": documents.TOOL_SCHEMA}])
+                health_ok = health.allowed(provider)      # health data only for the providers Stefan allows (never Grok)
+                if health_ok:
+                    tools += ([{"type": "function", "name": "health_context", "description": HEALTH_TOOL_DESCRIPTION, "parameters": HEALTH_TOOL_SCHEMA, "strict": False}]
+                              if provider != "claude" else [{"name": "health_context", "description": HEALTH_TOOL_DESCRIPTION, "input_schema": HEALTH_TOOL_SCHEMA}])
                 client = (AsyncOpenAI(api_key=os.getenv("XAI_API_KEY"),base_url="https://api.x.ai/v1",timeout=90,max_retries=0)
                           if provider == "grok" else AsyncOpenAI(timeout=180 if image_mode else 120,max_retries=0)
                           if provider == "openai" else anthropic.AsyncAnthropic(timeout=60,max_retries=0))
@@ -536,7 +546,7 @@ async def chat_events(request):
                             name = call.name
                             failed = False
                             try:
-                                if (name not in ALLOWED_TOOLS and name != "create_document") or not active_tools or calls_used >= MAX_CALLS:
+                                if (name not in ALLOWED_TOOLS and name != "create_document" and not (name == "health_context" and health_ok)) or not active_tools or calls_used >= MAX_CALLS:
                                     raise ValueError("Tool unavailable or call limit reached. Answer using evidence already retrieved.")
                                 args = json.loads(call.arguments) if provider != "claude" else call.input
                                 if not isinstance(args, dict):
@@ -550,6 +560,14 @@ async def chat_events(request):
                                     "get_organisation": "Reading an organisation profile…",
                                     "list_organisations": "Listing organisations…",
                                     "search_opportunities": "Searching opportunities…"}.get(name, "Working…"), "tool": name, "arguments": args}
+                                if name == "health_context":       # local tool: Stefan's confirmed results, only for allowed providers
+                                    yield {"type": "activity", "message": "Reading your health results…", "tool": name}
+                                    try: output = json.dumps(await asyncio.to_thread(health.context, provider, "Alice chat", str(args.get("marker") or "")[:60], str(args.get("since") or "")[:10]), ensure_ascii=False)
+                                    except ValueError as e: output = json.dumps({"error": str(e)})
+                                    store.log_tool(name, False)
+                                    if provider != "claude": messages.append({"type": "function_call_output", "call_id": call.call_id, "output": output})
+                                    else: results.append({"type": "tool_result", "tool_use_id": call.id, "content": output})
+                                    continue
                                 if name == "create_document":      # local tool: built and checked here, kept for download
                                     yield {"type": "activity", "message": "Creating " + documents.FORMATS.get(str(args.get("format")), ("document",))[0] + " document…", "tool": name}
                                     try:
@@ -2655,8 +2673,8 @@ def admin_overview_redirect(): return RedirectResponse('/admin',status_code=307)
 @app.get('/admin/api/cards/{kind}/{ref}')
 def admin_card(kind: str, ref: str):
     """Standard information card (see CLAUDE.md, Information cards). Kinds so far: log (activity log entries, L-000123)."""
-    if kind != 'log': raise HTTPException(404, 'No card of that kind.')
-    try: return activity_log.card(ref)
+    if kind not in ('log', 'health'): raise HTTPException(404, 'No card of that kind.')
+    try: return activity_log.card(ref) if kind == 'log' else health.marker_card(ref)
     except ValueError as e: raise HTTPException(404, str(e)) from None
 
 @app.get('/admin/api/activity-log')
@@ -2732,6 +2750,79 @@ async def admin_taxonomy_review():
 def admin_taxonomy_decide(cid: str, q: TaxonomyDecision):
     try: return temple_taxonomy.decide(cid, q.action, q.note)
     except ValueError as e: raise HTTPException(400,str(e)) from None
+
+class HealthUpload(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    data: str = Field(min_length=1, max_length=14000000)
+    use_model: bool = False
+    provider: str = Field(default='', max_length=20)
+
+class HealthSettings(BaseModel):
+    providers: list[str] | None = Field(default=None, max_length=5)
+    redact_names: list[str] | None = Field(default=None, max_length=20)
+
+class HealthDoc(BaseModel):
+    sample_date: str | None = Field(default=None, max_length=20)
+    notes: str | None = Field(default=None, max_length=1000)
+    fasting: str | None = Field(default=None, max_length=10)
+
+class HealthMarker(BaseModel):
+    action: str = Field(pattern='^(confirm|edit|reject)$')
+    value: str | None = Field(default=None, max_length=30)
+    unit: str | None = Field(default=None, max_length=30)
+    low: str | None = Field(default=None, max_length=30)
+    high: str | None = Field(default=None, max_length=30)
+    note: str | None = Field(default=None, max_length=500)
+
+class HealthEntry(BaseModel):
+    kind: str = Field(max_length=20)
+    title: str = Field(min_length=1, max_length=160)
+    detail: str = Field(default='', max_length=3000)
+    started: str = Field(default='', max_length=20)
+    review_date: str = Field(default='', max_length=20)
+
+class HealthEntryAction(BaseModel):
+    action: str = Field(pattern='^(approve|reject|done|reopen|delete|review)$')
+    review_date: str = Field(default='', max_length=20)
+
+def _health(fn, *a, **k):
+    try: return fn(*a, **k)
+    except ValueError as e: raise HTTPException(400, str(e)) from None
+
+@app.get('/admin/api/health')
+def admin_health(): return health.overview()
+
+@app.get('/admin/api/health/documents/{did}')
+def admin_health_doc(did: str): return _health(health.document, did)
+
+@app.post('/admin/api/health/upload')
+async def admin_health_upload(q: HealthUpload):
+    try: raw = base64.b64decode(q.data, validate=True)
+    except Exception: raise HTTPException(400, 'Could not read the file.') from None
+    try: return await asyncio.to_thread(health.upload, q.name, raw, q.use_model, q.provider)
+    except (APIError, anthropic.APIError) as e: raise HTTPException(502, 'Reading the report: ' + provider_error(e)) from None
+    except ValueError as e: raise HTTPException(400, str(e)) from None
+
+@app.put('/admin/api/health/settings')
+def admin_health_settings(q: HealthSettings): return _health(health.set_settings, q.providers, q.redact_names)
+
+@app.put('/admin/api/health/documents/{did}')
+def admin_health_doc_set(did: str, q: HealthDoc): return _health(health.set_document, did, q.sample_date, q.notes, q.fasting)
+
+@app.post('/admin/api/health/documents/{did}/confirm')
+def admin_health_doc_confirm(did: str): return _health(health.confirm_all, did)
+
+@app.delete('/admin/api/health/documents/{did}')
+def admin_health_doc_delete(did: str): return _health(health.delete_document, did)
+
+@app.post('/admin/api/health/markers/{mid}')
+def admin_health_marker(mid: str, q: HealthMarker): return _health(health.set_marker, mid, q.action, q.value, q.unit, q.low, q.high, q.note)
+
+@app.post('/admin/api/health/entries')
+def admin_health_entry(q: HealthEntry): return _health(health.add_entry, q.kind, q.title, q.detail, q.started, q.review_date)
+
+@app.post('/admin/api/health/entries/{eid}')
+def admin_health_entry_set(eid: str, q: HealthEntryAction): return _health(health.set_entry, eid, q.action, q.review_date)
 
 @app.get('/admin/api/actions')
 def admin_actions(): return actions.summary()

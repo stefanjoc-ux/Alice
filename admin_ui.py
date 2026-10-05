@@ -16,6 +16,7 @@ PAGES = {
  'assistants': ('Assistants','Focused assistants built on Alice, such as Alex (HR policies) and Parker (proposals). Each has its own rule packs, model and knowledge, and staff use it on its own page without seeing the rest of Alice.'),
  'rule-packs': ('Rule packs','Ready-made safeguards for teams adopting AI. Switch each one on or off, test a message against the pack (a sandbox: no AI is called), and apply a pack to Alice\'s live rules when you want it enforced.'),
  'rules': ('Rules','Rule sets in precedence order. Enforced rules are checked in code; guidance rules are instructions to the model.'),
+ 'health': ('Health Insights','Your blood results from Thriva reports, against the lab\'s own ranges, with what you are tracking. Informational, not a diagnosis: talk to a clinician about anything that concerns you, and never change prescribed medication without them.'),
  'trading': ('Trading desk','Paper trading and algo signals: simulated buys and sells, "what if I had sold" against simply holding, and how each signal turned out over the following days. Simulation only: nothing here places or changes a real order, and nothing in it is advice.'),
  'mileage': ('Mileage','Mileage Clerk: load a tracker export, tell Alice which places are home, personal or business, and approve the TMC entries she prepares. Nothing reaches TMC without your approval of that exact entry.'),
  'apps': ('Apps','Apps built on Alice that each do one job end to end. Each keeps its approvals on its own page; anything waiting for you also shows on Actions.'),
@@ -38,6 +39,21 @@ SECTIONS = {
 'home': r'''<section class="hm-hero"><div><h2 id="hm-hello">Hello</h2><p id="hm-sub" class="muted"></p></div>
 <div class="hm-go"><a class="hm-btn primary" href="/?new=1"><span>&#9998;</span>New chat</a><a class="hm-btn" id="hm-prop" href="/admin/assistants"><span>&#10064;</span>Write a proposal</a><a class="hm-btn" href="/admin/temple?tab=ask"><span>?</span>Ask Temple</a><a class="hm-btn" href="/admin/knowledge"><span>+</span>Add knowledge</a></div></section>
 <div id="hm" class="hm"></div>''',
+'health': r'''<section class="hi-top"><div id="hi-alert"></div><div id="hi-tiles" class="tp-tiles hi-tiles"></div>
+<p class="hi-safety small"><b>Safety:</b> <span id="hi-safety-text"></span></p>
+<p class="small muted">Discuss your results in Alice's chat (Claude or GPT) or in Claude with the Alice connector: they read your confirmed results through the health tool, only for the models you allow below.</p></section>
+<section id="results"><div class="mem-head"><h2>Your results</h2><span id="hi-latest" class="muted small"></span></div><div id="hi-groups" class="mem-tabs"></div><div id="hi-markers" class="hi-markers"></div></section>
+<section id="reports"><div class="mem-head"><h2>Reports</h2><span class="muted small">Name, date of birth, NHS number and contact details are removed on upload; the file itself is not kept</span></div>
+<div class="tp-form hi-up"><input type="file" id="hi-file" accept=".pdf,.csv,application/pdf,text/csv" aria-label="Thriva report PDF or CSV">
+<label class="small hi-chk"><input type="checkbox" id="hi-model"> Let a model read it if Alice's own reader cannot find the results</label><select id="hi-provider" aria-label="Model"></select><button type="button" id="hi-upload">Upload</button></div>
+<div id="hi-docs"></div><div id="hi-check"></div></section>
+<section id="notes"><div class="mem-head"><h2>What you are tracking</h2><span class="muted small">Decisions, experiments, supplements, symptoms and clinician advice</span></div>
+<div id="hi-proposed"></div><div id="hi-entries"></div>
+<details class="tp-more"><summary>Add something to track</summary><div class="tp-form"><select id="hi-e-kind" aria-label="Type"></select><input id="hi-e-title" maxlength="160" placeholder="e.g. Vitamin D 2000 IU daily through winter"><input id="hi-e-started" type="date" aria-label="Started"><input id="hi-e-review" type="date" aria-label="Review on"><button type="button" id="hi-e-add">Add</button></div>
+<textarea id="hi-e-detail" rows="2" maxlength="3000" placeholder="Why, and what you will look at when you review it (optional)"></textarea></details></section>
+<section id="hi-set"><div class="mem-head"><h2>Privacy</h2></div><p class="small">Models that may read your health data (when you ask, never in ordinary memory search). Grok, Copilot and other outside apps never can.</p><div id="hi-provs" class="hi-provs"></div>
+<details class="tp-more"><summary>Names to strip from reports</summary><p class="small muted">Alice already removes labelled names, dates of birth, NHS numbers, addresses, postcodes, emails and phone numbers. Add your own name (and any other) so it is removed wherever it appears. The list is not shown again; saving replaces it.</p>
+<textarea id="hi-names" rows="2" placeholder="One per line"></textarea><button type="button" id="hi-names-save" class="secondary">Save names</button> <span id="hi-names-n" class="small muted"></span></details></section>''',
 'trading': r'''<section class="tp-hero-sec"><div class="tp-hero-grid"><div id="tp-hero" class="tp-hero"></div>
 <div class="tp-chart-card"><div class="tp-chart-head"><h3 id="tp-chart-title">Paper portfolio value</h3><div class="tp-legend"><span><i class="tp-sw-val"></i>Value</span><span><i class="tp-sw-cost"></i>What it cost</span></div></div><div id="tp-chart" class="tp-chart" role="img"></div></div></div>
 <div id="tp-tiles" class="tp-tiles"></div><p id="tp-asof" class="muted small"></p></section>
@@ -282,8 +298,8 @@ section{background:var(--panel);border:1px solid var(--line);border-radius:10px;
 h2{font-size:17px;line-height:1.35;margin:0 0 10px}h3{font-size:15px;margin:14px 0 6px}h4{font-size:14px;margin:12px 0 4px}section>h2:first-child{margin-top:0}
 p,li{line-height:1.6}label{display:block;margin:10px 0}textarea,input[type=text]{width:100%;margin:6px 0}
 .content button{margin:4px 6px 4px 0}
-.content button:not(.secondary):not(.chip):not(.mini):not(.mem-title):not(.ghost):not(.ag-card):not(.o-item):not(.rl-tile):not(.rl-tab),.button{background:var(--teal);border:1px solid var(--teal);color:#fff;font-weight:600;border-radius:8px;padding:6px 14px;text-decoration:none;display:inline-block}
-.content button:not(.secondary):not(.chip):not(.mini):not(.mem-title):not(.ghost):not(.ag-card):not(.o-item):not(.rl-tile):not(.rl-tab):hover:not(:disabled),.button:hover{background:var(--teal-d);border-color:var(--teal-d)}
+.content button:not(.secondary):not(.chip):not(.mini):not(.mem-title):not(.ghost):not(.ag-card):not(.o-item):not(.rl-tile):not(.rl-tab):not(.hi-row),.button{background:var(--teal);border:1px solid var(--teal);color:#fff;font-weight:600;border-radius:8px;padding:6px 14px;text-decoration:none;display:inline-block}
+.content button:not(.secondary):not(.chip):not(.mini):not(.mem-title):not(.ghost):not(.ag-card):not(.o-item):not(.rl-tile):not(.rl-tab):not(.hi-row):hover:not(:disabled),.button:hover{background:var(--teal-d);border-color:var(--teal-d)}
 .content button.secondary{background:#fff;color:var(--ink)}
 pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:500px;overflow:auto;font:13px/1.6 ui-monospace,Consolas,monospace}summary{cursor:pointer}
 .card{border-top:1px solid var(--line);padding:16px 0;overflow-wrap:anywhere}.card p{overflow-wrap:anywhere}
@@ -383,6 +399,22 @@ section.mem-setup{grid-template-columns:repeat(3,minmax(0,1fr))}@media(max-width
 .tx-bar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:8px 0 12px}.tx-bar label{display:flex;gap:8px;align-items:center;margin:0}.tx-bar select{margin:0;width:auto}
 .tx-list{display:grid;gap:0}.tx-row{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:start;padding:10px 0;border-top:1px solid #eef3f6}.tx-acts{display:flex;gap:6px}
 @media(max-width:600px){.tx-row{grid-template-columns:1fr}}
+.hi-safety{background:#eef6fa;border:1px solid #cfe3ec;border-radius:10px;padding:8px 12px;margin:12px 0 6px}.hi-tiles .tp-tile{min-height:64px}.hi-tw{border-color:#e2bf85!important;background:#fffaf0!important}
+.hi-crit-banner{background:#fbe9e9;border:1px solid #e3a3a3;color:#7a1f1f;border-radius:10px;padding:10px 14px;margin-bottom:12px}
+.hi-markers{display:grid}.hi-g{font-size:13px;letter-spacing:.05em;text-transform:uppercase;color:#5d7385;margin:16px 0 4px}
+.content button.hi-row{all:unset;box-sizing:border-box;cursor:pointer;display:grid;grid-template-columns:minmax(150px,1.3fr) minmax(90px,.7fr) minmax(120px,1fr) minmax(130px,.9fr) minmax(90px,.6fr) 84px;gap:12px;align-items:center;padding:9px 10px;border-top:1px solid #eef3f6;width:100%}
+.content button.hi-row:hover,.content button.hi-row:focus-visible{background:#f6fafc;outline:none}.hi-name strong{display:block;color:#102b40}.hi-val b{font-size:16px;color:#102b40;font-variant-numeric:tabular-nums}
+.hi-range{position:relative;height:10px;border-radius:5px;background:#eef3f6}.hi-band{position:absolute;top:0;bottom:0;background:#cfe6f0;border-radius:5px}.hi-dot{position:absolute;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.15)}
+.hi-dot.hi-in{background:#1679a3}.hi-dot.hi-lo,.hi-dot.hi-hi{background:#b7791f}.hi-dot.hi-far,.hi-dot.hi-crit{background:#a12a2a}.hi-dot.hi-un{background:#8aa0b0}
+.hi-st{font-size:13px;font-weight:600}.hi-st i{font-style:normal}.hi-st.hi-in{color:#1f6b3d}.hi-st.hi-lo,.hi-st.hi-hi{color:#8a5a0f}.hi-st.hi-far,.hi-st.hi-crit{color:#a12a2a}.hi-st.hi-un{color:#5d7385}
+.hi-ch{color:#5d7385}.hi-notable{font-weight:700;color:#3d5566}
+.hi-up{align-items:center}.hi-chk{display:inline-flex;gap:6px;align-items:center;margin:0}.hi-doc{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:10px 0;border-top:1px solid #eef3f6}.hi-doc.on{background:#f6fafc}
+.hi-panel{border:1px solid #dde7ee;border-radius:12px;padding:12px;margin-top:10px;background:#fbfcfd}.hi-ph{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}.hi-ph input{margin:0;width:auto}
+.hi-ct input{margin:0}.hi-unsure td{background:#fffaf0}.hi-acts{display:flex;gap:6px;flex-wrap:wrap}
+.hi-entry{display:grid;grid-template-columns:1fr auto;gap:12px;padding:10px 0;border-top:1px solid #eef3f6}.hi-due{background:#fffaf0}.hi-provs{display:flex;gap:16px;margin:6px 0 10px}
+#hi-e-detail{width:100%}
+@media(max-width:800px){.content button.hi-row{grid-template-columns:1fr auto;grid-template-areas:'n v' 'r r' 's c'}.hi-row .tp-spark{display:none}.hi-name{grid-area:n}.hi-val{grid-area:v;text-align:right}.hi-range{grid-area:r}.hi-st{grid-area:s}.hi-ch{grid-area:c;text-align:right}}
+.ic-chart{width:100%;height:150px;display:block;margin:4px 0 10px}.ic-chart text{font-size:10px;fill:#5d7385}
 .r-add{margin-top:10px}.r-add>summary{cursor:pointer;font-size:14px;color:#075e79}.r-add input,.r-add textarea{display:block;width:100%;margin:6px 0}
 .spend-row{display:grid;grid-template-columns:100px 1fr 150px;gap:12px;align-items:center;margin:6px 0}.spend-bar{height:10px;background:#e3eaf0;border-radius:5px;overflow:hidden}.spend-fill{display:block;height:100%}.spend-fill.ok{background:#2e7d4f}.spend-fill.warn{background:#c08a1e}.spend-fill.bad{background:#b3261e}.spend-warning{color:#6b4406}.spend-blocked{color:#7a1f1f;font-weight:600}
 .r-block{display:grid;grid-template-columns:130px 200px 1fr;gap:10px;padding:6px 0;border-top:1px solid #e3eaf0}#r-effective{white-space:pre-wrap}
@@ -1725,6 +1757,76 @@ if(PAGE==='apps'){
 }
 """
 SCRIPT += r"""
+if(PAGE==='health'){
+ const ST={in:['Within range','hi-in','●'],low:['Below range','hi-lo','▼'],high:['Above range','hi-hi','▲'],far_low:['Well below range','hi-far','▼▼'],far_high:['Well above range','hi-far','▲▲'],critical:['Lab: critical','hi-crit','!'],unknown:['No range given','hi-un','–']};
+ const KIND={decision:'Decision',experiment:'Experiment',supplement:'Supplement',symptom:'Symptom',clinician:'Clinician advice',follow_up:'Follow-up'};
+ const dfmt=d=>d?new Date(d+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'–';
+ let D=null,grp='',openDoc=new URLSearchParams(location.search).get('doc')||'';
+ function rangeBar(l){const w=el('div','','hi-range');const lo=l.low,hi=l.high,v=l.value;if(v==null||(lo==null&&hi==null)){w.append(el('span','no range','small muted'));return w}
+  const top=Math.max(hi!=null?hi*1.5:v*1.3,v*1.1,(lo||0)*1.2),bot=0,pc=x=>Math.max(0,Math.min(100,100*(x-bot)/(top-bot)));
+  const band=el('i','','hi-band');band.style.left=pc(lo!=null?lo:0)+'%';band.style.width=(pc(hi!=null?hi:top)-pc(lo!=null?lo:0))+'%';const dot=el('b','','hi-dot '+(ST[l.state]||ST.unknown)[1]);dot.style.left=pc(v)+'%';
+  w.title='Lab range '+(lo!=null?lo:'')+(lo!=null&&hi!=null?'–':'')+(hi!=null?(lo==null?'below ':'')+hi:'')+' '+l.unit;w.append(band,dot);return w}
+ function spark(h){const pts=h.filter(p=>p.value!=null);if(pts.length<2)return el('span','','');const W=80,H=22,vs=pts.map(p=>p.value),lo=Math.min(...vs),hi=Math.max(...vs),r=hi-lo||1;
+  const svg=svgEl('svg',{class:'tp-spark',viewBox:`0 0 ${W} ${H}`,'aria-hidden':'true'});svg.append(svgEl('polyline',{points:pts.map((p,i)=>(2+(W-4)*i/(pts.length-1)).toFixed(1)+','+(2+(H-4)*(1-(p.value-lo)/r)).toFixed(1)).join(' '),fill:'none',stroke:'#1679a3','stroke-width':1.5}));return svg}
+ function markers(){const box=$('hi-markers');box.replaceChildren();const ts=D.trends.filter(t=>!grp||t.group===grp);
+  const groups=[...new Set(D.trends.map(t=>t.group))];$('hi-groups').replaceChildren(...[''].concat(groups).map(g=>{const b=el('button',g||'All','chip'+(grp===g?' on':''));b.type='button';b.onclick=()=>{grp=g;markers()};return b}));
+  if(!ts.length){box.append(el('p',D.trends.length?'Nothing in this group.':'No confirmed results yet. Upload a Thriva report below.','muted'));return}
+  let last='';for(const t of ts){if(t.group!==last){box.append(el('h3',t.group,'hi-g'));last=t.group}
+   const l=t.latest,[sl,sc,si]=ST[l.state]||ST.unknown;const row=el('button','','hi-row');row.type='button';row.onclick=()=>openCard('/admin/api/cards/health/'+encodeURIComponent(t.canonical),{});
+   const nm=el('div','','hi-name');nm.append(el('strong',t.canonical),el('span',dfmt(l.date),'small muted'));
+   const val=el('div','','hi-val');val.append(el('b',l.text),el('span',' '+l.unit,'small muted'));
+   const st=el('span','','hi-st '+sc);st.append(el('i',si),document.createTextNode(' '+sl));
+   const ch=el('span',t.pct==null?'first result':(t.pct>0?'▲ ':t.pct<0?'▼ ':'')+Math.abs(t.pct)+'% '+(t.pct>0?'up':t.pct<0?'down':''),'small hi-ch'+(t.notable?' hi-notable':''));
+   row.append(nm,val,rangeBar(l),st,ch,spark(t.history));box.append(row)}}
+ function tiles(){const t=$('hi-tiles');const T=(v,l,cls)=>{const x=el('div','','tp-tile'+(cls?' '+cls:''));const d=el('div','');d.append(el('b',v),el('span',l));x.append(d);return x};
+  t.replaceChildren(T(dfmt(D.latest_date),'Latest results'),T(String(D.out_of_range.length),D.out_of_range.length?'Outside the lab’s range: '+D.out_of_range.slice(0,3).join(', ')+(D.out_of_range.length>3?'…':''):'Outside the lab’s range',D.out_of_range.length?'hi-tw':''),
+   T(String(D.notable.length),'Notable changes (20%+ or crossed the range)'),T(String(D.entries.filter(e=>e.status==='active').length),'Things you are tracking'+(D.due.length?' · '+D.due.length+' due for review':''),D.due.length?'hi-tw':''),
+   T(String(D.checking),'Reports with values to check',D.checking?'hi-tw':''));
+  const a=$('hi-alert');a.replaceChildren();if(D.critical.length){const x=el('div','','hi-crit-banner');x.append(el('b','The lab marked '+D.critical.join(', ')+' as critical. '),document.createTextNode('Seek medical advice today: your GP or NHS 111, or 999 in an emergency.'));a.append(x)}}
+ function docs(){const box=$('hi-docs');box.replaceChildren();if(!D.documents.length){box.append(el('p','No reports yet. In Thriva, open a result and download the report (PDF), then upload it here.','muted small'));return}
+  for(const d of D.documents){const r=el('div','','hi-doc'+(openDoc===d.id?' on':''));const tx=el('div','');tx.append(el('strong',(d.sample_date?dfmt(d.sample_date):'Sample date missing')+' · '+(d.lab_provider||'Lab')),el('div',d.filename+' · read by '+(d.parser==='alice'?'Alice':d.parser.replace('model:','').replace('claude','Claude').replace('openai','GPT'))+' · removed: '+(Object.entries(d.removed).map(([k,v])=>k+' ×'+v).join(', ')||'nothing found'),'small muted'));
+   const b=el('span',d.status==='check'?'Values to check':'Confirmed','badge '+(d.status==='check'?'v-warn':'v-ok'));const open=el('button',openDoc===d.id?'Close':'Open','secondary mini');open.type='button';open.onclick=()=>{openDoc=openDoc===d.id?'':d.id;run(check)};r.append(b,tx,open);box.append(r)}}
+ async function check(){docs();const box=$('hi-check');box.replaceChildren();if(!openDoc)return;const d=await api('/admin/api/health/documents/'+openDoc);
+  const p=el('div','','hi-panel');const hd=el('div','','hi-ph');const sd=document.createElement('input');sd.type='date';sd.value=d.sample_date||'';sd.setAttribute('aria-label','Sample date');
+  const sv=el('button','Save date','secondary mini');sv.type='button';sv.onclick=()=>run(async()=>{await api('/admin/api/health/documents/'+d.id,'PUT',{sample_date:sd.value});await load()});
+  const all=el('button','Confirm everything without issues','mini');all.type='button';all.onclick=()=>run(async()=>{await api('/admin/api/health/documents/'+d.id+'/confirm','POST',{});$('notice').textContent='Confirmed.';await load()});
+  const del=el('button','Delete this report','secondary mini');del.type='button';del.onclick=()=>run(async()=>{if(!confirm('Delete this report and its '+d.markers.length+' results? This cannot be undone.'))return;await api('/admin/api/health/documents/'+d.id,'DELETE');openDoc='';$('notice').textContent='Report deleted.';await load()});
+  const lab=el('label','Sample date ','small');lab.append(sd);hd.append(lab,sv,all,del);p.append(hd);for(const i of d.issues)p.append(el('p',i,'small flag'));
+  const t=document.createElement('table');t.className='mem-table hi-ct';const th=document.createElement('thead');th.innerHTML='<tr><th>Result</th><th>Value</th><th>Unit</th><th>Lab range</th><th>Confidence</th><th></th></tr>';t.append(th);const tb=document.createElement('tbody');
+  for(const m of d.markers){const tr=document.createElement('tr');if(m.status==='check')tr.className='hi-unsure';const inp=(v,w,l)=>{const i=document.createElement('input');i.value=v==null?'':v;i.style.width=w;i.setAttribute('aria-label',l+' for '+m.canonical);return i};
+   const v=inp(m.value_text,'80px','Value'),u=inp(m.unit,'90px','Unit'),lo=inp(m.ref_low,'60px','Range low'),hi=inp(m.ref_high,'60px','Range high');
+   const c1=document.createElement('td');c1.append(el('strong',m.canonical));if(m.original_name!==m.canonical)c1.append(el('div','“'+m.original_name+'” on the report','small muted'));for(const i of m.issues)c1.append(el('div',i,'small flag'));
+   const td=x=>{const c=document.createElement('td');c.append(x);return c};const rg=el('span','');rg.append(lo,document.createTextNode(' – '),hi);
+   const acts=el('div','','hi-acts');const save=el('button',m.status==='check'?'Confirm':'Save','mini');save.type='button';save.onclick=()=>run(async()=>{await api('/admin/api/health/markers/'+m.id,'POST',{action:'edit',value:v.value,unit:u.value,low:lo.value,high:hi.value});await load()});
+   const rej=el('button','Not a result','secondary mini');rej.type='button';rej.onclick=()=>run(async()=>{await api('/admin/api/health/markers/'+m.id,'POST',{action:'reject'});await load()});acts.append(save,rej);
+   tr.append(c1,td(v),td(u),td(rg),td(el('span',Math.round(m.confidence*100)+'%'+(m.status==='check'?' · check':''),'small '+(m.status==='check'?'flag':'muted'))),td(acts));tb.append(tr)}
+  t.append(tb);const w=el('div','','table-wrap');w.append(t);p.append(w);box.append(p)}
+ function entries(){const pr=$('hi-proposed'),bx=$('hi-entries');pr.replaceChildren();bx.replaceChildren();const act=(e,a,l,sec)=>{const b=el('button',l,sec?'secondary mini':'mini');b.type='button';b.onclick=()=>run(async()=>{if(a==='delete'&&!confirm('Delete “'+e.title+'”?'))return;await api('/admin/api/health/entries/'+e.id,'POST',{action:a});await load()});return b};
+  const card=e=>{const r=el('div','','hi-entry'+(e.due?' hi-due':''));const tx=el('div','');tx.append(el('span',e.kind_label,'badge v-none'),el('strong',' '+e.title));if(e.detail)tx.append(el('div',e.detail,'small'));
+   tx.append(el('div',[e.started?'since '+dfmt(e.started):'',e.review_date?(e.due?'review due ':'review ')+dfmt(e.review_date):'',e.proposed_by?'proposed in '+e.proposed_by:'',e.markers.length?'markers: '+e.markers.join(', '):''].filter(Boolean).join(' · '),'small muted'));
+   if(e.caution)tx.append(el('div',e.caution,'small flag'));const a=el('div','','hi-acts');
+   if(e.status==='proposed')a.append(act(e,'approve','Approve'),act(e,'reject','Reject',1));else if(e.status==='active')a.append(act(e,'done','Done',1),act(e,'delete','Delete',1));else a.append(act(e,'reopen','Reopen',1),act(e,'delete','Delete',1));r.append(tx,a);return r};
+  const props=D.entries.filter(e=>e.status==='proposed');if(props.length){pr.append(el('h3','Proposed by a model: approve before it counts','hi-g'));props.forEach(e=>pr.append(card(e)))}
+  const act2=D.entries.filter(e=>e.status==='active'),done=D.entries.filter(e=>e.status==='done');if(!act2.length&&!props.length)bx.append(el('p','Nothing tracked yet.','muted small'));act2.forEach(e=>bx.append(card(e)));
+  if(done.length){const d=document.createElement('details');d.append(el('summary','Done ('+done.length+')'));done.forEach(e=>d.append(card(e)));bx.append(d)}}
+ function settingsUi(){const s=D.settings;$('hi-safety-text').textContent=D.safety;const box=$('hi-provs');box.replaceChildren();
+  for(const [k,n] of Object.entries(s.all_providers)){const l=el('label','','hi-chk');const c=document.createElement('input');c.type='checkbox';c.checked=s.providers.includes(k);c.onchange=()=>run(async()=>{const now=[...box.querySelectorAll('input')].filter(i=>i.checked).map(i=>i.dataset.p);await api('/admin/api/health/settings','PUT',{providers:now});$('notice').textContent='Saved.';await load()});c.dataset.p=k;l.append(c,document.createTextNode(' '+n));box.append(l)}
+  $('hi-names-n').textContent=s.redact_names?s.redact_names+' name'+(s.redact_names===1?'':'s')+' on the list':'No names on the list';
+  const sel=$('hi-provider');sel.replaceChildren(...s.providers.map(k=>{const o=el('option',s.all_providers[k]);o.value=k;return o}));$('hi-model').disabled=!s.providers.length}
+ async function load(){D=await api('/admin/api/health');tiles();markers();settingsUi();entries();await check()}
+ $('hi-upload').onclick=()=>run(async()=>{const f=$('hi-file').files[0];if(!f)throw Error('Choose a Thriva report (PDF) or a CSV first.');$('hi-upload').disabled=true;$('notice').textContent='Reading the report…';
+  try{const b64=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]);r.onerror=()=>no(Error('Could not read the file.'));r.readAsDataURL(f)});
+   const d=await api('/admin/api/health/upload','POST',{name:f.name,data:b64,use_model:$('hi-model').checked,provider:$('hi-provider').value});
+   const n=d.markers.length,c=d.markers.filter(m=>m.status==='check').length;$('notice').textContent=n+' results found'+(c?'; '+c+' to check before they count':'; all confirmed')+'.';openDoc=d.id;$('hi-file').value='';await load();$('reports').scrollIntoView({behavior:'smooth'})}
+  finally{$('hi-upload').disabled=false}});
+ $('hi-e-kind').replaceChildren(...Object.entries(KIND).map(([k,l])=>{const o=el('option',l);o.value=k;return o}));
+ $('hi-e-add').onclick=()=>run(async()=>{const r=await api('/admin/api/health/entries','POST',{kind:$('hi-e-kind').value,title:$('hi-e-title').value,detail:$('hi-e-detail').value,started:$('hi-e-started').value,review_date:$('hi-e-review').value});
+  $('notice').textContent=r.caution||'Added.';for(const i of ['hi-e-title','hi-e-detail','hi-e-started','hi-e-review'])$(i).value='';await load()});
+ $('hi-names-save').onclick=()=>run(async()=>{const names=$('hi-names').value.split('\\n').map(x=>x.trim()).filter(Boolean);await api('/admin/api/health/settings','PUT',{redact_names:names});$('hi-names').value='';$('notice').textContent='Saved. New uploads remove these names.';await load()});
+ run(load);
+}
+"""
+SCRIPT += r"""
 if(PAGE==='trading'){
  const gbp=v=>v==null?'–':(v<0?'−':'')+'£'+Math.abs(v).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2});
  const pct=v=>{if(v==null)return el('span','–','tp-flat');const x=el('span',(v>0?'+':v<0?'−':'')+Math.abs(v).toFixed(1)+'%',v>0?'tp-up':v<0?'tp-down':'tp-flat');return x};
@@ -2499,6 +2601,7 @@ async function openCard(src,opts={}){let d=document.getElementById('ic-drawer');
   const h=el(s.collapsed?'summary':'h3','');const ic=document.createElement('span');ic.className='ic-ic';ic.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(IC_ICONS[s.key]||IC_ICONS.what)+'</svg>';h.append(ic,document.createTextNode(s.title));sec.append(h);
   if(s.text)sec.append(el('p',s.text,'ic-text'));
   if(s.paths)for(const p of s.paths){const row=el('div','','ic-path-row');row.append(el('span',p.label,'ic-k'));const bc=el('ol','','ic-path');p.path.forEach((n,i)=>{const li=document.createElement('li');if(n.href){const a=document.createElement('a');a.href=n.href;a.textContent=n.label;li.append(a)}else li.append(el('span',n.label));if(i===p.path.length-1)li.className='here';bc.append(li)});row.append(bc);sec.append(row)}
+  if(s.chart&&s.chart.points&&s.chart.points.length>1)sec.append(icChart(s.chart));
   if(s.rows&&s.rows.length){const dl=el('dl','','ic-rows');for(const [k,v] of s.rows){dl.append(el('dt',k));const dd=document.createElement('dd');
     if(v&&typeof v==='object'&&v.time)dd.textContent=icTime(v.time);else if(v&&typeof v==='object'&&v.href){const a=document.createElement('a');a.href=v.href;a.textContent=v.text;dd.append(a)}else dd.textContent=v==null||v===''?'–':v;dl.append(dd)}sec.append(dl)}
   if(s.items){if(!s.items.length)sec.append(el('p',s.empty||'Nothing.','muted small'));const ul=el('ul','','ic-items');for(const it of s.items){const li=document.createElement('li');const b=el('button','','ic-item');b.type='button';b.append(el('span',it.ref,'ref'),el('span',it.label),el('span',it.time?icTime(it.time).split(' · ')[1]:'','small muted'));
@@ -2506,6 +2609,15 @@ async function openCard(src,opts={}){let d=document.getElementById('ic-drawer');
   body.append(sec)}
  const foot=el('div','','ic-foot');for(const a of c.actions||[]){const x=document.createElement('a');x.href=a.href;x.textContent=a.label+' ↗';x.className='button-link';foot.append(x)}
  d.replaceChildren(head,body);if(foot.childElementCount)d.append(foot);d.querySelector('.ic-close').focus()}
+function icChart(ch){const P=ch.points,W=420,H=150,L=40,R=8,T=8,B=22;const vs=P.map(p=>p.y).concat(P.flatMap(p=>[p.low,p.high]).filter(v=>v!=null));let lo=Math.min(...vs),hi=Math.max(...vs);const pad=(hi-lo)*.12||1;lo=Math.max(0,lo-pad);hi+=pad;
+ const x=i=>L+(W-L-R)*i/(P.length-1),y=v=>T+(H-T-B)*(1-(v-lo)/(hi-lo));const svg=svgEl('svg',{class:'ic-chart',viewBox:`0 0 ${W} ${H}`,role:'img','aria-label':'History in '+ch.unit+': '+P.map(p=>p.x+' '+p.y).join(', ')});
+ const top=P.map((p,i)=>p.high!=null?x(i)+','+y(p.high):null),bot=P.map((p,i)=>p.low!=null?x(i)+','+y(p.low):x(i)+','+y(lo));
+ if(top.every(Boolean))svg.append(svgEl('polygon',{points:top.concat(bot.slice().reverse()).join(' '),fill:'#cfe6f0','fill-opacity':.6}));
+ for(const v of [lo,(lo+hi)/2,hi]){const t=svgEl('text',{x:L-6,y:y(v)+3,'text-anchor':'end'});t.textContent=+v.toPrecision(3);svg.append(t)}
+ svg.append(svgEl('polyline',{points:P.map((p,i)=>x(i)+','+y(p.y)).join(' '),fill:'none',stroke:'#1679a3','stroke-width':2}));
+ P.forEach((p,i)=>{const out=(p.high!=null&&p.y>p.high)||(p.low!=null&&p.y<p.low);const c=svgEl('circle',{cx:x(i),cy:y(p.y),r:4,fill:out?'#b7791f':'#1679a3',stroke:'#fff','stroke-width':1.5});const tt=svgEl('title',{});tt.textContent=p.x+': '+p.y+' '+ch.unit+(out?' (outside the lab range)':'');c.append(tt);svg.append(c)});
+ for(const i of [0,P.length-1]){const t=svgEl('text',{x:x(i),y:H-6,'text-anchor':i?'end':'start'});t.textContent=new Date(P[i].x+'T12:00:00').toLocaleDateString('en-GB',{month:'short',year:'numeric'});svg.append(t)}
+ return svg}
 function icHead(c){const h=el('div','','ic-head'+(c.tone?' ic-'+c.tone:''));const top=el('div','','ic-top');
  if(c.ref){const r=el('button',c.ref,'ref ic-ref');r.type='button';r.title='Copy the reference';r.onclick=()=>{try{navigator.clipboard.writeText(c.ref);r.textContent='Copied';setTimeout(()=>r.textContent=c.ref,1200)}catch{}};top.append(r)}
  if(c.kind_label)top.append(el('span',c.kind_label,'small muted'));if(c.badge)top.append(el('span',c.badge,'badge '+(c.tone==='bad'?'v-bad':c.tone==='warn'?'v-warn':'v-none')));

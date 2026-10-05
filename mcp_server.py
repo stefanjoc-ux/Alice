@@ -587,6 +587,41 @@ def propose_org_fact(organisation: Annotated[str, Field(min_length=1, max_length
     return {'id': r['id'], 'status': 'proposed', 'message': f"Proposed for {r['org']}; the user approves it on the Actions page."}
 
 
+@mcp.tool(annotations={'readOnlyHint': True, 'destructiveHint': False})
+def get_health_context(marker: Annotated[str, Field(max_length=60)] = '', since: Annotated[str, Field(max_length=10)] = '') -> dict:
+    """The user's blood test results from Alice's Health Insights app: confirmed values only, with the lab's own reference
+    ranges, status, history and change, plus the decisions, experiments, supplements and clinician advice they track.
+    Use only when the user asks about their health or results. Informational only: never diagnose, never suggest
+    changing prescribed medication; separate the lab value, the range, the trend and your interpretation; follow the
+    rules returned. marker: optional, one marker (e.g. Ferritin). since: optional YYYY-MM-DD."""
+    who = _who()
+    if not who: raise ValueError("Alice's own chat uses its health_context tool.")
+    agent, run = _app('get_health_context')
+    import health
+    r = health.context(who.provider, who.label, marker, since)
+    agents.app_note(run, 'read', 'health', 'results', f"{len(r['results'])} markers")
+    return r
+
+
+@mcp.tool(annotations={'readOnlyHint': False, 'destructiveHint': False})
+def propose_health_note(kind: Annotated[str, Field(pattern='^(decision|experiment|supplement|symptom|clinician|follow_up)$')],
+                        title: Annotated[str, Field(min_length=3, max_length=160)],
+                        detail: Annotated[str, Field(max_length=3000)] = '',
+                        review_date: Annotated[str, Field(max_length=10)] = '',
+                        markers: Annotated[list[str], Field(max_length=10)] = []) -> dict:
+    """Propose something the user decided or wants to track in Health Insights (a decision, a lifestyle or supplement
+    experiment, a symptom, clinician advice, a follow-up), for their approval. Only what they actually said. Medication
+    changes are never a plan: they are kept as something to raise with their clinician. markers: related markers."""
+    who = _who()
+    if not who: raise ValueError("Alice's own chat cannot propose health notes yet; add them on the Health page.")
+    agent, run = _app('propose_health_note')
+    import health
+    if not health.allowed(who.provider): raise ValueError('Health data is not shared with this app.')
+    r = health.add_entry(kind, title, detail, '', review_date, source=f'Proposed in {who.label}', proposed_by=who.label, markers=markers)
+    agents.app_note(run, 'wrote', 'health_note', r['id'], 'proposed')
+    return {'id': r['id'], 'status': 'proposed', 'message': 'Waiting for the user to approve it in Health Insights.' + (' ' + r['caution'] if r['caution'] else '')}
+
+
 @mcp.tool(annotations={'readOnlyHint': False, 'destructiveHint': False})
 def save_conversation(title: Annotated[str, Field(min_length=1, max_length=120)],
                       summary: Annotated[str, Field(min_length=50, max_length=12000)],

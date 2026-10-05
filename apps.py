@@ -27,6 +27,16 @@ def _trading_summary():
     return trading.tile()
 
 
+def _health_waiting():
+    import health
+    return health.waiting()
+
+
+def _health_summary():
+    import health
+    return health.tile()
+
+
 APPS = [
     {'id': 'mileage', 'name': 'Mileage', 'mark': 'Mi', 'page': 'mileage', 'agent': 'Mileage Clerk',
      'description': 'Business mileage for TMC from your vehicle tracker export: classify places, approve each exact entry.',
@@ -34,6 +44,9 @@ APPS = [
     {'id': 'trading', 'name': 'Trading desk', 'mark': 'Td', 'page': 'trading', 'agent': 'Trading desk',
      'description': 'Paper trading and algo signals: simulated buys and sells, "what if I had sold" against holding, and how each signal turned out. Simulation only.',
      'waiting': _trading_waiting, 'summary': _trading_summary},
+    {'id': 'health', 'name': 'Health Insights', 'mark': 'Hi', 'page': 'health', 'agent': 'Health Insights: report reader',
+     'description': 'Blood results from your Thriva reports: trends against the lab\'s ranges, what you are tracking, and a health context Claude and GPT can read when you ask. Informational, not a diagnosis.',
+     'waiting': _health_waiting, 'summary': _health_summary},
 ]
 PAGES = {a['page'] for a in APPS}
 
