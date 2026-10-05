@@ -97,7 +97,8 @@ EXTERNAL_INSTRUCTIONS = (
 
 
 def build_instructions(external):
-    text = BASE_INSTRUCTIONS
+    import demo_instance
+    text = (('THIS IS THE DEMO ALICE: ' + demo_instance.notice() + ' Say so when you present anything from it. ') if demo_instance.ON else '') + BASE_INSTRUCTIONS
     if external:
         text += EXTERNAL_INSTRUCTIONS
         try:   # the owner's response guidance, so external clients follow it too (as guidance, not enforcement)
@@ -111,12 +112,25 @@ def build_instructions(external):
 mcp = FastMCP('Alice', instructions=BASE_INSTRUCTIONS)
 
 
+def _marked(fn):
+    """On the demo Alice every answer says it is demo data (a fictional team), so nothing shown to a client can be taken as real."""
+    import functools, demo_instance
+    if not demo_instance.ON: return fn
+    @functools.wraps(fn)
+    def wrapper(*a, **k):
+        r = fn(*a, **k)
+        if isinstance(r, dict): r = {'demo_notice': demo_instance.notice(), **r}
+        return r
+    return wrapper
+
+
 def database():
     """Read-only connection for MCP reads: SQLite opened read-only, or a PostgreSQL read-only session."""
     return store.connect(readonly=True)
 
 
 @mcp.tool(annotations={'readOnlyHint': True, 'destructiveHint': False})
+@_marked
 def list_files(offset: Annotated[int, Field(ge=0)] = 0,
                limit: Annotated[int, Field(ge=1, le=50)] = 20) -> dict:
     """List saved files with IDs and extraction limitations. Use next_offset for more."""
@@ -149,6 +163,7 @@ def list_files(offset: Annotated[int, Field(ge=0)] = 0,
 
 
 @mcp.tool(annotations={'readOnlyHint': True, 'destructiveHint': False})
+@_marked
 def read_file(file_id: str,
               start_line: Annotated[int, Field(ge=1)] = 1,
               max_lines: Annotated[int, Field(ge=1, le=100)] = 40,
@@ -202,6 +217,7 @@ def read_file(file_id: str,
 
 
 @mcp.tool(annotations={'readOnlyHint': True, 'destructiveHint': False})
+@_marked
 def search_files(query: Annotated[str, Field(min_length=1, max_length=200)],
                  file_id: str = '',
                  offset: Annotated[int, Field(ge=0)] = 0,
@@ -266,6 +282,7 @@ def search_files(query: Annotated[str, Field(min_length=1, max_length=200)],
 
 
 @mcp.tool(annotations={'readOnlyHint': True, 'destructiveHint': False})
+@_marked
 def search_records(query: Annotated[str, Field(max_length=200)] = '',
                    offset: Annotated[int, Field(ge=0)] = 0,
                    limit: Annotated[int, Field(ge=1, le=10)] = 5) -> dict:
@@ -313,6 +330,7 @@ def search_records(query: Annotated[str, Field(max_length=200)] = '',
 
 
 @mcp.tool(annotations={'readOnlyHint': False, 'destructiveHint': False})
+@_marked
 def propose_record(title: Annotated[str, Field(min_length=1, max_length=200)],
                    content: Annotated[str, Field(min_length=1, max_length=8000)],
                    source: Annotated[str, Field(min_length=1, max_length=2000)],
@@ -344,6 +362,7 @@ def propose_record(title: Annotated[str, Field(min_length=1, max_length=200)],
 
 
 @mcp.tool(annotations={'readOnlyHint': False, 'destructiveHint': False})
+@_marked
 def propose_decision(title: Annotated[str, Field(min_length=1, max_length=200)],
                      decision: Annotated[str, Field(min_length=8, max_length=2000)],
                      source: Annotated[str, Field(min_length=1, max_length=2000)],
@@ -370,6 +389,7 @@ def propose_decision(title: Annotated[str, Field(min_length=1, max_length=200)],
 
 
 @mcp.tool(annotations={'readOnlyHint': False, 'destructiveHint': False})
+@_marked
 def propose_knowledge(title: Annotated[str, Field(min_length=1, max_length=200)],
                       content: Annotated[str, Field(min_length=20, max_length=60000)],
                       source: Annotated[str, Field(min_length=1, max_length=500)],
@@ -421,6 +441,7 @@ def propose_knowledge(title: Annotated[str, Field(min_length=1, max_length=200)]
 
 
 @mcp.tool(annotations={'readOnlyHint': True, 'destructiveHint': False})
+@_marked
 def get_organisation(name: Annotated[str, Field(min_length=1, max_length=60)],
                      section: Annotated[str, Field(max_length=20)] = '') -> dict:
     """The user's approved profile of an organisation (a client, or one of their own businesses): identity, purpose
@@ -460,6 +481,7 @@ OPEN_STATUSES = ('suggested', 'tracking', 'pursuing')
 
 
 @mcp.tool(annotations={'readOnlyHint': True, 'destructiveHint': False})
+@_marked
 def list_organisations(query: Annotated[str, Field(max_length=100)] = '',
                        kind: Annotated[str, Field(max_length=20)] = '',
                        clients_only: bool = False,
@@ -500,6 +522,7 @@ def list_organisations(query: Annotated[str, Field(max_length=100)] = '',
 
 
 @mcp.tool(annotations={'readOnlyHint': True, 'destructiveHint': False})
+@_marked
 def search_opportunities(query: Annotated[str, Field(max_length=200)] = '',
                          organisation: Annotated[str, Field(max_length=60)] = '',
                          status: Annotated[str, Field(max_length=12)] = 'open',
@@ -560,6 +583,7 @@ def search_opportunities(query: Annotated[str, Field(max_length=200)] = '',
 
 
 @mcp.tool(annotations={'readOnlyHint': False, 'destructiveHint': False})
+@_marked
 def propose_org_fact(organisation: Annotated[str, Field(min_length=1, max_length=60)],
                      section: Annotated[str, Field(min_length=3, max_length=20)],
                      statement: Annotated[str, Field(min_length=12, max_length=400)],
@@ -588,12 +612,15 @@ def propose_org_fact(organisation: Annotated[str, Field(min_length=1, max_length
 
 
 @mcp.tool(annotations={'readOnlyHint': True, 'destructiveHint': False})
+@_marked
 def get_health_context(marker: Annotated[str, Field(max_length=60)] = '', since: Annotated[str, Field(max_length=10)] = '') -> dict:
     """The user's blood test results from Alice's Health Insights app: confirmed values only, with the lab's own reference
     ranges, status, history and change, plus the decisions, experiments, supplements and clinician advice they track.
     Use only when the user asks about their health or results. Informational only: never diagnose, never suggest
     changing prescribed medication; separate the lab value, the range, the trend and your interpretation; follow the
     rules returned. marker: optional, one marker (e.g. Ferritin). since: optional YYYY-MM-DD."""
+    import demo_instance
+    if demo_instance.ON: raise ValueError('Not available on the demo Alice.')
     who = _who()
     if not who: raise ValueError("Alice's own chat uses its health_context tool.")
     agent, run = _app('get_health_context')
@@ -604,6 +631,7 @@ def get_health_context(marker: Annotated[str, Field(max_length=60)] = '', since:
 
 
 @mcp.tool(annotations={'readOnlyHint': False, 'destructiveHint': False})
+@_marked
 def propose_health_note(kind: Annotated[str, Field(pattern='^(decision|experiment|supplement|symptom|clinician|follow_up)$')],
                         title: Annotated[str, Field(min_length=3, max_length=160)],
                         detail: Annotated[str, Field(max_length=3000)] = '',
@@ -612,6 +640,8 @@ def propose_health_note(kind: Annotated[str, Field(pattern='^(decision|experimen
     """Propose something the user decided or wants to track in Health Insights (a decision, a lifestyle or supplement
     experiment, a symptom, clinician advice, a follow-up), for their approval. Only what they actually said. Medication
     changes are never a plan: they are kept as something to raise with their clinician. markers: related markers."""
+    import demo_instance
+    if demo_instance.ON: raise ValueError('Not available on the demo Alice.')
     who = _who()
     if not who: raise ValueError("Alice's own chat cannot propose health notes yet; add them on the Health page.")
     agent, run = _app('propose_health_note')
@@ -623,6 +653,7 @@ def propose_health_note(kind: Annotated[str, Field(pattern='^(decision|experimen
 
 
 @mcp.tool(annotations={'readOnlyHint': False, 'destructiveHint': False})
+@_marked
 def save_conversation(title: Annotated[str, Field(min_length=1, max_length=120)],
                       summary: Annotated[str, Field(min_length=50, max_length=12000)],
                       key_points: Annotated[list[str], Field(max_length=30)] = [],
@@ -671,6 +702,7 @@ def save_conversation(title: Annotated[str, Field(min_length=1, max_length=120)]
 
 
 @mcp.tool(annotations={'readOnlyHint': False, 'destructiveHint': False})
+@_marked
 def append_conversation(conversation_id: Annotated[str, Field(min_length=32, max_length=32)],
                         transcript: Annotated[list[dict], Field(min_length=1, max_length=400)],
                         final: bool = True) -> dict:

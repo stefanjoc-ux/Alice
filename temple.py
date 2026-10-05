@@ -124,6 +124,7 @@ def review_record(rid):
     return {'id':review_id,'status':status,**({'error':error} if error else {})}
 
 def automatic_review(rid):
+    if getattr(store, 'BULK_LOAD', False): return {'status': 'bulk', 'message': 'Loaded as history: not reviewed.'}   # demo_instance loading a scenario
     try:
         import temple_categorise
         temple_categorise.schedule([rid])   # category assignment runs in the background, separately

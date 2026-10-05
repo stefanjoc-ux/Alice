@@ -15,6 +15,8 @@ Steps (all by default, or one with -Step):
   github   lets the GitHub pipeline deploy (OIDC, no stored secrets) and prints the repo variables to set
   connector  (run on its own) the Claude connector: an "Alice connector sign-in" app registration, its secret and a
            signing key in Key Vault, then alice-mcp updated so Claude can sign in through Alice
+  demo     (run on its own) the demo Alice for client demos: alice-demo-web and alice-demo-mcp on the live image, with their
+           own database (alice_demo) and data folder; same sign-in (only you) and the same Alice API app for Copilot
 Nothing here reads .env: keys are typed in once and live only in Key Vault.
 #>
 param(
@@ -28,7 +30,7 @@ param(
   [string]$AlsoAllow = '',      # other accounts allowed to sign in, comma separated (e.g. stefan@yourdomain); remembered
   [string]$CustomDomain = '',
   [string]$GitHubSubject = '',  # the exact OIDC subject GitHub presents, if it uses owner and repo IDs (shown in a failed deploy log)   # e.g. alice.northants.it, after binding it once with a managed certificate; remembered
-  [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github', 'connector')][string]$Step = 'all'
+  [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github', 'connector', 'demo')][string]$Step = 'all'
 )
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
@@ -38,7 +40,7 @@ $StateFile = Join-Path $PSScriptRoot 'azure-state.json'
 function Say($text) { Write-Host "`n== $text" -ForegroundColor Cyan }
 function AzCli { $out = & az @args; if ($LASTEXITCODE -ne 0) { throw "az $($args -join ' ') failed" }; return $out }   # not named Az: PowerShell names ignore case, so it would call itself
 function AzTry { $ErrorActionPreference = 'Continue'; & az @args 2>$null }   # may fail (e.g. "does it exist?"): Windows PowerShell 5.1 otherwise turns az's error text into a stop
-function Want($name) { return (($Step -eq 'all' -and $name -ne 'connector') -or $Step -eq $name) }
+function Want($name) { return (($Step -eq 'all' -and $name -notin @('connector', 'demo')) -or $Step -eq $name) }
 function Load-State { if (Test-Path $StateFile) { return Get-Content $StateFile -Raw | ConvertFrom-Json } else { return [pscustomobject]@{} } }
 function Save-State($s) { $s | ConvertTo-Json -Depth 5 | Set-Content $StateFile -Encoding UTF8 }
 function Set-Prop($obj, $name, $value) { $obj | Add-Member -NotePropertyName $name -NotePropertyValue $value -Force }
@@ -228,6 +230,7 @@ if (Want 'apps') {
     $certId = AzCli containerapp env certificate list -g $ResourceGroup -n $envName --managed-certificates-only --query "[?properties.subjectName=='$($State.customDomain)'].id | [0]" -o tsv
     if (-not $certId) { throw "No managed certificate for $($State.customDomain) yet: bind it once first (az containerapp hostname bind ...)." }
     $redirects = @("$($State.webUrl)/.auth/login/aad/callback", "https://$($State.customDomain)/.auth/login/aad/callback")
+    if ($State.demoWebUrl) { $redirects += "$($State.demoWebUrl)/.auth/login/aad/callback" }     # keep the demo Alice's sign-in working
     AzCli ad app update --id $State.webAuthClientId --web-redirect-uris @redirects | Out-Null
   }
   Save-State $State
@@ -289,6 +292,37 @@ if (Want 'connector') {
   Write-Host ''
   Write-Host 'In Claude: Settings > Connectors > Add custom connector' -ForegroundColor Green
   Write-Host "  Name: Alice     URL: $($State.mcpUrl)/mcp     (leave the OAuth fields empty)" -ForegroundColor Green
+}
+
+if (Want 'demo') {
+  Say 'The demo Alice (client demos): its own database and apps, nothing shared with live data'
+  if (-not $State.webAuthClientId -or -not $State.extAppId -or -not $State.extCallers) { throw 'Run -Step apps first (it remembers the sign-in and the Alice API app).' }
+  # its own folders on the share (data and Documents), next to live's but never the same
+  $key = AzCli storage account keys list -g $ResourceGroup -n $State.storageAccount --query '[0].value' -o tsv
+  foreach ($d in @('demo', 'demo/data', 'demo/data/images', 'demo/Documents')) {
+    AzTry storage directory create --share-name $State.shareName --name $d --account-name $State.storageAccount --account-key $key --output none | Out-Null
+  }
+  # the same sign-in app (only you): add the demo's callback to its addresses, keeping live's
+  $demoWeb = 'https://alice-demo-web.' + $State.environmentDomain
+  $uris = @(AzCli ad app show --id $State.webAuthClientId --query 'web.redirectUris' -o json | ConvertFrom-Json)
+  $cb = "$demoWeb/.auth/login/aad/callback"
+  if ($uris -notcontains $cb) { $uris += $cb; AzCli ad app update --id $State.webAuthClientId --web-redirect-uris @uris | Out-Null; Write-Host 'Demo address added to the sign-in app.' }
+  $users = (@($Me) + @($State.alsoAllow | Where-Object { $_ }) | Select-Object -Unique) -join ','
+  $values = @{ image = (Image-Ref); pgAdminPassword = (Kv-Get $State.keyVault 'pg-admin-password'); ownerObjectId = $Me; location = $Location
+               allowedUserObjectIds = @($State.alsoAllow | Where-Object { $_ }); webAuthClientId = $State.webAuthClientId; keyVaultSecretNames = (Key-Names)
+               extAppId = $State.extAppId; extAllowedUsers = $users; extCallers = $State.extCallers }
+  $doc = @{ '$schema' = 'https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#'; contentVersion = '1.0.0.0'; parameters = @{} }
+  foreach ($k in $values.Keys) { $doc.parameters[$k] = @{ value = $values[$k] } }
+  $pfile = New-TemporaryFile
+  try {
+    [IO.File]::WriteAllText($pfile, ($doc | ConvertTo-Json -Depth 6))
+    $out = AzCli deployment group create -g $ResourceGroup -f (Join-Path $Root 'infra\demo.bicep') -n 'alice-demo' --parameters ('@' + $pfile) --query properties.outputs -o json | ConvertFrom-Json
+  } finally { Remove-Item $pfile -Force -ErrorAction SilentlyContinue }
+  Set-Prop $State 'demoWebUrl' $out.demoWebUrl.value; Set-Prop $State 'demoMcpUrl' $out.demoMcpUrl.value; Save-State $State
+  Write-Host ''
+  Write-Host "Demo Alice:      $($State.demoWebUrl)/admin/demo" -ForegroundColor Green
+  Write-Host "Copilot address: $($State.demoMcpUrl)/mcp   (add it in Copilot as 'Alice (demo)', the same way as live Alice)" -ForegroundColor Green
+  Write-Host 'Both scale to zero when idle: open the demo a couple of minutes before you present.'
 }
 
 if (Want 'github') {

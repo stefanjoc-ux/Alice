@@ -16,6 +16,7 @@ PAGES = {
  'assistants': ('Assistants','Focused assistants built on Alice, such as Alex (HR policies) and Parker (proposals). Each has its own rule packs, model and knowledge, and staff use it on its own page without seeing the rest of Alice.'),
  'rule-packs': ('Rule packs','Ready-made safeguards for teams adopting AI. Switch each one on or off, test a message against the pack (a sandbox: no AI is called), and apply a pack to Alice\'s live rules when you want it enforced.'),
  'rules': ('Rules','Rule sets in precedence order. Enforced rules are checked in code; guidance rules are instructions to the model.'),
+ 'demo': ('Client demo','This is the demo Alice: its own database, never your live data. Generate a scenario around a prospective client\'s public information (a fictional team of twelve with months of memories, decisions, meetings and saved conversations), check it, then load it. Everything here is illustrative.'),
  'health': ('Health Insights','Your blood results from Thriva reports, against the lab\'s own ranges, with what you are tracking. Informational, not a diagnosis: talk to a clinician about anything that concerns you, and never change prescribed medication without them.'),
  'trading': ('Trading desk','Paper trading and algo signals: simulated buys and sells, "what if I had sold" against simply holding, and how each signal turned out over the following days. Simulation only: nothing here places or changes a real order, and nothing in it is advice.'),
  'mileage': ('Mileage','Mileage Clerk: load a tracker export, tell Alice which places are home, personal or business, and approve the TMC entries she prepares. Nothing reaches TMC without your approval of that exact entry.'),
@@ -39,6 +40,12 @@ SECTIONS = {
 'home': r'''<section class="hm-hero"><div><h2 id="hm-hello">Hello</h2><p id="hm-sub" class="muted"></p></div>
 <div class="hm-go"><a class="hm-btn primary" href="/?new=1"><span>&#9998;</span>New chat</a><a class="hm-btn" id="hm-prop" href="/admin/assistants"><span>&#10064;</span>Write a proposal</a><a class="hm-btn" href="/admin/temple?tab=ask"><span>?</span>Ask Temple</a><a class="hm-btn" href="/admin/knowledge"><span>+</span>Add knowledge</a></div></section>
 <div id="hm" class="hm"></div>''',
+'demo': r'''<section><div class="mem-head"><h2>Loaded now</h2><button type="button" id="dm-reset" class="secondary">Clear the demo</button></div><div id="dm-current"></div></section>
+<section><div class="mem-head"><h2>New scenario</h2><span class="muted small">About 5 to 10 minutes, a few pounds of model calls</span></div>
+<div class="tp-form"><input id="dm-org" maxlength="80" placeholder="Organisation, e.g. Scottish Borders Council"><input id="dm-web" maxlength="200" placeholder="Website (helps the research), e.g. scotborders.gov.uk"><button type="button" id="dm-go">Generate</button></div>
+<textarea id="dm-notes" rows="2" maxlength="1000" placeholder="Optional: what to focus on, e.g. digital transformation, social care, finance and the meeting's audience"></textarea>
+<p class="small muted">Temple researches the organisation's public information first (every fact cites its page). The team, their memories, decisions and meetings are invented and illustrative: no real member of staff, no real internal decision.</p></section>
+<section><div class="mem-head"><h2>Scenarios</h2></div><div id="dm-list"></div></section>''',
 'health': r'''<section class="hi-top"><div id="hi-alert"></div><div id="hi-tiles" class="tp-tiles hi-tiles"></div>
 <p class="hi-safety small"><b>Safety:</b> <span id="hi-safety-text"></span></p>
 <p class="small muted">Discuss your results in Alice's chat (Claude or GPT) or in Claude with the Alice connector: they read your confirmed results through the health tool, only for the models you allow below.</p></section>
@@ -415,6 +422,11 @@ section.mem-setup{grid-template-columns:repeat(3,minmax(0,1fr))}@media(max-width
 #hi-e-detail{width:100%}
 @media(max-width:800px){.content button.hi-row{grid-template-columns:1fr auto;grid-template-areas:'n v' 'r r' 's c'}.hi-row .tp-spark{display:none}.hi-name{grid-area:n}.hi-val{grid-area:v;text-align:right}.hi-range{grid-area:r}.hi-st{grid-area:s}.hi-ch{grid-area:c;text-align:right}}
 .ic-chart{width:100%;height:150px;display:block;margin:4px 0 10px}.ic-chart text{font-size:10px;fill:#5d7385}
+.demo-banner{position:sticky;top:0;z-index:30;margin:0 0 4px;border-radius:0 0 10px 10px;background:#634394;color:#fff;font-size:13px;font-weight:600;text-align:center;padding:6px 12px;letter-spacing:.01em}
+.dm-cur{border:1px solid #c7b8dd;border-left:4px solid #634394;border-radius:10px;padding:12px 14px;background:#faf8fd}.dm-ns{display:flex;gap:10px;flex-wrap:wrap;margin:10px 0}
+.dm-n{border:1px solid #dde7ee;border-radius:10px;padding:6px 12px;background:#fff;min-width:90px}.dm-n b{display:block;font-size:18px;color:#102b40}.dm-n span{font-size:12px;color:#5d7385}
+.dm-card{border:1px solid #dde7ee;border-radius:12px;padding:12px 14px;margin:10px 0;background:#fff}.dm-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.dm-card h4{margin:12px 0 4px}
+#dm-notes{width:100%}
 .r-add{margin-top:10px}.r-add>summary{cursor:pointer;font-size:14px;color:#075e79}.r-add input,.r-add textarea{display:block;width:100%;margin:6px 0}
 .spend-row{display:grid;grid-template-columns:100px 1fr 150px;gap:12px;align-items:center;margin:6px 0}.spend-bar{height:10px;background:#e3eaf0;border-radius:5px;overflow:hidden}.spend-fill{display:block;height:100%}.spend-fill.ok{background:#2e7d4f}.spend-fill.warn{background:#c08a1e}.spend-fill.bad{background:#b3261e}.spend-warning{color:#6b4406}.spend-blocked{color:#7a1f1f;font-weight:600}
 .r-block{display:grid;grid-template-columns:130px 200px 1fr;gap:10px;padding:6px 0;border-top:1px solid #e3eaf0}#r-effective{white-space:pre-wrap}
@@ -1757,6 +1769,42 @@ if(PAGE==='apps'){
 }
 """
 SCRIPT += r"""
+if(PAGE==='demo'){
+ const N=(n,l)=>{const d=el('div','','dm-n');d.append(el('b',String(n)),el('span',l));return d};
+ let timer=null;
+ async function load(){const d=await api('/admin/api/demo');const cur=$('dm-current');cur.replaceChildren();
+  if(d.current){const c=d.current;const box=el('div','','dm-cur');box.append(el('strong',c.org),el('div','Loaded '+new Date(c.loaded_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),'small muted'));
+   const ns=el('div','','dm-ns');ns.append(N(c.team,'people'),N(c.memories,'memories'),N(c.decisions,'decisions'),N(c.knowledge,'knowledge items'),N(c.conversations,'saved conversations'));box.append(ns);
+   const links=el('div','','arc-actions');for(const [l,h] of [['Actions','/admin/actions'],['Memories','/admin/memories'],['Knowledge','/admin/knowledge'],['Activity','/admin/activity'],['Chat','/']]){const a=document.createElement('a');a.href=h;a.textContent=l+' ↗';a.className='small';links.append(a)}box.append(links);cur.append(box)}
+  else cur.append(el('p','Nothing loaded: the demo Alice is empty.','muted'));
+  const list=$('dm-list');list.replaceChildren();if(!d.scenarios.length)list.append(el('p','No scenarios yet.','muted small'));
+  let busy=false;
+  for(const sc of d.scenarios){const card=el('div','','dm-card');const head=el('div','','dm-head');
+   const st={working:['Writing','v-run'],loading:['Loading','v-run'],ready:['Ready to load','v-ok'],loaded:['Loaded now','v-ok'],failed:['Failed','v-bad']}[sc.status]||[sc.status,'v-none'];
+   head.append(el('strong',sc.org),el('span',st[0],'badge '+st[1]),el('span',new Date(sc.created_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),'small muted'));card.append(head);
+   if(sc.status==='working'||sc.status==='loading'){busy=true;card.append(el('p',sc.progress,'small'))}
+   if(sc.error)card.append(el('p',sc.error,'small flag'));
+   const p=sc.plan||{};
+   if(sc.status!=='working'&&p.team){if(sc.progress&&sc.status!=='failed')card.append(el('p',sc.progress,'small muted'));if(p.summary)card.append(el('p',p.summary,'small'));
+    const ns=el('div','','dm-ns');ns.append(N(p.team.length,'people'),N(sc.counts.memories,'memories'),N(sc.counts.decisions,'decisions'),N(sc.counts.knowledge,'knowledge items'),N(sc.counts.conversations,'conversations'),N(sc.facts.count,'public facts'));card.append(ns);
+    const det=document.createElement('details');det.append(el('summary','The team, workstreams and a sample'));
+    const t=document.createElement('table');t.className='mem-table';t.innerHTML='<thead><tr><th>Name (fictional)</th><th>Role</th><th>Team</th></tr></thead>';const tb=document.createElement('tbody');
+    for(const m of p.team){const tr=document.createElement('tr');for(const v of [m.name,m.role,m.team])tr.append(el('td',v));tb.append(tr)}t.append(tb);const w=el('div','','table-wrap');w.append(t);det.append(w);
+    det.append(el('h4','Workstreams'));for(const ws of p.workstreams||[])det.append(el('p',ws.name+' (led by '+ws.lead+'): '+(ws.summary||''),'small'));
+    for(const [k,l] of [['memories','Memories'],['decisions','Decisions'],['knowledge','Knowledge'],['conversations','Saved conversations']]){if(!sc.sample[k].length)continue;det.append(el('h4',l));const ul=document.createElement('ul');ul.className='small';for(const x of sc.sample[k]){ul.append(el('li',x))}det.append(ul)}
+    if(sc.facts.sources.length){det.append(el('h4','Public sources it is built on'));const ul=document.createElement('ul');ul.className='small';for(const x of sc.facts.sources){const li=document.createElement('li');const a=document.createElement('a');a.href=x.url;a.target='_blank';a.rel='noopener noreferrer';a.textContent=x.title||x.url;li.append(a);ul.append(li)}det.append(ul)}
+    card.append(det)}
+   const acts=el('div','','arc-actions');
+   if(sc.status==='ready'||sc.status==='loaded'){const b=el('button',sc.status==='loaded'?'Load again (fresh)':'Load into the demo');b.type='button';b.onclick=()=>run(async()=>{if(!confirm('Load '+sc.org+'? Everything currently in the demo Alice is replaced.'))return;await api('/admin/api/demo/'+sc.id+'/load','POST',{});$('notice').textContent='Loading…';await load()});acts.append(b)}
+   if(sc.status!=='working'&&sc.status!=='loading'){const x=el('button','Delete scenario','secondary');x.type='button';x.onclick=()=>run(async()=>{if(!confirm('Delete this scenario?'))return;await api('/admin/api/demo/'+sc.id,'DELETE');await load()});acts.append(x)}
+   card.append(acts);list.append(card)}
+  clearTimeout(timer);if(busy)timer=setTimeout(()=>run(load),4000)}
+ $('dm-go').onclick=()=>run(async()=>{await api('/admin/api/demo/generate','POST',{org:$('dm-org').value,website:$('dm-web').value,notes:$('dm-notes').value});$('notice').textContent='Researching and writing: this page updates as it goes.';await load()});
+ $('dm-reset').onclick=()=>run(async()=>{if(!confirm('Clear everything in the demo Alice (scenarios are kept)?'))return;await api('/admin/api/demo/reset','POST',{});$('notice').textContent='The demo is empty.';await load()});
+ run(load);
+}
+"""
+SCRIPT += r"""
 if(PAGE==='health'){
  const ST={in:['Within range','hi-in','●'],low:['Below range','hi-lo','▼'],high:['Above range','hi-hi','▲'],far_low:['Well below range','hi-far','▼▼'],far_high:['Well above range','hi-far','▲▲'],critical:['Lab: critical','hi-crit','!'],unknown:['No range given','hi-un','–']};
  const KIND={decision:'Decision',experiment:'Experiment',supplement:'Supplement',symptom:'Symptom',clinician:'Clinician advice',follow_up:'Follow-up'};
@@ -2497,6 +2545,7 @@ if(PAGE==='rules'){
 }
 """
 
+PERSONAL_PAGES = {'health', 'trading', 'mileage'}      # Stefan's own apps: never on the demo Alice
 NAV_GROUPS = [('', ['home', 'actions']),
               ('Workspace', ['temple', 'assistants', 'apps', 'organisations']),
               ('Knowledge', ['memories', 'knowledge', 'documents', 'archive']),
@@ -2521,6 +2570,7 @@ NAV_ICONS = {
  'activity': _I('<path d="M3 12h4l2.5-6 5 12L17 12h4"/>'),
  'usage': _I('<path d="M16 6.5A4.5 4.5 0 0 0 8.5 9.5V12"/><path d="M6.5 12H14"/><path d="M8.5 12c0 3-1 5-2.5 7h11"/>'),
  'speed': _I('<path d="M4.5 17a8.5 8.5 0 1 1 15 0"/><path d="M12 13l4-4.5"/><circle cx="12" cy="13" r="1.2"/>'),
+ 'demo': _I('<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M10 8l4 2-4 2z"/>'),
  'signins': _I('<rect x="3" y="5" width="18" height="11" rx="2"/><path d="M2 19h20"/><rect x="9.5" y="9" width="5" height="4" rx="1"/><path d="M10.5 9V8a1.5 1.5 0 0 1 3 0v1"/>'),
 }
 NAV_ICON_DEFAULT = _I('<circle cx="12" cy="12" r="7"/>')
@@ -2535,8 +2585,11 @@ def render_admin(page, token):
     href = lambda key: '/admin' + ('' if key == 'home' else '/' + key)
     current = 'apps' if page in apps.PAGES else page          # an app's page highlights Apps in the menu
     heading = ('<a class="crumb" href="/admin/apps">Apps</a> › ' + escape(title)) if page in apps.PAGES else escape(title)
-    listed = [k for _, keys in NAV_GROUPS for k in keys] + sorted(apps.PAGES)
-    groups = NAV_GROUPS + ([('More', [k for k in PAGES if k not in listed])] if any(k not in listed for k in PAGES) else [])
+    import demo_instance
+    hidden = (PERSONAL_PAGES if demo_instance.ON else {'demo'})            # the demo page only on the demo Alice; personal apps never there
+    nav_groups = [(n, [k for k in ks if k not in hidden]) for n, ks in NAV_GROUPS] + ([('Client demo', ['demo'])] if demo_instance.ON else [])
+    listed = [k for _, keys in nav_groups for k in keys] + sorted(apps.PAGES) + sorted(hidden)
+    groups = nav_groups + ([('More', [k for k in PAGES if k not in listed])] if any(k not in listed for k in PAGES) else [])
     def item(k):
         return ('<a href="' + href(k) + '" data-page="' + k + '"' + (' aria-current="page"' if k == current else '') + ' title="' + escape(PAGES[k][0]) + '">'
                 + NAV_ICONS.get(k, NAV_ICON_DEFAULT) + '<span class="nav-label">' + escape(PAGES[k][0]) + '</span></a>')
@@ -2563,15 +2616,15 @@ def render_admin(page, token):
             '<link rel="icon" href="/static/favicon.png" type="image/png">'
             '<title>' + escape(title) + ' · Alice</title><style>' + SHARED_CSS + SIGNIN_CSS + CSS + STAGE_CSS + '</style></head><body>'
             '<header class="topbar">' + brand_html('/', 'Back to chat')
-            + '<h1 class="page-title">' + heading + '</h1><div class="sp"></div><button id="demo-toggle" class="bar-link" type="button" title="Demo mode: only the Agents, Rule packs and Organisations pages, with fictional or replaced names and costs hidden">Demo mode</button><a class="bar-link" href="/">← Chat</a></header>'
+            + '<h1 class="page-title">' + heading + '</h1><div class="sp"></div>' + ('' if demo_instance.ON else '<button id="demo-toggle" class="bar-link" type="button" title="Demo mode: only the Agents, Rule packs and Organisations pages, with fictional or replaced names and costs hidden">Demo mode</button>') + '<a class="bar-link" href="/">← Chat</a></header>'
             '<div class="shell"><aside class="sidebar" id="sidebar"><script>try{if(localStorage.getItem("alice-nav-rail")==="1")document.body.classList.add("nav-rail")}catch{}</script>' + nav_foot + '<nav aria-label="Command centre">' + nav + '</nav>' + version_html + '</aside>'
-            '<main class="content"><div class="inner"><p class="page-desc">' + escape(description) + '</p><div id="notice" role="status" aria-live="polite" title="Click to dismiss"></div>'
+            '<main class="content">' + (('<div class="demo-banner" role="note">' + escape(demo_instance.notice()) + '</div>') if demo_instance.ON else '') + '<div class="inner"><p class="page-desc">' + escape(description) + '</p><div id="notice" role="status" aria-live="polite" title="Click to dismiss"></div>'
             + SECTIONS[page] + '</div></main></div>' + STAGE_HTML + '<style>' + FETCH_CSS + '</style><script>' + FETCH_JS + 'const PAGE=' + json.dumps(page) + ';'
             + DEMO_PRELUDE + SCRIPT.replace('__TOKEN__', token) + NAV_SCRIPT + STAGE_JS + SIGNIN_JS.replace('__SIGNIN_TOKEN__', token) + '</script></body></html>')
 
 
 DEMO_PRELUDE = r"""
-const DEMO=(()=>{try{return localStorage.getItem('alice-demo')==='1'}catch{return false}})();
+const DEMO=(()=>{try{return !document.querySelector('.demo-banner')&&localStorage.getItem('alice-demo')==='1'}catch{return false}})();   // the demo Alice never uses the old Demo mode
 const DEMO_PAGES=['agents','rule-packs','organisations'];
 if(DEMO&&!DEMO_PAGES.includes(PAGE)){location.replace('/admin/agents');throw new Error('Demo mode: only the Agents, Rule packs and Organisations pages are shown')}
 """

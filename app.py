@@ -25,13 +25,14 @@ import temple_ask
 import temple_discuss
 import temple_taxonomy
 import health
+import demo_instance
 import memory_tags
 import refs
 import autoapprove
 import mileage
 import apps
 import speed
-from admin_ui import render_admin, PAGES
+from admin_ui import render_admin, PAGES, PERSONAL_PAGES
 from ui_theme import SHARED_CSS, SIGNIN_CSS, SIGNIN_JS, brand_html, FETCH_JS, FETCH_CSS
 import secrets
 import asyncio
@@ -482,7 +483,7 @@ async def chat_events(request):
                 tools += ([{"type": "function", "name": "create_document", "description": documents.TOOL_DESCRIPTION,
                             "parameters": documents.TOOL_SCHEMA, "strict": False}] if provider != "claude" else
                           [{"name": "create_document", "description": documents.TOOL_DESCRIPTION, "input_schema": documents.TOOL_SCHEMA}])
-                health_ok = health.allowed(provider)      # health data only for the providers Stefan allows (never Grok)
+                health_ok = health.allowed(provider) and not demo_instance.ON      # only providers Stefan allows (never Grok); never on the demo Alice
                 if health_ok:
                     tools += ([{"type": "function", "name": "health_context", "description": HEALTH_TOOL_DESCRIPTION, "parameters": HEALTH_TOOL_SCHEMA, "strict": False}]
                               if provider != "claude" else [{"name": "health_context", "description": HEALTH_TOOL_DESCRIPTION, "input_schema": HEALTH_TOOL_SCHEMA}])
@@ -2824,6 +2825,50 @@ def admin_health_entry(q: HealthEntry): return _health(health.add_entry, q.kind,
 @app.post('/admin/api/health/entries/{eid}')
 def admin_health_entry_set(eid: str, q: HealthEntryAction): return _health(health.set_entry, eid, q.action, q.review_date)
 
+def DEMO_CHAT_BANNER():
+    import html as _h
+    return ('.demo-banner{position:sticky;top:0;z-index:60;background:#634394;color:#fff;font-size:13px;font-weight:600;text-align:center;padding:6px 12px}'
+            '</style></head><body><div class="demo-banner" role="note">' + _h.escape(demo_instance.notice()) + '</div>')
+
+PERSONAL_API = ('/admin/api/health', '/admin/api/trading', '/admin/api/mileage', '/hooks/tradingview', '/admin/api/cards/health')
+
+@app.middleware('http')
+async def demo_keeps_personal_out(request: Request, call_next):
+    """On the demo Alice, Stefan's own apps do not exist (the demo page shows clients a fictional team, nothing of his)."""
+    if demo_instance.ON and request.url.path.startswith(PERSONAL_API):
+        return JSONResponse({'detail': 'Not available on the demo Alice.'}, status_code=404)
+    return await call_next(request)
+
+class DemoGenerate(BaseModel):
+    org: str = Field(min_length=3, max_length=80)
+    website: str = Field(default='', max_length=200)
+    notes: str = Field(default='', max_length=1000)
+
+@app.get('/admin/api/demo')
+def admin_demo():
+    try: return demo_instance.scenarios()
+    except ValueError as e: raise HTTPException(404, str(e)) from None
+
+@app.post('/admin/api/demo/generate')
+def admin_demo_generate(q: DemoGenerate):
+    try: return demo_instance.generate(q.org, q.website, q.notes)
+    except ValueError as e: raise HTTPException(400, str(e)) from None
+
+@app.post('/admin/api/demo/reset')
+def admin_demo_reset():
+    try: return demo_instance.reset()
+    except ValueError as e: raise HTTPException(400, str(e)) from None
+
+@app.post('/admin/api/demo/{sid}/load')
+def admin_demo_load(sid: str):
+    try: return demo_instance.load(sid)
+    except ValueError as e: raise HTTPException(400, str(e)) from None
+
+@app.delete('/admin/api/demo/{sid}')
+def admin_demo_delete(sid: str):
+    try: return demo_instance.delete(sid)
+    except ValueError as e: raise HTTPException(400, str(e)) from None
+
 @app.get('/admin/api/actions')
 def admin_actions(): return actions.summary()
 
@@ -2846,6 +2891,8 @@ def admin_clients_moved():      # clients are organisations marked Client now
 @app.get('/admin/{page}',response_class=HTMLResponse)
 def admin_section(page: str):
     if page not in PAGES: raise HTTPException(404,'Admin page not found.')
+    if (page == 'demo') != demo_instance.ON and (page == 'demo' or page in PERSONAL_PAGES):
+        raise HTTPException(404,'Admin page not found.')        # the demo page only on the demo Alice; your own apps never there
     return render_admin(page,ADMIN_TOKEN)
 
 @app.get("/", response_class=HTMLResponse)
@@ -3209,4 +3256,4 @@ guard(async()=>{await setupVoice();await refreshFiles();const chats=await api('/
  const asked=chats.find(c=>c.id===requested);if(asked){await loadChat(asked.id);return}
  const empty=chats.find(c=>!c.turns);if(empty)await loadChat(empty.id);else await createChat()});
 
-__SIGNIN_JS__</script></body></html>'''.replace('__SHARED_CSS__', SHARED_CSS + SIGNIN_CSS + FETCH_CSS).replace('__FETCH_JS__', FETCH_JS).replace('__BRAND__', brand_html('/', 'Alice')).replace('__SIGNIN_JS__', SIGNIN_JS.replace('__SIGNIN_TOKEN__', ADMIN_TOKEN)).replace('__CHAT_ADMIN_TOKEN__', ADMIN_TOKEN).replace('__BANNER_V__', str(int(BANNER.stat().st_mtime)) if BANNER.is_file() else '0')
+__SIGNIN_JS__</script></body></html>'''.replace('__SHARED_CSS__', SHARED_CSS + SIGNIN_CSS + FETCH_CSS).replace('__FETCH_JS__', FETCH_JS).replace('__BRAND__', brand_html('/', 'Alice')).replace('__SIGNIN_JS__', SIGNIN_JS.replace('__SIGNIN_TOKEN__', ADMIN_TOKEN)).replace('__CHAT_ADMIN_TOKEN__', ADMIN_TOKEN).replace('__BANNER_V__', str(int(BANNER.stat().st_mtime)) if BANNER.is_file() else '0').replace('</style></head><body>', DEMO_CHAT_BANNER() if demo_instance.ON else '</style></head><body>', 1)

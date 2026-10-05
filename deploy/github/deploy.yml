@@ -95,3 +95,14 @@ jobs:
         run: |
           echo "### Going live automatically" >> "$GITHUB_STEP_SUMMARY"
           bash deploy/promote.sh promote
+      # The demo Alice (client demos, if it has been set up with azure-setup -Step demo) follows every release. It has
+      # one revision at a time and only fictional data, so it simply moves to the new image.
+      - name: Update the demo Alice
+        if: ${{ success() }}
+        run: |
+          RG="${{ vars.AZURE_RESOURCE_GROUP }}"
+          for APP in alice-demo-web alice-demo-mcp; do
+            if az containerapp show -n "$APP" -g "$RG" --query name -o tsv >/dev/null 2>&1; then
+              az containerapp update -n "$APP" -g "$RG" --image "$IMAGE" --only-show-errors -o none && echo "$APP: now alice:$TAG"
+            fi
+          done

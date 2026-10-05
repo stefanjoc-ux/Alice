@@ -49,6 +49,12 @@ APPS = [
      'waiting': _health_waiting, 'summary': _health_summary},
 ]
 PAGES = {a['page'] for a in APPS}
+PERSONAL = {'mileage', 'trading', 'health'}       # Stefan's own apps: never shown on the demo Alice
+
+
+def shown():
+    import demo_instance
+    return [a for a in APPS if not (demo_instance.ON and a['id'] in PERSONAL)]
 
 
 def by_page(page):
@@ -58,7 +64,7 @@ def by_page(page):
 def waiting():
     """Every app's waiting items: [{'app', 'title', 'detail', 'href'}]. An app that fails to answer is skipped, never fatal."""
     out = []
-    for a in APPS:
+    for a in shown():
         try: items = a['waiting']() or []
         except Exception: items = []
         for i in items: out.append({'app': a['name'], 'title': i['title'], 'detail': i.get('detail', ''), 'href': i.get('href') or '/admin/' + a['page']})
@@ -74,4 +80,4 @@ def summary(a):
 def listing():
     items = waiting()
     return [{'id': a['id'], 'name': a['name'], 'mark': a['mark'], 'description': a['description'], 'href': '/admin/' + a['page'],
-             'agent': a['agent'], 'waiting': sum(1 for i in items if i['app'] == a['name']), 'summary': summary(a)} for a in APPS]
+             'agent': a['agent'], 'waiting': sum(1 for i in items if i['app'] == a['name']), 'summary': summary(a)} for a in shown()]
