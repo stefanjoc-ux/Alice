@@ -65,6 +65,7 @@ table.t td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}ta
 .edit-sec{display:grid;gap:4px;margin:12px 0}.edit-sec textarea{min-height:140px;font-size:14px;line-height:1.5}
 .ref-tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px}.ref-tools input{flex:1;min-width:200px}
 .ref-upl{cursor:pointer;border:1px solid var(--line2,#b9cbd8);border-radius:8px;padding:8px 14px;font-weight:600;font-size:14px;background:#fff}.ref-upl:hover{border-color:var(--teal)}
+.tpl-tools{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:-4px}.tpl-fold{display:grid;gap:4px;font-weight:600;font-size:13px;flex:1;min-width:220px}.tpl-tools .ref-upl,.tpl-tools button{white-space:nowrap}
 .ref-list{display:grid;gap:6px;max-height:320px;overflow:auto;padding-right:4px}
 .ref-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-weight:400!important}
 .ref-item.off{opacity:.55}.ref-item b{font-weight:600;overflow-wrap:anywhere}.ref-item .hint{display:block}
@@ -244,6 +245,7 @@ table.t th{text-transform:uppercase;letter-spacing:.05em;font-size:11.5px}table.
 </section>
 <section class="panel"><div class="ph"><div><span class="pt">Set-up</span><span class="ps">Template, models and what Alice may draw on</span></div></div>
 <label class="w-only">Proposal template<select id="tplsel"></select><span class="hint" id="tpl-hint"></span></label>
+<div class="tpl-tools w-only"><label class="tpl-fold">Templates folder<select id="tplfold" aria-label="Templates folder"></select></label><label class="ref-upl" tabindex="0" role="button" id="tpl-upl">Add a template<input type="file" id="tpl-file" accept=".docx" hidden></label><button type="button" class="secondary" id="tpl-refresh" title="Look in the folder again">Refresh</button></div>
 <div class="grid2"><label class="w-only">Writer model<select id="wm"></select></label><label>QA model<select id="qm"></select></label></div>
 <p class="hint costline" id="cost"></p>
 <label class="toggle w-only"><input type="checkbox" id="mem" checked><span><b>Use what Alice knows</b><span class="hint">Approved memories, decisions and knowledge that are general or tagged to this client. Never another client’s.</span></span></label>
@@ -335,10 +337,24 @@ async function load(){S=await api('/setup');loadRefs();$('greeting').textContent
  $('wm').onchange=cost;$('qm').onchange=cost;cost();window.cost=cost;
  secEd=PE.sections($('secs'),S.sections,{include:true,empty:'No sections yet: add some, or choose a template on the Assistants page.'});rateEd=PE.rates($('rates'),S.rate_card,S.units,{target:S.target_margin,minMargin:S.min_margin,parse:async f=>api('/rates/parse','POST',{name:f.name,data:await fileData(f)})});
  const ts=$('tplsel');const topt=(v,txt)=>{const o=document.createElement('option');o.value=v;o.textContent=txt;return o};
- ts.replaceChildren(...S.templates.map(x=>topt(x.path,x.name+' · '+x.source+(x.path===S.template?' (default)':''))),topt('','No template: Alice’s own Word layout'));
- if(S.template&&!S.templates.some(x=>x.path===S.template))ts.prepend(topt(S.template,S.template+' (not found)'));ts.value=S.template||'';
+ const fillT=(list,want)=>{S.templates=list;const cur=want!=null?want:ts.value;
+  ts.replaceChildren(...list.map(x=>topt(x.path,x.name+(S.template_folder?(x.folder!==S.template_folder?' · '+x.folder.split('/').slice(1).join('/'):''):' · '+x.source)+(x.path===S.template?' (default)':''))),topt('','No template: Alice’s own Word layout'));
+  if(S.template&&!list.some(x=>x.path===S.template))ts.prepend(topt(S.template,S.template.split('/').pop()+(S.template_error?' (not found)':' (default, outside this folder)')));
+  ts.value=[...ts.options].some(o=>o.value===cur)?cur:(S.template||'')};
+ fillT(S.templates,S.template||'');
+ const tf=$('tplfold');tf.replaceChildren(topt('','Every document source'),...(S.folders||[]).map(f=>topt(f,f.replace(/\//g,' › '))));
+ if(S.template_folder&&!(S.folders||[]).includes(S.template_folder))tf.append(topt(S.template_folder,S.template_folder+' (not found)'));tf.value=S.template_folder||'';
+ const tplNote=t=>{$('tpl-hint').textContent=t};
+ const applyT=(r,want)=>{S.template_folder=r.folder;S.folders=r.folders;fillT(r.templates,want);
+  tplNote(r.folder_missing?'The templates folder "'+r.folder+'" is no longer in the document sources. Choose another.':(r.templates.length?r.templates.length+' template'+(r.templates.length===1?'':'s')+' in '+(r.folder?'“'+r.folder.replace(/\//g,' › ')+'”':'the document sources')+'.':'No Word templates in '+(r.folder?'this folder':'the document sources')+' yet: use Add a template.'))};
+ tf.onchange=async()=>{try{applyT(await api('/templates/folder','POST',{folder:tf.value}))}catch(e){tplNote(e.message);tf.value=S.template_folder||''}};
+ $('tpl-refresh').onclick=async()=>{try{applyT(await api('/templates'))}catch(e){tplNote(e.message)}};
+ $('tpl-upl').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();$('tpl-file').click()}};
+ $('tpl-file').onchange=async()=>{const f=$('tpl-file').files[0];$('tpl-file').value='';if(!f)return;
+  if(!S.template_folder){tplNote('Choose the templates folder first, then add the template to it.');return}
+  tplNote('Adding '+f.name+'…');try{const r=await api('/templates','POST',{name:f.name,data:await fileData(f)});applyT(r,r.added);await ts.onchange();tplNote(f.name+' added to “'+r.folder.replace(/\//g,' › ')+'” and chosen for this proposal.')}catch(e){tplNote(e.message)}};
  let tplTitles=new Set(S.sections.filter(x=>x.source==='template').map(x=>x.title));window.tplOf=()=>tplTitles;
- const tplHint=(o,err)=>{$('tpl-hint').textContent=err||(ts.value?(o&&o.sections?o.sections.filter(x=>x.source==='template').length+' sections from the template; its cover, styles, header and footer are kept.':'Sections, styles, cover, header and footer come from the template.'):'No template: the proposal uses Alice’s own Word layout with the sections below.')+(S.templates.length?'':' Put a Word template in a folder on the Documents page to choose it here.')};
+ const tplHint=(o,err)=>{$('tpl-hint').textContent=err||(ts.value?(o&&o.sections?o.sections.filter(x=>x.source==='template').length+' sections from the template; its cover, styles, header and footer are kept.':'Sections, styles, cover, header and footer come from the template.'):'No template: the proposal uses Alice’s own Word layout with the sections below.')+(S.templates.length?'':' Choose the templates folder below and add a template to it.')};
  tplHint(null,S.template_error);$('tpl').textContent='';
  ts.onchange=async()=>{try{const o=await api('/outline?template='+encodeURIComponent(ts.value));const now=secEd.value();const fresh=new Set(o.sections.map(x=>x.title.toLowerCase()));
    const mine=now.filter(x=>!tplTitles.has(x.title)&&!fresh.has(x.title.toLowerCase())).map(x=>({...x,source:'added'}));

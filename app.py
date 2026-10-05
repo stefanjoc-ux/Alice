@@ -2188,6 +2188,32 @@ def _proposal_call(fn):
         if code==500: raise
         raise HTTPException(code,detail) from None
 
+class TemplateFolderIn(BaseModel):
+    folder: str = Field(default='',max_length=300)
+
+@app.get('/assistant/{aid}/templates')
+def proposal_templates(aid: str):
+    import proposals
+    try: return proposals.template_choices(aid)
+    except LookupError: raise HTTPException(404,'No such proposal writer.') from None
+
+@app.post('/assistant/{aid}/templates/folder')
+def proposal_template_folder(aid: str, x: TemplateFolderIn, request: Request):
+    import proposals
+    _same_origin(request)
+    try: return proposals.set_template_folder(aid,x.folder)
+    except LookupError: raise HTTPException(404,'No such proposal writer.') from None
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+@app.post('/assistant/{aid}/templates')
+def proposal_template_add(aid: str, x: ProposalDoc, request: Request):
+    import proposals
+    _same_origin(request)
+    raw=_b64(x.data)
+    try: return proposals.add_template(aid,x.name,raw)
+    except LookupError: raise HTTPException(404,'No such proposal writer.') from None
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
 @app.get('/assistant/{aid}/outline')
 def proposal_outline(aid: str, template: str=Query('',max_length=300)):
     import proposals

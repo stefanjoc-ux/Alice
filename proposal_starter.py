@@ -105,14 +105,17 @@ def _doc(token):
         return d
 
 
-def _offer(client):
-    """Templates, reference documents and roles on offer: names only, never rates, never another client's documents."""
+def _offer(client, aid=''):
+    """Templates, reference documents and roles on offer: names only, never rates, never another client's documents.
+    When the writer has a templates folder, only the templates in it are offered."""
     import proposals, references
-    tpls = proposals._safe_templates()
+    ch = proposals._safe_templates(aid)
+    tpls = ch['templates']
     docs = references.listing()
     others = {d['path'] for d in docs if d['clients'] and client not in d['clients']}
     tpls = [x for x in tpls if x['path'] not in others]
-    tpls = [x for x in tpls if 'template' in x['path'].lower()] or tpls[:20]          # template folders, when you have them
+    if not ch['template_folder']:
+        tpls = [x for x in tpls if 'template' in x['path'].lower()] or tpls[:20]      # template folders, when you have them
     tpl_paths = {_slash(t['path']): t['path'] for t in tpls}
     refs = [d for d in docs if _slash(d['path']) not in tpl_paths and d['path'] not in others]
     return tpls, tpl_paths, refs, {_slash(d['path']): d['path'] for d in refs}
@@ -252,7 +255,7 @@ def _chat(aid, message, history=(), form=None, organisation='', doc_token=''):
     org = _organisation(organisation or f['organisation'], f'{message}\n{dtext[:4000]}')
     client = proposals._client_for(org)
     ctx, used, skipped = proposals.gather(a, f['title'], f'{message}\n{f["brief"][:2000]}\n{dtext[:2000]}', org, client, True, [provider])
-    tpls, tpl_paths, refs, ref_paths = _offer(client)
+    tpls, tpl_paths, refs, ref_paths = _offer(client, aid)
     if doc: agents.note('read', 'input', doc['name'], 'client brief for Parker (not kept)')
     fields = [('TITLE', f['title']), ('ORGANISATION', org or f['organisation']), ('TEMPLATE', _slash(f['template'])),
               ('BRIEF', f['brief']), ('NOTES', f['notes']), ('STRUCTURE', f['structure']),

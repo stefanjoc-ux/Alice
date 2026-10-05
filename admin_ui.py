@@ -2164,7 +2164,7 @@ if(PAGE==='assistants'){
    const r2=el('div','','k-meta-row');r2.append(field('Minimum margin (%)',mm),field('Note under the pricing table',pn),field('Author ({{author}})',au));f.append(r2);
    const aal=el('label','','r-check');const aac=document.createElement('input');aac.type='checkbox';aac.checked=S.auto_approve_references!==false;aal.append(aac,document.createTextNode(' Approve reference document summaries automatically'));
    f.append(aal,el('p','Summaries of documents someone uploads on the proposal page go straight into Knowledge; each one is logged on the Temple page and in Activity. Untick to review them first.','muted small'));
-   body=()=>({kind:'proposal',settings:{template:tpl.value,sections:secEd.value(),rate_card:rateEd.value(),target_margin:rateEd.target(),qa_provider:qap.value,chat_provider:chp.value,min_margin:mm.value||0,pricing_note:pn.value,author:au.value,auto_approve_references:aac.checked}});
+   body=()=>({kind:'proposal',settings:{template:tpl.value,template_folder:S.template_folder||'',sections:secEd.value(),rate_card:rateEd.value(),target_margin:rateEd.target(),qa_provider:qap.value,chat_provider:chp.value,min_margin:mm.value||0,pricing_note:pn.value,author:au.value,auto_approve_references:aac.checked}});
   } else {
   const packs=checks(Object.entries(L.packs),a.packs||[]);const cats=checks(L.categories.map(c=>[c,c]),a.categories||[]);
   const r1=el('div','','k-meta-row');r1.append(field('Name',name),field('Model',prov),field('Status',st));

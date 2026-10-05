@@ -207,22 +207,74 @@ def clean_settings(s):
         if not p or p.suffix.lower() != '.docx': raise ValueError('Choose a Word (.docx) template from the document sources.')
     qa = s.get('qa_provider') if s.get('qa_provider') in assistants.PROVIDERS else 'claude_sonnet'
     chat = s.get('chat_provider') if s.get('chat_provider') in assistants.PROVIDERS else 'claude_sonnet'
-    return {'template': tpl, 'sections': clean_sections(s.get('sections')), 'rate_card': clean_rate_card(s.get('rate_card')),
+    return {'template': tpl, 'template_folder': _template_folder(s.get('template_folder'), strict=False), 'sections': clean_sections(s.get('sections')), 'rate_card': clean_rate_card(s.get('rate_card')),
             'qa_provider': qa, 'chat_provider': chat, 'min_margin': _num(s.get('min_margin', 25), 'Minimum margin', 0, 90),
             'target_margin': _num(s.get('target_margin', 30), 'Target margin', 0, 90),
             'auto_approve_references': s.get('auto_approve_references', True) is not False,
             'pricing_note': _clean(s.get('pricing_note', 'All prices exclude VAT.'), 200), 'author': _clean(s.get('author'), 80)}
 
 
-def templates():
-    """Word documents in the document sources that can be used as a template."""
+def _template_folder(folder, strict=True):
+    """A templates folder: '' (every document source) or a folder inside one, as the Documents page names it."""
+    folder = _clean(folder, 300).replace('\\', '/').strip('/')
+    if not folder: return ''
     import doc_library
+    if folder in {f['path'] for f in doc_library.folders(depth=4)}: return folder
+    if strict: raise ValueError('Choose a folder from the document sources.')
+    return folder                     # kept as set; templates() says if it has gone
+
+
+def templates(folder=''):
+    """Word documents in the document sources that can be used as a template; only those in the folder when one is set."""
+    import doc_library
+    folder = (folder or '').replace('\\', '/').strip('/')
     out = []
     for src in doc_library.sources():
+        if folder and src['id'] != folder.split('/')[0]: continue
         try: files = doc_library.files(src['id'])
         except ValueError: continue
-        out += [{'path': f['path'], 'name': f['name'], 'source': src['name']} for f in files if f['name'].lower().endswith('.docx')]
+        out += [{'path': f['path'], 'name': f['name'], 'source': src['name'], 'folder': f['path'].replace('\\', '/').rsplit('/', 1)[0] if '/' in f['path'].replace('\\', '/') else ''}
+                for f in files if f['name'].lower().endswith('.docx') and not f['name'].startswith('~$')
+                and (not folder or f['path'].replace('\\', '/').startswith(folder + '/'))]
     return sorted(out, key=lambda x: ('template' not in x['path'].lower(), x['name'].lower()))    # template folders first
+
+
+def template_choices(aid):
+    """For the template picker: the folder set for this writer, the folders to choose from and the templates in it."""
+    import assistants, doc_library
+    a = assistants.get(aid)
+    if a['kind'] != 'proposal': raise LookupError('Not a proposal writer.')
+    folder = a['settings'].get('template_folder') or ''
+    folders = [f['path'] for f in doc_library.folders(depth=4)]
+    missing = bool(folder) and folder not in folders
+    return {'folder': folder, 'folder_missing': missing, 'folders': folders, 'templates': [] if missing else templates(folder)}
+
+
+def set_template_folder(aid, folder):
+    """Where this writer's templates live. Only this setting changes."""
+    import assistants
+    a = assistants.get(aid)
+    if a['kind'] != 'proposal': raise LookupError('Not a proposal writer.')
+    folder = _template_folder(folder)
+    st = dict(a['settings'], template_folder=folder)
+    with store.db() as c:
+        c.execute('UPDATE assistants SET settings=?, updated_at=? WHERE id=?', (json.dumps(st), store.now(), aid))
+        store.audit(c, 'assistant_saved', aid, 'human_control', f'{a["name"]}: templates folder {folder or "every document source"}')
+    return template_choices(aid)
+
+
+def add_template(aid, name, raw):
+    """A Word template uploaded on the proposal page, saved into this writer's templates folder (never overwrites)."""
+    import doc_library, proposal_docx
+    ch = template_choices(aid)
+    if not ch['folder'] or ch['folder_missing']: raise ValueError('Choose the templates folder first, then add the template to it.')
+    if not (name or '').lower().endswith('.docx'): raise ValueError('A template must be a Word document (.docx).')
+    try: proposal_docx.Template(raw)
+    except Exception: raise ValueError('That file could not be read as a Word document.') from None
+    p = doc_library.save(ch['folder'], name, raw)
+    rel = str(p.relative_to(doc_library.ROOT)).replace('\\', '/')
+    with store.db() as c: store.audit(c, 'document_saved', rel, 'human_control', 'Proposal template added on the proposal page')
+    return dict(template_choices(aid), added=rel)
 
 
 def _template(path):
@@ -266,12 +318,13 @@ def setup(aid):
             'organisations': orgs, 'units': list(UNITS), 'min_margin': a['settings'].get('min_margin', 25),
             'target_margin': a['settings'].get('target_margin', 30),
             'models': assistants.model_choices('proposal'), 'writer': a['provider'], 'qa': a['settings'].get('qa_provider') or a['provider'],
-            'templates': _safe_templates()}
+            **_safe_templates(aid)}
 
 
-def _safe_templates():
-    try: return templates()
-    except Exception: return []
+def _safe_templates(aid):
+    try: ch = template_choices(aid)
+    except Exception: ch = {'folder': '', 'folder_missing': False, 'folders': [], 'templates': []}
+    return {'templates': ch['templates'], 'template_folder': ch['folder'], 'template_folder_missing': ch['folder_missing'], 'folders': ch['folders']}
 
 
 def check_template(path):
