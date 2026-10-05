@@ -25,7 +25,7 @@ NAMESPACE_LIVE, NAMESPACE_DEMO = 'alice', 'alicedemo'
 # fixed app IDs, so uploading a newer package updates the same app in Teams instead of adding a second one
 APP_ID_LIVE = 'a11ce000-5ab5-4c0e-9a11-ce0000000001'
 APP_ID_DEMO = 'a11ce000-5ab5-4c0e-9a11-ce0000000002'
-VERSION = '1.1.0'           # raise it whenever the package changes, so Teams takes the upload as an update
+VERSION = '1.2.0'           # raise it whenever the package changes, so Teams takes the upload as an update
 DEFAULT_TEMPLATE = {'type': 'AdaptiveCard', '$schema': 'https://adaptivecards.io/schemas/adaptive-card.json', 'version': '1.6',
                     'body': [{'type': 'TextBlock', 'text': '${if(title, title, description)}', 'wrap': True}]}
 
@@ -52,6 +52,20 @@ How to work:
 - Use UK English and show amounts in GBP unless asked otherwise. Do not state prices, discounts or rates unless they come from an
   approved Alice memory or saved file, and cite it.
 """
+WORK_DATA_INSTRUCTIONS = """
+Your email, Teams chats, meetings (with their transcripts), people, OneDrive and SharePoint files and the web are also available to
+you here. Alice comes first for anything she holds; use the others when asked, or to fill a gap, and say where each fact came from.
+- Never save anything from email, chats, meetings or files into Alice unless Stefan asks. When he does, save a short summary in your
+  own words (propose_knowledge; a meeting as kind "meeting" with attendees, decisions and actions), give the source (e.g. "Teams
+  meeting, 3 Oct, RGU discovery call"), and never paste whole messages or transcripts.
+- Leave out other people's personal details beyond names and roles, and anything marked OFFICIAL-SENSITIVE or higher: tell Stefan
+  it was left out. Alice blocks protectively marked text anyway.
+- Material from a client meeting or email: ask before saving; only what Stefan may hold outside his employer's systems goes in.
+"""
+# Copilot's own data sources for live Alice only. The demo agent never gets them: it is shown to clients, and must never be able
+# to bring Stefan's real email, chats or files onto the screen.
+WORK_CAPABILITIES = [{'name': 'Email'}, {'name': 'TeamsMessages'}, {'name': 'Meetings'}, {'name': 'People'},
+                     {'name': 'OneDriveAndSharePoint'}, {'name': 'WebSearch'}]
 DEMO_PREFIX = """THIS IS THE DEMO ALICE. Everything in it is illustrative: a fictional team and invented content built around a real
 organisation's public information. Say so whenever you present something from it, and never present it as real records or decisions.
 
@@ -108,7 +122,7 @@ def plugin(url, auth_id, demo=False, tool_list=None):
 
 
 def agent(demo=False):
-    text = (DEMO_PREFIX if demo else '') + AGENT_INSTRUCTIONS
+    text = DEMO_PREFIX + AGENT_INSTRUCTIONS if demo else AGENT_INSTRUCTIONS + WORK_DATA_INSTRUCTIONS
     assert len(text) <= 8000
     starters = STARTERS_DEMO if demo else STARTERS_LIVE
     return {'$schema': 'https://developer.microsoft.com/json-schemas/copilot/declarative-agent/v1.5/schema.json', 'version': 'v1.5',
@@ -116,7 +130,8 @@ def agent(demo=False):
             'description': ('Client demo: a fictional team built around public information. ' if demo else '') +
                            "Stefan's AI substrate: approved memories, decisions, organisations and documents, with every change waiting for approval.",
             'instructions': text, 'conversation_starters': [{'title': a, 'text': b} for a, b in starters],
-            'actions': [{'id': 'alicePlugin', 'file': 'alice-plugin.json'}]}
+            'actions': [{'id': 'alicePlugin', 'file': 'alice-plugin.json'}],
+            **({} if demo else {'capabilities': WORK_CAPABILITIES})}
 
 
 def manifest(url, demo=False):

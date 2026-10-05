@@ -48,6 +48,9 @@ t('the outline icon is white on transparent, with something drawn', all(a == 0 o
 
 d = zipfile.ZipFile(io.BytesIO(CP.build(URL.replace('alice-mcp', 'alice-demo-mcp'), AUTH, demo=True)))
 dm, da, dp = (json.loads(d.read(n)) for n in ('manifest.json', 'declarativeAgent.json', 'alice-plugin.json'))
+t('live Alice can use your email, chats, meetings, people, files and the web', {c['name'] for c in agent['capabilities']} ==
+  {'Email', 'TeamsMessages', 'Meetings', 'People', 'OneDriveAndSharePoint', 'WebSearch'} and 'Never save anything from email' in agent['instructions'])
+t('the demo agent never gets them: it is shown to clients', 'capabilities' not in da and 'Never save anything from email' not in da['instructions'])
 t('the demo has its own icon', d.read('color.png') != z.read('color.png') and png_info(d.read('color.png'))[:2] == (192, 192))
 t('the demo package is its own app, clearly marked', dm['id'] == CP.APP_ID_DEMO and dm['name']['short'] == 'Alice (demo)'
   and da['instructions'].startswith('THIS IS THE DEMO ALICE') and dp['namespace'] == 'alicedemo' and 'fictional' in dm['description']['full'])
