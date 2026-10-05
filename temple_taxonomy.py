@@ -542,6 +542,7 @@ def note_new_memory():
 
 
 def maybe_review():
+    if os.getenv('ALICE_NO_SCHEDULER'): return False      # no background schedules (tests; the outside-connector container)
     if not due() or _lock.locked(): return False
     def work():
         try: review()
