@@ -93,7 +93,7 @@ def _ask_openai(prompt, query, workload='Temple organisation research'):
     t0 = time.time()
     with OpenAI(timeout=180, max_retries=0) as client:
         r = client.responses.create(model='gpt-6-luna', instructions=prompt, input=query, tools=[{'type': 'web_search'}],
-                                    max_output_tokens=6000, store=False)
+                                    include=['web_search_call.action.sources'], max_output_tokens=6000, store=False)
     import usage_meter; usage_meter.log(r, 'openai', 'gpt-6-luna', workload, time.time() - t0)
     seen = {}
     for item in getattr(r, 'output', []) or []:
@@ -136,16 +136,16 @@ def _subject(name='', website=''):
     return ('organisation', (name or website or '')[:60])
 
 
-def research(name='', website=''):
+def research(name='', website='', provider=''):
     """Search the web for an organisation and propose profile facts with their sources. Creates the organisation if new.
     Your input is checked first, so a typo is not counted as a failed run of the agent."""
     name, website = O._clean(name, 60), _clean_url(website)
     if not name and not website: raise ValueError('Type the organisation\'s name, or its website, or both.')
-    return _research(name, website)
+    return _research(name, website, provider)
 
 
 @agents.tracked('temple-org-research', trigger='When you ask', subject=lambda name='', website='', **k: _subject(name, website))
-def _research(name, website):
+def _research(name, website, provider=''):
     import rules_engine, temple
     from datetime import date
     existing = None
@@ -159,7 +159,7 @@ def _research(name, website):
     query = ('Research this organisation: ' + (existing or name or '') + (f' (website: {website})' if website else '')).strip()
     rules_engine.check_outbound(query, 'organisation research')          # secrets and markings never leave
     rules_engine.check_spend('chat')
-    provider = temple.reviewer()
+    provider = provider if provider in ('openai', 'claude') else temple.reviewer()
     key = 'OPENAI_API_KEY' if provider == 'openai' else 'ANTHROPIC_API_KEY'
     if not os.getenv(key): raise ValueError(f'Missing {key} for Temple. Set it in .env and restart.')
     prompt = PROMPT.format(today=date.today().isoformat(), kinds=', '.join(O.KINDS), sections=', '.join(PUBLIC_SECTIONS), max_facts=MAX_FACTS)

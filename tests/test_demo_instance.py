@@ -17,8 +17,13 @@ except ValueError: t('live Alice refuses to reset', True)
 
 D.ON = True
 # the research stand-in: public facts with sources (as Temple's research would store them)
-def fake_research(name, website=''):
-    O.create(name, 'council', 'A fictional council used for testing.')
+providers_used = []
+def fake_research(name, website='', provider=''):
+    providers_used.append(provider)
+    if not provider:      # the first provider finds too little; the other one is asked as well
+        O.create(name, 'council', 'A fictional council used for testing.')
+        O.propose_fact(name, 'purpose', 'The council serves a large rural area.', 'Public web: example.org', 'https://example.org/p9', by='Temple research')
+        return {'org': name, 'summary': '1 facts proposed from 1 source; 9 dropped', 'sources': [{'url': 'https://example.org/p9', 'title': 'About', 'cited': True}]}
     for i, st in enumerate(['The council runs adult social care for 115,000 residents.', 'Its plan prioritises digital services.',
                             'It is investing in a new care management system.', 'Budget pressures require savings of £10m.']):
         O.propose_fact(name, 'purpose' if i < 2 else 'technology', st, 'Public web: example.org', f'https://example.org/p{i}', by='Temple research')
@@ -71,10 +76,11 @@ for _ in range(50):
     if sc['status'] != 'working': break
     time.sleep(0.1)
 t('a scenario is generated: research first, then the team, then each workstream', sc['status'] == 'ready' and len(calls) == 3)
+t('too few facts from one provider: the other provider searches as well', providers_used == ['', 'claude'])
 print('SCENARIO', sc['status'], sc.get('error'), sc.get('progress'))
 names = [m['name'] for m in sc['plan']['team']]
 t('every name is fictional: one that looks like the organisation is replaced', 'Fictional Council' not in names and len(set(names)) == len(names))
-t('the page shows counts, a sample and the public sources', sc['counts']['memories'] == 8 and sc['facts']['count'] == 4 and sc['facts']['sources'])
+t('the page shows counts, a sample and the public sources', sc['counts']['memories'] == 8 and sc['facts']['count'] == 5 and sc['facts']['sources'])
 
 # a database the demo did not fill is never loaded over
 with s.db() as c: c.execute("DELETE FROM settings WHERE key='demo_instance'")
@@ -96,7 +102,7 @@ with s.db() as c:
 t('history is approved; what is still waiting goes through the gates for real', approved == 12 and proposed == 3)
 t('it is spread over months, by the team', oldest < (s.now()[:4] + '-08') and {'Shona Hay', 'Euan Laidlaw'} <= actors and {'Shona Hay', 'Euan Laidlaw'} <= owners)
 t('a blocked OFFICIAL-SENSITIVE paste is in the log, as it would really happen', blocked >= 1)
-t('the public facts are on the organisation\'s profile', facts == 4)
+t('the public facts are on the organisation\'s profile', facts == 5)
 k = knowledge.listing(status='all', limit=50)['items']
 t('an older note has been replaced by a newer one', any(i['status'] in ('replaced', 'superseded', 'archived') for i in k))
 t('meeting attendees are only the fictional team', all('Nobody Real' not in (i.get('title', '') + json.dumps(i)) for i in k))

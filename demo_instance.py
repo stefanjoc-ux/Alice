@@ -137,15 +137,33 @@ def _generate_safe(sid):
     except Exception as e: _set(sid, status='failed', error=str(e)[:400] if isinstance(e, ValueError) else type(e).__name__ + ': ' + str(e)[:300])
 
 
-def _research(org, website):
-    """Public facts with sources (Temple's web research), copied into the scenario so loading never needs the web."""
-    import org_research, organisations as O
-    r = org_research.research(org, website)
-    name = r['org']
-    with store.db() as c:
-        row = dict(c.execute('SELECT name, kind, description, website FROM organisations WHERE name=?', (name,)).fetchone())
-        facts = [dict(f) for f in c.execute("SELECT section, statement, source_system, source_ref, as_of FROM org_facts WHERE org=? AND status IN ('proposed','approved')", (name,))]
-    return {'org': row, 'facts': facts, 'sources': r.get('sources', [])}
+def _research(org, website, sid=None):
+    """Public facts with sources (Temple's web research), copied into the scenario so loading never needs the web.
+    Too few facts from one provider: the other provider searches too (facts add up; duplicates are skipped)."""
+    import org_research, temple
+
+    def run(provider=''):
+        r = org_research.research(org, website, provider)
+        with store.db() as c:
+            row = dict(c.execute('SELECT name, kind, description, website FROM organisations WHERE name=?', (r['org'],)).fetchone())
+            facts = [dict(f) for f in c.execute("SELECT section, statement, source_system, source_ref, as_of FROM org_facts WHERE org=? AND status IN ('proposed','approved')", (r['org'],))]
+        return r, row, facts
+
+    r, row, facts = run()
+    sources, notes = list(r.get('sources', [])), [r.get('summary', '')]
+    if len(facts) < 3:
+        first = temple.reviewer()
+        other = 'claude' if first == 'openai' else 'openai'
+        if os.getenv('ANTHROPIC_API_KEY' if other == 'claude' else 'OPENAI_API_KEY'):
+            if sid: _set(sid, progress=f'Only {len(facts)} public facts so far; searching again with {"Claude" if other == "claude" else "GPT"}…')
+            try:
+                r2, row, facts = run(other)
+                seen = {x['url'] for x in sources}
+                sources += [x for x in r2.get('sources', []) if x['url'] not in seen]
+                notes.append(r2.get('summary', ''))
+            except ValueError as e:
+                notes.append(str(e))
+    return {'org': row, 'facts': facts, 'sources': sources[:40], 'research': '; '.join(n for n in notes if n)}
 
 
 def _fictional(team, research_text, org_words):
@@ -167,9 +185,11 @@ def _fictional(team, research_text, org_words):
 
 def _generate(sid):
     with store.db() as c: s = dict(c.execute('SELECT * FROM demo_scenarios WHERE id=?', (sid,)).fetchone())
-    res = _research(s['org'], s['website'])
+    res = _research(s['org'], s['website'], sid)
     facts_text = '\n'.join(f"- [{f['section']}] {f['statement']} (source: {f['source_ref']})" for f in res['facts'][:40])
-    if len(res['facts']) < 3: raise ValueError('Too little public information was found. Add the website and try again.')
+    if len(res['facts']) < 3:
+        raise ValueError(f"Too little public information was found ({len(res['facts'])} facts). Research said: {res['research'] or 'nothing'}. "
+                         'Check the website address, or try again in a few minutes.')
     _set(sid, progress=f"Found {len(res['facts'])} public facts. Designing the team…", facts=res)
     head = f"Organisation: {res['org']['name']} ({res['org']['kind']})\n{res['org']['description']}\nNotes from Stefan: {s['notes'] or 'none'}\nPublic facts:\n{facts_text}"
     plan = _ask_json(PLAN_PROMPT, head, 6000)
