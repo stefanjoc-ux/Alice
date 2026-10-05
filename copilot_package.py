@@ -25,6 +25,7 @@ NAMESPACE_LIVE, NAMESPACE_DEMO = 'alice', 'alicedemo'
 # fixed app IDs, so uploading a newer package updates the same app in Teams instead of adding a second one
 APP_ID_LIVE = 'a11ce000-5ab5-4c0e-9a11-ce0000000001'
 APP_ID_DEMO = 'a11ce000-5ab5-4c0e-9a11-ce0000000002'
+VERSION = '1.1.0'           # raise it whenever the package changes, so Teams takes the upload as an update
 DEFAULT_TEMPLATE = {'type': 'AdaptiveCard', '$schema': 'https://adaptivecards.io/schemas/adaptive-card.json', 'version': '1.6',
                     'body': [{'type': 'TextBlock', 'text': '${if(title, title, description)}', 'wrap': True}]}
 
@@ -122,7 +123,7 @@ def manifest(url, demo=False):
     host = re.sub(r'^https://', '', _check_url(url)).split('/')[0]
     name = 'Alice (demo)' if demo else 'Alice'
     return {'$schema': 'https://developer.microsoft.com/en-us/json-schemas/teams/v1.19/MicrosoftTeams.schema.json', 'manifestVersion': '1.19',
-            'version': '1.0.0', 'id': APP_ID_DEMO if demo else APP_ID_LIVE,
+            'version': VERSION, 'id': APP_ID_DEMO if demo else APP_ID_LIVE,
             'developer': {'name': 'Stefan O\'Connor', 'websiteUrl': f'https://{host}', 'privacyUrl': f'https://{host}', 'termsOfUseUrl': f'https://{host}'},
             'icons': {'color': 'color.png', 'outline': 'outline.png'},
             'name': {'short': name, 'full': name + (': client demo' if demo else ': personal AI substrate')},
@@ -158,8 +159,8 @@ def _outline():
 
 
 def _icons(demo):
-    """Alice's own 192x192 icon in colour (the demo is told apart by its name and accent colour), and the outline."""
-    return {'color.png': (ROOT / 'Static' / 'icon-192.png').read_bytes(), 'outline.png': _outline()}
+    """Alice's own 192x192 icon in colour (the demo's is amber with a DEMO band), and the outline."""
+    return {'color.png': (ROOT / 'Static' / ('icon-demo-192.png' if demo else 'icon-192.png')).read_bytes(), 'outline.png': _outline()}
 
 
 def build(url, auth_id, demo=False, tool_list=None):
