@@ -291,7 +291,7 @@ body{display:grid;grid-template-rows:52px minmax(0,1fr);height:100vh;height:100d
 .nav-version a,.nav-version span{color:inherit;text-decoration:none}.nav-version a:hover{color:var(--teal);text-decoration:underline}
 .nav-version b{font-family:ui-monospace,Consolas,monospace;font-weight:600;color:#5d7385}
 .sidebar .nav-version a{display:block;height:auto;padding:0;border-radius:0;font-size:inherit;font-weight:400;color:inherit;background:none;white-space:normal}.sidebar .nav-version a:hover{background:none}.sidebar .nav-version a::before{display:none}
-.nav-version .nav-label{overflow:visible}.nav-version [data-built]{display:block;margin-top:1px;font-size:11px}
+.nav-version .nav-label{overflow:visible}.nav-version [data-built]{font-size:11px}
 body.nav-rail .nav-version{padding:8px 0 20px;text-align:center;font-size:10px}body.nav-rail .nav-version .nav-label{display:none}
 .nav-collapse svg{flex:none;width:19px;height:19px;transition:transform .18s}.nav-collapse:hover{background:#e7eff4;color:var(--ink)}
 body.nav-rail .sidebar{padding:14px 10px 10px}body.nav-rail .sidebar .nav-label,body.nav-rail .sidebar .grp>span,body.nav-rail .sidebar .chev{display:none}
@@ -2718,7 +2718,7 @@ NAV_SCRIPT = r"""
  const btn=document.getElementById('nav-collapse');const label=()=>{const r=document.body.classList.contains('nav-rail');btn.setAttribute('aria-pressed',String(r));btn.title=r?'Expand the menu':'Collapse the menu';btn.querySelector('.nav-label').textContent=r?'Expand menu':'Collapse menu'};
  btn.onclick=()=>{document.body.classList.toggle('nav-rail');put('alice-nav-rail',document.body.classList.contains('nav-rail')?'1':'0');label();apply()};
  narrow.addEventListener('change',apply);label();apply();
- const vb=sb.querySelector('.nav-version [data-built]');if(vb){const d=new Date(vb.dataset.built);if(!isNaN(d))vb.textContent='released '+d.toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}
+ const vb=sb.querySelector('.nav-version [data-built]');if(vb){const d=new Date(vb.dataset.built);if(!isNaN(d))vb.textContent=' · '+d.toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}
  const cur=sb.querySelector('a[aria-current=page]');if(cur){if(narrow.matches)sb.scrollLeft=Math.max(0,cur.offsetLeft-sb.clientWidth/2+cur.offsetWidth/2);else cur.scrollIntoView({block:'nearest'})}
 })();
 (()=>{const t=document.getElementById('demo-toggle');if(!t)return;t.textContent=DEMO?'Demo mode: on':'Demo mode';t.classList.toggle('demo-on',DEMO);
