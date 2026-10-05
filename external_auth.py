@@ -8,6 +8,8 @@ Settings (names only; values live in .env, never in code or git):
   ALICE_EXT_TENANT_ID       Directory (tenant) ID of the Tuduma tenant
   ALICE_EXT_APP_ID          Application (client) ID of the Alice API app registration
   ALICE_EXT_APP_ID_URI      Optional; defaults to api://<ALICE_EXT_APP_ID>
+  ALICE_EXT_AUDIENCES       Optional; more Application ID URIs accepted as the token audience, comma separated (e.g. the one
+                            Microsoft 365 Copilot's Entra SSO registration gives: tokens from Copilot are issued to it)
   ALICE_EXT_SCOPE           Optional; delegated scope required, default access_as_user
   ALICE_EXT_ALLOWED_USERS   Object IDs (oid) of the users allowed in, comma separated
   ALICE_EXT_CALLERS         Client apps allowed to call, as  <client app id>=<label>:<provider>  separated by ';'
@@ -61,6 +63,7 @@ class Config:
     connector_key: str = field(default='', repr=False)
     connector_redirects: tuple = ()
     connector_store: str = ''
+    extra_audiences: tuple = ()
 
     @property
     def issuers(self):     # v2.0 and v1.0 access tokens for this tenant only
@@ -68,7 +71,7 @@ class Config:
 
     @property
     def audiences(self):
-        return [self.app_id, self.app_id_uri]
+        return list(dict.fromkeys([self.app_id, self.app_id_uri, *self.extra_audiences]))
 
     @property
     def jwks_uri(self):
@@ -134,8 +137,12 @@ def load_config(env):
         callers.setdefault(cid, Caller(label, 'claude'))
         import os
         store = g('ALICE_EXT_CONNECTOR_STORE') or os.path.join(env.get('AISUBSTRATE_DATA_DIR') or os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data'), 'oauth-connector')
+    extra = tuple(dict.fromkeys(a.strip() for a in g('ALICE_EXT_AUDIENCES').split(',') if a.strip()))
+    for a in extra:
+        if not (a.startswith('api://') or GUID.match(a.lower())) or len(a) > 300 or re.search(r'[\s"<>]', a):
+            raise ValueError(f'ALICE_EXT_AUDIENCES: "{a[:80]}" should be an Application ID URI (api://...).')
     return Config(tenant, app, g('ALICE_EXT_APP_ID_URI') or f'api://{app}', g('ALICE_EXT_SCOPE', 'access_as_user'),
-                  users, callers, base, host, int(port), hosts, cid, secret, key, redirects, store)
+                  users, callers, base, host, int(port), hosts, cid, secret, key, redirects, store, extra)
 
 
 def _log(detail):

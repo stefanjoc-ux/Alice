@@ -467,8 +467,29 @@ def _json(text):
     t = re.sub(r'^```(?:json)?\s*|\s*```$', '', t)
     a, b = t.find('{'), t.rfind('}')
     if a < 0 or b < a: raise ValueError('The model did not return a usable answer. Try again.')
-    try: return json.loads(t[a:b + 1])
+    try: return json.loads(t[a:b + 1], strict=False)      # strict=False: line breaks written inside a string are allowed
     except ValueError: raise ValueError('The model did not return a usable answer. Try again.') from None
+
+
+class CutOff(ValueError):
+    """The model stopped at its length limit before finishing the JSON."""
+
+
+WRITE_SINGLE = 12           # up to this many sections are written in one call (if that answer is cut off, it is written in parts)
+WRITE_BATCH = 6             # sections per part for long templates, so no answer is cut off
+WRITER_TOKENS = 16000
+
+
+def _writer_call(provider, system, msg):
+    import assistants
+    meta = {}
+    text = assistants._call(provider, system, [{'role': 'user', 'content': msg}], max_tokens=WRITER_TOKENS, timeout=420,
+                            workload='Proposal writer', meta=meta)
+    try: return _json(text)
+    except ValueError:
+        if meta.get('truncated'): raise CutOff('The writer ran out of room before finishing.') from None
+        raise ValueError('The writer did not return a usable answer (it was not in the expected format). Try again, '
+                         'or choose another writer model.') from None
 
 
 def _sections_text(sections):
@@ -492,9 +513,7 @@ def write(aid, job, previous=None, feedback=None):
             ctx = (ctx + '\n\n' + rctx).strip() if rctx else ctx
             used['references'], used['references_skipped'] = rused, rskipped
         job['context'], job['context_used'], job['context_skipped'] = ctx, used, skipped
-    secs = '\n'.join(f'- {s["title"]}' + (' [KEEP]' if s['keep'] else '') + (f'\n  Guidance: {s["guidance"]}' if s['guidance'] and not s['keep'] else '')
-                     + (('\n  Include: ' + s['include'].replace('\n', '\n    ')) if s.get('include') and not s['keep'] else '')
-                     for s in job['sections'])
+    secs = '\n'.join(_sec_line(s) for s in job['sections'])
     roles = '\n'.join(f'- {r["role"]} (per {r["unit"]})' + (f' FIXED: {r["days"]:g} {r["unit"]}s, already agreed' if r.get('days') else '')
                       for r in job['rate_card']) or '(no rate card: leave the resource plan empty)'
     msg = (f'TITLE: {job["title"]}\nCLIENT: {job["organisation"] or "not named"}\n\nBRIEF\n{job["brief"]}\n\n'
@@ -506,8 +525,7 @@ def write(aid, job, previous=None, feedback=None):
                 'keep what is already good.\n' + json.dumps(feedback)[:12000])
     rules_engine.check_outbound(msg, 'Proposal writer', packs=False)
     guidance = ('Tone and style: ' + a['guidance']) if a['guidance'] else ''
-    out = _json(assistants._call(job.get('writer') or a['provider'], WRITER_PROMPT.format(guidance=guidance), [{'role': 'user', 'content': msg}],
-                                 max_tokens=12000, timeout=300, workload='Proposal writer'))
+    out = _write_in_parts(job, msg, secs, job.get('writer') or a['provider'], WRITER_PROMPT.format(guidance=guidance), previous)
     got = {(_clean(s.get('title'), 120)).casefold(): str(s.get('body') or '').strip() for s in out.get('sections') or [] if isinstance(s, dict)}
     sections = [{'title': s['title'], 'body': '' if s['keep'] else got.get(s['title'].casefold(), ''), 'keep': s['keep']} for s in job['sections']]
     cards = {r['role'].casefold(): r for r in job['rate_card']}
@@ -524,6 +542,53 @@ def write(aid, job, previous=None, feedback=None):
     plan += [{'role': r['role'], 'quantity': r['days'], 'purpose': ''} for r in job['rate_card'] if r.get('days') and r['role'] not in have]
     gaps = [_clean(g, 300) for g in (out.get('gaps') or []) if _clean(g, 300)][:20]
     return {'status': 'complete', 'sections': sections, 'resource_plan': plan, 'gaps': gaps, 'dropped_roles': dropped}
+
+
+def _sec_line(s):
+    return f'- {s["title"]}' + (' [KEEP]' if s['keep'] else '') + (f'\n  Guidance: {s["guidance"]}' if s['guidance'] and not s['keep'] else '') \
+        + (('\n  Include: ' + s['include'].replace('\n', '\n    ')) if s.get('include') and not s['keep'] else '')
+
+
+def _write_in_parts(job, msg, secs, provider, system, previous):
+    """The whole draft in one call when it is short; otherwise (or if an answer is cut off) a few sections at a time, each part
+    seeing the whole outline and what is already written, with the resource plan asked for in the last part only."""
+    todo = [s for s in job['sections'] if not s['keep']]
+    if len(todo) <= WRITE_SINGLE:
+        try: return _writer_call(provider, system, msg)
+        except CutOff: pass                                    # too long for one answer: write it in parts
+    outline = '\n'.join(f'{n}. {s["title"]}' + (' (standard text)' if s['keep'] else '') for n, s in enumerate(job['sections'], 1))
+    head, tail = msg.split(f'SECTIONS\n{secs}', 1)
+    sections, plan, gaps = [], [], []
+    queue = [todo[i:i + WRITE_BATCH] for i in range(0, len(todo), WRITE_BATCH)] or [[]]
+    while queue:
+        part = queue.pop(0)
+        last = not queue
+        done = '\n\n'.join(f'### {x["title"]}\n{x["body"]}' for x in sections)[-15000:]
+        note = (f'\n\nTHIS PART: write ONLY the sections listed under SECTIONS, in that order; the rest are written separately. '
+                f'Keep consistent with WHOLE PROPOSAL OUTLINE and ALREADY WRITTEN and do not repeat them.'
+                + (' Give the resource_plan for the whole proposal.' if last else ' Return an empty resource_plan.'))
+        prev = ''
+        if previous is not None:
+            names = {x['title'].casefold() for x in part}
+            mine = {**previous, 'sections': [x for x in previous.get('sections') or [] if str(x.get('title', '')).casefold() in names]}
+            prev = '\n\nPREVIOUS DRAFT OF THESE SECTIONS (JSON)\n' + json.dumps(mine)[:40000]
+        body = (head + 'WHOLE PROPOSAL OUTLINE\n' + outline + '\n\nSECTIONS\n' + '\n'.join(_sec_line(x) for x in part)
+                + tail.split('\n\nPREVIOUS DRAFT (JSON)\n')[0]
+                + (tail[tail.index('\n\nQA FEEDBACK'):] if previous is not None and '\n\nQA FEEDBACK' in tail else '')
+                + prev + ('\n\nALREADY WRITTEN\n' + done if done else '') + note)
+        try: out = _writer_call(provider, system, body)
+        except CutOff:
+            if len(part) == 1:
+                raise ValueError(f'The writer ran out of room on the section "{part[0]["title"]}". Shorten its guidance or the brief, '
+                                 'or choose another writer model.') from None
+            half = len(part) // 2
+            queue[0:0] = [part[:half], part[half:]]             # try again in smaller parts
+            continue
+        got = {_clean(x.get('title'), 120).casefold(): x for x in out.get('sections') or [] if isinstance(x, dict)}
+        sections += [{'title': x['title'], 'body': str((got.get(x['title'].casefold()) or {}).get('body') or '').strip()} for x in part]
+        if last: plan = out.get('resource_plan') or []
+        gaps += out.get('gaps') or []
+    return {'sections': sections, 'resource_plan': plan, 'gaps': gaps}
 
 
 def price(plan, rate_card, min_margin=25):
@@ -599,7 +664,7 @@ def review(aid, job, draft, pricing):
     rules_engine.check_outbound(msg, 'Proposal QA', packs=False)
     qa_provider = job.get('qa') or a['settings'].get('qa_provider') or a['provider']
     if qa_provider not in assistants.PROVIDERS: qa_provider = a['provider']
-    out = _json(assistants._call(qa_provider, QA_PROMPT, [{'role': 'user', 'content': msg}], max_tokens=4000, timeout=180, workload='Proposal QA'))
+    out = _json(assistants._call(qa_provider, QA_PROMPT, [{'role': 'user', 'content': msg}], max_tokens=8000, timeout=240, workload='Proposal QA'))
     issues = [i for i in (out.get('issues') or []) if isinstance(i, dict)][:40]
     before = len(issues)
     issues = [i for i in issues if not any(_same_point(i, d) for d in rejected)]   # your rejections stand, whatever Argus says

@@ -42,6 +42,8 @@ param extAppId string = ''
 param extAllowedUsers string = ''
 @description('External endpoint: allowed client apps, <client app id>=<label>:<provider>;...')
 param extCallers string = ''
+@description('More token audiences: the Application ID URIs from Microsoft 365 Copilot\'s Entra SSO registrations (comma separated).')
+param extAudiences string = ''
 @description('Claude connector: client ID of the "Alice connector sign-in" app registration (its secret and signing key are in Key Vault); empty = off.')
 param connectorClientId string = ''
 
@@ -393,6 +395,7 @@ resource mcp 'Microsoft.App/containerApps@2024-03-01' = if (withApps) {
           { name: 'ALICE_EXT_APP_ID', value: extAppId }
           { name: 'ALICE_EXT_ALLOWED_USERS', value: extAllowedUsers }
           { name: 'ALICE_EXT_CALLERS', value: extCallers }
+          { name: 'ALICE_EXT_AUDIENCES', value: extAudiences }
           { name: 'ALICE_EXT_BASE_URL', value: 'https://${mcpFqdn}' }
           { name: 'ALICE_EXT_ALLOWED_HOSTS', value: mcpFqdn }
           { name: 'ALICE_EXT_HOST', value: '0.0.0.0' }

@@ -21,6 +21,8 @@ param keyVaultSecretNames object = {}
 param extAppId string
 param extAllowedUsers string
 param extCallers string
+@description('More token audiences: the Application ID URIs from Microsoft 365 Copilot\'s Entra SSO registrations (comma separated).')
+param extAudiences string = ''
 
 var suffix = take(uniqueString(resourceGroup().id), 6)
 resource env 'Microsoft.App/managedEnvironments@2024-03-01' existing = { name: '${prefix}-env' }
@@ -144,6 +146,7 @@ resource mcp 'Microsoft.App/containerApps@2024-03-01' = {
           { name: 'ALICE_EXT_APP_ID', value: extAppId }
           { name: 'ALICE_EXT_ALLOWED_USERS', value: extAllowedUsers }
           { name: 'ALICE_EXT_CALLERS', value: extCallers }
+          { name: 'ALICE_EXT_AUDIENCES', value: extAudiences }
           { name: 'ALICE_EXT_BASE_URL', value: 'https://${mcpFqdn}' }
           { name: 'ALICE_EXT_ALLOWED_HOSTS', value: mcpFqdn }
           { name: 'ALICE_EXT_HOST', value: '0.0.0.0' }

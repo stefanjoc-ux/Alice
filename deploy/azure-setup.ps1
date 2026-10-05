@@ -17,6 +17,12 @@ Steps (all by default, or one with -Step):
            signing key in Key Vault, then alice-mcp updated so Claude can sign in through Alice
   demo     (run on its own) the demo Alice for client demos: alice-demo-web and alice-demo-mcp on the live image, with their
            own database (alice_demo) and data folder; same sign-in (only you) and the same Alice API app for Copilot
+  copilot  (run on its own) Alice as an agent in Microsoft 365 Copilot: prepares the Alice API app for Copilot's Entra single
+           sign-on (Teams' redirect address, the Application ID URI from the Developer Portal registration, the Microsoft token
+           store pre-authorised), lets Copilot's token store call alice-mcp (and alice-demo-mcp), then builds the app packages
+           in dist\ to upload in Teams. First register the sign-on in the Teams Developer Portal (see CLAUDE.md), then:
+             -Step copilot -CopilotAudience <Application ID URI> -CopilotAuthId <auth config ID>
+             [-CopilotDemoAudience <URI> -CopilotDemoAuthId <ID>] [-AlsoAllow you@yourdomain]
 Nothing here reads .env: keys are typed in once and live only in Key Vault.
 #>
 param(
@@ -30,7 +36,11 @@ param(
   [string]$AlsoAllow = '',      # other accounts allowed to sign in, comma separated (e.g. stefan@yourdomain); remembered
   [string]$CustomDomain = '',
   [string]$GitHubSubject = '',  # the exact OIDC subject GitHub presents, if it uses owner and repo IDs (shown in a failed deploy log)   # e.g. alice.northants.it, after binding it once with a managed certificate; remembered
-  [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github', 'connector', 'demo')][string]$Step = 'all'
+  [string]$CopilotAudience = '',      # Application ID URI(s) from the Developer Portal Entra SSO registration(s), comma separated
+  [string]$CopilotAuthId = '',        # its auth config ID (live Alice)
+  [string]$CopilotDemoAudience = '',
+  [string]$CopilotDemoAuthId = '',    # the demo Alice's registration
+  [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github', 'connector', 'demo', 'copilot')][string]$Step = 'all'
 )
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
@@ -40,7 +50,17 @@ $StateFile = Join-Path $PSScriptRoot 'azure-state.json'
 function Say($text) { Write-Host "`n== $text" -ForegroundColor Cyan }
 function AzCli { $out = & az @args; if ($LASTEXITCODE -ne 0) { throw "az $($args -join ' ') failed" }; return $out }   # not named Az: PowerShell names ignore case, so it would call itself
 function AzTry { $ErrorActionPreference = 'Continue'; & az @args 2>$null }   # may fail (e.g. "does it exist?"): Windows PowerShell 5.1 otherwise turns az's error text into a stop
-function Want($name) { return (($Step -eq 'all' -and $name -notin @('connector', 'demo')) -or $Step -eq $name) }
+function Want($name) { return (($Step -eq 'all' -and $name -notin @('connector', 'demo', 'copilot')) -or $Step -eq $name) }
+function Audiences { return (@($State.extAudiences | Where-Object { $_ }) -join ',') }   # Copilot's SSO audiences, kept on every redeploy
+function Add-AlsoAllow {
+  $also = @($State.alsoAllow | Where-Object { $_ })
+  foreach ($u in ($AlsoAllow -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
+    $oid = if ($u -match '^[0-9a-fA-F-]{36}$') { $u } else { AzCli ad user show --id $u --query id -o tsv }
+    if ($oid -and $also -notcontains $oid) { $also += $oid; Write-Host "Also allowed to sign in: $u ($oid)" }
+  }
+  Set-Prop $State 'alsoAllow' $also
+  return ,$also
+}
 function Load-State { if (Test-Path $StateFile) { return Get-Content $StateFile -Raw | ConvertFrom-Json } else { return [pscustomobject]@{} } }
 function Save-State($s) { $s | ConvertTo-Json -Depth 5 | Set-Content $StateFile -Encoding UTF8 }
 function Set-Prop($obj, $name, $value) { $obj | Add-Member -NotePropertyName $name -NotePropertyValue $value -Force }
@@ -217,12 +237,7 @@ if (Want 'apps') {
   if ($ExtAppId) { Set-Prop $State 'extAppId' $ExtAppId }
   if ($ExtCallers) { Set-Prop $State 'extCallers' $ExtCallers }
   if (-not $State.extAppId -or -not $State.extCallers) { throw 'Give -ExtAppId (the Alice API app registration) and -ExtCallers (e.g. "<copilot app id>=Microsoft Copilot:copilot"), the same values as ALICE_EXT_APP_ID and ALICE_EXT_CALLERS on the PC.' }
-  $also = @($State.alsoAllow | Where-Object { $_ })
-  foreach ($u in ($AlsoAllow -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
-    $oid = if ($u -match '^[0-9a-fA-F-]{36}$') { $u } else { AzCli ad user show --id $u --query id -o tsv }
-    if ($oid -and $also -notcontains $oid) { $also += $oid; Write-Host "Also allowed to sign in: $u ($oid)" }
-  }
-  Set-Prop $State 'alsoAllow' $also
+  $also = Add-AlsoAllow
   if ($CustomDomain) { Set-Prop $State 'customDomain' $CustomDomain.Trim().ToLower() }
   $certId = ''
   if ($State.customDomain) {
@@ -236,13 +251,13 @@ if (Want 'apps') {
   Save-State $State
   $users = if ($ExtAllowedUsers) { $ExtAllowedUsers } else { (@($Me) + $also | Select-Object -Unique) -join ',' }
   Deploy 'apps' @{ image = (Image-Ref); webAuthClientId = $State.webAuthClientId; keyVaultSecretNames = (Key-Names)
-                   extAppId = $State.extAppId; extAllowedUsers = $users; extCallers = $State.extCallers
+                   extAppId = $State.extAppId; extAllowedUsers = $users; extCallers = $State.extCallers; extAudiences = (Audiences)
                    allowedUserObjectIds = $also; customDomain = "$($State.customDomain)"; customDomainCertificateId = "$certId"
                    connectorClientId = "$($State.connectorClientId)" }
   if ($State.imageFresh) { $State.PSObject.Properties.Remove('imageFresh'); Save-State $State }
   if ($State.customDomain) { Write-Host "Also at: https://$($State.customDomain)" }
   Write-Host "Web:  $($State.webUrl)"
-  Write-Host "MCP:  $($State.mcpUrl)/mcp   (set this as the Copilot plugin URL, and run Test-External against it)"
+  Write-Host "MCP:  $($State.mcpUrl)/mcp   (the Base URL for Copilot's sign-on registration; then -Step copilot)"
 }
 
 if (Want 'connector') {
@@ -286,12 +301,27 @@ if (Want 'connector') {
     $certId = AzCli containerapp env certificate list -g $ResourceGroup -n $envName --managed-certificates-only --query "[?properties.subjectName=='$($State.customDomain)'].id | [0]" -o tsv
   }
   Deploy 'apps' @{ image = (Image-Ref); webAuthClientId = $State.webAuthClientId; keyVaultSecretNames = (Key-Names)
-                   extAppId = $State.extAppId; extAllowedUsers = $users; extCallers = $State.extCallers
+                   extAppId = $State.extAppId; extAllowedUsers = $users; extCallers = $State.extCallers; extAudiences = (Audiences)
                    allowedUserObjectIds = @($State.alsoAllow | Where-Object { $_ }); customDomain = "$($State.customDomain)"; customDomainCertificateId = "$certId"
                    connectorClientId = $cid }
   Write-Host ''
   Write-Host 'In Claude: Settings > Connectors > Add custom connector' -ForegroundColor Green
   Write-Host "  Name: Alice     URL: $($State.mcpUrl)/mcp     (leave the OAuth fields empty)" -ForegroundColor Green
+}
+
+function Deploy-Demo {
+  $users = (@($Me) + @($State.alsoAllow | Where-Object { $_ }) | Select-Object -Unique) -join ','
+  $values = @{ image = (Image-Ref); pgAdminPassword = (Kv-Get $State.keyVault 'pg-admin-password'); ownerObjectId = $Me; location = $Location
+               allowedUserObjectIds = @($State.alsoAllow | Where-Object { $_ }); webAuthClientId = $State.webAuthClientId; keyVaultSecretNames = (Key-Names)
+               extAppId = $State.extAppId; extAllowedUsers = $users; extCallers = $State.extCallers; extAudiences = (Audiences) }
+  $doc = @{ '$schema' = 'https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#'; contentVersion = '1.0.0.0'; parameters = @{} }
+  foreach ($k in $values.Keys) { $doc.parameters[$k] = @{ value = $values[$k] } }
+  $pfile = New-TemporaryFile
+  try {
+    [IO.File]::WriteAllText($pfile, ($doc | ConvertTo-Json -Depth 6))
+    $out = AzCli deployment group create -g $ResourceGroup -f (Join-Path $Root 'infra\demo.bicep') -n 'alice-demo' --parameters ('@' + $pfile) --query properties.outputs -o json | ConvertFrom-Json
+  } finally { Remove-Item $pfile -Force -ErrorAction SilentlyContinue }
+  Set-Prop $State 'demoWebUrl' $out.demoWebUrl.value; Set-Prop $State 'demoMcpUrl' $out.demoMcpUrl.value; Save-State $State
 }
 
 if (Want 'demo') {
@@ -307,22 +337,87 @@ if (Want 'demo') {
   $uris = @(AzCli ad app show --id $State.webAuthClientId --query 'web.redirectUris' -o json | ConvertFrom-Json)
   $cb = "$demoWeb/.auth/login/aad/callback"
   if ($uris -notcontains $cb) { $uris += $cb; AzCli ad app update --id $State.webAuthClientId --web-redirect-uris @uris | Out-Null; Write-Host 'Demo address added to the sign-in app.' }
-  $users = (@($Me) + @($State.alsoAllow | Where-Object { $_ }) | Select-Object -Unique) -join ','
-  $values = @{ image = (Image-Ref); pgAdminPassword = (Kv-Get $State.keyVault 'pg-admin-password'); ownerObjectId = $Me; location = $Location
-               allowedUserObjectIds = @($State.alsoAllow | Where-Object { $_ }); webAuthClientId = $State.webAuthClientId; keyVaultSecretNames = (Key-Names)
-               extAppId = $State.extAppId; extAllowedUsers = $users; extCallers = $State.extCallers }
-  $doc = @{ '$schema' = 'https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#'; contentVersion = '1.0.0.0'; parameters = @{} }
-  foreach ($k in $values.Keys) { $doc.parameters[$k] = @{ value = $values[$k] } }
-  $pfile = New-TemporaryFile
-  try {
-    [IO.File]::WriteAllText($pfile, ($doc | ConvertTo-Json -Depth 6))
-    $out = AzCli deployment group create -g $ResourceGroup -f (Join-Path $Root 'infra\demo.bicep') -n 'alice-demo' --parameters ('@' + $pfile) --query properties.outputs -o json | ConvertFrom-Json
-  } finally { Remove-Item $pfile -Force -ErrorAction SilentlyContinue }
-  Set-Prop $State 'demoWebUrl' $out.demoWebUrl.value; Set-Prop $State 'demoMcpUrl' $out.demoMcpUrl.value; Save-State $State
+  Deploy-Demo
   Write-Host ''
   Write-Host "Demo Alice:      $($State.demoWebUrl)/admin/demo" -ForegroundColor Green
-  Write-Host "Copilot address: $($State.demoMcpUrl)/mcp   (add it in Copilot as 'Alice (demo)', the same way as live Alice)" -ForegroundColor Green
+  Write-Host "Copilot address: $($State.demoMcpUrl)/mcp   (for Copilot: register it in the Teams Developer Portal, then -Step copilot -CopilotDemoAudience ... -CopilotDemoAuthId ...)" -ForegroundColor Green
   Write-Host 'Both scale to zero when idle: open the demo a couple of minutes before you present.'
+}
+
+if (Want 'copilot') {
+  Say 'Microsoft 365 Copilot: Alice as an agent (Entra single sign-on)'
+  if (-not $State.mcpUrl -or -not $State.extAppId -or -not $State.extCallers) { throw 'Run -Step apps first (it remembers the Alice API app and the MCP address).' }
+  $tokenStore = 'ab3be6b7-f5df-413d-ac2d-abf1e3fd9c0b'          # Microsoft's Enterprise token store: Copilot gets your token through it
+  $aud = @($State.extAudiences | Where-Object { $_ })
+  foreach ($a in (($CopilotAudience, $CopilotDemoAudience) -join ',' -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
+    if ($a -notmatch '^api://\S+$') { throw "'$a' is not an Application ID URI (it starts api://). Copy it from the Developer Portal registration." }
+    if ($aud -notcontains $a) { $aud += $a }
+  }
+  if (-not $aud) { throw 'Give -CopilotAudience: the Application ID URI the Teams Developer Portal showed after the Entra SSO registration.' }
+  Set-Prop $State 'extAudiences' $aud
+  if ($CopilotAuthId) { Set-Prop $State 'copilotAuthId' $CopilotAuthId.Trim() }
+  if ($CopilotDemoAuthId) { Set-Prop $State 'copilotDemoAuthId' $CopilotDemoAuthId.Trim() }
+  $also = Add-AlsoAllow
+  Save-State $State
+
+  # 1. The Alice API app: Teams' consent redirect, the new Application ID URI(s), the token store pre-authorised for access_as_user
+  $app = AzCli ad app show --id $State.extAppId -o json | ConvertFrom-Json
+  $uris = @($app.identifierUris | Where-Object { $_ })
+  $newUris = @($aud | Where-Object { $uris -notcontains $_ })
+  if ($newUris) { AzCli ad app update --id $State.extAppId --identifier-uris @($uris + $newUris) | Out-Null; Write-Host "Application ID URI added: $($newUris -join ', ')" }
+  $redirect = 'https://teams.microsoft.com/api/platform/v1.0/oAuthConsentRedirect'
+  $redirects = @($app.web.redirectUris | Where-Object { $_ })
+  if ($redirects -notcontains $redirect) { AzCli ad app update --id $State.extAppId --web-redirect-uris @($redirects + $redirect) | Out-Null; Write-Host 'Teams consent redirect added.' }
+  $scope = @($app.api.oauth2PermissionScopes | Where-Object { $_.value -eq 'access_as_user' })[0]
+  if (-not $scope) { throw 'The Alice API app has no access_as_user scope.' }
+  $pre = @($app.api.preAuthorizedApplications | Where-Object { $_ })
+  if (-not ($pre | Where-Object { $_.appId -eq $tokenStore })) {
+    $api = $app.api
+    $api.preAuthorizedApplications = @($pre + [pscustomobject]@{ appId = $tokenStore; delegatedPermissionIds = @($scope.id) })
+    $tmp = New-TemporaryFile
+    try {   # the whole api object goes back, so the scope and anything else in it are kept
+      [IO.File]::WriteAllText($tmp, (ConvertTo-Json -InputObject @{ api = $api } -Depth 8 -Compress))
+      AzCli rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$($app.id)" --headers 'Content-Type=application/json' --body "@$tmp" | Out-Null
+    } finally { Remove-Item $tmp -Force -ErrorAction SilentlyContinue }
+    Write-Host 'Microsoft token store pre-authorised for access_as_user.'
+  }
+
+  # 2. alice-mcp (and the demo's) accept Copilot: the token store as a caller, the new audiences
+  if ($State.extCallers -notmatch [regex]::Escape($tokenStore)) {
+    Set-Prop $State 'extCallers' ($State.extCallers.TrimEnd(';') + ";$tokenStore=Microsoft Copilot:copilot"); Save-State $State
+  }
+  Write-Host 'Updating alice-mcp (do not run this while a test-and-deploy run is in progress)...'
+  $users = (@($Me) + $also | Select-Object -Unique) -join ','
+  $certId = ''
+  if ($State.customDomain) {
+    $envName = AzCli containerapp env list -g $ResourceGroup --query '[0].name' -o tsv
+    $certId = AzCli containerapp env certificate list -g $ResourceGroup -n $envName --managed-certificates-only --query "[?properties.subjectName=='$($State.customDomain)'].id | [0]" -o tsv
+  }
+  Deploy 'apps' @{ image = (Image-Ref); webAuthClientId = $State.webAuthClientId; keyVaultSecretNames = (Key-Names)
+                   extAppId = $State.extAppId; extAllowedUsers = $users; extCallers = $State.extCallers; extAudiences = (Audiences)
+                   allowedUserObjectIds = $also; customDomain = "$($State.customDomain)"; customDomainCertificateId = "$certId"
+                   connectorClientId = "$($State.connectorClientId)" }
+  if ($State.demoMcpUrl) { Write-Host 'Updating the demo Alice...'; Deploy-Demo }
+
+  # 3. The app packages to upload in Teams
+  $py = Join-Path $Root '.venv\Scripts\python.exe'
+  if (-not (Test-Path $py)) { $py = 'python' }
+  $dist = Join-Path $Root 'dist'
+  $built = @()
+  if ($State.copilotAuthId) {
+    & $py (Join-Path $Root 'copilot_package.py') --url "$($State.mcpUrl)/mcp" --auth-id $State.copilotAuthId --out (Join-Path $dist 'Alice-Copilot.zip')
+    if ($LASTEXITCODE -ne 0) { throw 'Building the Alice package failed (see above).' }; $built += 'Alice-Copilot.zip'
+  }
+  if ($State.copilotDemoAuthId -and $State.demoMcpUrl) {
+    & $py (Join-Path $Root 'copilot_package.py') --url "$($State.demoMcpUrl)/mcp" --auth-id $State.copilotDemoAuthId --demo --out (Join-Path $dist 'Alice-demo-Copilot.zip')
+    if ($LASTEXITCODE -ne 0) { throw 'Building the demo package failed (see above).' }; $built += 'Alice-demo-Copilot.zip'
+  }
+  Write-Host ''
+  if ($built) {
+    Write-Host "Packages in $dist : $($built -join ', ')" -ForegroundColor Green
+    Write-Host 'In Teams: Apps > Manage your apps > Upload an app > Upload a custom app, pick the zip, then Add.' -ForegroundColor Green
+    Write-Host 'Then in Microsoft 365 Copilot (signed in with your work account) choose Alice under Agents.' -ForegroundColor Green
+  } else { Write-Host 'No package built: give -CopilotAuthId (and -CopilotDemoAuthId for the demo).' -ForegroundColor Yellow }
 }
 
 if (Want 'github') {
