@@ -28,7 +28,8 @@ t('every function has its tool, and the runtime runs them all', fn_names == tool
 t('the tools are Alice\'s own, with their input schemas', {'search_records', 'propose_record', 'propose_decision', 'read_file'} <= set(tool_names)
   and all('inputSchema' in x for x in rt['spec']['mcp_tool_description']['tools']))
 t('health tools are left out: health data never goes to Copilot', not ({'get_health_context', 'propose_health_note'} & set(tool_names)))
-t('every function has response semantics', all(f['capabilities']['response_semantics']['data_path'] == '$' for f in plug['functions']))
+t('every function has response semantics, without a card that would show empty placeholders', all(f['capabilities']['response_semantics']['data_path'] == '$'
+  and 'static_template' not in f['capabilities']['response_semantics'] for f in plug['functions']) and '${' not in json.dumps(plug))
 def png_info(b):
     assert b[:8] == b'\x89PNG\r\n\x1a\n'
     w, h, depth, colour = struct.unpack('>IIBB', b[16:26]); return w, h, depth, colour
@@ -51,6 +52,12 @@ dm, da, dp = (json.loads(d.read(n)) for n in ('manifest.json', 'declarativeAgent
 t('live Alice can use your email, chats, meetings, people, files and the web', {c['name'] for c in agent['capabilities']} ==
   {'Email', 'TeamsMessages', 'Meetings', 'People', 'OneDriveAndSharePoint', 'WebSearch'} and 'Never save anything from email' in agent['instructions'])
 t('the demo agent never gets them: it is shown to clients', 'capabilities' not in da and 'Never save anything from email' not in da['instructions'])
+lite = zipfile.ZipFile(io.BytesIO(CP.build(URL, AUTH, work_data=False, version='1.2.2')))
+la, lm = json.loads(lite.read('declarativeAgent.json')), json.loads(lite.read('manifest.json'))
+t('--alice-only leaves out Copilot\'s own data (for a user without the full licence), with its own version', 'capabilities' not in la
+  and 'Never save anything from email' not in la['instructions'] and lm['version'] == '1.2.2')
+try: CP.build(URL, AUTH, version='v2'); t('refused: a version that is not three numbers', False)
+except ValueError: t('refused: a version that is not three numbers', True)
 t('the demo has its own icon', d.read('color.png') != z.read('color.png') and png_info(d.read('color.png'))[:2] == (192, 192))
 t('the demo package is its own app, clearly marked', dm['id'] == CP.APP_ID_DEMO and dm['name']['short'] == 'Alice (demo)'
   and da['instructions'].startswith('THIS IS THE DEMO ALICE') and dp['namespace'] == 'alicedemo' and 'fictional' in dm['description']['full'])

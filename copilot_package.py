@@ -25,7 +25,7 @@ NAMESPACE_LIVE, NAMESPACE_DEMO = 'alice', 'alicedemo'
 # fixed app IDs, so uploading a newer package updates the same app in Teams instead of adding a second one
 APP_ID_LIVE = 'a11ce000-5ab5-4c0e-9a11-ce0000000001'
 APP_ID_DEMO = 'a11ce000-5ab5-4c0e-9a11-ce0000000002'
-VERSION = '1.2.0'           # raise it whenever the package changes, so Teams takes the upload as an update
+VERSION = '1.2.1'           # raise it whenever the package changes, so Teams takes the upload as an update
 DEFAULT_TEMPLATE = {'type': 'AdaptiveCard', '$schema': 'https://adaptivecards.io/schemas/adaptive-card.json', 'version': '1.6',
                     'body': [{'type': 'TextBlock', 'text': '${if(title, title, description)}', 'wrap': True}]}
 
@@ -110,7 +110,8 @@ def plugin(url, auth_id, demo=False, tool_list=None):
     url, auth_id = _check_url(url), _check_auth_id(auth_id)
     tl = tool_list if tool_list is not None else tools()
     fns = [{'name': t['name'], 'description': (t.get('description') or t['name'])[:1000],
-            'capabilities': {'response_semantics': {'data_path': '$', 'properties': {}, 'static_template': DEFAULT_TEMPLATE}}} for t in tl]
+            'capabilities': {'response_semantics': {'data_path': '$', 'properties': {}}}} for t in tl]   # no card: Copilot
+    # writes the answer from Alice's results (a template needs fields Alice's answers do not have at the top, and showed '${description}')
     return {'$schema': 'https://developer.microsoft.com/json-schemas/copilot/plugin/v2.4/schema.json', 'schema_version': 'v2.4',
             'name_for_human': 'Alice (demo)' if demo else 'Alice',
             'description_for_human': ('Demo data: a fictional team built around public information. ' if demo else '') +
@@ -121,8 +122,9 @@ def plugin(url, auth_id, demo=False, tool_list=None):
                           'run_for_functions': [t['name'] for t in tl]}]}
 
 
-def agent(demo=False):
-    text = DEMO_PREFIX + AGENT_INSTRUCTIONS if demo else AGENT_INSTRUCTIONS + WORK_DATA_INSTRUCTIONS
+def agent(demo=False, work_data=True):
+    work_data = work_data and not demo                       # the demo never gets them
+    text = DEMO_PREFIX + AGENT_INSTRUCTIONS if demo else AGENT_INSTRUCTIONS + (WORK_DATA_INSTRUCTIONS if work_data else '')
     assert len(text) <= 8000
     starters = STARTERS_DEMO if demo else STARTERS_LIVE
     return {'$schema': 'https://developer.microsoft.com/json-schemas/copilot/declarative-agent/v1.5/schema.json', 'version': 'v1.5',
@@ -131,14 +133,14 @@ def agent(demo=False):
                            "Stefan's AI substrate: approved memories, decisions, organisations and documents, with every change waiting for approval.",
             'instructions': text, 'conversation_starters': [{'title': a, 'text': b} for a, b in starters],
             'actions': [{'id': 'alicePlugin', 'file': 'alice-plugin.json'}],
-            **({} if demo else {'capabilities': WORK_CAPABILITIES})}
+            **({'capabilities': WORK_CAPABILITIES} if work_data else {})}
 
 
-def manifest(url, demo=False):
+def manifest(url, demo=False, version=VERSION):
     host = re.sub(r'^https://', '', _check_url(url)).split('/')[0]
     name = 'Alice (demo)' if demo else 'Alice'
     return {'$schema': 'https://developer.microsoft.com/en-us/json-schemas/teams/v1.19/MicrosoftTeams.schema.json', 'manifestVersion': '1.19',
-            'version': VERSION, 'id': APP_ID_DEMO if demo else APP_ID_LIVE,
+            'version': version, 'id': APP_ID_DEMO if demo else APP_ID_LIVE,
             'developer': {'name': 'Stefan O\'Connor', 'websiteUrl': f'https://{host}', 'privacyUrl': f'https://{host}', 'termsOfUseUrl': f'https://{host}'},
             'icons': {'color': 'color.png', 'outline': 'outline.png'},
             'name': {'short': name, 'full': name + (': client demo' if demo else ': personal AI substrate')},
@@ -178,9 +180,10 @@ def _icons(demo):
     return {'color.png': (ROOT / 'Static' / ('icon-demo-192.png' if demo else 'icon-192.png')).read_bytes(), 'outline.png': _outline()}
 
 
-def build(url, auth_id, demo=False, tool_list=None):
+def build(url, auth_id, demo=False, tool_list=None, work_data=True, version=VERSION):
     """The app package as bytes (a zip with the four files at its root)."""
-    files = {'manifest.json': manifest(url, demo), 'declarativeAgent.json': agent(demo), 'alice-plugin.json': plugin(url, auth_id, demo, tool_list)}
+    if not re.fullmatch(r'\d{1,3}\.\d{1,3}\.\d{1,4}', version or ''): raise ValueError('Give the version as three numbers, e.g. 1.2.2.')
+    files = {'manifest.json': manifest(url, demo, version), 'declarativeAgent.json': agent(demo, work_data), 'alice-plugin.json': plugin(url, auth_id, demo, tool_list)}
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as z:
         for name, doc in files.items(): z.writestr(name, json.dumps(doc, indent=2, ensure_ascii=False))
@@ -195,9 +198,12 @@ if __name__ == '__main__':
     ap.add_argument('--url', required=True, help='Alice external endpoint, https://<alice-mcp>/mcp')
     ap.add_argument('--auth-id', required=True, help='auth config ID from the Teams Developer Portal SSO registration')
     ap.add_argument('--demo', action='store_true', help='package the demo Alice')
+    ap.add_argument('--alice-only', action='store_true', help="leave out Copilot's email, chats, meetings, people, files and web "
+                    '(they need a full Microsoft 365 Copilot licence; without one the whole agent fails)')
+    ap.add_argument('--version', default=VERSION, help=f'package version (default {VERSION}); Teams needs a higher one for each update')
     ap.add_argument('--out', default='', help='zip to write (default dist\\Alice-Copilot.zip or dist\\Alice-demo-Copilot.zip)')
     a = ap.parse_args()
-    try: raw = build(a.url, a.auth_id, a.demo)
+    try: raw = build(a.url, a.auth_id, a.demo, work_data=not a.alice_only, version=a.version)
     except ValueError as e:
         print('Not built:', e); sys.exit(2)
     out = Path(a.out or (ROOT / 'dist' / ('Alice-demo-Copilot.zip' if a.demo else 'Alice-Copilot.zip')))
