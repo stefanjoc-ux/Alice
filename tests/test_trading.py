@@ -178,3 +178,5 @@ t('an unknown kind is refused', cl.post('/admin/api/trading/portfolios', json={'
 t('"what if I had sold" still works on a live portfolio (it is a simulation)', bool(T.simulate_sell(live, '2026-09-10')))
 ap = next(a for a in cl.get('/admin/api/apps').json()['apps'] if a['id'] == 'trading')
 t('the Apps tile shows live and paper values separately', [x['label'] for x in ap['summary']['stats']][:2] == ['Live portfolios value', 'Paper portfolios value'])
+T._schema(); T._schema()
+t('starting again (a restart, or web and mcp together) leaves the portfolio column as it is', 'kind' in T.portfolios()[0])

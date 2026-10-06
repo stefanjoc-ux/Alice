@@ -28,6 +28,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
+import sqlite3
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
@@ -68,8 +69,10 @@ def _schema():
                   "open REAL, high REAL, low REAL, close REAL NOT NULL, ccy TEXT NOT NULL DEFAULT '', PRIMARY KEY (symbol, exchange, day))")
         c.execute("CREATE TABLE IF NOT EXISTS tp_price_status (symbol TEXT NOT NULL, exchange TEXT NOT NULL DEFAULT '', checked_at TEXT, "
                   "error TEXT NOT NULL DEFAULT '', ccy TEXT NOT NULL DEFAULT '', PRIMARY KEY (symbol, exchange))")
-        if 'kind' not in {r[1] for r in c.execute('PRAGMA table_info(tp_portfolios)')}:   # paper (practice) or live (mirrors a real account)
-            c.execute("ALTER TABLE tp_portfolios ADD COLUMN kind TEXT NOT NULL DEFAULT 'paper'")
+        if 'kind' not in {r['name'] for r in c.execute('PRAGMA table_info(tp_portfolios)')}:   # paper (practice) or live (mirrors a real account)
+            try: c.execute("ALTER TABLE tp_portfolios ADD COLUMN kind TEXT NOT NULL DEFAULT 'paper'")
+            except sqlite3.OperationalError as e:      # web and mcp start together: the other one may have just added it
+                if 'already exists' not in str(e) and 'duplicate column' not in str(e).lower(): raise
         c.execute("INSERT OR IGNORE INTO settings VALUES ('trading_tv_ip_check','true')")
 
 
