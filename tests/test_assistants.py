@@ -107,7 +107,7 @@ t('the staff page lists what the assistant covers, from its approved knowledge o
   and 'Example Council leave arrangements' not in page and 'Local leave note' not in page and 'Expenses policy' not in page)
 t('the staff page explains how answers work and privacy', 'How answers work' in page and 'Your privacy' in page and 'id="topics"' in page)
 t('the seeded HR policy assistant is called Alex', A.get('hr-policy')['name'] == 'Alex' and A.get('hr-policy')['greeting'].startswith("I'm Alex"))
-t('the seeded proposal writer is called Parker', A.get('proposal-writer')['name'] == 'Parker' and A.get('proposal-writer')['greeting'].startswith("I'm Parker"))
+t('the seeded proposal writer is called Parker', A.get('proposal-writer')['name'] == 'Parker' and A.get('proposal-writer')['greeting'].startswith("Hello, I'm Parker"))
 import importlib
 with s.db() as c:
     c.execute("UPDATE assistants SET name='Proposal writer' WHERE id='proposal-writer'")

@@ -1350,4 +1350,15 @@ def summary_row(r):
     r['suggestions'] = len(sg)                                    # changes a model suggested, waiting for Apply or Dismiss
     r['suggested_by'] = sorted({x.get('from') or 'a model' for x in sg})
     r.update(version_of(r, ctx))
+    r['ref'] = 'P-' + (r.get('id') or '')[:6].upper()             # as proposal_share.ref: searchable in the Proposals list
+    # latest activity: the last edit or the newest suggestion still waiting, whichever is later (rows sort by it)
+    last = max(sg, key=lambda x: x.get('at') or '') if sg else None
+    if last and (last.get('at') or '') > (r.get('edited_at') or ''):
+        r.update(activity_at=last['at'], activity_kind='suggestion', activity_from=last.get('from') or 'a model')
+    else:
+        r.update(activity_at=r.get('edited_at') or '', activity_kind='edit', activity_from='')
+    # the list's group: a written proposal with suggestions waiting is back in progress until they are applied or dismissed
+    st = r.get('status')
+    r['group'] = ('progress' if st == 'form' or (st in ('done', 'failed') and sg) else
+                  'running' if st == 'running' else 'written')
     return r

@@ -59,7 +59,9 @@ OLD_HR_GREETING = ('Ask me about HR policies: leave, absence, flexible working, 
                    'policies and show where each answer comes from. For anything about your own situation, contact HR.')
 ALEX_GREETING = ('I\'m Alex. Ask me about HR policies: leave, absence, flexible working, expenses, conduct. I answer from the published '
                  'policies and show where each answer comes from. For anything about your own situation, contact HR.')
-PARKER_GREETING = ('I\'m Parker. Give me the brief and any context: I will write the proposal into your template, check it against the brief '
+OLD_PARKER_GREETING = ('I\'m Parker. Give me the brief and any context: I will write the proposal into your template, check it against the brief '
+                       'and give you a Word document to review.')
+PARKER_GREETING = ('Hello, I\'m Parker. Give me the brief and any context: I will write the proposal into your template, check it against the brief '
                    'and give you a Word document to review.')
 
 RENAMES = [('hr-policy', 'HR policy assistant', 'Alex', OLD_HR_GREETING, ALEX_GREETING),
@@ -96,6 +98,8 @@ with store.db() as c:
                 "SELECT 1 FROM activity WHERE action='assistant_renamed' AND target=?", (_id,)).fetchone():
             c.execute('UPDATE assistants SET name=?,greeting=CASE WHEN greeting=? THEN ? ELSE greeting END WHERE id=?', (_new, _og, _ng, _id))
             store.audit(c, 'assistant_renamed', _id, 'human_control', f'{_old} renamed {_new} (owner\'s request)')
+    # Parker's greeting starts 'Hello, I'm Parker' (owner's request); a greeting you wrote yourself is kept
+    c.execute("UPDATE assistants SET greeting=? WHERE id='proposal-writer' AND greeting=?", (PARKER_GREETING, OLD_PARKER_GREETING))
     if not c.execute("SELECT 1 FROM assistants WHERE id='proposal-writer'").fetchone():
         c.execute('INSERT INTO assistants(id,name,description,greeting,packs,provider,categories,guidance,contact,status,created_at,updated_at,kind,settings) '
                   'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
