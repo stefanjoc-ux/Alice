@@ -18,7 +18,7 @@ MT.create_tag('pricing', 'Prices and rates')
 import organisations; organisations.create('Fictional Council', client=True)
 
 REPLY = {'changes': []}
-X._ask = lambda payload: (SENT.update(p=json.loads(payload)) or json.dumps(REPLY))
+X._ask = lambda payload: ((SENT.update(p=json.loads(payload)) or json.dumps(REPLY)), False)
 SENT = {}
 
 REPLY['changes'] = [
@@ -72,23 +72,40 @@ with s.db() as c:
 t('Undo puts things back as they were', gone and back and next(x for x in X.changes() if x['id'] == done['id'])['state'] == 'undone')
 
 # a category a rule uses is protected, even one Temple made
-X._ask = lambda p: json.dumps({'changes': [{'op': 'create', 'kind': 'category', 'name': 'Projects', 'members': car, 'confidence': 0.9, 'reason': 'again'}]})
+X._ask = lambda p: (json.dumps({'changes': [{'op': 'create', 'kind': 'category', 'name': 'Projects', 'members': car, 'confidence': 0.9, 'reason': 'again'}]}), False)
 t('an undone change is not repeated', X.review(manual=True)['applied'] == 0)
-X._ask = lambda p: json.dumps({'changes': [{'op': 'create', 'kind': 'category', 'name': 'Builds', 'members': car, 'confidence': 0.9, 'reason': 'x'}]})
+X._ask = lambda p: (json.dumps({'changes': [{'op': 'create', 'kind': 'category', 'name': 'Builds', 'members': car, 'confidence': 0.9, 'reason': 'x'}]}), False)
 X.review(manual=True)
 with s.db() as c:
     p = json.loads(c.execute("SELECT params FROM rules WHERE id='provider_allow'").fetchone()[0]); p['blocked'] = {'Builds': ['grok']}
     c.execute("UPDATE rules SET params=? WHERE id='provider_allow'", (json.dumps(p),))
-X._ask = lambda p: json.dumps({'changes': [{'op': 'retire', 'kind': 'category', 'name': 'Builds', 'confidence': 0.95, 'reason': 'tidy'}]})
+X._ask = lambda p: (json.dumps({'changes': [{'op': 'retire', 'kind': 'category', 'name': 'Builds', 'confidence': 0.95, 'reason': 'tidy'}]}), False)
 X.review(manual=True)
 w = [x for x in X.changes('proposed') if x['target'] == 'Builds']
 t('a category a rule uses waits for you, even Temple\'s own', len(w) == 1 and 'A rule uses' in w[0]['why_waiting'])
 
 X.set_mode('suggest')
-X._ask = lambda p: json.dumps({'changes': [{'op': 'describe', 'kind': 'tag', 'name': 'pricing', 'description': 'Rates and prices', 'confidence': 0.9, 'reason': 'r'},
-                                           {'op': 'create', 'kind': 'tag', 'name': 'carport', 'members': car, 'confidence': 0.9, 'reason': 'r'}]})
+X._ask = lambda p: (json.dumps({'changes': [{'op': 'describe', 'kind': 'tag', 'name': 'pricing', 'description': 'Rates and prices', 'confidence': 0.9, 'reason': 'r'},
+                                           {'op': 'create', 'kind': 'tag', 'name': 'carport', 'members': car, 'confidence': 0.9, 'reason': 'r'}]}), False)
 r = X.review(manual=True)
 t('suggest only: nothing changes on its own', r['applied'] == 0 and r['proposed'] == 2)
 X.set_mode('off')
 t('off: no automatic review', X.review() == {'status': 'off'} and not X.due())
 t('the page shows Temple\'s housekeeping', 'id="tx-panel"' in cl.get('/admin/memories').text)
+
+# answers that are hard to read: words around the JSON are fine; a cut-off answer is asked again with fewer memories
+X.set_mode('auto')
+calls = []
+def flaky(p):
+    calls.append(json.loads(p))
+    if len(calls) == 1: return '{"changes": [{"op": "create", "kind": "tag", "name": "half', True
+    return 'Here you go:\n```json\n{"changes": [{"op": "describe", "kind": "tag", "name": "pricing", "description": "Prices and rates", "confidence": 0.9, "reason": "r"}]}\n```', False
+X._ask = flaky
+r = X.review(manual=True)
+t('a cut-off answer is asked again, with fewer memories, and words around the JSON are tolerated', len(calls) == 2 and r.get('status') != 'error'
+  and len(calls[1]['memories']) <= len(calls[0]['memories']) and 'note' in calls[1])
+t('memories go to Temple as short ids, mapped back to the real ones', all(m['id'].startswith('m') and len(m['id']) < 6 for m in calls[0]['memories']))
+X._ask = lambda p: ('not json at all', False)
+try: X.review(manual=True); t('two unreadable answers: a clear error and nothing changed', False)
+except ValueError as e: t('two unreadable answers: a clear error and nothing changed', 'could not be read' in str(e))
+X.set_mode('off')

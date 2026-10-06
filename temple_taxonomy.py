@@ -29,6 +29,7 @@ MIN_CAT, MIN_TAG = 3, 2
 AUTO_CONFIDENCE = 0.75
 REVIEW_EVERY_DAYS, REVIEW_AFTER_NEW = 7, 20
 SAMPLE = 150
+MAX_TOKENS = 8000
 UNDO_DAYS = 7
 OPS = ('create', 'merge', 'rename', 'retire', 'describe', 'split')
 _lock = threading.Lock()
@@ -364,6 +365,7 @@ def _sample():
 
 
 def _ask(payload):
+    """Temple's answer and whether it stopped at the length limit."""
     import temple, usage_meter
     provider = temple.reviewer()
     key = 'OPENAI_API_KEY' if provider == 'openai' else 'ANTHROPIC_API_KEY'
@@ -371,14 +373,43 @@ def _ask(payload):
     if provider == 'openai':
         from openai import OpenAI
         with OpenAI(timeout=90, max_retries=0) as client:
-            r = client.responses.create(model='gpt-6-luna', instructions=PROMPT, input=payload, max_output_tokens=4000, reasoning={'effort': 'none'}, store=False)
+            r = client.responses.create(model='gpt-6-luna', instructions=PROMPT, input=payload, max_output_tokens=MAX_TOKENS, reasoning={'effort': 'none'},
+                                        store=False, text={'format': {'type': 'json_object'}})
         usage_meter.log(r, provider, 'gpt-6-luna', 'Temple taxonomy review')
-        return r.output_text
+        return r.output_text, getattr(r, 'status', '') == 'incomplete'
     from anthropic import Anthropic
     with Anthropic(timeout=90, max_retries=0) as client:
-        r = client.messages.create(model='claude-haiku-4-5-20251001', system=PROMPT, max_tokens=4000, messages=[{'role': 'user', 'content': payload}])
+        r = client.messages.create(model='claude-haiku-4-5-20251001', system=PROMPT, max_tokens=MAX_TOKENS, messages=[{'role': 'user', 'content': payload}])
     usage_meter.log(r, 'claude', 'claude-haiku-4-5-20251001', 'Temple taxonomy review')
-    return '\n'.join(b.text for b in r.content if b.type == 'text')
+    return '\n'.join(b.text for b in r.content if b.type == 'text'), getattr(r, 'stop_reason', '') == 'max_tokens'
+
+
+def _parse(raw):
+    """The changes list from Temple's answer: tolerates a code fence or words around the JSON; None if unusable."""
+    t = re.sub(r'^```(?:json)?\s*|\s*```$', '', (raw or '').strip())
+    a, b = t.find('{'), t.rfind('}')
+    if a < 0 or b < a: return None
+    try: v = json.loads(t[a:b + 1], strict=False)
+    except ValueError: return None
+    return v.get('changes') or [] if isinstance(v, dict) else None
+
+
+def _short_ids(sample):
+    """Memories go to Temple as m1, m2… (not 32-character ids), so its answer stays short; {short: real id}."""
+    back = {}
+    for i, r in enumerate(sample, 1):
+        back['m' + str(i)] = r['id']
+    return back
+
+
+def _long_ids(changes, back):
+    def fix(xs): return [back.get(str(x), str(x)) for x in xs or []] if isinstance(xs, list) else xs
+    for ch in changes:
+        if not isinstance(ch, dict): continue
+        if 'members' in ch: ch['members'] = fix(ch['members'])
+        for p in ch.get('parts') or []:
+            if isinstance(p, dict) and 'members' in p: p['members'] = fix(p['members'])
+    return changes
 
 
 @agents.tracked('temple-taxonomy')
@@ -399,16 +430,26 @@ def review(manual=False):
             rejected = {r[0] for r in c.execute("SELECT signature FROM taxonomy_changes WHERE state IN ('rejected','undone')")}
             rejected |= {r[0] for r in c.execute("SELECT signature FROM taxonomy_changes WHERE state='proposed'")}
         with store.db() as c: _put_setting(c, 'taxonomy_reviewed_at', store.now())
-        payload = json.dumps({
+        def ask(sample, note=''):
+            back = _short_ids(sample)
+            short = [{**r, 'id': k} for k, r in zip(back, sample)]
+            payload = json.dumps({**base, 'memories': short, **({'note': note} if note else {})}, ensure_ascii=False)
+            raw, cut = _ask(payload)
+            got = None if cut else _parse(raw)
+            return None if got is None else _long_ids(got, back)
+        base = {
             'categories': [{'name': x['name'], 'description': x['description'], 'memories': x['total'], 'area': x.get('area', ''),
                             'created_by': by.get(('category', x['name'].lower()), 'human'), 'used_by_a_rule': x['name'].lower() in protected} for x in cats],
             'tags': [{'name': x['name'], 'description': x['description'], 'memories': x['total'], 'area': x['area'],
                       'created_by': by.get(('tag', x['name'].lower()), 'human')} for x in tags],
-            'memories': sample, 'limits': {'categories': MAX_CATEGORIES, 'tags': MAX_TAGS}}, ensure_ascii=False)
+            'limits': {'categories': MAX_CATEGORIES, 'tags': MAX_TAGS}}
         for r in sample: agents.note('read', 'memory', r['id'], 'taxonomy review')
-        raw = _ask(payload).strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
-        try: changes = (json.loads(raw) or {}).get('changes') or []
-        except json.JSONDecodeError: raise ValueError('Temple returned something that was not JSON. Try Review now again.') from None
+        changes = ask(sample)
+        if changes is None:          # cut off or not JSON: once more, with fewer memories and fewer changes
+            sample = sample[:max(20, len(sample) // 3)]
+            changes = ask(sample, 'Answer with JSON only, and at most 10 changes.')
+        if changes is None:
+            raise ValueError('Temple\'s answer could not be read twice in a row (cut off or not JSON). Nothing was changed; try Review now later.')
         ids = {r['id'] for r in sample}
         done = {'applied': 0, 'proposed': 0, 'refused': 0}
         for raw_ch in changes[:30]:          # one transaction per change: a failure leaves the others in place
