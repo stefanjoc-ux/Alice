@@ -151,3 +151,39 @@ t('a suggestion from an outside model names it', P.get(pid)['context']['model_su
 
 t('Alice\'s own chat has the tools', {'list_proposals', 'get_proposal', 'propose_proposal_changes'} <= app.ALLOWED_TOOLS)
 t('registered for the Agents page, the change tool as a write', 'get_proposal' in agents.TOOLS and 'propose_proposal_changes' in agents.WRITE_TOOLS)
+
+# the Proposals list: a reference on every row, the latest activity (edit or suggestion), suggestions waiting = In progress
+def rows(): return {x['id']: x for x in cl.get(f'/assistant/{aid}/proposals').json()['proposals']}
+for x in P.get(pid)['context'].get('model_suggestions') or []:
+    if x.get('state') == 'pending': PS.decide(aid, pid, x['id'], 'dismissed')
+L = rows()
+t('every row carries its reference, as proposal_share.ref', L[pid]['ref'] == ref and L[form]['ref'] == PS.ref(form) and ref == 'P-' + pid[:6].upper())
+t('a written proposal with nothing waiting is Written, its date the last edit',
+  L[pid]['group'] == 'written' and L[pid]['activity_kind'] == 'edit' and L[pid]['activity_at'] == L[pid]['edited_at'])
+t('a proposal in progress is In progress', L[form]['group'] == 'progress' and L[form]['activity_kind'] == 'edit')
+before = L[pid]
+s1 = PS.suggest(ref, 'Tighter summary.', {'notes': 'Keep the summary to one paragraph.'}, 'Claude')
+time.sleep(0.01)
+s2 = PS.suggest(ref, 'Say six weeks.', {'notes': 'Say six weeks in the approach.'}, 'ChatGPT')
+L = rows(); x = L[pid]
+t('a written proposal with suggestions waiting moves to In progress', x['group'] == 'progress' and x['status'] == 'done')
+t('it keeps its status and score for the pill, and the suggestion count',
+  x['verdict'] == before['verdict'] and x['score'] == before['score'] and x['suggestions'] == 2)
+t('its date is the newest suggestion, with who suggested it',
+  x['activity_kind'] == 'suggestion' and x['activity_from'] == 'ChatGPT' and x['activity_at'] > x['edited_at']
+  and x['activity_at'] == max(s['at'] for s in P.get(pid)['context']['model_suggestions'] if s['state'] == 'pending'))
+t('the newest activity sorts first', sorted(L.values(), key=lambda r: r['activity_at'], reverse=True)[0]['id'] == pid)
+PS.decide(aid, pid, s1['suggestion'], 'applied')
+x = rows()[pid]
+pend = [s for s in P.get(pid)['context']['model_suggestions'] if s['state'] == 'pending']
+t('with one still waiting it stays In progress; applying counts as an edit, so the date is the later of the two',
+  x['group'] == 'progress' and x['suggestions'] == 1 and x['activity_at'] == max(x['edited_at'], pend[0]['at']))
+PS.decide(aid, pid, s2['suggestion'], 'dismissed')
+x = rows()[pid]
+t('applied or dismissed, it goes back to Written, dated by its last edit',
+  x['group'] == 'written' and x['activity_kind'] == 'edit' and x['activity_at'] == x['edited_at'] and not x['suggestions'])
+t('suggestions are still never applied by Alice: the notes are unchanged', P.get(pid)['inputs'].get('notes') != 'Say six weeks in the approach.')
+t('a suggestion on a proposal in progress keeps it In progress',
+  (PS.suggest(PS.ref(form), 'n', {'notes': 'More detail.'}, 'Claude') and rows()[form]['group'] == 'progress'))
+page = cl.get(f'/assistant/{aid}').text
+t('the page searches by reference and shows it in the workbar', 'x.ref||' in page and 'id="wb-ref"' in page and 'Suggestion from ' in page)
