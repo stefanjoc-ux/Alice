@@ -30,7 +30,7 @@ import substrate_store as store
 
 _outside = contextvars.ContextVar('alice_auto_outside', default='')
 _outside_provider = contextvars.ContextVar('alice_auto_outside_provider', default='')
-CONNECTOR_APPS = {'claude': 'Claude', 'copilot': 'Microsoft Copilot'}
+CONNECTOR_APPS = {'claude': 'Claude', 'copilot': 'Microsoft Copilot', 'chatgpt': 'ChatGPT'}   # ChatGPT: Stefan, 6 Oct 2026, same as Claude
 _deciding = contextvars.ContextVar('alice_auto_deciding', default=False)
 TYPES = {'memory': 'Memory', 'knowledge': 'Knowledge', 'orgfact': 'Organisation fact', 'chat': 'Saved conversation'}
 IMPACT = re.compile(r'^\W*impact\W*[:\-]?\s*(low|medium|high)\b', re.I | re.M)
@@ -84,7 +84,7 @@ def connector_knowledge():
         row = c.execute("SELECT value FROM settings WHERE key='connector_knowledge'").fetchone()
     try: v = json.loads(row[0]) if row else {}
     except ValueError: v = {}
-    return {k: bool(v.get(k, False)) for k in CONNECTOR_APPS}
+    return {k: bool(v.get(k, True)) for k in CONNECTOR_APPS}       # an app added later starts on, as Stefan decided for ChatGPT
 
 
 def set_connector_knowledge(apps):
@@ -99,9 +99,10 @@ def set_connector_knowledge(apps):
 
 def _app_of(label, provider=''):
     p = (provider or '').lower()
+    if p == 'openai': return 'chatgpt'
     if p in CONNECTOR_APPS: return p
     t = (label or '').lower()
-    return 'copilot' if 'copilot' in t else 'claude' if 'claude' in t else ''
+    return 'copilot' if 'copilot' in t else 'chatgpt' if 'chatgpt' in t else 'claude' if 'claude' in t else ''
 
 
 def deciding(): return _deciding.get()

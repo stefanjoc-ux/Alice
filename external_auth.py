@@ -24,8 +24,11 @@ person to Entra, and every token is then checked exactly as above (tenant, allow
   ALICE_EXT_CONNECTOR_CLIENT_ID  Application (client) ID of the "Alice connector sign-in" app registration
   ALICE_EXT_CONNECTOR_SECRET     Its client secret (Key Vault)
   ALICE_EXT_CONNECTOR_KEY        Random key (32+ characters) that signs Alice's own tokens and encrypts stored sign-ins (Key Vault)
-  ALICE_EXT_CONNECTOR_LABEL      Optional; shown on proposals, default Claude
-  ALICE_EXT_CONNECTOR_REDIRECTS  Optional; client callback addresses allowed, comma separated (default: Claude's)
+  ALICE_EXT_CONNECTOR_LABEL      Optional; the name for an app whose callback is not one Alice knows, default Claude
+  ALICE_EXT_CONNECTOR_REDIRECTS  Optional; client callback addresses allowed, comma separated (default: Claude's and ChatGPT's)
+The same sign-in serves ChatGPT on the web (Stefan's decision, 6 Oct 2026): each app is named by the callback address it
+registered with (claude.ai = Claude, provider claude; chatgpt.com = ChatGPT, provider openai), so proposals, the activity log,
+the Agents page and the provider rules see the real app.
   ALICE_EXT_CONNECTOR_STORE      Optional; folder for the encrypted sign-in records (default <data folder>/oauth-connector)
 """
 import re
@@ -38,12 +41,25 @@ GUID = re.compile(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}
 PROVIDER = re.compile(r'^[a-z][a-z0-9_-]{1,30}$')
 CLOCK_SKEW = 120          # seconds allowed for clock differences on nbf/iat
 CLAUDE_CALLBACK = 'https://claude.ai/api/mcp/auth_callback'     # the hosted Claude apps: web, Desktop, mobile, Cowork
+CHATGPT_CALLBACKS = ('https://chatgpt.com/connector_platform_oauth_redirect', 'https://chatgpt.com/connector/oauth/*')   # ChatGPT on the web
+DEFAULT_REDIRECTS = (CLAUDE_CALLBACK,) + CHATGPT_CALLBACKS
 
 
 @dataclass(frozen=True)
 class Caller:
     label: str            # shown on proposals: [via <label>]
     provider: str         # used by the Provider allow-list (e.g. 'copilot', 'claude')
+
+
+CONNECTOR_APPS = {'claude.ai': Caller('Claude', 'claude'), 'chatgpt.com': Caller('ChatGPT', 'openai')}   # by callback host
+
+
+def connector_app(redirect_uris):
+    """The app a connector client is, from the callback addresses it registered (exact host match), or None."""
+    for u in redirect_uris or []:
+        host = (urlparse(str(u)).hostname or '').lower()
+        if host in CONNECTOR_APPS: return CONNECTOR_APPS[host]
+    return None
 
 
 @dataclass
@@ -128,7 +144,7 @@ def load_config(env):
         if not GUID.match(cid): raise ValueError('ALICE_EXT_CONNECTOR_CLIENT_ID must be a GUID.')
         if cid == app: raise ValueError('The connector needs its own app registration, not the Alice API app.')
         if len(key) < 32: raise ValueError('ALICE_EXT_CONNECTOR_KEY must be at least 32 characters.')
-        redirects = tuple(r.strip() for r in g('ALICE_EXT_CONNECTOR_REDIRECTS', CLAUDE_CALLBACK).split(',') if r.strip())
+        redirects = tuple(r.strip() for r in (g('ALICE_EXT_CONNECTOR_REDIRECTS') or ','.join(DEFAULT_REDIRECTS)).split(',') if r.strip())
         for r in redirects:
             ru = urlparse(r)
             if not (ru.scheme == 'https' or (ru.scheme == 'http' and ru.hostname in ('127.0.0.1', 'localhost'))):
@@ -189,7 +205,11 @@ class EntraVerifier(JWTVerifier):
         return at
 
     def caller(self, claims):
-        return self.cfg.callers[str(claims.get('azp') or claims.get('appid') or '').lower()]
+        app = str(claims.get('azp') or claims.get('appid') or '').lower()
+        named = claims.get('alice_app')        # set by the connector sign-in from the app's registered callback (AliceProxy)
+        if named and app == self.cfg.connector_client_id and named in {c.label for c in CONNECTOR_APPS.values()}:
+            return next(c for c in CONNECTOR_APPS.values() if c.label == named)
+        return self.cfg.callers[app]
 
 
 def connector_store(cfg):
@@ -217,8 +237,27 @@ def connector_proxy(verifier):
     and is sent to Entra with Alice's connector app. The Entra token that comes back is checked by Alice's EntraVerifier,
     so the same tenant, user, scope and caller rules apply as for direct tokens."""
     from fastmcp.server.auth.providers.azure import AzureProvider
+
+    class AliceProxy(AzureProvider):
+        """Adds which app this is (Claude or ChatGPT), from the callback the client registered, to the checked token."""
+        _apps = {}
+
+        async def load_access_token(self, token):
+            at = await super().load_access_token(token)
+            if at is None: return None
+            try: cid = str(self.jwt_issuer.verify_token(token).get('client_id') or '')
+            except Exception: cid = ''
+            if cid and cid not in self._apps:
+                client = await self.get_client(cid)
+                self._apps[cid] = connector_app(getattr(client, 'redirect_uris', None) or [])
+            app = self._apps.get(cid)
+            if app:
+                at = at.model_copy(deep=True)
+                at.claims = {**(at.claims or {}), 'alice_app': app.label}
+            return at
+
     cfg = verifier.cfg
-    proxy = AzureProvider(client_id=cfg.connector_client_id, client_secret=cfg.connector_secret, tenant_id=cfg.tenant_id,
+    proxy = AliceProxy(client_id=cfg.connector_client_id, client_secret=cfg.connector_secret, tenant_id=cfg.tenant_id,
                           identifier_uri=cfg.app_id_uri, required_scopes=[cfg.scope], base_url=cfg.base_url,
                           allowed_client_redirect_uris=list(cfg.connector_redirects), client_storage=connector_store(cfg),
                           jwt_signing_key=cfg.connector_key, require_authorization_consent=True,

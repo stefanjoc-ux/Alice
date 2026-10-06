@@ -187,3 +187,5 @@ try:
 except ValueError: t('secrets still refused at proposal', True)
 import activity_log
 t('activity labels', all(a in activity_log.LABELS for a in ('auto_approved', 'auto_held', 'auto_undone', 'auto_approve_setting')))
+t('ChatGPT is an outside app of its own for notes, on by default like Claude', A._app_of('ChatGPT', 'openai') == 'chatgpt'
+  and A.connector_knowledge()['chatgpt'] is True and A.CONNECTOR_APPS['chatgpt'] == 'ChatGPT')

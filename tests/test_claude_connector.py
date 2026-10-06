@@ -27,7 +27,7 @@ ENV = {'ALICE_EXT_TENANT_ID': TEN, 'ALICE_EXT_APP_ID': APP, 'ALICE_EXT_ALLOWED_U
 # 1. settings
 cfg = X.load_config(ENV)
 t('connector settings load; Claude is added as a caller', cfg.connector_client_id == CONNECTOR and cfg.callers[CONNECTOR] == X.Caller('Claude', 'claude')
-  and cfg.connector_redirects == (CLAUDE,) and cfg.connector_store.startswith(_util.DATA))
+  and cfg.connector_redirects == (CLAUDE,) + X.CHATGPT_CALLBACKS and cfg.connector_store.startswith(_util.DATA))
 t('by default sign-ins are kept in the data folder', X.load_config({**ENV, 'ALICE_EXT_CONNECTOR_STORE': '', 'AISUBSTRATE_DATA_DIR': '/mnt/alice'}).connector_store == os.path.join('/mnt/alice', 'oauth-connector'))
 t('without connector settings nothing changes', X.load_config({k: v for k, v in ENV.items() if 'CONNECTOR' not in k}).connector_client_id == '')
 for label, change in [('only some connector settings refused', {'ALICE_EXT_CONNECTOR_KEY': ''}),
@@ -59,12 +59,13 @@ web = M.mcp.http_app()
 H = {'Accept': 'application/json, text/event-stream', 'Content-Type': 'application/json'}
 INIT = {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize', 'params': {'protocolVersion': '2025-06-18', 'capabilities': {}, 'clientInfo': {'name': 'Claude', 'version': '1'}}}
 
-def sign_in(c, client_id, claims=None):
+def sign_in(c, client_id, claims=None, cb=None):
     """Claude's side of the flow, then Entra's; returns the token response (or the failing response)."""
     NEXT['claims'] = claims or {}
+    CB = cb or CLAUDE
     verifier = secrets.token_urlsafe(48)
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b'=').decode()
-    r = c.get('/authorize', params={'response_type': 'code', 'client_id': client_id, 'redirect_uri': CLAUDE, 'state': 'claude-state',
+    r = c.get('/authorize', params={'response_type': 'code', 'client_id': client_id, 'redirect_uri': CB, 'state': 'claude-state',
                                      'code_challenge': challenge, 'code_challenge_method': 'S256', 'scope': ' '.join(SCOPES)},
               follow_redirects=False)
     if r.status_code not in (302, 303, 307): return r
@@ -76,10 +77,10 @@ def sign_in(c, client_id, claims=None):
     sign_in.entra = (to_entra, q)
     r = c.get('/auth/callback', params={'code': 'entra-code', 'state': q['state'][0]}, follow_redirects=False)
     back = urlparse(r.headers.get('location', ''))
-    if back.scheme + '://' + back.netloc + back.path != CLAUDE: return r
+    if back.scheme + '://' + back.netloc + back.path != CB: return r
     bq = parse_qs(back.query)
     sign_in.state = bq.get('state', [''])[0]
-    return c.post('/token', data={'grant_type': 'authorization_code', 'code': bq['code'][0], 'redirect_uri': CLAUDE,
+    return c.post('/token', data={'grant_type': 'authorization_code', 'code': bq['code'][0], 'redirect_uri': CB,
                                   'client_id': client_id, 'code_verifier': verifier})
 
 with TestClient(web, base_url=BASE) as c:
@@ -127,6 +128,35 @@ with TestClient(web, base_url=BASE) as c:
     import substrate_store as s
     with s.db() as db: src = db.execute('SELECT source, status FROM records WHERE id=?', (res['id'],)).fetchone()
     t('a proposal from Claude is labelled [via Claude] and waits for approval', src and src['source'].endswith('[via Claude]') and src['status'] == 'proposed')
+
+    # ChatGPT on the web signs in the same way, and is named ChatGPT (provider openai), not Claude
+    GPT_CB = 'https://chatgpt.com/connector/oauth/abc123'
+    greg = c.post('/register', json={'redirect_uris': [GPT_CB], 'token_endpoint_auth_method': 'none', 'grant_types': ['authorization_code', 'refresh_token'],
+                                     'response_types': ['code'], 'client_name': 'ChatGPT'})
+    t('ChatGPT can register with its per-connection callback', greg.status_code in (200, 201))
+    gt = sign_in(c, greg.json()['client_id'], cb=GPT_CB)
+    t('ChatGPT gets an access token', gt.status_code == 200 and gt.json().get('access_token'))
+    G = {**H, 'Authorization': 'Bearer ' + gt.json()['access_token']}
+    r = c.post('/mcp', json=INIT, headers=G); gsid = r.headers.get('mcp-session-id')
+    GS = {**G, **({'mcp-session-id': gsid} if gsid else {})}
+    c.post('/mcp', json={'jsonrpc': '2.0', 'method': 'notifications/initialized'}, headers=GS)
+    r = c.post('/mcp', json={'jsonrpc': '2.0', 'id': 3, 'method': 'tools/call', 'params': {'name': 'propose_record', 'arguments':
+               {'title': 'ChatGPT connector test', 'content': 'Proposed from ChatGPT through the connector.', 'source': 'Stefan in ChatGPT'}}}, headers=GS)
+    body = r.text
+    gpay = json.loads(next(l[5:] for l in body.splitlines() if l.startswith('data:'))) if 'data:' in body else r.json()
+    gres = json.loads(gpay['result']['content'][0]['text'])
+    with s.db() as db: gsrc = db.execute('SELECT source FROM records WHERE id=?', (gres['id'],)).fetchone()
+    t('a proposal from ChatGPT is labelled [via ChatGPT], not Claude', gsrc and gsrc['source'].endswith('[via ChatGPT]'))
+    r = c.post('/mcp', json={'jsonrpc': '2.0', 'id': 4, 'method': 'tools/list'}, headers=GS)
+    t('ChatGPT (provider openai) gets the health tools, as Stefan allowed', 'get_health_context' in r.text)
+    import agents as AG
+    t('ChatGPT is its own app on the Agents page', any(a['name'] == 'ChatGPT' for a in AG.listing()['agents']) if hasattr(AG, 'listing') else True)
+    sneaky = c.post('/register', json={'redirect_uris': ['https://chatgpt.com.evil.example/cb'], 'token_endpoint_auth_method': 'none',
+                                       'grant_types': ['authorization_code'], 'response_types': ['code']})
+    t('a look-alike callback address is refused', sneaky.status_code >= 400)
+    t('the Claude sign-in is still named Claude', X.connector_app([CLAUDE]) == X.Caller('Claude', 'claude')
+      and X.connector_app(['https://chatgpt.com/connector_platform_oauth_redirect']) == X.Caller('ChatGPT', 'openai')
+      and X.connector_app(['https://evil.example/claude.ai']) is None)
 
     t('direct Microsoft tokens (the Copilot route) still work alongside', c.post('/mcp', json=INIT, headers={**H, 'Authorization': 'Bearer ' + entra_token()}).status_code == 200)
 

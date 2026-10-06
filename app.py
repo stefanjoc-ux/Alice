@@ -1219,6 +1219,7 @@ def admin_decision_policy_set(update: DecisionPolicyIn):
 class ConnectorKnowledgeIn(BaseModel):
     claude: Optional[bool] = None
     copilot: Optional[bool] = None
+    chatgpt: Optional[bool] = None
 
 @app.get('/admin/api/auto-approve/connectors')
 def admin_connector_knowledge(): return {'apps': autoapprove.connector_knowledge(), 'names': autoapprove.CONNECTOR_APPS}
