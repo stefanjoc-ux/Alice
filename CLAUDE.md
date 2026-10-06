@@ -33,7 +33,10 @@ knowledge note "AI Substrate: status summary" through the `alice` connector, or 
    to the category's owner or the default approver (`notify.py`). Policy off = decisions wait, as before.
    **Guard rails that must stay:** a memory Temple finds clashing (`Conflict: yes`),
    recommends rejecting, says replaces an older one, or could not check; anything proposed through the outside connector
-   (`mcp_server.py --external`, i.e. Copilot: wrap proposals in `autoapprove.from_outside`), including conversations it saves;
+   (`mcp_server.py --external`, i.e. Copilot and Claude: wrap proposals in `autoapprove.from_outside(label, provider)`), including conversations it saves,
+   EXCEPT knowledge notes (Stefan's decision D-0026, 6 Oct 2026): a note from an app ticked in `connector_knowledge` (Actions, "Notes from
+   outside apps"; Claude and Copilot on by default) is approved after the same checks unless the proposer names an item it replaces or
+   Temple's free checks (`temple_supersede.overlaps`: same title, explicit wording, title/vocabulary score) find an overlap, which waits;
    rule and guidance changes; retiring or replacing older items; and every mileage entry (Mileage Clerk approvals are
    always Stefan's, per exact entry and action). Do not widen automatic approval past these without his say.
    The older exception still stands: reference summaries uploaded on a Proposal writer page (`auto_approve_references`,

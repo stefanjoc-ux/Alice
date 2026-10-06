@@ -167,6 +167,21 @@ def check_one(fid, items, provider, use_model=True, budget=None):
     return added, calls
 
 
+def overlaps(fid):
+    """Titles of active items a draft may replace or closely overlap, from the free checks only (explicit wording, title and
+    vocabulary score); no model call. Used before approving a note from an outside app (autoapprove.knowledge_draft)."""
+    items = _items()
+    new = items.get(fid)
+    if not new: return []
+    hits = []
+    for o in items.values():
+        if o['id'] == fid or o['status'] != 'active' or o.get('superseded_by') or o['client'] != new['client']: continue
+        if _norm_title(o['title']) == _norm_title(new['title']) or explicit_reference(new['text'], o['title']): hits.append((9.0, o['title'])); continue
+        sc = score(new, o)
+        if sc >= THRESHOLD: hits.append((sc, o['title']))
+    return [t for _, t in sorted(hits, reverse=True)]
+
+
 @agents.tracked('temple-replacements', subject=lambda ids, **k: ('knowledge', ids[0]) if len(ids or []) == 1 else None)
 def check(ids, manual=False, limit_calls=None):
     """After items become active (or from the backlog sweep). Automatic runs respect Temple's on/off setting."""

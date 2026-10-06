@@ -1216,6 +1216,18 @@ def admin_decision_policy_set(update: DecisionPolicyIn):
     except ValueError as e: raise HTTPException(400, str(e)) from None
     return admin_decision_policy()
 
+class ConnectorKnowledgeIn(BaseModel):
+    claude: Optional[bool] = None
+    copilot: Optional[bool] = None
+
+@app.get('/admin/api/auto-approve/connectors')
+def admin_connector_knowledge(): return {'apps': autoapprove.connector_knowledge(), 'names': autoapprove.CONNECTOR_APPS}
+
+@app.put('/admin/api/auto-approve/connectors')
+def admin_connector_knowledge_set(u: ConnectorKnowledgeIn):
+    autoapprove.set_connector_knowledge({k: v for k, v in u.model_dump().items() if v is not None})
+    return admin_connector_knowledge()
+
 @app.post('/admin/api/auto-approve/undo')
 def admin_auto_undo(change: AutoUndo):
     try: return autoapprove.undo(change.item_type,change.id)

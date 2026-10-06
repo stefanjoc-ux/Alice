@@ -119,6 +119,7 @@ SECTIONS = {
 <div id="rp-result" aria-live="polite"></div></section></aside></div>''',
 'actions': r'''<section><div class="mem-head"><h2 id="act-total">Actions</h2><button id="act-refresh" type="button" class="secondary">Refresh</button></div>
 <div class="act-auto"><label class="act-switch"><input id="act-auto" type="checkbox"> <strong>Automatic approval</strong></label><span id="act-auto-text" class="muted small"></span></div>
+<div id="act-conn" class="act-auto act-conn" hidden></div>
 <details id="act-dec" class="act-dec"><summary><strong>Decisions</strong> <span id="act-dec-sum" class="muted small"></span></summary><div id="act-dec-body" class="act-dec-body"></div></details></section><div id="act-sections"></div>''' ,
 'usage': r'''<section><div class="usage-bar"><h2>Spend</h2><label>Period <select id="usage-period"><option value="7d">Last 7 days</option><option value="30d" selected>Last 30 days</option><option value="month">This month</option><option value="all">All time</option></select></label><button id="usage-refresh" type="button">Refresh</button></div><div id="usage-stats" class="stats usage-stats"></div><p id="usage-caveat" class="muted"></p></section>
 <section><div class="mem-head"><h2>Provider connections</h2><button id="prov-check" type="button" class="secondary">Check connections</button></div><p class="muted small">Sends one tiny request to each provider you have a key for (a fraction of a penny each) and reports key, credit and model-access problems in plain words.</p><div id="prov-results"></div></section>
@@ -1214,8 +1215,14 @@ if(PAGE==='actions'){
     if(i.detail)txt.append(el('div',i.detail,'small muted'));row.append(txt,actionsFor(i));list.append(row)}
    box.append(sec)}
   if(clear.length){const sec=el('section','','act-sec');sec.append(el('h2','All clear'),el('p',clear.map(s=>s.title).join(' · '),'muted small'));box.append(sec)}
-  $('act-auto').checked=!!d.auto_on;$('act-auto-text').textContent=d.auto_on?'On: memories, knowledge and organisation facts go live after Alice\u2019s checks, and Temple records decisions (see Decisions below). Clashing memories, replacements, rule changes and anything the outside connector saves as a memory or note wait for you here.':'Off: everything waits for your approval.'}
+  connPolicy(!!d.auto_on).catch(()=>{});$('act-auto').checked=!!d.auto_on;$('act-auto-text').textContent=d.auto_on?'On: memories, knowledge and organisation facts go live after Alice\u2019s checks, and Temple records decisions (see Decisions below). Clashing memories, replacements, rule changes, memories from outside apps, and notes from them that may overlap something Alice holds wait for you here.':'Off: everything waits for your approval.'}
 
+ // Notes from outside apps (decision D-0026): approved after Alice's checks unless they may replace or overlap something she holds.
+ async function connPolicy(on){const box=$('act-conn');box.hidden=!on;if(!on)return;const p=await api('/admin/api/auto-approve/connectors');
+  box.replaceChildren(el('strong','Notes from outside apps','small'));
+  for(const [k,n] of Object.entries(p.names)){const l=el('label','','act-switch small');const c=document.createElement('input');c.type='checkbox';c.checked=!!p.apps[k];
+   c.onchange=()=>run(async()=>{await api('/admin/api/auto-approve/connectors','PUT',{[k]:c.checked});$('notice').textContent=n+(c.checked?': notes are approved after Alice\u2019s checks.':': notes wait for you.')});l.append(c,document.createTextNode(' '+n));box.append(l)}
+  box.append(el('span','Ticked: a note saved from that app is approved after Alice\u2019s checks, unless it may replace or overlap something she holds. Memories from outside apps always wait for you.','muted small'))}
  async function decPolicy(){const p=await api('/admin/api/decision-policy');const body=$('act-dec-body');body.replaceChildren();
   const held=Object.keys(p.categories);
   $('act-dec-sum').textContent=!p.auto?'· wait for you':('· Temple records them'+(held.length||p.impact!=='off'?', except '+[held.length?held.length+' categor'+(held.length===1?'y':'ies'):'',p.impact==='high'?'high impact':p.impact==='medium'?'medium and high impact':''].filter(Boolean).join(' and '):''));

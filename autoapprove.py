@@ -11,7 +11,10 @@ organisation facts and Temple's memory/knowledge suggestions go live without a c
 - A new memory that clashes: Temple's review says it contradicts an approved memory or decision ('Conflict: yes'),
   recommends rejecting it, says it replaces an older memory, or could not check it.
 - Anything proposed through the outside connector (Copilot, the signed-in endpoint): it reads documents and web pages
-  Stefan does not control, so a page saying "remember that…" must not become a live memory.
+  Stefan does not control, so a page saying "remember that…" must not become a live memory. Exception (Stefan's decision
+  D-0026, 6 Oct 2026): knowledge notes from an outside app switched on in 'connector_knowledge' (Claude and Copilot by
+  default; switches on Actions) are approved after the same checks, unless Temple's free checks (`temple_supersede.overlaps`)
+  or the proposer say it may replace or overlap something Alice holds: those wait for him.
 
 The security rules still run when anything is proposed and again on approval (secrets, protective markings, personal
 identifiers, duplicates, client separation): automatic approval never skips them. Each automatic approval is logged
@@ -26,6 +29,8 @@ import threading
 import substrate_store as store
 
 _outside = contextvars.ContextVar('alice_auto_outside', default='')
+_outside_provider = contextvars.ContextVar('alice_auto_outside_provider', default='')
+CONNECTOR_APPS = {'claude': 'Claude', 'copilot': 'Microsoft Copilot'}
 _deciding = contextvars.ContextVar('alice_auto_deciding', default=False)
 TYPES = {'memory': 'Memory', 'knowledge': 'Knowledge', 'orgfact': 'Organisation fact', 'chat': 'Saved conversation'}
 IMPACT = re.compile(r'^\W*impact\W*[:\-]?\s*(low|medium|high)\b', re.I | re.M)
@@ -43,6 +48,7 @@ def _schema():
                   "reason TEXT NOT NULL DEFAULT '', at TEXT NOT NULL, undone_at TEXT, PRIMARY KEY (item_type,item_id))")
         default = 'false' if os.getenv('ALICE_AUTO_APPROVE_DEFAULT') == 'off' else 'true'   # only for a brand-new database
         c.execute("INSERT OR IGNORE INTO settings VALUES ('auto_approve',?)", (default,))
+        c.execute("INSERT OR IGNORE INTO settings VALUES ('connector_knowledge',?)", (json.dumps({k: True for k in CONNECTOR_APPS}),))
         c.execute("INSERT OR IGNORE INTO settings VALUES ('decision_policy',?)",
                   (json.dumps({'auto': True, 'categories': {}, 'impact': 'off', 'approver': ''}),))
 
@@ -65,10 +71,37 @@ def set_on(value):
 
 # ---------------- who proposed it ----------------
 class from_outside:
-    """with from_outside('Microsoft Copilot'): ... — proposals made inside are held for Stefan ('' = trusted caller)."""
-    def __init__(self, label): self.label = label or ''
-    def __enter__(self): self.t = _outside.set(self.label); return self
-    def __exit__(self, *a): _outside.reset(self.t)
+    """with from_outside('Microsoft Copilot', 'copilot'): ... — proposals made inside are held for Stefan ('' = trusted caller),
+    except knowledge notes from an app switched on in connector_knowledge()."""
+    def __init__(self, label, provider=''): self.label, self.provider = label or '', (provider or '').lower()
+    def __enter__(self): self.t = (_outside.set(self.label), _outside_provider.set(self.provider)); return self
+    def __exit__(self, *a): _outside.reset(self.t[0]); _outside_provider.reset(self.t[1])
+
+
+def connector_knowledge():
+    """{app: True|False}: knowledge notes from that outside app are approved after Alice's checks (D-0026)."""
+    with store.db() as c:
+        row = c.execute("SELECT value FROM settings WHERE key='connector_knowledge'").fetchone()
+    try: v = json.loads(row[0]) if row else {}
+    except ValueError: v = {}
+    return {k: bool(v.get(k, False)) for k in CONNECTOR_APPS}
+
+
+def set_connector_knowledge(apps):
+    cur = connector_knowledge()
+    new = {k: bool(apps.get(k, cur[k])) for k in CONNECTOR_APPS}
+    with store.db() as c:
+        c.execute("UPDATE settings SET value=? WHERE key='connector_knowledge'", (json.dumps(new),))
+        store.audit(c, 'connector_knowledge_setting', 'Alice', 'human_control',
+                    'Notes from outside apps approved after checks: ' + (', '.join(CONNECTOR_APPS[k] for k, v in new.items() if v) or 'none'))
+    return new
+
+
+def _app_of(label, provider=''):
+    p = (provider or '').lower()
+    if p in CONNECTOR_APPS: return p
+    t = (label or '').lower()
+    return 'copilot' if 'copilot' in t else 'claude' if 'claude' in t else ''
 
 
 def deciding(): return _deciding.get()
@@ -159,15 +192,29 @@ def review_then_decide(rid):
 
 
 # ---------------- knowledge drafts and organisation facts ----------------
-def knowledge_draft(fid):
+OUTSIDE_HOLD = 'through the outside connector: it reads material you do not control.'
+OLD_OUTSIDE_HOLD = 'Proposed through the outside connector before automatic approval.'
+
+
+def knowledge_draft(fid, again=False):
     import knowledge
-    if not fid or _state('knowledge', fid): return 'already'
+    if not fid or (_state('knowledge', fid) and not again): return 'already'
     if not on(): return 'off'
+    note = 'draft from a trusted source'
     if outside():
-        hold('knowledge', fid, f'Proposed by {outside()} through the outside connector: it reads material you do not control.'); return 'held'
+        app = _app_of(outside(), _outside_provider.get())
+        if not connector_knowledge().get(app):
+            hold('knowledge', fid, f'Proposed by {outside()} {OUTSIDE_HOLD}'); return 'held'
+        import temple_supersede      # Temple's free checks: does it say it replaces, or closely overlap, something Alice holds?
+        named = [p['old_title'] for p in knowledge.replacements('pending', new_id=fid)]
+        near = named + [t for t in temple_supersede.overlaps(fid) if t not in named]
+        if near:
+            hold('knowledge', fid, f'Proposed by {outside()} through the outside connector, and it may replace or overlap '
+                 + ', '.join('“' + t + '”' for t in near[:3]) + ': you decide.'); return 'held'
+        note = f'note from {outside()} (outside connector); Temple found no clash'
     with store.acting('Alice', note='Approved automatically'):
         r = knowledge.review([fid], 'approved')
-    if r['changed']: _approved('knowledge', fid, 'draft from a trusted source'); return 'approved'
+    if r['changed']: _approved('knowledge', fid, note); return 'approved'
     if r['blocked']: hold('knowledge', fid, 'Not approved automatically: ' + ' '.join(r['block_reasons'])); return 'held'
     return 'skipped'
 
@@ -289,11 +336,20 @@ def backlog():
         if rv and rv['status'] == 'complete': after_review(rid)
         elif temple.settings()['enabled']: review_then_decide(rid); started += 1
         else: after_review(rid, reviewed=False)
-    drafts = [i['id'] for i in knowledge.listing(status='draft', limit=100000)['items'] if ('knowledge', i['id']) not in hl]
-    for fid in drafts:
+    allowed, drafts = connector_knowledge(), []
+    for i in knowledge.listing(status='draft', limit=100000)['items']:
+        fid, why = i['id'], hl.get(('knowledge', i['id']))
         m = knowledge.meta([fid]).get(fid) or {}
-        if 'copilot' in (m.get('added_by', '') + ' ' + m.get('source', '')).lower():
-            hold('knowledge', fid, 'Proposed through the outside connector before automatic approval.')
+        who = m.get('added_by', '') + ' ' + m.get('source', '')
+        app = _app_of(who) if ('via ' in who.lower() and 'web chat' not in who.lower()) else ''
+        if why is not None and not (app and (why == OLD_OUTSIDE_HOLD or why.endswith(OUTSIDE_HOLD))): continue
+        drafts.append(fid)
+        if app:          # from an outside app: run again under D-0026 (or stay held if that app is switched off)
+            label = CONNECTOR_APPS[app]
+            if not allowed.get(app):
+                if why is None: hold('knowledge', fid, f'Proposed by {label} {OUTSIDE_HOLD}')
+                continue
+            with from_outside(label, app): knowledge_draft(fid, again=True)
         else: knowledge_draft(fid)
     facts = [f['id'] for f in organisations.pending(limit=100000) if ('orgfact', f['id']) not in hl]
     for fid in facts: org_fact(fid)

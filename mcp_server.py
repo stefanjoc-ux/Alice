@@ -350,7 +350,7 @@ def propose_record(title: Annotated[str, Field(min_length=1, max_length=200)],
     if who:
         source = (source.strip() + f' [via {who.label}]')[:2000]
     try:
-        with autoapprove.from_outside(who.label if who and EXTERNAL is not None else ''):
+        with autoapprove.from_outside(who.label if who and EXTERNAL is not None else '', who.provider if who and EXTERNAL is not None else ''):
             result = store.propose(title, content, source, category)
     except rules_engine.RuleViolation as e:
         raise ValueError(str(e) + ' Tell the user why the memory was not proposed.') from None
@@ -407,8 +407,9 @@ def propose_knowledge(title: Annotated[str, Field(min_length=1, max_length=200)]
                       decisions: Annotated[list[str], Field(max_length=40)] = [],
                       actions: Annotated[list[str], Field(max_length=60)] = [],
                       supersedes: Annotated[list[str], Field(max_length=10)] = []) -> dict:
-    """Save a summary, note or meeting extract to the user's knowledge library (approved automatically; held as a draft
-    for the user when proposed through the outside connector).
+    """Save a summary, note or meeting extract to the user's knowledge library. Alice approves it automatically after her
+    checks; it waits for the user when it may replace or overlap something Alice already holds, or when the user has
+    switched off automatic approval for notes from this app. Pass on the message returned.
     Use when the user asks you to save, file or add something to their substrate or knowledge base.
     kind='meeting' for meeting records (give meeting_date YYYY-MM-DD, attendees, decisions, actions).
     source: where it came from (e.g. 'Teams meeting 30 Sep 2026', 'Summary of this conversation').
@@ -430,15 +431,16 @@ def propose_knowledge(title: Annotated[str, Field(min_length=1, max_length=200)]
                                   category=category, client=client, meeting=meeting, client_by='model', supersedes=supersedes)
         auto = ''
         if not result.get('duplicate'):
-            with autoapprove.from_outside(who.label if who and EXTERNAL is not None else ''):
+            with autoapprove.from_outside(who.label if who and EXTERNAL is not None else '', who.provider if who and EXTERNAL is not None else ''):
                 auto = autoapprove.knowledge_draft(result.get('id'))
     except rules_engine.RuleViolation as e:
         raise ValueError(str(e) + ' Tell the user why it was not saved.') from None
     if who: _captured('knowledge', result.get('id')); agents.app_note(run, 'wrote', 'knowledge', result.get('id'), 'draft proposed')
     if result.get('duplicate'):
         return {'id': result['id'], 'status': result['status'], 'message': 'Identical content already exists in the knowledge library.'}
-    msg = ('Saved and approved automatically: it is now in the knowledge library.' if auto == 'approved' else
-           'Saved as a draft. The user must approve it on the Actions page before any model can read it.')
+    held = autoapprove.held().get(('knowledge', result.get('id')), '') if auto == 'held' else ''
+    msg = ('Saved and approved automatically after Alice\'s checks: it is now in the knowledge library.' if auto == 'approved' else
+           'Saved as a draft, waiting for the user on the Actions page' + (f' ({held})' if held else '') + '. No model can read it until it is approved.')
     if supersedes:
         n = len(result.get('replaces') or [])
         msg += (f' It is marked as replacing {n} existing item(s); the user can retire them when approving.' if n else
@@ -684,7 +686,7 @@ def propose_org_fact(organisation: Annotated[str, Field(min_length=1, max_length
     agent, run = _app('propose_org_fact')
     by = f'model via {who.label}' if who else 'model via web chat'
     try:
-        with autoapprove.from_outside(who.label if who and EXTERNAL is not None else ''):
+        with autoapprove.from_outside(who.label if who and EXTERNAL is not None else '', who.provider if who and EXTERNAL is not None else ''):
             r = organisations.propose_fact(organisation, section, statement, source_system, source_ref, as_of, review_by, 'general', by)
     except ValueError as e:
         raise ValueError(str(e) + ' Tell the user why the fact was not proposed.') from None
@@ -761,7 +763,7 @@ def save_conversation(title: Annotated[str, Field(min_length=1, max_length=120)]
     agent, run = _app('save_conversation')
     app_name = who.label if who else 'Claude'
     try:
-        with autoapprove.from_outside(who.label if who and EXTERNAL is not None else ''):
+        with autoapprove.from_outside(who.label if who and EXTERNAL is not None else '', who.provider if who and EXTERNAL is not None else ''):
             r = conversations.save_external(app_name, title, summary, key_points, decisions, remember, user_quotes, client,
                                             transcript, transcript_complete)
         if who and EXTERNAL is not None and r.get('id') and not r.get('duplicate'):   # Temple's suggestions from it are not accepted automatically
