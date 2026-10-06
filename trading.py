@@ -68,6 +68,8 @@ def _schema():
                   "open REAL, high REAL, low REAL, close REAL NOT NULL, ccy TEXT NOT NULL DEFAULT '', PRIMARY KEY (symbol, exchange, day))")
         c.execute("CREATE TABLE IF NOT EXISTS tp_price_status (symbol TEXT NOT NULL, exchange TEXT NOT NULL DEFAULT '', checked_at TEXT, "
                   "error TEXT NOT NULL DEFAULT '', ccy TEXT NOT NULL DEFAULT '', PRIMARY KEY (symbol, exchange))")
+        if 'kind' not in {r[1] for r in c.execute('PRAGMA table_info(tp_portfolios)')}:   # paper (practice) or live (mirrors a real account)
+            c.execute("ALTER TABLE tp_portfolios ADD COLUMN kind TEXT NOT NULL DEFAULT 'paper'")
         c.execute("INSERT OR IGNORE INTO settings VALUES ('trading_tv_ip_check','true')")
 
 
@@ -75,24 +77,48 @@ _schema()
 
 
 # ---------------- portfolios and trades ----------------
-def create_portfolio(name, note=''):
+# A paper portfolio is practice: trades are recorded by hand or imported. A live portfolio mirrors a real Trading 212 account
+# (Stefan's decision, 6 Oct 2026): it changes only by importing that account's history export, never by a trade typed here, and
+# Alice never connects to the broker or places an order. "What if I had sold" scenarios work on both: they are simulations.
+KINDS = ('paper', 'live')
+LIVE_ONLY_IMPORT = ('This portfolio mirrors your real Trading 212 account, so it changes only when you import that account\'s '
+                    'history. Record practice trades in a paper portfolio.')
+
+
+def create_portfolio(name, note='', kind='paper'):
     name = _clean(name, 80)
-    if not name: raise ValueError('Give the paper portfolio a name.')
+    if kind not in KINDS: raise ValueError('A portfolio is paper or live.')
+    if not name: raise ValueError('Give the portfolio a name.')
     pid = uuid.uuid4().hex[:12]
     with store.db() as c:
-        c.execute('INSERT INTO tp_portfolios VALUES (?,?,?,?)', (pid, name, _clean(note, 300), _now()))
-        store.audit(c, 'trading_portfolio_created', pid, 'human_control', name)
-    return {'id': pid, 'name': name}
+        c.execute('INSERT INTO tp_portfolios (id,name,note,created_at,kind) VALUES (?,?,?,?,?)', (pid, name, _clean(note, 300), _now(), kind))
+        store.audit(c, 'trading_portfolio_created', pid, 'human_control', f'{name} ({kind})')
+    return {'id': pid, 'name': name, 'kind': kind}
+
+
+def set_kind(pid, kind):
+    """Mark a portfolio live (a mirror of the real account) or paper. Live only when every trade in it came from an import."""
+    if kind not in KINDS: raise ValueError('A portfolio is paper or live.')
+    with store.db() as c:
+        pf = _portfolio(c, pid)
+        if kind == 'live':
+            n = c.execute("SELECT count(*) FROM tp_trades WHERE portfolio_id=? AND source<>'import'", (pid,)).fetchone()[0]
+            if n: raise ValueError(f'This portfolio has {n} trade(s) typed in by hand, so it is not a copy of your real account. '
+                                   'Create a live portfolio and import your Trading 212 history into it.')
+        if pf['kind'] == kind: return {'id': pid, 'kind': kind}
+        c.execute('UPDATE tp_portfolios SET kind=? WHERE id=?', (kind, pid))
+        store.audit(c, 'trading_portfolio_kind', pid, 'human_control', f'{pf["name"]}: {pf["kind"]} to {kind}')
+    return {'id': pid, 'kind': kind}
 
 
 def portfolios():
     with store.db() as c:
-        return [dict(r) for r in c.execute('SELECT * FROM tp_portfolios ORDER BY created_at')]
+        return [dict(r) for r in c.execute("SELECT * FROM tp_portfolios ORDER BY CASE kind WHEN 'live' THEN 0 ELSE 1 END, created_at")]
 
 
 def _portfolio(c, pid):
     r = c.execute('SELECT * FROM tp_portfolios WHERE id=?', (pid,)).fetchone()
-    if not r: raise ValueError('No such paper portfolio.')
+    if not r: raise ValueError('No such portfolio.')
     return dict(r)
 
 
@@ -129,10 +155,11 @@ def add_trade(pid, symbol, side, qty, price, ccy='USD', fx_gbp=None, at=None, fe
     tid = uuid.uuid4().hex[:12]
 
     def write(c):
-        _portfolio(c, pid)
+        pf = _portfolio(c, pid)
+        if pf.get('kind') == 'live' and source != 'import': raise ValueError(LIVE_ONLY_IMPORT)
         if side == 'sell':
             held = _positions(c, pid).get((s, e), {}).get('qty', 0.0)
-            if qty > held + 1e-9: raise ValueError(f'Only {held:g} {s} held in this paper portfolio.')
+            if qty > held + 1e-9: raise ValueError(f'Only {held:g} {s} held in this portfolio.')
         c.execute('INSERT INTO tp_trades (id,portfolio_id,symbol,exchange,side,qty,price,ccy,fx_gbp,total_gbp,fee_gbp,at,source,ext_id,signal_id,note,created_at) '
                   'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
                   (tid, pid, s, e, side, qty, price, ccy, rate, round(total, 2), fee, at, source, ext_id, signal_id, _clean(note, 300), _now()))
@@ -167,7 +194,7 @@ def _fx_series(ccy):
 
 
 def history(pid, days=365):
-    """The paper portfolio's value and cost in GBP for each trading day with prices, oldest first (up to `days`)."""
+    """The portfolio's value and cost in GBP for each trading day with prices, oldest first (up to `days`)."""
     with store.db() as c:
         _portfolio(c, pid)
         trades = [dict(r) for r in c.execute('SELECT symbol,exchange,side,qty,total_gbp,fee_gbp,ccy,at FROM tp_trades WHERE portfolio_id=? ORDER BY at, created_at', (pid,))]
@@ -235,7 +262,7 @@ T212_SELL = ('market sell', 'limit sell', 'stop sell', 'stop limit sell')
 
 
 def import_t212(pid, name, text):
-    """Trading 212 'Export history' CSV: buys and sells become paper trades (GBP totals as T212 reports them);
+    """Trading 212 'Export history' CSV: buys and sells become the portfolio's trades (GBP totals as T212 reports them);
     deposits, dividends and interest are counted but not traded. Rows already imported (same T212 ID) are skipped."""
     import rules_engine
     rules_engine.check_file(text, name)
@@ -654,11 +681,13 @@ def overview():
 
 def tile():
     o = overview()
-    total = 0.0
-    for p in o['portfolios']:
-        try: total += portfolio_view(p['id'])['totals']['value_gbp']
+    totals = {}
+    for p in sorted(o['portfolios'], key=lambda p: p.get('kind') != 'live'):   # live first
+        try: totals[p.get('kind') or 'paper'] = totals.get(p.get('kind') or 'paper', 0.0) + portfolio_view(p['id'])['totals']['value_gbp']
         except ValueError: pass
-    return {'stats': [{'label': 'Paper portfolios value', 'value': f'£{total:,.0f}'}, {'label': 'Signals logged', 'value': str(o['signals'])}],
+    if not totals: totals['paper'] = 0.0
+    stats = [{'label': ('Live' if k == 'live' else 'Paper') + ' portfolios value', 'value': f'£{v:,.0f}'} for k, v in totals.items()]
+    return {'stats': stats + [{'label': 'Signals logged', 'value': str(o['signals'])}],
             'note': ('Last signal ' + o['last_signal'][:10]) if o['last_signal'] else 'No signals yet'}
 
 

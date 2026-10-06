@@ -1363,6 +1363,10 @@ import ipaddress as _ip
 class TpPortfolio(BaseModel):
     name: str = Field(min_length=1,max_length=80)
     note: str = Field(default='',max_length=300)
+    kind: Literal['paper','live'] = 'paper'
+
+class TpKind(BaseModel):
+    kind: Literal['paper','live']
 
 class TpTrade(BaseModel):
     symbol: str = Field(min_length=1,max_length=24)
@@ -1410,7 +1414,10 @@ def admin_trading_portfolio(pid: str=FPath(pattern=r'^[0-9a-f]{12}$')):
     v=_tp(trading.portfolio_view,pid);v['scenarios']=trading.scenarios(pid);v['history']=trading.history(pid);return v
 
 @app.post('/admin/api/trading/portfolios')
-def admin_trading_new_portfolio(p: TpPortfolio): return _tp(trading.create_portfolio,p.name,p.note)
+def admin_trading_new_portfolio(p: TpPortfolio): return _tp(trading.create_portfolio,p.name,p.note,p.kind)
+
+@app.put('/admin/api/trading/portfolios/{pid}/kind')
+def admin_trading_kind(k: TpKind, pid: str=FPath(pattern=r'^[0-9a-f]{12}$')): return _tp(trading.set_kind,pid,k.kind)
 
 @app.post('/admin/api/trading/portfolios/{pid}/trades')
 def admin_trading_trade(t: TpTrade, pid: str=FPath(pattern=r'^[0-9a-f]{12}$')):
@@ -2740,8 +2747,12 @@ def admin_overview_redirect(): return RedirectResponse('/admin',status_code=307)
 @app.get('/admin/api/cards/{kind}/{ref}')
 def admin_card(kind: str, ref: str):
     """Standard information card (see CLAUDE.md, Information cards). Kinds so far: log (activity log entries, L-000123)."""
-    if kind not in ('log', 'health'): raise HTTPException(404, 'No card of that kind.')
-    try: return activity_log.card(ref) if kind == 'log' else health.marker_card(ref)
+    if kind not in ('log', 'health', 'review'): raise HTTPException(404, 'No card of that kind.')
+    try:
+        if kind == 'review':
+            import action_cards
+            return action_cards.card(ref)
+        return activity_log.card(ref) if kind == 'log' else health.marker_card(ref)
     except ValueError as e: raise HTTPException(404, str(e)) from None
 
 @app.get('/admin/api/activity-log')
@@ -2780,6 +2791,16 @@ async def admin_ask_temple(q: AskTemple):
 
 class DiscussIn(BaseModel):
     message: str = Field(min_length=1,max_length=4000)
+
+# Discuss with Temple from an Actions card: r-<record>, k-<knowledge draft>, o-<organisation fact>, t-<category or tag change>
+def _discuss_key(key):
+    return key[2:] if key.startswith('r-') else key
+
+@app.get('/admin/api/review-items/{key}/discussion')
+def admin_item_discussion(key: str=FPath(pattern=r'^[rkot]-[0-9a-f]{6,40}$')): return {'messages': temple_discuss.history(_discuss_key(key))}
+
+@app.post('/admin/api/review-items/{key}/discussion')
+async def admin_item_discuss(q: DiscussIn, key: str=FPath(pattern=r'^[rkot]-[0-9a-f]{6,40}$')): return await admin_discuss(_discuss_key(key), q)
 
 @app.get('/admin/api/records/{rid}/discussion')
 def admin_discussion(rid: str): return {'messages': temple_discuss.history(rid)}

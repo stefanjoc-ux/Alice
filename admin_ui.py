@@ -62,12 +62,13 @@ SECTIONS = {
 <details class="tp-more"><summary>Names to strip from reports</summary><p class="small muted">Alice already removes labelled names, dates of birth, NHS numbers, addresses, postcodes, emails and phone numbers. Add your own name (and any other) so it is removed wherever it appears. The list is not shown again; saving replaces it.</p>
 <textarea id="hi-names" rows="2" placeholder="One per line"></textarea><button type="button" id="hi-names-save" class="secondary">Save names</button> <span id="hi-names-n" class="small muted"></span></details></section>''',
 'trading': r'''<section class="tp-hero-sec"><div class="tp-hero-grid"><div id="tp-hero" class="tp-hero"></div>
-<div class="tp-chart-card"><div class="tp-chart-head"><h3 id="tp-chart-title">Paper portfolio value</h3><div class="tp-legend"><span><i class="tp-sw-val"></i>Value</span><span><i class="tp-sw-cost"></i>What it cost</span></div></div><div id="tp-chart" class="tp-chart" role="img"></div></div></div>
+<div class="tp-chart-card"><div class="tp-chart-head"><h3 id="tp-chart-title">Portfolio value</h3><div class="tp-legend"><span><i class="tp-sw-val"></i>Value</span><span><i class="tp-sw-cost"></i>What it cost</span></div></div><div id="tp-chart" class="tp-chart" role="img"></div></div></div>
 <div id="tp-tiles" class="tp-tiles"></div><p id="tp-asof" class="muted small"></p></section>
-<section><div class="mem-head"><h2>Paper portfolios</h2><span class="muted small">Simulation only</span></div>
+<section><div class="mem-head"><h2>Portfolios</h2><span class="muted small">Live mirrors your Trading 212 account; paper is practice. Alice never places an order.</span></div>
 <div id="tp-pfs" class="mem-tabs"></div>
 <div id="tp-pf"></div>
-<details class="tp-more"><summary>New paper portfolio</summary><div class="tp-form"><input id="tp-pf-name" placeholder="Name, e.g. T212 Invest (paper)" maxlength="80"><button type="button" id="tp-pf-add">Create</button></div></details></section>
+<details class="tp-more"><summary>New portfolio</summary><div class="tp-form"><select id="tp-pf-kind" aria-label="Kind of portfolio"><option value="live">Live: mirrors my Trading 212 account</option><option value="paper">Paper: practice</option></select><input id="tp-pf-name" placeholder="Name, e.g. T212 Invest" maxlength="80"><button type="button" id="tp-pf-add">Create</button></div>
+<p class="small muted">A live portfolio changes only when you import that account's Trading 212 history, so it always matches the real account. Paper portfolios take trades typed in by hand.</p></details></section>
 <section><div class="mem-head"><h2>Signals</h2><span class="muted small">Each signal followed for 20 trading days</span></div>
 <div class="tp-chart-card"><div class="tp-chart-head"><h3>Average move after each signal, in its direction</h3><div class="tp-legend"><span><i class="tp-sw-val"></i>Buy signals</span><span><i class="tp-sw-sell"></i>Sell signals</span></div></div><div id="tp-sigchart" class="tp-chart tp-chart-sm" role="img"></div></div>
 <div class="table-wrap"><table id="tp-sig" class="mem-table"></table></div>
@@ -615,6 +616,8 @@ a.av-tile:hover{border-color:var(--teal)}.av-tile b{font-size:28px;line-height:1
 .imp-progress{margin:10px 0}.imp-progress[hidden]{display:none}.imp-bar{height:12px;background:#e3eaf0;border-radius:6px;overflow:hidden;margin-bottom:6px}.imp-bar span{display:block;height:100%;width:0;background:#075e79;transition:width .3s}
 .act-count{display:inline-block;min-width:26px;padding:2px 9px;border-radius:999px;background:#075e79;color:#fff;font-size:14px;text-align:center;vertical-align:middle}
 .act-sec.act-warn{border-left:4px solid #c08a1e}.act-sec.act-bad{border-left:4px solid #b3261e}
+.act-open{all:unset;cursor:pointer;display:inline}.act-open strong{text-decoration:underline;text-decoration-color:#b9cad6;text-underline-offset:3px}.act-open:hover strong{color:var(--teal);text-decoration-color:currentColor}.act-open:focus-visible{outline:2px solid var(--teal);outline-offset:2px;border-radius:3px}
+.ic-discuss .dec-talk-log{padding:4px 0}.ic-discuss .dec-talk-starters{padding:6px 0}.ic-discuss .dec-talk-form{padding:6px 0 0}.ic-foot .act-buttons{display:flex;gap:6px;flex-wrap:wrap;margin-right:auto}
 .act-row{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid #d3dee6;flex-wrap:wrap}.act-text{flex:1 1 380px;min-width:0}.act-text strong{overflow-wrap:anywhere}
 .act-buttons{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.mini-act{margin:0!important;padding:6px 12px!important;font-size:12px!important}
 #al-custom[hidden]{display:none}#al-custom label{margin:0}.al-table td:nth-child(1){white-space:nowrap;width:1%}.al-table td:nth-child(2){white-space:nowrap;width:1%}.al-target{color:#314d62;overflow-wrap:anywhere}.al-table td:nth-child(4){overflow-wrap:anywhere;max-width:520px}
@@ -1143,7 +1146,11 @@ SCRIPT += r"""
 if(PAGE==='actions'){
  const V={approve:['Temple: approve','v-ok'],clarify:['Temple: clarify','v-warn'],reject:['Temple: reject','v-bad'],unreviewed:['Not reviewed','v-none'],running:['Reviewing…','v-run'],failed:['Review failed','v-bad'],unclear:['See report','v-none']};
  const ACCEPT={memory:'Propose memory',decision:'Propose decision',knowledge:'Save note',guidance:'Add to guidance',rule_request:'Log request'};
- function btn(label,fn,secondary){const b=el('button',label,secondary?'secondary mini-act':'mini-act');b.type='button';b.onclick=()=>run(async()=>{b.disabled=true;try{await fn();await load()}finally{b.disabled=false}});return b}
+ function btn(label,fn,secondary){const b=el('button',label,secondary?'secondary mini-act':'mini-act');b.type='button';b.onclick=()=>run(async()=>{b.disabled=true;const inCard=!!b.closest('#ic-drawer');try{await fn();if(inCard)closeCard();await load()}finally{b.disabled=false}});return b}
+ // The information card for an item waiting here: full content, why it waits, Temple's review, related items, and Ask Temple.
+ const CARD_KEY={proposal:'r-',decision:'r-',draft:'k-',orgfact:'o-',taxonomy:'t-'};
+ function openItem(list,ix){const i=list[ix];openCard('/admin/api/cards/review/'+CARD_KEY[i.type]+i.id,{position:(ix+1)+' of '+list.length,
+   prev:ix>0?()=>openItem(list,ix-1):null,next:ix<list.length-1?()=>openItem(list,ix+1):null,footer:()=>actionsFor(i)})}
  function actionsFor(i){const box=el('div','','act-buttons');
   if(i.type==='proposal'){if(i.replaces)box.append(btn('Approve, replacing “'+i.replaces.title+'”',async()=>{await api('/admin/api/records/'+i.id+'/replace','POST',{old_id:i.replaces.id,reason:'Approved on Actions as a newer version (Temple suggested the replacement).'});$('notice').textContent='Approved: '+i.title+'. “'+i.replaces.title+'” is now superseded.'}));
    box.append(btn(i.replaces?'Approve only':'Approve',async()=>{await api('/admin/api/records/'+i.id+'/review','POST',{decision:'approved'});$('notice').textContent='Approved: '+i.title},!!i.replaces),btn('Reject',async()=>{await api('/admin/api/records/'+i.id+'/review','POST',{decision:'rejected'});$('notice').textContent='Rejected: '+i.title},true))}
@@ -1171,7 +1178,7 @@ if(PAGE==='actions'){
   const grid=el('dl','','dec-grid');const row=(k,v)=>{if(!v)return;grid.append(el('dt',k),el('dd',v))};
   row('Why it is a decision',i.why_decision);row('What it is for',i.for);row('Reason given',i.rationale);if(i.options&&i.options.length)row('Options considered',i.options.join(' · '));row('Revisit',[i.revisit,i.review_by?'by '+i.review_by:''].filter(Boolean).join(' · '));row('Where it came from',i.source);card.append(grid);
   const [l,c]=REC[i.recommendation]||REC.unclear;const rec=el('div','','dec-rec '+c);rec.append(el('span','Temple recommends','dec-rec-k'),el('strong',l));if(i.clash)rec.append(el('span','Clashes with something you hold','badge v-bad'));if(i.replaces)rec.append(el('span','Replaces “'+i.replaces.title+'”','badge v-warn'));if(i.reason)rec.append(el('div',i.reason,'small'));card.append(rec);
-  card.append(actionsFor(i));card.append(discuss(i));return card}
+  const more=el('button','Full details','secondary mini-act');more.type='button';more.onclick=()=>openItem([i],0);card.append(actionsFor(i),more);card.append(discuss(i));return card}
  const RECW={approve:'Approve',clarify:'Clarify first',reject:'Reject'};
  // Talk a decision through with Temple before deciding. Temple is advisory: it can suggest a recommendation and a note; you decide.
  function discuss(i){const wrap=document.createElement('details');wrap.className='dec-talk';const keen=i.recommendation==='clarify'||i.recommendation==='reject'||i.clash;
@@ -1200,7 +1207,8 @@ if(PAGE==='actions'){
    if(s.key==='waiting'&&d.auto_on){const go=btn('Approve these automatically',async()=>{const x=await api('/admin/api/auto-approve/backlog','POST',{});$('notice').textContent='Checked '+x.memories+' memories ('+x.checking+' being reviewed by Temple), '+x.drafts+' knowledge drafts, '+x.facts+' organisation facts'+(x.suggestions?', accepted '+x.suggestions+' suggestions':'')+'. Anything that failed a check is held back for you.'});go.classList.remove('secondary');sec.append(go)}
    let list=sec;if(s.info&&s.items.length>6){const det=document.createElement('details');det.append(el('summary','Show '+s.items.length));sec.append(det);list=det}
    if(s.key==='decisions'){for(const i of s.items)sec.append(decisionCard(i));box.append(sec);continue}
-   for(const i of s.items){const row=el('div','','act-row');const txt=el('div','','act-text');if(i.ref){const rf=el('span',i.ref,'ref');rf.style.marginRight='6px';txt.append(rf)}const tl=el('strong',i.title);txt.append(tl);
+   for(const i of s.items){const row=el('div','','act-row');const txt=el('div','','act-text');if(i.ref){const rf=el('span',i.ref,'ref');rf.style.marginRight='6px';txt.append(rf)}const tl=el('strong',i.title);
+    if(CARD_KEY[i.type]){const ob=el('button','','act-open');ob.type='button';ob.title='Open the full details, and ask Temple';ob.append(tl);const lst=s.items.filter(x=>CARD_KEY[x.type]),ix=lst.indexOf(i);ob.onclick=()=>openItem(lst,ix);txt.append(ob)}else txt.append(tl);
     if(i.verdict){const [l,c]=V[i.verdict]||V.unclear;const bd=el('span',l,'badge '+c);bd.style.marginLeft='8px';txt.append(bd)}if(i.kind==='decision'&&i.type==='proposal'){const db=el('span','Decision','badge v-run');db.style.marginLeft='6px';txt.append(db)}
     if(i.type==='proposal'&&i.replaces)txt.append(el('div','Temple: replaces “'+i.replaces.title+'”','small'));
     if(i.detail)txt.append(el('div',i.detail,'small muted'));row.append(txt,actionsFor(i));list.append(row)}
@@ -1913,16 +1921,16 @@ if(PAGE==='trading'){
  const readFile=f=>new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(r.result);r.onerror=()=>no(Error('Could not read the file.'));r.readAsText(f)});
  let O=null,cur=null,by='signal';
  async function load(){O=await api('/admin/api/trading');if(!cur&&O.portfolios.length)cur=O.portfolios[0].id;
-  $('tp-pfs').replaceChildren(...O.portfolios.map(p=>{const b=el('button',p.name,'chip'+(p.id===cur?' on':''));b.type='button';b.onclick=()=>{cur=p.id;run(load)};return b}));
-  if(!O.portfolios.length)$('tp-pf').replaceChildren(el('p','No paper portfolio yet. Create one below, then import your Trading 212 history into it.','muted'));
+  $('tp-pfs').replaceChildren(...O.portfolios.map(p=>{const b=el('button',(p.kind==='live'?'● ':'')+p.name+(p.kind==='live'?' · live':' · paper'),'chip'+(p.id===cur?' on':''));b.type='button';b.onclick=()=>{cur=p.id;run(load)};return b}));
+  if(!O.portfolios.length)$('tp-pf').replaceChildren(el('p','No portfolio yet. Create a live one below and import your Trading 212 history into it, or a paper one to practise.','muted'));
   const pv=cur?await api('/admin/api/trading/portfolios/'+cur):null;if(pv)portfolio(pv);
   const sg=await api('/admin/api/trading/signals');signals(sg.signals);await analysis();setup();
   const sa=await api('/admin/api/trading/analysis?by=side');LAST={pv,sa};draw();
   let hit=0,hn=0;for(const r of sa.rows){const x=r.horizons['5'];if(x){hit+=x.hit_pct*x.n/100;hn+=x.n}}
-  const u=pv?pv.totals.unrealised_gbp:null,rl=pv?pv.totals.realised_gbp:null;
+  const u=pv?pv.totals.unrealised_gbp:null,rl=pv?pv.totals.realised_gbp:null,live=!!(pv&&pv.portfolio.kind==='live'),on=live?'':' on paper';
   $('tp-tiles').replaceChildren(
-   tile('pl',u==null?'–':(u>=0?'▲ ':'▼ ')+gbp(Math.abs(u)),'Unrealised on paper'+(u==null?'':u>=0?' (up)':' (down)')),
-   tile('bank',rl==null?'–':gbp(rl),'Realised on paper'),
+   tile('pl',u==null?'–':(u>=0?'▲ ':'▼ ')+gbp(Math.abs(u)),'Unrealised'+on+(u==null?'':u>=0?' (up)':' (down)')),
+   tile('bank',rl==null?'–':gbp(rl),'Realised'+on),
    tile('bolt',String(O.signals),'Signals logged'),
    tile('target',hn?Math.round(100*hit/hn)+'%':'–',hn?'Went their way after 5 days ('+hn+')':'Went their way after 5 days'),
    tile('clock',O.last_signal?day(O.last_signal):'none yet','Last signal'));
@@ -1933,17 +1941,17 @@ if(PAGE==='trading'){
   const t=el('div','');t.append(el('b',v),el('span',l));x.append(i,t);return x}
  let LAST=null,rz=0;
  function draw(){if(!LAST)return;const {pv,sa}=LAST;hero(pv);
-  const h=pv?pv.history||[]:[];$('tp-chart-title').textContent=h.length>1?'Paper portfolio value since '+sday(h[0].day):'Paper portfolio value';
+  const h=pv?pv.history||[]:[];const nm=pv&&pv.portfolio.kind==='live'?'Live portfolio value':'Paper portfolio value';$('tp-chart-title').textContent=h.length>1?nm+' since '+sday(h[0].day):nm;
   valueChart($('tp-chart'),h);sigChart($('tp-sigchart'),sa)}
  window.addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(draw,150)});
  const sday=d=>new Date(d+'T12:00:00').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
  const short=v=>{const a=Math.abs(v);return (v<0?'−':'')+'£'+(a>=1e6?(a/1e6).toFixed(1)+'m':a>=1e4?Math.round(a/1e3)+'k':Math.round(a).toLocaleString('en-GB'))};
- function hero(pv){const h=$('tp-hero');h.replaceChildren(el('div',pv?pv.portfolio.name:'Paper portfolio','k'),el('div',pv?gbp(pv.totals.value_gbp):'–','v'));
+ function hero(pv){const h=$('tp-hero');h.replaceChildren(el('div',pv?pv.portfolio.name+(pv.portfolio.kind==='live'?' · live':' · paper'):'Portfolio','k'),el('div',pv?gbp(pv.totals.value_gbp):'–','v'));
   if(pv&&pv.totals.unrealised_gbp!=null&&pv.totals.cost_gbp){const u=pv.totals.unrealised_gbp,p=100*u/pv.totals.cost_gbp;
    h.append(el('div',(u>=0?'▲ ':'▼ ')+gbp(Math.abs(u))+' ('+(u>=0?'+':'−')+Math.abs(p).toFixed(1)+'%) '+(u>=0?'up':'down')+' on cost','d'))}
   else if(pv&&pv.totals.missing_prices.length)h.append(el('div','Waiting for prices','d'));
-  if(O.portfolios.length>1){const s=document.createElement('select');s.setAttribute('aria-label','Paper portfolio');for(const p of O.portfolios){const o=document.createElement('option');o.value=p.id;o.textContent=p.name;o.selected=p.id===cur;s.append(o)}s.onchange=()=>{cur=s.value;run(load)};h.append(s)}
-  h.append(el('div',pv?'Cost of holdings '+gbp(pv.totals.cost_gbp)+' · simulation only':'Simulation only: no real orders','s'))}
+  if(O.portfolios.length>1){const s=document.createElement('select');s.setAttribute('aria-label','Portfolio');for(const p of O.portfolios){const o=document.createElement('option');o.value=p.id;o.textContent=p.name;o.selected=p.id===cur;s.append(o)}s.onchange=()=>{cur=s.value;run(load)};h.append(s)}
+  h.append(el('div',pv?'Cost of holdings '+gbp(pv.totals.cost_gbp)+(pv.portfolio.kind==='live'?' · mirrors your Trading 212 account, never traded from here':' · paper, simulation only'):'Alice never places a real order','s'))}
  function tipAt(box,tip,x,y,W){const bw=box.clientWidth,sx=bw/W;let l=x*sx;l=Math.max(70,Math.min(bw-70,l));tip.style.left=l+'px';tip.style.top=Math.max(0,y-8)+'px';tip.hidden=false}
  // Value over time: teal 2px line with a light area, cost as a dashed grey line, crosshair and tooltip (mouse and arrow keys).
  function valueChart(box,hist){box.replaceChildren();
@@ -2000,7 +2008,11 @@ if(PAGE==='trading'){
   const t=document.createElement('table');t.id='tp-pos';t.className='mem-table';const w=el('div','','table-wrap');w.append(t);box.append(w);
   table('tp-pos',['Holding','Quantity','Average cost','Last close','Last 30 days','Value','Profit or loss',''],v.positions.map(p=>[el('strong',p.symbol+(p.exchange?':'+p.exchange:'')),String(p.qty),gbp(p.avg_cost_gbp),p.last!=null?p.last+' '+p.ccy:'–',spark(p.spark),gbp(p.value_gbp),(()=>{const s=el('span','');s.append(document.createTextNode(gbp(p.pl_gbp)+' '),pct(p.pl_pct));return s})(),(()=>{const b=el('button','Simulate selling','secondary mini');b.type='button';b.onclick=()=>{$('tp-sc-sym').value=p.symbol;$('tp-sc-date').focus()};return b})()]),'Nothing held. Import your Trading 212 history, or add a paper trade.');
   const al=alloc(v);if(al)box.append(al);
-  const tr=document.createElement('details');tr.className='tp-more';tr.append(el('summary','Paper trade'));const f=el('div','','tp-form');
+  const live=v.portfolio.kind==='live';
+  const kb=el('button',live?'Mark as paper':'Mark as live (mirrors my Trading 212 account)','secondary mini');kb.type='button';
+  kb.onclick=()=>run(async()=>{await api('/admin/api/trading/portfolios/'+cur+'/kind','PUT',{kind:live?'paper':'live'});$('notice').textContent=live?'Now a paper portfolio.':'Now your live portfolio: it changes only by importing your Trading 212 history.';await load()});
+  box.append(el('p',live?'Live: a copy of your real Trading 212 account, kept up to date by importing its history. Nothing here places an order.':'Paper: practice trades, simulation only.','small muted'),kb);
+  const tr=document.createElement('details');tr.className='tp-more';tr.hidden=live;tr.append(el('summary','Paper trade'));const f=el('div','','tp-form');
   f.innerHTML='<input id="tp-t-sym" placeholder="Ticker" maxlength="24"><select id="tp-t-side"><option value="buy">Buy</option><option value="sell">Sell</option></select><input id="tp-t-qty" type="number" step="any" min="0" placeholder="Quantity"><input id="tp-t-price" type="number" step="any" min="0" placeholder="Price"><select id="tp-t-ccy"><option>USD</option><option>GBP</option><option>GBX</option><option>EUR</option></select><input id="tp-t-at" type="datetime-local"><button type="button" id="tp-t-add">Record paper trade</button>';
   tr.append(f,el('p','Price in its own currency; Alice converts to pounds with the latest rate she has (refresh prices first).','small muted'));box.append(tr);
   $('tp-t-add').onclick=()=>run(async()=>{await api('/admin/api/trading/portfolios/'+cur+'/trades','POST',{symbol:$('tp-t-sym').value,side:$('tp-t-side').value,qty:+$('tp-t-qty').value,price:+$('tp-t-price').value,ccy:$('tp-t-ccy').value,at:$('tp-t-at').value?new Date($('tp-t-at').value).toISOString():''});$('notice').textContent='Paper trade recorded.';await load()});
@@ -2042,7 +2054,7 @@ if(PAGE==='trading'){
   const ip=document.createElement('label');ip.className='small';const cb=document.createElement('input');cb.type='checkbox';cb.checked=O.ip_check;cb.onchange=()=>run(async()=>{await api('/admin/api/trading/ip-check','PUT',{on:cb.checked});await load()});
   ip.append(cb,document.createTextNode(' Only accept alerts from TradingView’s published sending addresses (recommended)'));wh.append(ip);
   box.append(wh)}
- $('tp-pf-add').onclick=()=>run(async()=>{const r=await api('/admin/api/trading/portfolios','POST',{name:$('tp-pf-name').value});cur=r.id;$('tp-pf-name').value='';await load()});
+ $('tp-pf-add').onclick=()=>run(async()=>{const r=await api('/admin/api/trading/portfolios','POST',{name:$('tp-pf-name').value,kind:$('tp-pf-kind').value});cur=r.id;$('tp-pf-name').value='';await load()});
  $('tp-s-add').onclick=()=>run(async()=>{const r=await api('/admin/api/trading/signals','POST',{symbol:$('tp-s-sym').value,side:$('tp-s-side').value,price:$('tp-s-price').value?+$('tp-s-price').value:null,signal:$('tp-s-name').value,timeframe:$('tp-s-tf').value,time:$('tp-s-time').value?new Date($('tp-s-time').value).toISOString():''});$('notice').textContent=r.duplicate?'That signal is already logged.':'Signal logged.';await load()});
  $('tp-s-csv').onchange=()=>run(async()=>{const f=$('tp-s-csv').files[0];if(!f)return;const r=await api('/admin/api/trading/signals/import','POST',{name:f.name,text:await readFile(f)});$('notice').textContent=r.added+' signals added, '+r.duplicates+' already there, '+r.refused+' refused.';await load()});
  run(load);
@@ -2688,8 +2700,26 @@ async function openCard(src,opts={}){let d=document.getElementById('ic-drawer');
   if(s.items){if(!s.items.length)sec.append(el('p',s.empty||'Nothing.','muted small'));const ul=el('ul','','ic-items');for(const it of s.items){const li=document.createElement('li');const b=el('button','','ic-item');b.type='button';b.append(el('span',it.ref,'ref'),el('span',it.label),el('span',it.time?icTime(it.time).split(' · ')[1]:'','small muted'));
     b.onclick=()=>openCard('/admin/api/cards/'+(c.kind||'log')+'/'+it.ref,{onClose:IC_STATE&&IC_STATE.onClose});li.append(b);ul.append(li)}sec.append(ul)}
   body.append(sec)}
- const foot=el('div','','ic-foot');for(const a of c.actions||[]){const x=document.createElement('a');x.href=a.href;x.textContent=a.label+' ↗';x.className='button-link';foot.append(x)}
+ if(c.discuss)body.append(icDiscuss(c.discuss));
+ const foot=el('div','','ic-foot');if(opts.footer){const f=opts.footer(c);if(f)foot.append(f)}for(const a of c.actions||[]){const x=document.createElement('a');x.href=a.href;x.textContent=a.label+' ↗';x.className='button-link';foot.append(x)}
  d.replaceChildren(head,body);if(foot.childElementCount)d.append(foot);d.querySelector('.ic-close').focus()}
+// Discuss with Temple inside a card (anything waiting on Actions). Temple is advisory: it may suggest a recommendation and a
+// note; the decision stays with you (the buttons in the card's footer).
+function icDiscuss(spec){const RW={approve:['Approve','rec-ok'],clarify:['Clarify first','rec-warn'],reject:['Reject','rec-bad']};
+ const sec=el('div','','ic-sec ic-discuss');const h=el('h3','');const ic=document.createElement('span');ic.className='ic-ic';ic.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/></svg>';h.append(ic,document.createTextNode('Ask Temple'));sec.append(h);
+ const log=el('div','','dec-talk-log'),form=el('form','','dec-talk-form'),ta=document.createElement('textarea'),send=el('button','Send');ta.rows=2;ta.maxLength=4000;ta.placeholder='Ask Temple about this before you decide';ta.setAttribute('aria-label','Message to Temple');send.type='submit';
+ const starters=el('div','','dec-talk-starters');for(const q of spec.starters||[]){const b=el('button',q,'chip');b.type='button';b.onclick=()=>{ta.value=q;form.requestSubmit()};starters.append(b)}
+ form.append(ta,send);sec.append(log,starters,form);
+ const bubble=m=>{const b=el('div','','dec-msg '+(m.role==='temple'?'from-t':'from-you'));b.append(el('div',m.role==='temple'?'Temple':'You','who'),el('div',m.content,'txt'));
+  if(m.recommendation&&RW[m.recommendation]){const r=el('div','','dec-msg-rec '+RW[m.recommendation][1]);r.append(el('span','Temple now suggests','dec-rec-k'),el('strong',RW[m.recommendation][0]));b.append(r)}
+  if(m.note){const n=el('div','','dec-msg-note');n.append(el('span','Suggested note','dec-rec-k'),el('div','“'+m.note+'”'));b.append(n)}return b};
+ const show=ms=>{log.replaceChildren(...ms.map(bubble));starters.hidden=ms.length>0;log.scrollTop=log.scrollHeight};
+ api(spec.url).then(r=>show(r.messages)).catch(()=>{});
+ ta.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();form.requestSubmit()}});
+ form.onsubmit=e=>{e.preventDefault();const msg=ta.value.trim();if(!msg||send.disabled)return;send.disabled=true;ta.value='';
+  log.append(bubble({role:'you',content:msg}));const wait=el('div','Temple is thinking…','dec-msg from-t thinking');log.append(wait);starters.hidden=true;log.scrollTop=log.scrollHeight;
+  api(spec.url,'POST',{message:msg}).then(r=>show(r.messages)).catch(err=>{wait.remove();ta.value=msg;const n=document.getElementById('notice');if(n)n.textContent=err.message}).finally(()=>{send.disabled=false})};
+ return sec}
 function icChart(ch){const P=ch.points,W=420,H=150,L=40,R=8,T=8,B=22;const vs=P.map(p=>p.y).concat(P.flatMap(p=>[p.low,p.high]).filter(v=>v!=null));let lo=Math.min(...vs),hi=Math.max(...vs);const pad=(hi-lo)*.12||1;lo=Math.max(0,lo-pad);hi+=pad;
  const x=i=>L+(W-L-R)*i/(P.length-1),y=v=>T+(H-T-B)*(1-(v-lo)/(hi-lo));const svg=svgEl('svg',{class:'ic-chart',viewBox:`0 0 ${W} ${H}`,role:'img','aria-label':'History in '+ch.unit+': '+P.map(p=>p.x+' '+p.y).join(', ')});
  const top=P.map((p,i)=>p.high!=null?x(i)+','+y(p.high):null),bot=P.map((p,i)=>p.low!=null?x(i)+','+y(p.low):x(i)+','+y(lo));

@@ -158,3 +158,23 @@ t('Trading desk is listed under Apps with its figures', ap['name'] == 'Trading d
 import re
 bicep = open(__import__('os').path.join(__import__('os').path.dirname(__import__('os').path.dirname(__import__('os').path.abspath(__file__))), 'infra', 'main.bicep')).read()
 t('the webhook is the only other address outside sign-in', re.search(r"excludedPaths: \['/healthz', '/signed-out', '/hooks/tradingview'\]", bicep) is not None)
+
+# ---- live portfolios: a mirror of the real Trading 212 account (Stefan's decision, 6 Oct 2026) ----
+r = cl.post('/admin/api/trading/portfolios', json={'name': 'T212 Invest', 'kind': 'live'}, headers=H)
+live = r.json()['id']
+t('a live portfolio can be created', r.status_code == 200 and r.json()['kind'] == 'live')
+t('live portfolios are listed first', T.portfolios()[0]['id'] == live and T.portfolios()[0]['kind'] == 'live')
+refused('a live portfolio refuses trades typed in by hand', lambda: T.add_trade(live, 'ZZNV', 'buy', 1, 100))
+t('the route says why', 'import' in cl.post(f'/admin/api/trading/portfolios/{live}/trades', json={'symbol': 'ZZNV', 'side': 'buy', 'qty': 1, 'price': 100},
+                                          headers=H).json()['detail'])
+t('it changes only by importing the account\'s history', T.import_t212(live, 't212.csv', CSV)['added'] == 4
+  and T.portfolio_view(live)['positions'][0]['qty'] == 6)
+T.add_trade(pf, 'ZZQC', 'buy', 1, 150, 'USD', 0.8)
+refused('a paper portfolio with hand-typed trades cannot be marked live', lambda: T.set_kind(pf, 'live'))
+p2 = T.create_portfolio('Imported only')['id']; T.import_t212(p2, 't212.csv', CSV)
+t('one built only from imports can be marked live, and back', T.set_kind(p2, 'live')['kind'] == 'live'
+  and cl.put(f'/admin/api/trading/portfolios/{p2}/kind', json={'kind': 'paper'}, headers=H).json()['kind'] == 'paper')
+t('an unknown kind is refused', cl.post('/admin/api/trading/portfolios', json={'name': 'x', 'kind': 'real'}, headers=H).status_code == 422)
+t('"what if I had sold" still works on a live portfolio (it is a simulation)', bool(T.simulate_sell(live, '2026-09-10')))
+ap = next(a for a in cl.get('/admin/api/apps').json()['apps'] if a['id'] == 'trading')
+t('the Apps tile shows live and paper values separately', [x['label'] for x in ap['summary']['stats']][:2] == ['Live portfolios value', 'Paper portfolios value'])
