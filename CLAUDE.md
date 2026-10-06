@@ -37,6 +37,9 @@ knowledge note "AI Substrate: status summary" through the `alice` connector, or 
    EXCEPT knowledge notes (Stefan's decision D-0026, 6 Oct 2026): a note from an app ticked in `connector_knowledge` (Actions, "Notes from
    outside apps"; Claude and Copilot on by default) is approved after the same checks unless the proposer names an item it replaces or
    Temple's free checks (`temple_supersede.overlaps`: same title, explicit wording, title/vocabulary score) find an overlap, which waits;
+   and EXCEPT memories (Stefan, 6 Oct 2026): from an app ticked in `connector_memories` (Actions, "Memories from outside apps"; Claude and
+   ChatGPT on, Copilot off by default because it reads email and meetings) a memory goes through Temple's review like any other
+   (`temple.automatic_review` holds it only if `autoapprove.outside_memory_waits()`); `backlog()` re-checks memories held only for that reason;
    rule and guidance changes; retiring or replacing older items; and every mileage entry (Mileage Clerk approvals are
    always Stefan's, per exact entry and action). Do not widen automatic approval past these without his say.
    The older exception still stands: reference summaries uploaded on a Proposal writer page (`auto_approve_references`,
@@ -308,7 +311,7 @@ To undo uncommitted changes to a file: `git restore <file>`. To see what changed
   reads, assistants, proposals context) like client separation. Temple's own classification calls must then run on an in-tenant model
   (or titles only), otherwise classifying would itself send the unclassified material out.
 
-- pgvector search in PostgreSQL; ChatGPT as a second connector client (it can use the same OAuth proxy).
+- pgvector search in PostgreSQL.
 - Build and release without the PC: Claude works on the GitHub repo directly (Promote/Rollback button and automatic go-live done; waiting on GitHub access for Claude).
 - TypeScript front end against the existing API; split `substrate_store.py` into modules.
 - OpenAI image pricing once the usage export arrives (`IMAGE_PRICE_OPENAI`).

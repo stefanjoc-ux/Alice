@@ -1217,16 +1217,18 @@ def admin_decision_policy_set(update: DecisionPolicyIn):
     return admin_decision_policy()
 
 class ConnectorKnowledgeIn(BaseModel):
+    kind: Literal['notes','memories'] = 'notes'
     claude: Optional[bool] = None
     copilot: Optional[bool] = None
     chatgpt: Optional[bool] = None
 
 @app.get('/admin/api/auto-approve/connectors')
-def admin_connector_knowledge(): return {'apps': autoapprove.connector_knowledge(), 'names': autoapprove.CONNECTOR_APPS}
+def admin_connector_knowledge(): return {'apps': autoapprove.connector_knowledge(), 'memories': autoapprove.connector_memories(), 'names': autoapprove.CONNECTOR_APPS}
 
 @app.put('/admin/api/auto-approve/connectors')
 def admin_connector_knowledge_set(u: ConnectorKnowledgeIn):
-    autoapprove.set_connector_knowledge({k: v for k, v in u.model_dump().items() if v is not None})
+    vals = {k: v for k, v in u.model_dump().items() if v is not None and k != 'kind'}
+    (autoapprove.set_connector_memories if u.kind == 'memories' else autoapprove.set_connector_knowledge)(vals)
     return admin_connector_knowledge()
 
 class ApproveAllIn(BaseModel):

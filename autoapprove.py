@@ -14,7 +14,10 @@ organisation facts and Temple's memory/knowledge suggestions go live without a c
   Stefan does not control, so a page saying "remember that…" must not become a live memory. Exception (Stefan's decision
   D-0026, 6 Oct 2026): knowledge notes from an outside app switched on in 'connector_knowledge' (Claude and Copilot by
   default; switches on Actions) are approved after the same checks, unless Temple's free checks (`temple_supersede.overlaps`)
-  or the proposer say it may replace or overlap something Alice holds: those wait for him.
+  or the proposer say it may replace or overlap something Alice holds: those wait for him. Memories likewise (Stefan, 6 Oct
+  2026): from an app ticked in 'connector_memories' (Claude and ChatGPT on, Copilot off by default, since it reads email and
+  meetings) a memory goes through Temple's review like any other and waits only if Temple finds a clash, a replacement or
+  could not check it.
 
 The security rules still run when anything is proposed and again on approval (secrets, protective markings, personal
 identifiers, duplicates, client separation): automatic approval never skips them. Each automatic approval is logged
@@ -31,6 +34,7 @@ import substrate_store as store
 _outside = contextvars.ContextVar('alice_auto_outside', default='')
 _outside_provider = contextvars.ContextVar('alice_auto_outside_provider', default='')
 CONNECTOR_APPS = {'claude': 'Claude', 'copilot': 'Microsoft Copilot', 'chatgpt': 'ChatGPT'}   # ChatGPT: Stefan, 6 Oct 2026, same as Claude
+MEMORY_DEFAULTS = {'claude': True, 'chatgpt': True, 'copilot': False}   # Copilot reads email and meetings: off until Stefan ticks it
 _deciding = contextvars.ContextVar('alice_auto_deciding', default=False)
 TYPES = {'memory': 'Memory', 'knowledge': 'Knowledge', 'orgfact': 'Organisation fact', 'chat': 'Saved conversation'}
 IMPACT = re.compile(r'^\W*impact\W*[:\-]?\s*(low|medium|high)\b', re.I | re.M)
@@ -49,6 +53,7 @@ def _schema():
         default = 'false' if os.getenv('ALICE_AUTO_APPROVE_DEFAULT') == 'off' else 'true'   # only for a brand-new database
         c.execute("INSERT OR IGNORE INTO settings VALUES ('auto_approve',?)", (default,))
         c.execute("INSERT OR IGNORE INTO settings VALUES ('connector_knowledge',?)", (json.dumps({k: True for k in CONNECTOR_APPS}),))
+        c.execute("INSERT OR IGNORE INTO settings VALUES ('connector_memories',?)", (json.dumps(MEMORY_DEFAULTS),))
         c.execute("INSERT OR IGNORE INTO settings VALUES ('decision_policy',?)",
                   (json.dumps({'auto': True, 'categories': {}, 'impact': 'off', 'approver': ''}),))
 
@@ -95,6 +100,31 @@ def set_connector_knowledge(apps):
         store.audit(c, 'connector_knowledge_setting', 'Alice', 'human_control',
                     'Notes from outside apps approved after checks: ' + (', '.join(CONNECTOR_APPS[k] for k, v in new.items() if v) or 'none'))
     return new
+
+
+def connector_memories():
+    """{app: True|False}: memories from that outside app go through Temple's review like any other (Stefan, 6 Oct 2026)."""
+    with store.db() as c:
+        row = c.execute("SELECT value FROM settings WHERE key='connector_memories'").fetchone()
+    try: v = json.loads(row[0]) if row else {}
+    except ValueError: v = {}
+    return {k: bool(v.get(k, MEMORY_DEFAULTS.get(k, False))) for k in CONNECTOR_APPS}
+
+
+def set_connector_memories(apps):
+    cur = connector_memories()
+    new = {k: bool(apps.get(k, cur[k])) for k in CONNECTOR_APPS}
+    with store.db() as c:
+        c.execute("INSERT INTO settings(key,value) VALUES ('connector_memories',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (json.dumps(new),))
+        store.audit(c, 'connector_memories_setting', 'Alice', 'human_control',
+                    'Memories from outside apps checked by Temple: ' + (', '.join(CONNECTOR_APPS[k] for k, v in new.items() if v) or 'none'))
+    return new
+
+
+def outside_memory_waits():
+    """Called when a memory is proposed: True if it must wait for Stefan because it came through an app switched off."""
+    if not outside(): return False
+    return not connector_memories().get(_app_of(outside(), _outside_provider.get()), False)
 
 
 def _app_of(label, provider=''):
@@ -330,6 +360,16 @@ def backlog():
         decs = [r[0] for r in c.execute("SELECT r.id FROM records r LEFT JOIN memory_archive a ON a.record_id=r.id JOIN record_meta m ON m.record_id=r.id "
                                         "WHERE coalesce(a.state,r.status)='proposed' AND m.kind='decision'")]
         chats = [r[0] for r in c.execute("SELECT DISTINCT chat_id FROM temple_suggestions WHERE status='pending' AND kind IN ('memory','knowledge','decision')")]
+    mallow = connector_memories()
+    with store.db() as c:
+        srcs = {r[0]: r[1] or '' for r in c.execute("SELECT id, source FROM records WHERE id IN (%s)" % (','.join('?' * len(mems)) or "''"), mems)} if mems else {}
+    for m in mems:      # held only because an outside app sent it, and that app is now switched on: through Temple's checks again
+        why = hl.get(('memory', m)) or ''
+        via = re.search(r'\[via ([^\]]+)\]', srcs.get(m, ''))
+        app = _app_of(via.group(1)) if via else ''
+        if why.endswith(OUTSIDE_HOLD) and app and mallow.get(app):
+            with store.db() as c: c.execute("DELETE FROM auto_approvals WHERE item_type='memory' AND item_id=? AND state='held'", (m,))
+            hl.pop(('memory', m), None)
     mems = [m for m in mems if ('memory', m) not in hl]
     started = 0
     for rid in mems:

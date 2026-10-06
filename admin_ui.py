@@ -617,7 +617,7 @@ a.av-tile:hover{border-color:var(--teal)}.av-tile b{font-size:28px;line-height:1
 .imp-progress{margin:10px 0}.imp-progress[hidden]{display:none}.imp-bar{height:12px;background:#e3eaf0;border-radius:6px;overflow:hidden;margin-bottom:6px}.imp-bar span{display:block;height:100%;width:0;background:#075e79;transition:width .3s}
 .act-count{display:inline-block;min-width:26px;padding:2px 9px;border-radius:999px;background:#075e79;color:#fff;font-size:14px;text-align:center;vertical-align:middle}
 .act-sec.act-warn{border-left:4px solid #c08a1e}.act-sec.act-bad{border-left:4px solid #b3261e}
-.act-head-r{display:flex;align-items:center;gap:14px}.content button.act-all{margin:0}
+.act-conn-row{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;width:100%}.act-head-r{display:flex;align-items:center;gap:14px}.content button.act-all{margin:0}
 .content button.act-open{all:unset;cursor:pointer;display:inline;margin:0}.act-open strong{text-decoration:underline;text-decoration-color:#b9cad6;text-underline-offset:3px}.act-open:hover strong{color:var(--teal);text-decoration-color:currentColor}.act-open:focus-visible{outline:2px solid var(--teal);outline-offset:2px;border-radius:3px}
 .ic-discuss .dec-talk-log{padding:4px 0}.ic-discuss .dec-talk-starters{padding:6px 0}.ic-discuss .dec-talk-form{padding:6px 0 0}.ic-foot .act-buttons{display:flex;gap:6px;flex-wrap:wrap;margin-right:auto}
 .act-row{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid #d3dee6;flex-wrap:wrap}.act-text{flex:1 1 380px;min-width:0}.act-text strong{overflow-wrap:anywhere}
@@ -1217,14 +1217,17 @@ if(PAGE==='actions'){
     if(i.detail)txt.append(el('div',i.detail,'small muted'));row.append(txt,actionsFor(i));list.append(row)}
    box.append(sec)}
   if(clear.length){const sec=el('section','','act-sec');sec.append(el('h2','All clear'),el('p',clear.map(s=>s.title).join(' · '),'muted small'));box.append(sec)}
-  connPolicy(!!d.auto_on).catch(()=>{});$('act-auto').checked=!!d.auto_on;$('act-auto-text').textContent=d.auto_on?'On: memories, knowledge and organisation facts go live after Alice\u2019s checks, and Temple records decisions (see Decisions below). Clashing memories, replacements, rule changes, memories from outside apps, and notes from them that may overlap something Alice holds wait for you here.':'Off: everything waits for your approval.'}
+  connPolicy(!!d.auto_on).catch(()=>{});$('act-auto').checked=!!d.auto_on;$('act-auto-text').textContent=d.auto_on?'On: memories, knowledge and organisation facts go live after Alice\u2019s checks, and Temple records decisions (see Decisions below). Clashing memories, replacements, rule changes, and anything from outside apps that clashes or overlaps, or comes from an app you have not ticked below, wait for you here.':'Off: everything waits for your approval.'}
 
  // Notes from outside apps (decision D-0026): approved after Alice's checks unless they may replace or overlap something she holds.
  async function connPolicy(on){const box=$('act-conn');box.hidden=!on;if(!on)return;const p=await api('/admin/api/auto-approve/connectors');
-  box.replaceChildren(el('strong','Notes from outside apps','small'));
-  for(const [k,n] of Object.entries(p.names)){const l=el('label','','act-switch small');const c=document.createElement('input');c.type='checkbox';c.checked=!!p.apps[k];
-   c.onchange=()=>run(async()=>{await api('/admin/api/auto-approve/connectors','PUT',{[k]:c.checked});$('notice').textContent=n+(c.checked?': notes are approved after Alice\u2019s checks.':': notes wait for you.')});l.append(c,document.createTextNode(' '+n));box.append(l)}
-  box.append(el('span','Ticked: a note saved from that app is approved after Alice\u2019s checks, unless it may replace or overlap something she holds. Memories from outside apps always wait for you.','muted small'))}
+  box.replaceChildren();
+  for(const [kind,label,vals,what] of [['notes','Notes from outside apps',p.apps,'notes'],['memories','Memories from outside apps',p.memories,'memories']]){
+   const row=el('div','','act-conn-row');row.append(el('strong',label,'small'));
+   for(const [k,n] of Object.entries(p.names)){const l=el('label','','act-switch small');const c=document.createElement('input');c.type='checkbox';c.checked=!!vals[k];
+    c.onchange=()=>run(async()=>{await api('/admin/api/auto-approve/connectors','PUT',{kind,[k]:c.checked});$('notice').textContent=n+(c.checked?': '+what+' are approved after Temple\u2019s checks.':': '+what+' wait for you.')});l.append(c,document.createTextNode(' '+n));row.append(l)}
+   box.append(row)}
+  box.append(el('span','Ticked: what that app saves goes through Temple\u2019s checks like anything else and is approved unless it clashes with, replaces or overlaps something Alice holds. Unticked: it waits for you.','muted small'))}
  async function decPolicy(){const p=await api('/admin/api/decision-policy');const body=$('act-dec-body');body.replaceChildren();
   const held=Object.keys(p.categories);
   $('act-dec-sum').textContent=!p.auto?'· wait for you':('· Temple records them'+(held.length||p.impact!=='off'?', except '+[held.length?held.length+' categor'+(held.length===1?'y':'ies'):'',p.impact==='high'?'high impact':p.impact==='medium'?'medium and high impact':''].filter(Boolean).join(' and '):''));

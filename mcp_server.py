@@ -343,7 +343,7 @@ def propose_record(title: Annotated[str, Field(min_length=1, max_length=200)],
     Optionally give a category only if it is one of the user's existing categories; unknown
     names are ignored and Temple assigns a category instead. The admin can always change it.
     Alice approves it automatically once Temple has checked it does not clash with an existing memory; one that clashes,
-    and anything proposed through the outside (Copilot) connector, waits for the user. Pass on the message returned.
+    or one from an outside app the user has not switched on for memories, waits for the user. Pass on the message returned.
     """
     who = _who()
     agent, run = _app('propose_record')

@@ -138,7 +138,7 @@ def automatic_review(rid):
     import autoapprove
     if autoapprove.deciding():              # a decision: held, and reviewed once its details are saved (autoapprove.propose_decision)
         return {'status':'deferred','message':'Decision: reviewed once saved.'}
-    if autoapprove.outside():               # from the outside connector: always waits for the owner
+    if autoapprove.outside_memory_waits():  # from an outside app switched off for memories (Actions): waits for the owner
         autoapprove.hold('memory',rid,f'Proposed by {autoapprove.outside()} through the outside connector: it reads material you do not control.')
     if settings()['enabled']:
         # Background: the proposal is already saved, so callers (web chat, Claude Desktop) need not wait.

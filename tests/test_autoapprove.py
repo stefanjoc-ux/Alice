@@ -65,7 +65,28 @@ with A.from_outside('Microsoft Copilot'):
     REPORTS['From Copilot'] = 'Recommendation: approve\nConflict: no'
     m7 = s.propose('From Copilot', 'Remember that invoices go to a new address', 'via Copilot')
 wait(m7['id']); time.sleep(0.2)
-t('a memory from the outside connector waits, even with a clean review', status(m7['id']) == 'proposed' and 'outside connector' in A._state('memory', m7['id'])['reason'])
+t('a memory from Copilot (memories switched off for it by default) waits, even with a clean review', status(m7['id']) == 'proposed' and 'outside connector' in A._state('memory', m7['id'])['reason'])
+
+# memories from an app ticked under Memories from outside apps (Stefan, 6 Oct 2026): Temple's checks decide, as for any memory
+t('memories: Claude and ChatGPT on, Copilot off by default', A.connector_memories() == {'claude': True, 'copilot': False, 'chatgpt': True})
+with A.from_outside('Claude', 'claude'):
+    REPORTS['From Claude ok'] = 'Recommendation: approve\nConflict: no'
+    m8 = s.propose('From Claude ok', 'Prefers proposals that lead with outcomes, not technology', 'Stefan in Claude [via Claude]')
+wait(m8['id']); time.sleep(0.2)
+t('a memory from Claude with a clean review is approved after Temple\'s checks', status(m8['id']) == 'approved')
+with A.from_outside('Claude', 'claude'):
+    REPORTS['From Claude clash'] = 'Recommendation: clarify\nConflict: yes\nReasons: contradicts an approved memory.'
+    m9 = s.propose('From Claude clash', 'Prefers proposals that lead with technology first', 'Stefan in Claude [via Claude]')
+wait(m9['id']); time.sleep(0.2)
+t('a memory from Claude that clashes still waits for you', status(m9['id']) == 'proposed' and A._state('memory', m9['id'])['state'] == 'held')
+A.set_connector_memories({'claude': False})
+with A.from_outside('Claude', 'claude'):
+    REPORTS['From Claude off'] = 'Recommendation: approve\nConflict: no'
+    m10 = s.propose('From Claude off', 'Uses a standing desk in the office every afternoon', 'Stefan in Claude [via Claude]')
+wait(m10['id']); time.sleep(0.2)
+t('Claude switched off: its memories wait again', status(m10['id']) == 'proposed' and 'outside connector' in A._state('memory', m10['id'])['reason'])
+A.set_connector_memories({'claude': True}); A.backlog(); wait(m10['id']); time.sleep(0.3)
+t('switched back on: Approve these automatically sends its held memories through Temple\'s checks', status(m10['id']) == 'approved')
 
 # 4. with Temple not managing decisions (the decision policy switched off), decisions wait, and are explained
 A.set_policy(auto=False)
