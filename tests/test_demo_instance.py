@@ -90,6 +90,10 @@ except ValueError as e: t('a database with data the demo did not create is refus
 with s.db() as c: c.execute('DELETE FROM records WHERE id=?', (rid,))
 
 r = D.load_now(sc['id'])
+import threading as _th      # the pending items go through the gates in background threads: let them finish before counting
+_end = time.time() + 10
+for _x in _th.enumerate():
+    if _x is not _th.main_thread() and _x.daemon: _x.join(max(0.1, _end - time.time()))
 t('loading builds the history', r['memories'] == 8 and r['decisions'] == 4 and r['knowledge'] == 4 and r['conversations'] == 2 and r['pending'] == 3)
 with s.db() as c:
     approved = c.execute("SELECT count(*) FROM records WHERE status='approved'").fetchone()[0]
@@ -99,7 +103,9 @@ with s.db() as c:
     blocked = c.execute("SELECT count(*) FROM activity WHERE action='rule_blocked'").fetchone()[0]
     facts = c.execute("SELECT count(*) FROM org_facts WHERE status='approved'").fetchone()[0]
     owners = {r[0] for r in c.execute("SELECT owner FROM record_meta WHERE owner<>''")}
-t('history is approved; what is still waiting goes through the gates for real', approved == 12 and proposed == 3)
+with s.db() as c: rev = c.execute("SELECT status FROM records WHERE title LIKE '%reverse decision%'").fetchone()[0]
+t('history is approved; what is still waiting goes through the gates for real: the two memories wait, and Temple records the '
+  'clashing decision (decisions are recorded with the clash noted, Stefan\'s decision of 5 Oct)', approved == 13 and proposed == 2 and rev == 'approved')
 t('it is spread over months, by the team', oldest < (s.now()[:4] + '-08') and {'Shona Hay', 'Euan Laidlaw'} <= actors and {'Shona Hay', 'Euan Laidlaw'} <= owners)
 t('a blocked OFFICIAL-SENSITIVE paste is in the log, as it would really happen', blocked >= 1)
 t('the public facts are on the organisation\'s profile', facts == 5)
