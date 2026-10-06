@@ -2573,7 +2573,7 @@ if(PAGE==='rule-packs'){
   b1.onclick=()=>change({all_on:true});b2.onclick=()=>change({all_on:false});b3.onclick=()=>change({reset:true});b3.title='Back to the recommended settings for this pack';meta.append(b1,b2,b3,ap);h.append(meta);
   if(live)h.append(el('p','Applied to live rules: switching a safeguard here changes what Alice enforces, and is recorded in Activity. The test box below is still a sandbox.','rp-live-note'));
   const R=P.rules,themes=P.themes||[];if(st.theme&&!themes.some(t=>t.name===st.theme))st.theme='';
-  filterChips($('rp-kind'),[['','All',R.length],['enforced','Enforced',R.filter(r=>r.kind==='enforced').length],['gate','Sign-off',R.filter(r=>r.kind==='gate').length],['off','Switched off',R.filter(r=>!on[r.id]).length]],st.kind,k=>filter(k,st.theme));
+  filterChips($('rp-kind'),[['','All',R.length],['enforced','Enforced',R.filter(r=>r.kind==='enforced').length],['guidance','Guidance',R.filter(r=>r.kind==='guidance').length],['gate','Sign-off',R.filter(r=>r.kind==='gate').length],['off','Switched off',R.filter(r=>!on[r.id]).length]],st.kind,k=>filter(k,st.theme));
   filterChips($('rp-themes'),[['','All categories',R.length]].concat(themes.map(t=>[t.name,t.name,R.filter(r=>r.theme===t.name).length])),st.theme,k=>filter(st.kind,k));
   $('rp-counts').textContent=R.filter(r=>on[r.id]).length+' of '+R.length+' safeguards on';
   const fired={},would={};if(st.res){for(const f of st.res.fired)fired[f.rule]=f;for(const f of st.res.off)would[f.rule]=f}

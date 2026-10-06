@@ -63,6 +63,7 @@ t('empty test message refused', cl.post('/admin/api/rule-packs/test', json={'pac
 t('page renders', 'id="rp-rules"' in cl.get('/admin/rule-packs').text)
 page = cl.get('/admin/rule-packs').text
 t('page uses the Rules look: tiles, underline tabs, search, filters', all(x in page for x in ('id="rp-tiles" class="rl-tiles"', 'id="rp-packs" class="rl-tabs"', 'id="rp-q"', 'id="rp-kind"', 'id="rp-themes"')))
+t('filter chips: All, Enforced, Guidance, Sign-off, Switched off', all("['%s','%s'" % x in page for x in (('enforced', 'Enforced'), ('guidance', 'Guidance'), ('gate', 'Sign-off'), ('off', 'Switched off'))))
 d = cl.get('/admin/api/rule-packs').json()
 t('every category in every pack has an icon and a one-line description',
   all({r['theme'] for r in p['rules']} == {x['name'] for x in p['themes']} and all(x['icon'] and x['description'] for x in p['themes']) for p in d['packs']))
