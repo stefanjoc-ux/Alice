@@ -652,7 +652,8 @@ def propose_proposal_changes(proposal: Annotated[str, Field(min_length=1, max_le
       references (document paths);
       roles ([{"role": a role already on the rate card, "use": true/false, "days": number, "sell": sell rate in GBP}]);
       draft ([{"title": an existing section of the draft that is not standard text, "body": the full new text in simple markdown}]).
-    Anything not on offer (unknown roles, templates or sections) is left out and listed in left_out. Pass on the message returned."""
+    Anything not on offer (unknown roles, templates or sections) is left out and listed in left_out. Pass on the message returned,
+    with its link: the changes are not in the proposal until the user Applies them."""
     import proposal_share
     who = _who()
     agent, run = _app('propose_proposal_changes')

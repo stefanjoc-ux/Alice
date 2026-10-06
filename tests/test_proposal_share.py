@@ -4,7 +4,7 @@ applies or dismisses it on the Parker page. Changes are checked like Parker's ow
 exist); secrets and markings are refused; client separation still applies to outside connections. No real model is called."""
 import _util  # first: throwaway data folder, dummy keys, no real model calls
 from _util import t
-import json, time
+import json, os, time
 from types import SimpleNamespace as NS
 import substrate_store as s
 s.init()
@@ -74,6 +74,14 @@ t('only roles and sections that exist are kept', sg['updates']['roles'] == [{'ro
   and sg['updates']['draft'] == [{'title': 'Approach', 'body': 'A six-week discovery in three stages.'}] and sg['state'] == 'pending')
 t('who suggested it is kept', sg['from'] == "Alice's chat")
 t('get_proposal shows what is waiting', M.get_proposal(ref)['model_suggestions_pending'][0]['id'] == sg['id'])
+t('the reply says it is not applied yet and how to find it', 'not applied yet' in r['message'] and ref in r['message']
+  and r['open'] == f'/assistant/{aid}?p={pid}')
+os.environ['ALICE_PUBLIC_URL'] = 'https://alice.example.org/'
+t('with a public address, the reply carries the full link', PS.page_link(P.get(pid)) == f'https://alice.example.org/assistant/{aid}?p={pid}'
+  and M.get_proposal(ref)['page'].startswith('https://alice.example.org/'))
+os.environ.pop('ALICE_PUBLIC_URL')
+row = next(x for x in cl.get(f'/assistant/{aid}/proposals', headers=h).json()['proposals'] if x['id'] == pid)
+t('the Parker page\'s Proposals list carries the count waiting and who from', row['suggestions'] == 1 and row['suggested_by'] == ["Alice's chat"])
 t('list shows the count waiting', next(x for x in M.list_proposals()['proposals'] if x['proposal'] == ref)['pending_model_suggestions'] == 1)
 try: M.propose_proposal_changes(ref, 'x', {'astronauts': 1}); t('nothing usable: refused, saying what can change', False)
 except ValueError as e: t('nothing usable: refused, saying what can change', 'roles' in str(e) and 'draft' in str(e))
@@ -94,6 +102,39 @@ with s.db() as c: acts = {r[0] for r in c.execute("SELECT action FROM activity W
 t('suggested, applied and dismissed are in the log', {'proposal_change_suggested', 'proposal_change_applied', 'proposal_change_dismissed'} <= acts)
 page = cl.get(f'/assistant/{aid}').text
 t('the Parker page shows model suggestions with Apply and Dismiss', 'pkSuggestions' in page and 'suggested changes' in page)
+t('the Proposals list badges proposals with suggestions, and a new page points to them', 'wb-sug' in page and 'pkWaiting()' in page
+  and 'Open it to apply or dismiss' in page)
+t('Apply waits for the draft to load before applying draft changes', 'The draft is still loading' in page)
+row = next(x for x in cl.get(f'/assistant/{aid}/proposals', headers=h).json()['proposals'] if x['id'] == pid)
+t('nothing waiting once applied or dismissed', row['suggestions'] == 0)
+
+# versions: when, who and from where
+hist = P.get(pid)['context']['history']
+t('a written proposal has versions: written by Parker, then the applied suggestion with where it came from',
+  hist[0]['v'] == 1 and hist[0]['via'] == 'Parker and Argus' and hist[0]['what'].startswith('Written by Parker')
+  and any(x['kind'] == 'applied' and x['via'] == "Alice's chat" and 'notes' in x['what'] for x in hist))
+t('versions count up', [x['v'] for x in hist] == list(range(1, len(hist) + 1)))
+w = cl.post(f'/assistant/{aid}/work', json={'form': {'title': 'Fictional versioned form', 'brief': 'A brief.'}}, headers=h).json()
+t('a new form starts at version 1 on the Parker page', w['version']['v'] == 1 and w['version']['via'] == 'Parker page' and w['version']['what'] == 'Started')
+w2 = cl.post(f'/assistant/{aid}/work', json={'id': w['id'], 'form': {'title': 'Fictional versioned form', 'brief': 'A longer brief.'}}, headers=h).json()
+t('autosaves from the same place within half an hour stay one version', w2['version']['v'] == 1 and w2['version']['edits'] == 2)
+w3 = cl.post(f'/assistant/{aid}/work', json={'id': w['id'], 'form': {'title': 'Fictional versioned form', 'brief': 'Brief from Claude.', 'via': 'Claude'}}, headers=h).json()
+t('an edit carrying a suggestion from Claude is a new version, via Claude', w3['version']['v'] == 2 and w3['version']['via'] == 'Claude')
+with s.db() as c:
+    ctx = json.loads(c.execute('SELECT context FROM proposals WHERE id=?', (w['id'],)).fetchone()['context'])
+    ctx['history'][-1]['at'] = '2026-01-01T09:00:00+00:00'
+    c.execute('UPDATE proposals SET context=? WHERE id=?', (json.dumps(ctx), w['id']))
+w4 = cl.post(f'/assistant/{aid}/work', json={'id': w['id'], 'form': {'title': 'Fictional versioned form', 'brief': 'Later.', 'via': 'Claude'}}, headers=h).json()
+t('the same place after a long gap is a new version', w4['version']['v'] == 3)
+row = next(x for x in cl.get(f'/assistant/{aid}/proposals', headers=h).json()['proposals'] if x['id'] == w['id'])
+t('the Proposals list shows version, when and where', row['version'] == 3 and row['edited_via'] == 'Claude' and row['edited_at'])
+k = cl.post(f'/assistant/{aid}/work', json={'form': {'title': 'Copy', 'brief': 'b', 'started_from': pid}}, headers=h).json()
+t('saving a written proposal as a new version says which it came from', k['version']['what'] == 'Started as a new version of ' + ref)
+g = M.get_proposal(ref)
+t('models see the version and recent history', g['version']['number'] == hist[-1]['v'] and g['history'][-1]['v'] == hist[-1]['v']
+  and next(x for x in M.list_proposals()['proposals'] if x['proposal'] == ref)['version'].startswith('v'))
+page = cl.get(f'/assistant/{aid}').text
+t('the workbar shows the version, with a versions list', 'id="wb-ver"' in page and 'id="wb-hist"' in page and 'Versions of this proposal' in page)
 
 # outside connections: same tools, same access; client separation still applies, and the caller is named
 M._who = lambda: NS(label='Microsoft Copilot', provider='copilot')

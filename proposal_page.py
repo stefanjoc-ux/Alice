@@ -138,6 +138,11 @@ section.panel.shut>:not(.ph){display:none!important}
 .wb-it:hover{border-color:var(--teal)}.wb-it.on{border-color:var(--teal);box-shadow:0 0 0 2px rgba(7,94,121,.12)}
 .wb-it b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wb-it .hint{display:block}
 .wb-pill{font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 9px;white-space:nowrap;background:#eef3f7;color:#4b5a66}
+.wb-sug{font-size:11.5px;font-weight:700;border-radius:999px;padding:2px 9px;white-space:nowrap;background:#fdf3e1;color:#6b4406}.wb-n.sug{background:#f07f1b;color:#fff}
+.pk-open{margin-top:8px}
+.wb-ver{font:600 12px inherit;border:1px solid var(--line);background:#fff;color:#33424e;border-radius:999px;padding:2px 10px;cursor:pointer;white-space:nowrap}.wb-ver:hover{border-color:#9fb3c2}
+.wb-h{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;padding:8px 4px;border-top:1px solid var(--line);font-size:13px}.wb-h:first-of-type{border-top:0}.wb-h b{font-variant-numeric:tabular-nums}.wb-h .hint{grid-column:2}
+.wb-via{font-size:11.5px;font-weight:700;border-radius:999px;padding:1px 8px;background:#eef3f7;color:#33424e;margin-left:6px}.wb-via.model{background:#e9e4f7;color:#3e2a73}
 .wb-pill.form{background:#f1ebf7;color:#4b2f73}.wb-pill.run{background:#e3f1f6;color:#064b63}.wb-pill.ok{background:#eef8f1;color:#1e5b31}.wb-pill.warn{background:#fdf3e1;color:#6b4406}.wb-pill.bad{background:#fbeaea;color:#7a1f1f}
 .wb-x{border:0!important;background:none!important;color:var(--muted)!important;font-size:16px;padding:0 4px!important}.wb-x:hover{color:#b3261e!important}
 .fixch{display:flex;gap:6px;margin-top:4px}.fixch button{font-size:12px;padding:3px 10px;border-radius:999px}.fixch .fx-y.on{background:#eef8f1!important;border-color:#55b987!important;color:#1e5b31!important;font-weight:700}
@@ -232,9 +237,9 @@ table.t th{text-transform:uppercase;letter-spacing:.05em;font-size:11.5px}table.
 </style></head><body>
 <header class="topbar"><span class="brand">''' + parker_logo(26, 'tb') + '''<span class="who">''' + escape(a['name']) + '''</span></span><div class="sp"></div><span class="small" style="color:#9fb8ca">Built on Alice</span></header>
 <main><div class="wrap"><div class="layout"><div class="colmain">
-<div class="workbar" id="workbar"><div class="wb-cur"><span class="wb-k">Working on</span><b id="wb-title">New proposal</b><span id="wb-state" class="wb-state"></span></div>
+<div class="workbar" id="workbar"><div class="wb-cur"><span class="wb-k">Working on</span><b id="wb-title">New proposal</b><span id="wb-state" class="wb-state"></span><button type="button" id="wb-ver" class="wb-ver" hidden aria-expanded="false" aria-controls="wb-hist" title="Versions: when it changed, who by and from where"></button></div>
 <div class="wb-acts"><button type="button" class="secondary" id="wb-keep" hidden title="Keep the changes you have made to this written proposal as a new proposal in progress">Save as a new version</button><button type="button" class="secondary" id="wb-list" aria-expanded="false" aria-controls="wb-pop">Proposals <span id="wb-n" class="wb-n"></span> ▾</button><button type="button" class="primary" id="wb-new">+ New proposal</button></div>
-<div class="wb-pop" id="wb-pop" hidden><input type="search" id="wb-q" placeholder="Find a proposal by title or client" aria-label="Find a proposal"><div id="wb-items"></div></div></div>
+<div class="wb-pop" id="wb-hist" hidden role="region" aria-label="Versions"></div><div class="wb-pop" id="wb-pop" hidden><input type="search" id="wb-q" placeholder="Find a proposal by title or client" aria-label="Find a proposal"><div id="wb-items"></div></div></div>
 <section class="hero"><div class="hero-in"><div><div class="ptitle">''' + parker_logo(58, 'hr') + '''<div><p class="eyebrow">Proposal writer \u00b7 bid and proposal studio</p><h1>''' + escape(a['name']) + '''</h1></div></div><p class="lead" id="greeting"></p></div>
 <ol class="flow" aria-label="How it works"><li>Brief</li><li>Draft</li><li>Argus checks</li><li>Word document</li></ol></div></section>
 <section class="card" id="prog" hidden aria-live="polite"><h2 id="prog-title">Working on it</h2><ol class="steps" id="steps"></ol><div class="err" id="perr" hidden></div></section>
@@ -365,7 +370,7 @@ async function load(){S=await api('/setup');loadRefs();$('greeting').textContent
  ts.onchange=async()=>{try{const o=await api('/outline?template='+encodeURIComponent(ts.value));const now=secEd.value();const fresh=new Set(o.sections.map(x=>x.title.toLowerCase()));
    const mine=now.filter(x=>!tplTitles.has(x.title)&&!fresh.has(x.title.toLowerCase())).map(x=>({...x,source:'added'}));
    secEd.set(o.sections.concat(mine));tplTitles=new Set(o.sections.filter(x=>x.source==='template').map(x=>x.title));tplHint(o)}catch(e){tplHint(null,e.message)}};
- if(A.paused)$('go').disabled=true;summary();await recent();const q=new URLSearchParams(location.search).get('p');if(q)await openItem(q);else{setState('Saves itself as you work');updateBar()}}
+ if(A.paused)$('go').disabled=true;summary();await recent();const q=new URLSearchParams(location.search).get('p');if(q)await openItem(q);else{setState('Saves itself as you work');updateBar();pkWaiting()}}
 $('org').addEventListener('input',()=>drawRefs());
 $('org').oninput=()=>{const o=S&&S.organisations.find(x=>x.name.toLowerCase()===$('org').value.trim().toLowerCase());$('org-hint').textContent=o?(o.client?o.name+' is a client: its tagged memories and knowledge are included; other clients’ never are.':'Its approved profile is used.'):($('org').value.trim()?'Not in the list: Alice checks other names it knows (e.g. SBC); if none match, the name is used as typed.':'Its approved profile is used. Only this client’s tagged material is used, never another client’s.')};
 let mode='write',CUR=null,EDS=null;
@@ -419,7 +424,7 @@ $('f').onsubmit=async e=>{e.preventDefault();$('ferr').hidden=true;$('go').disab
 function follow(pid){clearInterval(timer);$('result').replaceChildren();$('prog').hidden=false;$('perr').hidden=true;$('prog-title').textContent='Working on it';drawSteps('Gathering','running');
  const tick=async()=>{let p;try{p=await api('/proposals/'+pid)}catch(err){clearInterval(timer);$('perr').textContent=err.message;$('perr').hidden=false;return}
   drawSteps(p.stage,p.status,p.qa);
-  if(p.status==='running')return;clearInterval(timer);$('go').disabled=A.paused;if(p.status==='form'){$('prog').hidden=true;return}
+  if(p.status==='running')return;clearInterval(timer);if(p.id===OPEN){HIST=(p.context||{}).history||[];drawVer()}$('go').disabled=A.paused;if(p.status==='form'){$('prog').hidden=true;return}
   if(p.status==='failed'){$('prog-title').textContent='This proposal could not be finished';$('perr').textContent=p.error;$('perr').hidden=false;recent();return}
   $('prog').hidden=true;show(p);recent()};
  tick();timer=setInterval(tick,1500)}
@@ -537,10 +542,11 @@ function pkSuggestions(p){const list=((p.context||{}).model_suggestions||[]).fil
  for(const sg of list){const m=pkSay('pk-p pk-model','');m.append(mk('strong',sg.from+' suggested changes'),mk('div',sg.note||'','pk-mnote'));
   const ch=mk('div','','pk-ch');for(const c of sg.changed||[])ch.append(mk('span',c));m.append(ch);
   const bar=mk('div','','pk-mbar');const ap=mk('button','Apply','primary');const di=mk('button','Dismiss','secondary');ap.type=di.type='button';
-  ap.onclick=async()=>{ap.disabled=di.disabled=true;try{const before=snap();await applyParker(sg.updates);changed();await api('/proposals/'+p.id+'/suggestions/'+sg.id,'POST',{action:'applied'});
+  ap.onclick=async()=>{ap.disabled=di.disabled=true;try{if(sg.updates.draft){for(let k=0;k<40&&!(CUR&&CUR.id===p.id);k++)await new Promise(r=>setTimeout(r,250));if(!(CUR&&CUR.id===p.id))throw new Error('The draft is still loading: try Apply again in a moment.')}
+    const before=snap();VIA=sg.from;await applyParker(sg.updates);await api('/proposals/'+p.id+'/suggestions/'+sg.id,'POST',{action:'applied'});await reloadVer(p.id);changed();recent();
     const un=mk('button','Undo these changes','pk-undo');un.type='button';un.onclick=async()=>{await restore(before);un.replaceWith(mk('span','Undone.','hint'))};
     bar.replaceChildren(mk('span','Applied. Check it, then save or send it to Argus as usual.','hint'),un)}catch(e){ap.disabled=di.disabled=false;alertBox(e.message)}};
-  di.onclick=async()=>{ap.disabled=di.disabled=true;try{await api('/proposals/'+p.id+'/suggestions/'+sg.id,'POST',{action:'dismissed'});bar.replaceChildren(mk('span','Dismissed.','hint'))}catch(e){ap.disabled=di.disabled=false;alertBox(e.message)}};
+  di.onclick=async()=>{ap.disabled=di.disabled=true;try{await api('/proposals/'+p.id+'/suggestions/'+sg.id,'POST',{action:'dismissed'});recent();bar.replaceChildren(mk('span','Dismissed.','hint'))}catch(e){ap.disabled=di.disabled=false;alertBox(e.message)}};
   bar.append(ap,di);m.append(bar)}
  if(list.length)pkScroll()}
 $('pk-send').onclick=()=>{const t=$('pk-msg').value;$('pk-msg').value='';pkGrow();pkSend(t)};
@@ -577,15 +583,34 @@ function editDraft(p){const box=$('result');const c=mk('section','','card');c.ap
  const a=mk('div','','act');a.append(go,cancel);c.append(a);box.replaceChildren(c);EDS=eds;c.id='draft-ed';document.querySelector('main').scrollTop=0}
 // ---------- proposals on the go: list, switching, autosave ----------
 let WORK=null,OPEN=null,LOADING=0,saveT=null,ITEMS=[],DIRTY=false;
+let HIST=[],VIA='';
+const when=t=>new Date(t).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+const isModel=v=>!!v&&!/^(Parker page|Parker and Argus)$/.test(v);
+function drawVer(){const b=$('wb-ver'),box=$('wb-hist');const last=HIST[HIST.length-1];b.hidden=!(OPEN&&last);if(!last){box.hidden=true;return}
+ b.textContent='v'+last.v+' · '+when(last.at)+(last.via?' · '+last.via:'');
+ box.replaceChildren(mk('div','Versions of this proposal','wb-g'));
+ for(const x of [...HIST].reverse()){const r=mk('div','','wb-h');const top=mk('div');top.append(mk('span',x.what||'Edited'),mk('span',x.via||'Parker page','wb-via'+(isModel(x.via)?' model':'')));
+  r.append(mk('b','v'+x.v),top,mk('span',when(x.at)+(x.by?' · '+x.by:'')+(x.edits>1?' · '+x.edits+' saves':''),'hint'));box.append(r)}}
+function addVer(v){if(!v)return;const last=HIST[HIST.length-1];if(last&&last.v===v.v)HIST[HIST.length-1]=v;else HIST.push(v);drawVer()}
+async function reloadVer(id){try{const p=await api('/proposals/'+id);if(id===OPEN){HIST=(p.context||{}).history||[];drawVer()}}catch{}}
+$('wb-ver').onclick=e=>{e.stopPropagation();const h=$('wb-hist');h.hidden=!h.hidden;$('wb-ver').setAttribute('aria-expanded',String(!h.hidden));$('wb-pop').hidden=true};
+document.addEventListener('click',e=>{if(!e.target.closest('#wb-hist,#wb-ver'))$('wb-hist').hidden=true});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('wb-hist').hidden=true});
 const STATE=x=>x.status==='form'?['In progress','form']:x.status==='running'?['Being written','run']:x.status==='failed'?['Failed','bad']:[(x.verdict==='client_ready'?'Client ready':'Needs attention')+(x.score!=null?' · '+x.score:''),x.verdict==='client_ready'?'ok':'warn'];
-async function recent(){try{const d=await api('/proposals');ITEMS=d.proposals;$('wb-n').textContent=ITEMS.length||'';drawItems();updateBar()}catch{}}
+async function recent(){try{const d=await api('/proposals');ITEMS=d.proposals;const sg=ITEMS.filter(x=>x.suggestions).length;const n=$('wb-n');n.textContent=ITEMS.length||'';n.classList.toggle('sug',!!sg);
+ n.title=sg?sg+(sg===1?' proposal has':' proposals have')+' suggested changes waiting':'';drawItems();updateBar()}catch{}}
+function pkWaiting(){const w=ITEMS.filter(x=>x.suggestions&&x.id!==OPEN);if(!w.length)return;
+ const m=pkSay('pk-p pk-model','');m.append(mk('strong','Suggested changes are waiting'));
+ for(const x of w){const d=mk('div','','pk-open');d.append(mk('div',(x.title||'Untitled proposal')+': '+x.suggestions+(x.suggestions===1?' suggestion':' suggestions')+' from '+(x.suggested_by||[]).join(', '),'pk-mnote'));
+  const b=mk('button','Open it to apply or dismiss','secondary');b.type='button';b.onclick=()=>openItem(x.id);d.append(b);m.append(d)}}
 function drawItems(){const q=($('wb-q').value||'').toLowerCase(),box=$('wb-items');box.replaceChildren();
  const list=ITEMS.filter(x=>!q||((x.title||'')+' '+(x.organisation||'')).toLowerCase().includes(q));
  if(!list.length){box.append(mk('p',ITEMS.length?'No proposals match.':'No proposals yet. Start one with + New proposal; it saves itself as you work.','hint'));return}
  for(const [g,f] of [['In progress',x=>x.status==='form'],['Being written',x=>x.status==='running'],['Written',x=>x.status==='done'||x.status==='failed']]){const its=list.filter(f);if(!its.length)continue;box.append(mk('div',g+' ('+its.length+')','wb-g'));
   for(const x of its){const it=mk('div','','wb-it'+(x.id===OPEN?' on':''));it.tabIndex=0;it.setAttribute('role','button');const t=mk('div');
-   t.append(mk('b',(x.title||'Untitled proposal')+(x.organisation?' · '+x.organisation:'')),mk('span',(x.status==='form'?'Saved ':'Updated ')+new Date(x.updated_at||x.created_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),'hint'));
-   const [lab,cls]=STATE(x);const pc=mk('span','','');pc.style.cssText='display:flex;gap:8px;align-items:center';pc.append(mk('span',x.ai_cost?'AI $'+Number(x.ai_cost).toFixed(2):'','wb-cost'),mk('span',lab,'wb-pill '+cls));pc.title=x.ai_cost?'What Alice\u2019s AI calls for this proposal have cost so far (writing, Argus and Parker)':'';it.append(t,pc);
+   const ln=mk('span','v'+(x.version||1)+' · '+(x.status==='form'?'Edited ':'Updated ')+when(x.edited_at||x.updated_at||x.created_at),'hint');if(x.edited_via)ln.append(mk('span',x.edited_via,'wb-via'+(isModel(x.edited_via)?' model':'')));
+   ln.title=(x.edited_what||'')+(x.edited_by?' · '+x.edited_by:'');t.append(mk('b',(x.title||'Untitled proposal')+(x.organisation?' · '+x.organisation:'')),ln);
+   const [lab,cls]=STATE(x);const pc=mk('span','','');pc.style.cssText='display:flex;gap:8px;align-items:center';pc.append(mk('span',x.ai_cost?'AI $'+Number(x.ai_cost).toFixed(2):'','wb-cost'));if(x.suggestions){const sp=mk('span',x.suggestions+(x.suggestions===1?' suggestion':' suggestions'),'wb-sug');sp.title='Suggested by '+(x.suggested_by||[]).join(', ')+': open it to apply or dismiss';pc.append(sp)}pc.append(mk('span',lab,'wb-pill '+cls));pc.title=x.ai_cost?'What Alice\u2019s AI calls for this proposal have cost so far (writing, Argus and Parker)':'';it.append(t,pc);
    if(x.status==='form'){const xb=mk('button','×','wb-x');xb.type='button';xb.title='Remove this proposal in progress';xb.setAttribute('aria-label','Remove '+(x.title||'this proposal'));
     xb.onclick=async e=>{e.stopPropagation();if(!confirm('Remove “'+(x.title||'Untitled proposal')+'” from your proposals in progress?'))return;try{await api('/work/'+x.id+'/discard','POST',{});if(x.id===OPEN)await openNew();await recent()}catch(err){alertBox(err.message)}};it.append(xb)}else it.append(mk('span'));
    it.onclick=()=>{$('wb-pop').hidden=true;$('wb-list').setAttribute('aria-expanded','false');openItem(x.id)};it.onkeydown=e=>{if(e.key==='Enter')it.click()};box.append(it)}}}
@@ -593,7 +618,8 @@ function updateBar(){$('wb-title').textContent=$('title').value.trim()||(OPEN?'U
  $('wb-keep').hidden=!(OPEN&&!WORK&&DIRTY);if(!saveT&&!$('wb-state').classList.contains('bad')){const st=$('wb-state');
   if(WORK)st.textContent=st.textContent||'Saved';else if(x&&x.status!=='form'){st.className='wb-state';st.textContent=STATE(x)[0]+(DIRTY?' · changes not saved: write a new version or Save as a new version':'')}else if(!OPEN){st.className='wb-state';st.textContent=DIRTY?'':'Saves itself as you work'}}}
 function setState(t,cls){const st=$('wb-state');st.textContent=t;st.className='wb-state'+(cls?' '+cls:'')}
-function formData(){return {parker_chat:WORK?[]:PK.history,parker_cost:WORK?0:(PK.cost||0),title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value,structure:$('structure').value,template:$('tplsel').value,
+let FROM='';
+function formData(){return {via:VIA,started_from:FROM,parker_chat:WORK?[]:PK.history,parker_cost:WORK?0:(PK.cost||0),title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value,structure:$('structure').value,template:$('tplsel').value,
  sections:secEd.value(),rate_card:rateEd.value(),references:[...picked],writer:$('wm').value,qa:$('qm').value,use_memory:$('mem').checked}}
 function changed(){if(LOADING||mode!=='write'||!S)return;DIRTY=true;
  if(!WORK&&OPEN){updateBar();return}                                           // a written proposal: kept as it is unless you save a new version
@@ -601,14 +627,14 @@ function changed(){if(LOADING||mode!=='write'||!S)return;DIRTY=true;
 async function saveNow(force){clearTimeout(saveT);saveT=null;const f=formData();
  if(!WORK&&!force&&!f.title.trim()&&!f.brief.trim()&&!f.notes.trim()){setState('');return}
  try{const sent=(f.parker_chat||[]).length;const r=await api('/work','POST',{id:WORK||'',form:f});if(r.created){let extra=Math.max(0,(PK.cost||0)-(f.parker_cost||0));PK.cost=0;
-  for(let k=sent;k+1<PK.history.length;k+=2){api('/parker/keep','POST',{work_id:r.id,you:PK.history[k].text,reply:PK.history[k+1].text,cost_usd:extra}).catch(()=>{});extra=0}moveChat(OPEN||'new',r.id);WORK=r.id;OPEN=r.id;CUR=null;history.replaceState(null,'','?p='+r.id);recent()}
-  DIRTY=false;setState('Saved '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}),'ok');const x=ITEMS.find(i=>i.id===WORK);if(x){x.title=f.title;x.organisation=f.organisation;x.updated_at=new Date().toISOString()}updateBar()}
+  for(let k=sent;k+1<PK.history.length;k+=2){api('/parker/keep','POST',{work_id:r.id,you:PK.history[k].text,reply:PK.history[k+1].text,cost_usd:extra}).catch(()=>{});extra=0}moveChat(OPEN||'new',r.id);WORK=r.id;OPEN=r.id;HIST=[];CUR=null;history.replaceState(null,'','?p='+r.id);recent()}
+  DIRTY=false;VIA='';FROM='';addVer(r.version);setState('Saved '+new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}),'ok');const x=ITEMS.find(i=>i.id===WORK);if(x){x.title=f.title;x.organisation=f.organisation;x.updated_at=new Date().toISOString()}updateBar()}
  catch(e){setState('Not saved: '+e.message,'bad')}}
 $('f').addEventListener('input',changed);$('f').addEventListener('change',changed);
 $('full').addEventListener('input',changed);$('full').addEventListener('change',changed);$('full').addEventListener('click',e=>{if(e.target.closest('button'))setTimeout(changed,0)});
 $('secs').addEventListener('click',e=>{if(e.target.closest('button'))setTimeout(changed,0)});$('ref-list').addEventListener('change',changed);
 $('title').addEventListener('input',updateBar);
-$('wb-keep').onclick=()=>{stashChat();const from=OPEN;OPEN=null;CUR=null;DIRTY=true;saveNow(true).then(()=>{if(OPEN&&from)moveChat(from,OPEN,true)})};
+$('wb-keep').onclick=()=>{stashChat();const from=OPEN;FROM=from||'';OPEN=null;CUR=null;DIRTY=true;saveNow(true).then(()=>{if(OPEN&&from)moveChat(from,OPEN,true)})};
 $('wb-list').onclick=()=>{const p=$('wb-pop');p.hidden=!p.hidden;$('wb-list').setAttribute('aria-expanded',String(!p.hidden));if(!p.hidden){drawItems();$('wb-q').focus()}};
 $('wb-q').oninput=drawItems;document.addEventListener('click',e=>{if(!e.target.closest('#workbar'))$('wb-pop').hidden=true});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('wb-pop').hidden=true});
@@ -624,9 +650,9 @@ async function resetForm(){LOADING++;try{clearInterval(timer);$('result').replac
  secEd.set(S.sections);rateEd.set(S.rate_card);picked.clear();drawRefs();$('wm').value=S.writer;$('qm').value=S.qa;$('mem').checked=true;clearTags();
  ['org','title'].forEach(id=>$(id).dispatchEvent(new Event('input',{bubbles:true})));if(window.cost)window.cost();summary()}finally{LOADING--}}
 async function flush(){if(saveT){await saveNow()}}
-async function openNew(){await flush();stashChat();await resetForm();WORK=null;OPEN=null;DIRTY=false;setState('Saves itself as you work');history.replaceState(null,'',location.pathname);restoreChat(null);updateBar();drawItems();document.querySelector('main').scrollTop=0}
+async function openNew(){await flush();stashChat();await resetForm();WORK=null;OPEN=null;DIRTY=false;VIA='';FROM='';HIST=[];drawVer();setState('Saves itself as you work');history.replaceState(null,'',location.pathname);restoreChat(null);updateBar();drawItems();pkWaiting();document.querySelector('main').scrollTop=0}
 async function openItem(id){await flush();stashChat();let p;try{p=await api('/proposals/'+id)}catch(e){alertBox(e.message);return}
- await resetForm();OPEN=id;DIRTY=false;history.replaceState(null,'','?p='+id);restoreChat(id,p);setTimeout(()=>pkSuggestions(p),0);
+ await resetForm();OPEN=id;DIRTY=false;VIA='';FROM='';HIST=(p.context||{}).history||[];drawVer();history.replaceState(null,'','?p='+id);restoreChat(id,p);setTimeout(()=>pkSuggestions(p),0);
  if(p.status==='form'){WORK=id;await loadIntoForm(p,true,true);setState('Saved '+new Date(p.updated_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),'ok');
   if(!PK.history.length)pkSay('pk-p','Back to “'+(p.title||'this proposal')+'”. Everything you had is here. What would you like to change?')}
  else{WORK=null;setState('');follow(id)}

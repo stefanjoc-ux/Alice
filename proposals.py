@@ -744,12 +744,62 @@ def parker_turn(aid, pid, you, reply, usd=0):
     return True
 
 
+
+# ---------------- versions: when, by whom and from where each proposal changed ----------------
+HISTORY_KEEP = 60
+MERGE_MINUTES = 30          # autosaves from the same place within this window are one version, not dozens
+
+
+def _mins_between(a, b):
+    from datetime import datetime
+    try: return abs((datetime.fromisoformat(b.replace('Z', '+00:00')) - datetime.fromisoformat(a.replace('Z', '+00:00'))).total_seconds()) / 60
+    except (ValueError, AttributeError): return 1e9
+
+
+def note_version(c, pid, via, what, kind='edit'):
+    """Record a change in context.history: version number, when, who, where it came from (the Parker page, Parker and Argus, or a
+    model such as Claude or ChatGPT whose suggestion the user applied) and what changed. Edits from the same place within
+    MERGE_MINUTES update the latest version instead of adding one."""
+    r = c.execute('SELECT context FROM proposals WHERE id=?', (pid,)).fetchone()
+    if not r: return None
+    try: ctx = json.loads(r['context'] or '{}')
+    except ValueError: ctx = {}
+    h = [x for x in ctx.get('history') or [] if isinstance(x, dict)]
+    now, by = store.now(), store.actor()
+    via, what = _clean(via, 60) or 'Parker page', _clean(what, 200)
+    last = h[-1] if h else None
+    if last and kind == 'edit' and last.get('kind') in ('edit', 'applied', 'started') and last.get('via') == via and _mins_between(last.get('at', ''), now) <= MERGE_MINUTES:
+        last['at'], last['edits'] = now, int(last.get('edits') or 1) + 1
+    else:
+        h.append({'v': int(last['v']) + 1 if last else 1, 'at': now, 'by': by, 'via': via, 'what': what, 'kind': kind, 'edits': 1})
+    ctx['history'] = h[-HISTORY_KEEP:]
+    c.execute('UPDATE proposals SET context=? WHERE id=?', (json.dumps(ctx), pid))
+    return ctx['history'][-1]
+
+
+def version_of(r, ctx):
+    """The latest version for lists and the workbar: number, when, from where. Older proposals without history count as version 1."""
+    h = ctx.get('history') or []
+    if h: x = h[-1]; return {'version': x.get('v', 1), 'edited_at': x.get('at') or r.get('updated_at'), 'edited_via': x.get('via') or '',
+                            'edited_by': x.get('by') or '', 'edited_what': x.get('what') or ''}
+    return {'version': 1, 'edited_at': r.get('updated_at') or r.get('created_at'), 'edited_via': '', 'edited_by': r.get('created_by') or '', 'edited_what': ''}
+
 def _save(pid, **f):
     f['updated_at'] = store.now()
     for k in ('draft', 'qa', 'pricing', 'context', 'inputs'):
         if k in f and not isinstance(f[k], str): f[k] = json.dumps(f[k])
     with store.db() as c:
         c.execute(f'UPDATE proposals SET {",".join(k + "=?" for k in f)} WHERE id=?', list(f.values()) + [pid])
+        if f.get('status') == 'done':                 # Parker wrote it, or Argus checked a new version
+            row = c.execute('SELECT qa,context FROM proposals WHERE id=?', (pid,)).fetchone()
+            try: qa, hist = json.loads(row['qa'] or '[]'), json.loads(row['context'] or '{}').get('history') or []
+            except (ValueError, TypeError): qa, hist = [], []
+            last = qa[-1] if qa else {}
+            first = not any(x.get('kind') == 'written' for x in hist if isinstance(x, dict))
+            what = ('The last re-check did not finish' if f.get('error') else 'Written by Parker, checked by Argus' if first
+                    else 'Checked again by Argus: ' + (str(last.get('source') or '') or 'new version'))
+            if last.get('score') is not None: what += f' ({last["score"]}/100)'
+            note_version(c, pid, 'Parker and Argus', what, 'written')
 
 
 def start(aid, title, organisation, brief, notes='', sections=None, rate_card=None, use_memory=True, writer_model='', qa_model='', references=None,
@@ -1236,16 +1286,19 @@ def save_form(aid, form, work_id=''):
                   'writer': _clean(f.get('writer'), 20), 'qa': _clean(f.get('qa'), 20),
                   'references': [str(x)[:300] for x in (f.get('references') or [])][:10], 'structure': structure}
         now = store.now()
+        via = _clean(f.get('via'), 60)
         if row:
             pid = row['id']
             c.execute('UPDATE proposals SET title=?,organisation=?,client=?,brief=?,notes=?,inputs=?,updated_at=? WHERE id=?',
                       (title, org, _client_for(org), brief, notes, json.dumps(inputs), now, pid))
+            ver = note_version(c, pid, via or 'Parker page', 'Edited')
         else:
             pid = uuid.uuid4().hex
             c.execute('INSERT INTO proposals(id,assistant_id,title,organisation,client,brief,notes,inputs,status,stage,created_by,created_at,updated_at) '
                       "VALUES (?,?,?,?,?,?,?,?,'form','',?,?,?)", (pid, aid, title, org, _client_for(org), brief, notes, json.dumps(inputs),
                                                                   store.actor(), now, now))
             store.audit(c, 'proposal_form_started', pid, 'human_review', (title or 'Untitled proposal') + (f' for {org}' if org else ''))
+            ver = note_version(c, pid, via or 'Parker page', 'Started' + (' as a new version of P-' + _clean(f.get('started_from'), 40)[:6].upper() if f.get('started_from') else ''), 'started')
     if not row:                        # a new form: bring Parker's conversation so far (and its cost) with it
         chat = [{'role': 'parker' if m.get('role') == 'parker' else 'you', 'text': str(m.get('text') or '')[:4000]}
                 for m in (f.get('parker_chat') or [])[-40:] if isinstance(m, dict) and str(m.get('text') or '').strip()]
@@ -1255,7 +1308,7 @@ def save_form(aid, form, work_id=''):
                 c.execute('UPDATE proposals SET context=? WHERE id=?', (json.dumps({'parker_chat': chat}), pid))
         try: add_cost(pid, min(float(f.get('parker_cost') or 0), 50), 'parker')
         except (TypeError, ValueError): pass
-    return {'id': pid, 'saved_at': now, 'created': not row}
+    return {'id': pid, 'saved_at': now, 'created': not row, 'version': ver}
 
 
 def discard_form(aid, pid):
@@ -1281,7 +1334,7 @@ def get(pid, internal=False):
 
 def listing(aid, limit=50):
     with store.db() as c:
-        return [dict(r) for r in c.execute("SELECT id,title,organisation,status,stage,document_id,created_at,updated_at,qa,context FROM proposals WHERE assistant_id=? AND status!='discarded' "
+        return [dict(r) for r in c.execute("SELECT id,title,organisation,status,stage,document_id,created_by,created_at,updated_at,qa,context FROM proposals WHERE assistant_id=? AND status!='discarded' "
                                            'ORDER BY updated_at DESC LIMIT ?', (aid, limit))]
 
 
@@ -1293,4 +1346,8 @@ def summary_row(r):
     try: ctx = json.loads(r.pop('context', None) or '{}')
     except ValueError: ctx = {}
     r['ai_cost'] = (ctx.get('ai_cost') or {}).get('total', 0)
+    sg = [x for x in ctx.get('model_suggestions') or [] if x.get('state') == 'pending']
+    r['suggestions'] = len(sg)                                    # changes a model suggested, waiting for Apply or Dismiss
+    r['suggested_by'] = sorted({x.get('from') or 'a model' for x in sg})
+    r.update(version_of(r, ctx))
     return r

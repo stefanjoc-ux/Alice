@@ -7,7 +7,7 @@ A model never changes a proposal itself: what it proposes is checked by the same
 (`context.model_suggestions`) until you Apply or Dismiss it on the Parker page, where Apply fills the form or the draft's edit
 boxes exactly as a Parker turn does (with Undo). Client separation and the secret and protective-marking checks still apply to
 what is returned; a proposal that fails them is left out and counted."""
-import json
+import json, os
 import re
 import uuid
 
@@ -53,6 +53,7 @@ def listing(query='', limit=20):
                     'qa': (f"{qa.get('verdict', '').replace('_', ' ')} {qa.get('score')}/100" if qa else ''),
                     'sell_total': (r['pricing'] or {}).get('sell') if (r['pricing'] or {}).get('lines') else None,
                     'updated': (r['updated_at'] or '')[:16].replace('T', ' '),
+                    'version': (lambda v: f"v{v['version']}" + (f" via {v['edited_via']}" if v['edited_via'] else ''))(proposals_version(r)),
                     'pending_model_suggestions': len([s for s in (r['context'].get('model_suggestions') or []) if s.get('state') == 'pending'])})
         if len(out) >= limit: break
     return out
@@ -117,7 +118,9 @@ def detail(key):
                     'brief_requirements_met': f"{sum(1 for r in reqs if r.get('status') == 'met')} of {len(reqs)}", 'what_to_fix': _fixes(qa)} if qa else None),
             'model_suggestions_pending': [{'id': s['id'], 'from': s['from'], 'note': s['note'], 'changes': s['changed']}
                                           for s in ctx.get('model_suggestions') or [] if s.get('state') == 'pending'],
-            'page': '/assistant/' + p['assistant_id'] + '?p=' + p['id'],
+            'page': page_link(p),
+            'version': (lambda v: {'number': v['version'], 'edited_at': v['edited_at'], 'edited_via': v['edited_via']})(proposals_version(p)),
+            'history': [{k: x.get(k) for k in ('v', 'at', 'via', 'what')} for x in (p['context'] or {}).get('history') or []][-10:],
             'how_to_change': 'Use propose_proposal_changes: changes wait on the Parker page for the user to apply.'}
 
 
@@ -151,8 +154,21 @@ def suggest(key, note, updates, by):
         c.execute('UPDATE proposals SET context=? WHERE id=?', (json.dumps(ctx), p['id']))
         store.audit(c, 'proposal_change_suggested', p['id'], 'approval_required', f'{s["from"]} suggested changes to {ref(p["id"])} ({", ".join(changed)})')
     dropped = sorted(set(k for k in updates) - set(clean))
-    return {'proposal': ref(p['id']), 'suggestion': s['id'], 'changes': changed,
-            'left_out': dropped, 'message': 'Saved for the user: it waits on the Parker page until they Apply or Dismiss it.'}
+    link = page_link(p)
+    return {'proposal': ref(p['id']), 'suggestion': s['id'], 'changes': changed, 'left_out': dropped, 'open': link,
+            'message': (f'Saved for the user, not applied yet. To see it: open {link}' if link.startswith('http') else
+                        f'Saved for the user, not applied yet. To see it: on the Parker page, open {ref(p["id"])} from Proposals'
+                        ' (it shows a suggestions badge)') + ', then Apply or Dismiss it in Parker\'s panel.'}
+
+
+def proposals_version(p):
+    import proposals
+    return proposals.version_of(p, p['context'] or {})
+
+
+def page_link(p):
+    """Where the user opens this proposal on the Parker page (a full link when ALICE_PUBLIC_URL is set)."""
+    return os.environ.get('ALICE_PUBLIC_URL', '').rstrip('/') + '/assistant/' + p['assistant_id'] + '?p=' + p['id']
 
 
 def decide(aid, pid, sid, action):
@@ -167,5 +183,10 @@ def decide(aid, pid, sid, action):
         if hit.get('state') != 'pending': return {'state': hit['state']}
         hit['state'], hit['decided_at'] = action, store.now()
         c.execute('UPDATE proposals SET context=? WHERE id=?', (json.dumps(ctx), pid))
+        if action == 'applied':
+            import proposals
+            st = c.execute('SELECT status FROM proposals WHERE id=?', (pid,)).fetchone()['status']
+            proposals.note_version(c, pid, hit['from'], f'Applied changes suggested by {hit["from"]}: ' + ', '.join(hit['changed'])
+                                   + ('' if st == 'form' else ' (in the form: written when you save a new version or check again)'), 'applied')
         store.audit(c, 'proposal_change_' + action, pid, 'human_review', f'{hit["from"]}: {", ".join(hit["changed"])}')
     return {'state': action}
