@@ -1,4 +1,4 @@
-"""Shared look for every Alice page (chat and Command centre): colours, type, buttons, inputs and the top bar.
+"""Shared look for every Alice page (chat and Console): colours, type, buttons, inputs and the top bar.
 Page-specific layout stays with each page. Change colours here once and both follow."""
 
 SHARED_CSS = r'''

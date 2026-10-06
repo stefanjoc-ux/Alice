@@ -23,7 +23,7 @@ LABELS = {
     'general': 'General: fine for any model.',
     'internal': 'Internal: only providers allowed for internal material (Rules → Provider allow-list).',
     'client': 'Client-confidential: follows client separation; never shared with external apps.',
-    'local': 'Local only: searchable by you in the Command centre, never sent to any model.',
+    'local': 'Local only: searchable by you in the Console, never sent to any model.',
 }
 _lock = threading.Lock()
 

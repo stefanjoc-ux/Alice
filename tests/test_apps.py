@@ -16,7 +16,7 @@ t('Apps listing: Mileage, the Trading desk and Health Insights, nothing waiting 
 
 # the menu: Apps instead of Mileage; an app's page highlights Apps and carries a breadcrumb
 page = cl.get('/admin/apps').text
-nav = re.search(r'<nav aria-label="Command centre">(.*?)</nav>', page, re.S).group(1)
+nav = re.search(r'<nav aria-label="Console">(.*?)</nav>', page, re.S).group(1)
 t('Apps is in the menu and Mileage is not', 'data-page="apps"' in nav and 'data-page="mileage"' not in nav and '>More<' not in nav)
 t('Apps page is current on the Apps page', 'href="/admin/apps" data-page="apps" aria-current="page"' in nav)
 mp = cl.get('/admin/mileage').text

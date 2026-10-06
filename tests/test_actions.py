@@ -37,3 +37,24 @@ c.post('/admin/api/memories/suggestions', json={'ids': [a], 'action': 'dismiss'}
 t('inline decisions reduce the total by 3', actions.count() == before - 3)
 t('chat page count endpoint', c.get('/actions-count').json()['total'] == actions.count())
 t('Actions has its own address', 'Everything waiting for your decision' in c.get('/admin/actions').text)
+
+# Approve all on one section (Stefan, 6 Oct 2026): every item in it, each through its usual checks
+H = {'x-admin-token': app.ADMIN_TOKEN}
+from fastapi.testclient import TestClient
+cl = TestClient(app.app)
+w1 = s.propose('Likes early starts', 'Starts work at 7am most days', 'User said')['id']
+w2 = s.propose('Prefers tea', 'Drinks tea, not coffee, at meetings', 'User said')['id']
+w3 = K.create('note', 'Fictional rollout plan', 'A fictional plan to roll out the pilot in two phases.', 'Claude', 'model via Claude', status='draft')['id']
+sec = next(x for x in actions.summary()['sections'] if x['key'] == 'waiting')
+t('a section that can be approved all at once says so', sec['approve_all'] is True)
+t('Approve all needs the page token', cl.post('/admin/api/actions/approve-all', json={'section': 'waiting'}).status_code == 403)
+r = cl.post('/admin/api/actions/approve-all', json={'section': 'waiting'}, headers=H).json()
+with s.db() as c: st = {x[0]: x[1] for x in c.execute('SELECT id, status FROM records WHERE id IN (?,?)', (w1, w2))}
+t('Approve all approves every item in the section, memories and knowledge alike', r['done'] >= 3 and st == {w1: 'approved', w2: 'approved'}
+  and K.meta([w3])[w3]['status'] == 'active')
+t('nothing is left waiting there', next(x for x in actions.summary()['sections'] if x['key'] == 'waiting')['count'] == 0)
+t('a section that is not for approval is refused', cl.post('/admin/api/actions/approve-all', json={'section': 'apps'}, headers=H).status_code == 400
+  and cl.post('/admin/api/actions/approve-all', json={'section': 'opportunities'}, headers=H).status_code == 400)
+with s.db() as c: logged = c.execute("SELECT detail FROM activity WHERE action='actions_approve_all'").fetchone()
+t('it is logged as one action with the count', logged and 'approved' in logged[0])
+t('the page has the button', 'Approve all ' in cl.get('/admin/actions').text)

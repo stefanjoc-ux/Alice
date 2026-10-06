@@ -1,4 +1,4 @@
-"""The Command centre home page and opening a new chat by default."""
+"""The Console home page and opening a new chat by default."""
 import _util  # first: throwaway data folder, dummy keys, no real model calls
 from _util import t
 import substrate_store as s
@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 cl = TestClient(app.app); H = {'x-admin-token': app.ADMIN_TOKEN}
 
 page = cl.get('/admin').text
-t('the Command centre opens on Home', 'const PAGE="home"' in page and 'New chat' in page and 'Write a proposal' in page)
+t('the Console opens on Home', 'const PAGE="home"' in page and 'New chat' in page and 'Write a proposal' in page)
 t('Home is first in the menu and Actions has its own address', page.index('data-page="home"') < page.index('data-page="actions"') and 'href="/admin/actions"' in page)
 r = cl.get('/admin/overview', follow_redirects=False)
 t('the old Overview page goes to Home', r.status_code == 307 and r.headers['location'] == '/admin')
@@ -24,6 +24,6 @@ t('the chat sidebar list carries how many turns each chat has', all('turns' in x
 chat = cl.get('/').text
 t('the chat page opens a new (or the empty) chat unless one is asked for', "const empty=chats.find(c=>!c.turns)" in chat and 'createChat()' in chat)
 import desktop
-t('the desktop app opens Alice on the Command centre home', desktop.open_window.__defaults__ == ('admin',))
+t('the desktop app opens Alice on the Console home', desktop.open_window.__defaults__ == ('admin',))
 t('the chat page clears ?new=1 with window.history (history is a chat variable there)', 'window.history.replaceState' in chat)
 t('long chat titles shrink with an ellipsis instead of spilling out', '.hm-list b{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto;min-width:0}' in page)

@@ -144,7 +144,7 @@ def main():
 
     ok = all(results)
     print('\n' + ('ALL CHECKS PASSED. Tuduma sign-in works; next is hosting and the Copilot agent.' if ok else
-                  'SOME CHECKS FAILED. Refusal reasons are in Command centre -> Activity; send this output to Claude.'))
+                  'SOME CHECKS FAILED. Refusal reasons are in Console -> Activity; send this output to Claude.'))
     print('The test calls appear on the Agents page as "Azure CLI test".')
     return 0 if ok else 1
 

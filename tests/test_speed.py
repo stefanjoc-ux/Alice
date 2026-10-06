@@ -25,7 +25,7 @@ t('what you searched for is never kept (no query strings, no content columns)', 
   and not {'body', 'query', 'content', 'params'} & set(cols))
 cl.get('/admin/memories')
 speed.flush()
-with s.db() as c: t('Command centre pages are recorded under their own address', c.execute("SELECT 1 FROM speed_routes WHERE route='/admin/memories'").fetchone() is not None)
+with s.db() as c: t('Console pages are recorded under their own address', c.execute("SELECT 1 FROM speed_routes WHERE route='/admin/memories'").fetchone() is not None)
 
 # slow requests keep their breakdown
 m = speed.Meter(); m.queries, m.db_s, m.conns = 120, 1.4, 3
@@ -47,7 +47,7 @@ t('Speed page data: browser page loads and a summary', rep['pages'][0]['route'] 
   and rep['summary']['page_loads'] == 1 and rep['summary']['requests'] > 0)
 page = cl.get('/admin/speed').text
 t('Speed page is served and in the menu', 'id="sp-server"' in page and 'data-page="speed"' in page)
-t('every Command centre page reports its load time', "/admin/api/speed/page" in cl.get('/admin/apps').text)
+t('every Console page reports its load time', "/admin/api/speed/page" in cl.get('/admin/apps').text)
 
 # compression
 r = cl.get('/admin/actions', headers={'Accept-Encoding': 'gzip'})

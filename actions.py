@@ -3,11 +3,15 @@ import json
 from datetime import datetime, timezone
 import substrate_store as store
 
+import contextvars
 TOP = 5
+_FULL = contextvars.ContextVar('actions_full', default=False)     # approve_all needs every item, not the first few
+APPROVE_ALL = ('decisions', 'held', 'waiting', 'taxonomy', 'replacements', 'suggestions', 'tags')
 
 
 def _section(key, title, count, link, items=(), note='', level='normal', top=TOP, info=False):
-    return {'key': key, 'title': title, 'count': count, 'link': link, 'items': list(items)[:top], 'note': note, 'level': level, 'info': info}
+    return {'key': key, 'title': title, 'count': count, 'link': link, 'items': list(items) if _FULL.get() else list(items)[:top],
+            'note': note, 'level': level, 'info': info, 'approve_all': key in APPROVE_ALL and count > 0}
 
 
 def summary():
@@ -190,3 +194,40 @@ def summary():
 def count():
     try: return summary()['total']
     except Exception: return 0
+
+
+def approve_all(key):
+    """Stefan's Approve all on one section of Actions (6 Oct 2026): the same approval each item's own button gives, for every
+    item in the section (not only those shown), each through its usual checks; anything a check refuses stays and is listed.
+    Never for apps (mileage approvals stay per entry on the app's page), opportunities, agents or the information lists."""
+    if key not in APPROVE_ALL: raise ValueError('That section cannot be approved all at once.')
+    import knowledge, organisations, clients, temple_taxonomy, autoapprove
+    t = _FULL.set(True)
+    try: sec = next((x for x in summary()['sections'] if x['key'] == key), None)
+    finally: _FULL.reset(t)
+    if not sec or not sec['items']: return {'done': 0, 'failed': [], 'section': key}
+    done, failed = 0, []
+    def one(item, fn):
+        nonlocal done
+        try:
+            r = fn()
+            if isinstance(r, dict) and (r.get('blocked') or (r.get('errors') and not r.get('done'))):
+                failed.append(f"{item.get('title', '')[:80]}: " + ' '.join(r.get('block_reasons') or r.get('errors') or ['not approved']))
+            else: done += 1
+        except Exception as e:
+            failed.append(f"{item.get('title', '')[:80]}: {str(e)[:200]}")
+    with store.acting(note='Approve all on Actions'):
+        for i in sec['items']:
+            ty = i.get('type')
+            if ty in ('proposal', 'decision'): one(i, lambda i=i: store.review(i['id'], 'approved'))
+            elif ty == 'draft': one(i, lambda i=i: knowledge.review([i['id']], 'approved'))
+            elif ty == 'orgfact': one(i, lambda i=i: organisations.review_facts([i['id']], 'approved'))
+            elif ty == 'taxonomy': one(i, lambda i=i: temple_taxonomy.decide(i['id'], 'approve', ''))
+            elif ty == 'replacement': one(i, lambda i=i: knowledge.resolve_replacements([i['id']], 'accept'))
+            elif ty == 'suggestion': one(i, lambda i=i: autoapprove.accept_suggestion(i['id'], i.get('content', '')))
+            elif ty == 'category': one(i, lambda i=i: store.resolve_suggestions([i['id']], 'accept'))
+            elif ty == 'kcategory': one(i, lambda i=i: knowledge.resolve_category_suggestions([i['id']], 'accept'))
+            elif ty == 'client': one(i, lambda i=i: clients.resolve_suggestions([{'type': i['item_type'], 'id': i['id']}], 'accept'))
+    with store.db() as c:
+        store.audit(c, 'actions_approve_all', key, 'human_review', f"{sec['title']}: {done} approved" + (f", {len(failed)} not" if failed else ''))
+    return {'done': done, 'failed': failed, 'section': key}

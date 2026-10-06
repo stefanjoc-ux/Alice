@@ -1,5 +1,5 @@
 """The assistant stage: opening an assistant (Alex, Parker...) from Alice. The tile or link you clicked grows into the
-assistant, full screen, while the Command centre recedes behind it; a splash with the assistant's mark shows until its page
+assistant, full screen, while the Console recedes behind it; a splash with the assistant's mark shows until its page
 has loaded. Back to Alice (also Esc and the browser's back) shrinks it back into the tile; Open in a new window pops it out.
 The assistant runs in an iframe of its own page (`?embed=1` hides that page's top bar); nothing about the assistant changes."""
 

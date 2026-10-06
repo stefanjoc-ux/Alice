@@ -269,7 +269,7 @@ SECTIONS = {
 }
 
 CSS = r'''
-/* Command centre: same look as the chat page (shared tokens, buttons and top bar from ui_theme). */
+/* Console: same look as the chat page (shared tokens, buttons and top bar from ui_theme). */
 body{display:grid;grid-template-rows:52px minmax(0,1fr);height:100vh;height:100dvh;overflow:hidden}
 .page-title{position:absolute;left:calc(var(--nav-w) + (100% - var(--nav-w))/2);transform:translateX(-50%);margin:0;font-size:19px;line-height:24px;font-weight:700;letter-spacing:.01em;white-space:nowrap;max-width:calc(100% - 640px);overflow:hidden;text-overflow:ellipsis;padding:2px 6px 5px;color:#fff;background:linear-gradient(100deg,#ffffff 0%,#d4f5ff 35%,#7fe3ff 70%,#4fc3f7 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;border-bottom:2px solid transparent;border-image:linear-gradient(90deg,transparent,#4de6ff 30%,#8f7dff 70%,transparent) 1}.page-title .crumb{-webkit-text-fill-color:#9fb6c8;opacity:1;font-weight:600}.page-title .crumb:hover{-webkit-text-fill-color:#dff6ff}
 :root{--nav-w:248px}body.nav-rail{--nav-w:68px}
@@ -617,6 +617,7 @@ a.av-tile:hover{border-color:var(--teal)}.av-tile b{font-size:28px;line-height:1
 .imp-progress{margin:10px 0}.imp-progress[hidden]{display:none}.imp-bar{height:12px;background:#e3eaf0;border-radius:6px;overflow:hidden;margin-bottom:6px}.imp-bar span{display:block;height:100%;width:0;background:#075e79;transition:width .3s}
 .act-count{display:inline-block;min-width:26px;padding:2px 9px;border-radius:999px;background:#075e79;color:#fff;font-size:14px;text-align:center;vertical-align:middle}
 .act-sec.act-warn{border-left:4px solid #c08a1e}.act-sec.act-bad{border-left:4px solid #b3261e}
+.act-head-r{display:flex;align-items:center;gap:14px}.content button.act-all{margin:0}
 .content button.act-open{all:unset;cursor:pointer;display:inline;margin:0}.act-open strong{text-decoration:underline;text-decoration-color:#b9cad6;text-underline-offset:3px}.act-open:hover strong{color:var(--teal);text-decoration-color:currentColor}.act-open:focus-visible{outline:2px solid var(--teal);outline-offset:2px;border-radius:3px}
 .ic-discuss .dec-talk-log{padding:4px 0}.ic-discuss .dec-talk-starters{padding:6px 0}.ic-discuss .dec-talk-form{padding:6px 0 0}.ic-foot .act-buttons{display:flex;gap:6px;flex-wrap:wrap;margin-right:auto}
 .act-row{display:flex;gap:12px;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid #d3dee6;flex-wrap:wrap}.act-text{flex:1 1 380px;min-width:0}.act-text strong{overflow-wrap:anywhere}
@@ -1203,7 +1204,8 @@ if(PAGE==='actions'){
   const open=d.sections.filter(s=>s.count),clear=d.sections.filter(s=>!s.count&&s.key!=='decisions');
   const nodec=d.sections.find(s=>s.key==='decisions'&&!s.count);
   if(nodec){const sec=el('section','','act-sec act-nodec');const h=el('div','','mem-head');h.append(el('h2','Decisions to approve'),el('span','✓ None waiting','dec-none'));sec.append(h,el('p','No decisions need you right now. Temple records decisions once checked; the ones your Decisions settings hold for approval appear here first, explained, with Temple\u2019s recommendation.','muted small'));box.append(sec)}
-  for(const s of open.filter(s=>!s.info).concat(open.filter(s=>s.info))){const sec=el('section','','act-sec act-'+s.level+(s.info?' act-info':''));const h=el('div','','mem-head');const t=el('h2','');t.append(document.createTextNode(s.title+' '),el('span',String(s.count),'act-count'));const a=document.createElement('a');a.href=s.link;a.textContent=s.count>s.items.length?'Open all '+s.count+' ↗':'Open ↗';h.append(t,a);sec.append(h);
+  for(const s of open.filter(s=>!s.info).concat(open.filter(s=>s.info))){const sec=el('section','','act-sec act-'+s.level+(s.info?' act-info':''));const h=el('div','','mem-head');const t=el('h2','');t.append(document.createTextNode(s.title+' '),el('span',String(s.count),'act-count'));const a=document.createElement('a');a.href=s.link;a.textContent=s.count>s.items.length?'Open all '+s.count+' ↗':'Open ↗';
+   const hr=el('div','','act-head-r');if(s.approve_all&&s.count>1){const all=btn('Approve all '+s.count,async()=>{if(!confirm('Approve all '+s.count+' in “'+s.title+'”?\n\nEach goes through the same checks as its own Approve button; anything a check refuses stays here.'))return;const x=await api('/admin/api/actions/approve-all','POST',{section:s.key});$('notice').textContent=x.done+' approved'+(x.failed.length?'; '+x.failed.length+' not: '+x.failed.slice(0,3).join(' · '):'.')},true);all.classList.add('act-all');hr.append(all)}hr.append(a);h.append(t,hr);sec.append(h);
    if(s.note)sec.append(el('p',s.note,'muted small'));
    if(s.key==='waiting'&&d.auto_on){const go=btn('Approve these automatically',async()=>{const x=await api('/admin/api/auto-approve/backlog','POST',{});$('notice').textContent='Checked '+x.memories+' memories ('+x.checking+' being reviewed by Temple), '+x.drafts+' knowledge drafts, '+x.facts+' organisation facts'+(x.suggestions?', accepted '+x.suggestions+' suggestions':'')+'. Anything that failed a check is held back for you.'});go.classList.remove('secondary');sec.append(go)}
    let list=sec;if(s.info&&s.items.length>6){const det=document.createElement('details');det.append(el('summary','Show '+s.items.length));sec.append(det);list=det}
@@ -1481,7 +1483,7 @@ if(PAGE==='organisations'){
  const openOpps=name=>st.opps.filter(x=>x.org.toLowerCase()===name.toLowerCase()&&OPEN.includes(x.status));
  const watched=name=>{const w=OT.data&&OT.data.watch.find(x=>x.org.toLowerCase()===name.toLowerCase());return !!w&&w.frequency!=='off'};
  const domain=u=>(u||'').replace(/^https?:\/\/(www\.)?/i,'').split('/')[0];
- $('o-demo').checked=DEMO_ORG;$('o-demo').disabled=DEMO;if(DEMO)$('o-demo').parentElement.title='Demo mode is on for the whole command centre';
+ $('o-demo').checked=DEMO_ORG;$('o-demo').disabled=DEMO;if(DEMO)$('o-demo').parentElement.title='Demo mode is on for the whole Console';
  $('o-demo-bar').hidden=!DEMO_ORG;for(const id of ['o-research','o-opp-scan','o-r-go'])$(id).disabled=DEMO_ORG;
  if(DEMO_ORG){$('o-research').title=$('o-opp-scan').title=$('o-r-go').title='Off for demo data: no web searches or model calls.'}
  $('o-demo').onchange=()=>{store('alice-org-demo',$('o-demo').checked);const u=new URL(location.href);u.searchParams.delete('org');location.href=u.href};
@@ -2664,7 +2666,7 @@ def render_admin(page, token):
             '<title>' + escape(title) + ' · Alice</title><style>' + SHARED_CSS + SIGNIN_CSS + CSS + STAGE_CSS + '</style></head><body>'
             '<header class="topbar">' + brand_html('/', 'Back to chat')
             + '<h1 class="page-title">' + heading + '</h1><div class="sp"></div>' + ('' if demo_instance.ON else '<button id="demo-toggle" class="bar-link" type="button" title="Demo mode: only the Agents, Rule packs and Organisations pages, with fictional or replaced names and costs hidden">Demo mode</button>') + '<a class="bar-link" href="/">← Chat</a></header>'
-            '<div class="shell"><aside class="sidebar" id="sidebar"><script>try{if(localStorage.getItem("alice-nav-rail")==="1")document.body.classList.add("nav-rail")}catch{}</script>' + nav_foot + '<nav aria-label="Command centre">' + nav + '</nav>' + version_html + '</aside>'
+            '<div class="shell"><aside class="sidebar" id="sidebar"><script>try{if(localStorage.getItem("alice-nav-rail")==="1")document.body.classList.add("nav-rail")}catch{}</script>' + nav_foot + '<nav aria-label="Console">' + nav + '</nav>' + version_html + '</aside>'
             '<main class="content">' + (('<div class="demo-banner" role="note">' + escape(demo_instance.notice()) + '</div>') if demo_instance.ON else '') + '<div class="inner"><p class="page-desc">' + escape(description) + '</p><div id="notice" role="status" aria-live="polite" title="Click to dismiss"></div>'
             + SECTIONS[page] + '</div></main></div>' + STAGE_HTML + '<style>' + FETCH_CSS + '</style><script>' + FETCH_JS + 'const PAGE=' + json.dumps(page) + ';'
             + DEMO_PRELUDE + SCRIPT.replace('__TOKEN__', token) + NAV_SCRIPT + STAGE_JS + SIGNIN_JS.replace('__SIGNIN_TOKEN__', token) + '</script></body></html>')

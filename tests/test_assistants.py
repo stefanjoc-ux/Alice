@@ -45,7 +45,7 @@ s.create_category('Empty')
 t('the HR policy assistant is set up with the HR pack', A.get('hr-policy')['packs'] == ['hr'] and A.get('hr-policy')['categories'] == ['HR'])
 t('no pack is applied to Alice chat globally (the assistant uses its own)', not rule_packs.applied())
 page = cl.get('/assistant/hr-policy').text
-t('the assistant has its own page without the Command centre', 'Alex' in page and 'sidebar' not in page and '__TOKEN__' not in page and app.ADMIN_TOKEN not in page)
+t('the assistant has its own page without the Console', 'Alex' in page and 'sidebar' not in page and '__TOKEN__' not in page and app.ADMIN_TOKEN not in page)
 t('unknown assistant: 404', cl.get('/assistant/nope').status_code == 404 and ask('hello', aid='nope')[0].status_code == 404)
 
 r, d = ask('How many days of annual leave do I get in zanzibarq?')
@@ -98,7 +98,7 @@ t('admin changes need the admin token', cl.post('/admin/api/assistants', json={'
 t('cross-origin questions refused', cl.post('/assistant/hr-policy/ask', headers={'origin': 'https://evil.example'}, json={'question': 'hi'}).status_code == 403)
 t('an empty question is refused without counting as a failed run', ask('   ')[0].status_code in (400, 422))
 listing = cl.get('/admin/api/assistants', headers=H).json()
-t('the Command centre lists assistants, packs and categories', {a['id'] for a in listing['assistants']} >= {'hr-policy', 'finance-helper'} and 'hr' in listing['packs'] and 'HR' in listing['categories'])
+t('the Console lists assistants, packs and categories', {a['id'] for a in listing['assistants']} >= {'hr-policy', 'finance-helper'} and 'hr' in listing['packs'] and 'HR' in listing['categories'])
 t('the Assistants page is in the menu', 'data-page="assistants"' in cl.get('/admin/assistants').text)
 
 # ---------------- the staff page ----------------

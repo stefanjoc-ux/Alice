@@ -976,7 +976,7 @@ async def time_requests(request: Request, call_next):
         except Exception: pass
 
 
-# Compress pages and JSON (a Command centre page is ~340 KB, ~95 KB compressed). Streamed answers are left alone so
+# Compress pages and JSON (a Console page is ~340 KB, ~95 KB compressed). Streamed answers are left alone so
 # they still arrive word by word.
 from starlette.middleware.gzip import GZipMiddleware, DEFAULT_EXCLUDED_CONTENT_TYPES
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=6,
@@ -1228,6 +1228,14 @@ def admin_connector_knowledge(): return {'apps': autoapprove.connector_knowledge
 def admin_connector_knowledge_set(u: ConnectorKnowledgeIn):
     autoapprove.set_connector_knowledge({k: v for k, v in u.model_dump().items() if v is not None})
     return admin_connector_knowledge()
+
+class ApproveAllIn(BaseModel):
+    section: str = Field(min_length=1, max_length=40)
+
+@app.post('/admin/api/actions/approve-all')
+async def admin_actions_approve_all(q: ApproveAllIn):
+    try: return await asyncio.to_thread(actions.approve_all, q.section)
+    except ValueError as e: raise HTTPException(400, str(e)) from None
 
 @app.post('/admin/api/auto-approve/undo')
 def admin_auto_undo(change: AutoUndo):
@@ -2747,7 +2755,7 @@ def admin_overview():
 
 @app.get('/admin',response_class=HTMLResponse)
 def admin_page():
-    return render_admin('home',ADMIN_TOKEN)      # the Command centre opens on its home page
+    return render_admin('home',ADMIN_TOKEN)      # the Console opens on its home page
 
 @app.get('/admin/api/home')
 def admin_home(tz: int=Query(0,ge=-840,le=840)):
@@ -3122,7 +3130,7 @@ body{display:grid;grid-template-rows:52px minmax(0,1fr);overflow:hidden}
  </div>
  <div class="sp"></div>
  <a id="spend" href="/admin/usage" title="Estimated spend today">—</a>
- <a id="cc-link" class="bar-link" href="/admin">Command centre</a>
+ <a id="cc-link" class="bar-link" href="/admin">Console</a>
 </header>
 <div class="shell">
 <aside class="side" id="side">
@@ -3248,7 +3256,7 @@ function show(role,text,model,pictures,events,docs){const message=document.creat
    const cp=document.createElement('button');cp.type='button';cp.textContent='Copy';cp.onclick=async()=>{try{await navigator.clipboard.writeText(text);cp.textContent='Copied';setTimeout(()=>cp.textContent='Copy',1500)}catch{byId('status').textContent='Copy failed: select the text instead.'}};meta.append(cp);}
   if(meta.childElementCount)message.append(meta);}if(docs&&docs.length){const dl=document.createElement('div');dl.className='message-docs';for(const d of docs){const a=document.createElement('a');a.className='doc-chip';a.href='/documents/'+encodeURIComponent(d.id)+'/download';a.download=d.name;const k=document.createElement('strong');k.textContent=d.kind||d.format;const n=document.createElement('span');n.textContent=d.name+' · '+Math.max(1,Math.round(d.size/1024))+' KB';a.append(k,n);dl.append(a)}message.append(dl)}if(pictures&&pictures.length){const grid=document.createElement('div');grid.className='message-images';for(const p of pictures){const fig=document.createElement('figure');const img=document.createElement('img');img.src='/images/'+p.path;img.alt=p.prompt||'Generated image';img.loading='lazy';const cap=document.createElement('figcaption');const link=document.createElement('a');link.href=img.src;link.download='';link.textContent='Download image';cap.append(link);fig.append(img,cap);grid.append(fig);}message.append(grid);}byId('messages').append(message);byId('messages').scrollTop=byId('messages').scrollHeight;}
 let chatClient='',hintFor=null;
-async function fillClients(){const sel=byId('chat-client');let list=[];try{list=await api('/clients-list')}catch{}byId('client-pill').classList.toggle('client-on',!!chatClient);sel.replaceChildren();const g=document.createElement('option');g.value='';g.textContent='General';sel.append(g);for(const n of list){const o=document.createElement('option');o.value=o.textContent=n;sel.append(o)}sel.value=list.includes(chatClient)?chatClient:'';sel.disabled=busy||uploading||!list.length;sel.title=list.length?'Client for this chat: tools return only this client\'s material plus General material':'Add clients in Command centre → Clients';}
+async function fillClients(){const sel=byId('chat-client');let list=[];try{list=await api('/clients-list')}catch{}byId('client-pill').classList.toggle('client-on',!!chatClient);sel.replaceChildren();const g=document.createElement('option');g.value='';g.textContent='General';sel.append(g);for(const n of list){const o=document.createElement('option');o.value=o.textContent=n;sel.append(o)}sel.value=list.includes(chatClient)?chatClient:'';sel.disabled=busy||uploading||!list.length;sel.title=list.length?'Client for this chat: tools return only this client\'s material plus General material':'Add clients in Console → Clients';}
 async function setClient(name,force=false){const r=await api('/chats/'+chatId+'/client',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({client:name,force})});
  if(r.needs_new_chat){if(confirm(r.message+'\n\nOK: start a new chat for '+(name||'General')+'.\nCancel: keep this chat as it is.')){const n=await api('/chats',{method:'POST'});await api('/chats/'+n.id+'/client',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({client:name})});await loadChat(n.id)}else byId('chat-client').value=chatClient;return}
  chatClient=r.client;byId('chat-client').value=chatClient;byId('client-hint').hidden=true;byId('status').textContent=chatClient?'This chat is now for '+chatClient+'. Other clients\' material is kept out.':'This chat is now General.';await refreshChats()}
@@ -3262,7 +3270,7 @@ function clientHint(e){hintFor=chatId;const box=byId('client-hint');box.replaceC
  if(e.mode==='set'){txt.textContent='This looks like '+e.client+' work. Tag this chat so other clients\' material stays out?';go.textContent='Set client: '+e.client;go.onclick=()=>whenIdle(go,()=>setClient(e.client,true))}
  else{txt.textContent='You mentioned '+e.client+', but this chat is for '+e.current+'. '+e.client+' material stays hidden here.';go.textContent='New chat for '+e.client;go.onclick=()=>whenIdle(go,async()=>{const n=await api('/chats',{method:'POST'});await api('/chats/'+n.id+'/client',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({client:e.client})});await loadChat(n.id)})}
  box.append(txt,go,no);box.hidden=false}
-async function refreshActions(){try{const a=await api('/actions-count');const l=byId('cc-link');const tx=document.createElement('span');tx.className='cc-text';tx.textContent='Command centre';const ic=document.createElement('span');ic.className='cc-icon';ic.textContent='⚙';l.replaceChildren(tx,ic);if(a.total){const b=document.createElement('span');b.className='badge-count';b.textContent=a.total;l.append(b)}l.title=a.total?a.total+' actions waiting for you':'Nothing waiting'}catch{}
+async function refreshActions(){try{const a=await api('/actions-count');const l=byId('cc-link');const tx=document.createElement('span');tx.className='cc-text';tx.textContent='Console';const ic=document.createElement('span');ic.className='cc-icon';ic.textContent='⚙';l.replaceChildren(tx,ic);if(a.total){const b=document.createElement('span');b.className='badge-count';b.textContent=a.total;l.append(b)}l.title=a.total?a.total+' actions waiting for you':'Nothing waiting'}catch{}
  try{const s=await api('/spend');const e=byId('spend');e.textContent='$'+s.today_usd.toFixed(2)+' today';e.className=s.level==='warning'||s.level==='blocked'?'warn':'';e.title='Estimated spend: $'+s.today_usd.toFixed(2)+' today of $'+s.daily_usd.toFixed(2)+', $'+s.month_usd.toFixed(2)+' this month of $'+s.monthly_usd.toFixed(2)}catch{}}
 let allChats=[];
 function chatGroup(d){const now=new Date(),day=new Date(now.getFullYear(),now.getMonth(),now.getDate());const t=new Date(d);if(t>=day)return 'Today';if(t>=new Date(day-6*864e5))return 'This week';if(t>=new Date(day-29*864e5))return 'This month';return 'Earlier';}

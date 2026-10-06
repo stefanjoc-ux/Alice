@@ -1,4 +1,4 @@
-"""The Command centre home page: what needs you, what happened today, what you were working on, and the way in to everything."""
+"""The Console home page: what needs you, what happened today, what you were working on, and the way in to everything."""
 from datetime import datetime, timezone
 
 import substrate_store as store

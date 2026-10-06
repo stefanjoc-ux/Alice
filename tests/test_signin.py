@@ -109,7 +109,7 @@ for path in ('/', '/admin', '/admin/memories', '/admin/signins'):
 sw = cl.get('/sw.js').text
 t('the offline helper never touches the sign-in pages', "startsWith('/.auth/')" in sw)
 
-# which release is running, at the bottom of the Command centre menu
+# which release is running, at the bottom of the Console menu
 from ui_theme import version_info
 vi = version_info({'ALICE_VERSION': '5c49135', 'ALICE_BUILT': '2026-10-04T15:40:00Z', 'CONTAINER_APP_REVISION': 'alice-web--r5c49135'})
 t('version: the release code, when it was built, the running revision and a link to the change',
@@ -117,5 +117,5 @@ t('version: the release code, when it was built, the running revision and a link
 t('version: on the PC it says local, with no link', version_info({}) == {'version': 'local', 'built': '', 'revision': '', 'link': ''})
 t('version: anything odd is not shown', version_info({'ALICE_VERSION': '<script>'})['version'] == 'local')
 h = cl.get('/admin/memories').text
-t('the menu shows the version at the bottom', 'class="nav-version"' in h and h.index('class="nav-version"') > h.index('aria-label="Command centre"')
+t('the menu shows the version at the bottom', 'class="nav-version"' in h and h.index('class="nav-version"') > h.index('aria-label="Console"')
   and '>' + version_info()['version'] + '</b>' in h)

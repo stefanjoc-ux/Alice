@@ -2,7 +2,7 @@
 
 For every request (except static files and the health check) the middleware in app.py records the total server time,
 the time spent in the database and how many queries and connections it took (counted in dbcompat and store.connect via
-the context variable below). The Command centre pages also report how long they took to load in your browser
+the context variable below). The Console pages also report how long they took to load in your browser
 (network + drawing), which is what you actually feel on the tablet. Nothing about the content of a request is kept:
 only the route (e.g. /admin/api/memories), method, status and timings.
 
@@ -49,7 +49,7 @@ def skip(path):
 
 
 def route_name(scope, path):
-    """The route template (so /admin/api/records/<id> is one row), but the real address for Command centre pages."""
+    """The route template (so /admin/api/records/<id> is one row), but the real address for Console pages."""
     r = scope.get('route')
     name = getattr(r, 'path', '') or path
     if name in ('/admin/{page}', '/assistant/{aid}', '/assistant/{assistant_id}'): name = path
