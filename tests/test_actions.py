@@ -58,3 +58,10 @@ t('a section that is not for approval is refused', cl.post('/admin/api/actions/a
 with s.db() as c: logged = c.execute("SELECT detail FROM activity WHERE action='actions_approve_all'").fetchone()
 t('it is logged as one action with the count', logged and 'approved' in logged[0])
 t('the page has the button', 'Approve all ' in cl.get('/admin/actions').text)
+
+# speed (6 Oct 2026): the badges reuse the summary briefly, but any change in Alice refreshes it straight away
+n0 = actions.count()
+x1 = s.propose('Likes hill walks', 'Walks in the hills most weekends', 'User said')['id']
+t('the cached count follows a change at once', actions.count() == n0 + 1)
+t('the menu badges ask for the cached summary; the Actions page itself always rebuilds', "/admin/api/actions?cached=1" in cl.get('/admin/actions').text
+  and cl.get('/admin/api/actions?cached=1').json()['total'] == n0 + 1)

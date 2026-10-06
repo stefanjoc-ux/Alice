@@ -72,7 +72,11 @@ def db(readonly=False):
 
 def now(): return datetime.now(timezone.utc).isoformat()
 
+AUDIT_GEN = [0]      # bumped by every audited change in this process: caches that must follow changes (actions.summary) check it
+
+
 def audit(c, action, target, rule, detail=''):
+    AUDIT_GEN[0] += 1
     c.execute('INSERT INTO activity(created_at,action,target,rule,detail) VALUES (?,?,?,?,?)',
               (now(), action, target, rule, detail))
 
@@ -874,6 +878,7 @@ def init():
 def audit(c, action, target, rule, detail=''):
     """Every activity row records who (actor) and, for decisions, why (note). With ALICE_AUDIT_STDOUT=1 (Azure) each
     row is also written as one JSON line to the 'alice.audit' log, which Container Apps sends to Log Analytics."""
+    AUDIT_GEN[0] += 1
     at, who, note = now(), actor(), NOTE.get()
     c.execute('INSERT INTO activity(created_at,action,target,rule,detail,actor,note) VALUES (?,?,?,?,?,?,?)',
               (at, action, target, rule, detail, who, note))

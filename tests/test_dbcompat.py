@@ -65,3 +65,43 @@ if os.environ.get('ALICE_DATABASE_URL'):
     t('PRAGMA table_info lists the columns', cols == {'name', 'n', 'f', 'b'})
 else:
     print('   (PostgreSQL checks skipped: set ALICE_TEST_DATABASE_URL to a test server to run them)')
+
+# 3. speed (6 Oct 2026): reads open no transaction; the first write does, and the block still commits or rolls back as one
+t('plain reads are recognised; BEGIN, WITH and locking reads are not', D._plain_read('SELECT 1') and D._plain_read('  select x from y')
+  and D._plain_read('PRAGMA table_info(chats)') and not D._plain_read('BEGIN IMMEDIATE') and not D._plain_read('WITH a AS (DELETE FROM x) SELECT 1')
+  and not D._plain_read('SELECT * FROM x FOR UPDATE') and not D._plain_read('INSERT INTO x VALUES (1)'))
+if os.environ.get('ALICE_DATABASE_URL'):
+    import substrate_store as s
+    with s.db() as c:
+        c.execute('CREATE TABLE IF NOT EXISTS dc_lazy (k TEXT PRIMARY KEY, v INTEGER)')
+    with s.db() as c:
+        c.execute('SELECT count(*) FROM dc_lazy').fetchone()
+        t('a block that only reads opens no transaction', c._tx is None)
+    try:
+        with s.db() as c:
+            c.execute('SELECT 1').fetchone()
+            c.execute("INSERT INTO dc_lazy VALUES ('a', 1)")
+            t('the first write opens the transaction', c._tx is not None)
+            c.execute("INSERT INTO dc_lazy VALUES ('b', 2)")
+            raise RuntimeError('stop')
+    except RuntimeError: pass
+    with s.db() as c: n = c.execute('SELECT count(*) FROM dc_lazy').fetchone()[0]
+    t('an error after the writes still rolls the whole block back', n == 0)
+    with s.db() as c:
+        c.execute("INSERT INTO dc_lazy VALUES ('c', 3)")
+        try: c.execute("INSERT INTO dc_lazy VALUES ('c', 4)")
+        except sqlite3.IntegrityError: pass
+        c.execute("INSERT INTO dc_lazy VALUES ('d', 5)")
+    with s.db() as c: rows = sorted(r[0] for r in c.execute('SELECT k FROM dc_lazy'))
+    t('a caught error inside a transaction still leaves it usable (savepoints after the first write)', rows == ['c', 'd'])
+    try:
+        with s.db() as c:
+            try: c.execute('SELECT * FROM no_such_table_here')
+            except sqlite3.OperationalError: pass
+            c.execute("INSERT INTO dc_lazy VALUES ('e', 6)")
+    except Exception as e: t('a failed read before any write does not poison the block', False)
+    else:
+        with s.db() as c: t('a failed read before any write does not poison the block', c.execute("SELECT 1 FROM dc_lazy WHERE k='e'").fetchone() is not None)
+    with s.db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        t('BEGIN IMMEDIATE opens the transaction, so the write lock is held to the end of the block', c._tx is not None)

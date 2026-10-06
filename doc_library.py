@@ -30,6 +30,34 @@ KINDS = {'folder': 'Folder', 'sharepoint': 'SharePoint library', 'fabric': 'Micr
          'power_platform': 'Power Platform (Dataverse)'}
 CONNECTOR = {'folder': 'Local folder', 'sharepoint': 'Microsoft Graph', 'fabric': 'OneLake', 'power_platform': 'Dataverse Web API'}
 _cache = {}
+# Speed (6 Oct 2026): in Azure the Documents folder is a network file share, where every directory walk and file read costs
+# a round trip. The source list and folder list are kept for MEMO_SECONDS (invalidate() after Alice saves a file or adds a
+# source, and Refresh asks for a fresh scan); Purview labels are kept per file until its size or modified time changes.
+MEMO_SECONDS = 30
+_memo, _labels = {}, {}
+
+
+def invalidate():
+    _memo.clear()
+
+
+def _memoised(key, fn):
+    import time
+    hit = _memo.get((str(ROOT),) + key)
+    if hit and time.monotonic() - hit[0] < MEMO_SECONDS: return hit[1]
+    val = fn()
+    _memo[(str(ROOT),) + key] = (time.monotonic(), val)
+    return val
+
+
+def _label(p, st):
+    key = (str(p), st.st_mtime_ns, st.st_size)
+    if key not in _labels:
+        import purview_labels
+        try: _labels[key] = purview_labels.read_label(p.name, p.read_bytes()) if p.suffix.lower() in ('.docx', '.pdf') else None
+        except Exception: _labels[key] = None
+        if len(_labels) > 5000: _labels.clear()
+    return _labels[key]
 
 
 # ---------------- sources (connectors) ----------------
@@ -50,6 +78,10 @@ def _documents(folder, recursive=True):
 
 def sources():
     """Every document source: one per folder in the Documents folder, plus loose files at the top as 'Documents'."""
+    return [dict(x) for x in _memoised(('sources',), _scan_sources)]
+
+
+def _scan_sources():
     out = []
     if not ROOT.is_dir(): return out
     for f in sorted((p for p in ROOT.iterdir() if p.is_dir() and not p.name.startswith(('.', '_'))), key=lambda p: p.name.lower()):
@@ -90,24 +122,26 @@ def add_source(name, kind='folder', simulates='', description=''):
     folder.mkdir(parents=True)
     (folder / CONFIG).write_text(json.dumps({'type': kind, 'name': name, 'simulates': ' '.join((simulates or '').split())[:200],
                                              'description': ' '.join((description or '').split())[:300]}, indent=1), encoding='utf-8')
+    invalidate()
     return next(x for x in sources() if x['id'] == name)
 
 
-def files(source_id):
-    """The documents in one source, with their Purview label and how many knowledge summaries point to each."""
+def files(source_id, labels=True, summaries=True):
+    """The documents in one source, with their Purview label and how many knowledge summaries point to each.
+    labels/summaries=False skip those (a template picker needs neither)."""
     folder = ROOT if source_id == '' else (ROOT / source_id).resolve()
     if folder != ROOT and folder.parent != ROOT or not folder.is_dir(): raise ValueError('No such document source.')
-    import knowledge, purview_labels
     pointed = {}
-    for i in knowledge.listing(status='all', limit=100000)['items']:
-        rel, _ = pointer(i)
-        p = resolve(rel) if rel else None
-        if p: pointed.setdefault(str(p), []).append(i['status'])
+    if summaries:
+        import knowledge
+        for i in knowledge.listing(status='all', limit=100000)['items']:
+            rel, _ = pointer(i)
+            p = resolve(rel) if rel else None
+            if p: pointed.setdefault(str(p), []).append(i['status'])
     out = []
     for p in sorted(_documents(folder, recursive=folder != ROOT), key=lambda x: str(x).lower()):
         st = p.stat()
-        try: lbl = purview_labels.read_label(p.name, p.read_bytes()) if p.suffix.lower() in ('.docx', '.pdf') else None
-        except Exception: lbl = None
+        lbl = _label(p, st) if labels else None
         refs = pointed.get(str(p), [])
         out.append({'path': str(p.relative_to(ROOT)), 'name': p.name, 'full_path': str(p), 'size': st.st_size,
                     'modified': datetime.fromtimestamp(st.st_mtime, timezone.utc).isoformat(), 'label': (lbl or {}).get('name') or (lbl or {}).get('id') or '',
@@ -250,6 +284,10 @@ def text_of(name, raw):
 
 def folders(depth=2):
     """Where a document can be saved: every source and its subfolders, as paths relative to the Documents folder."""
+    return [dict(x) for x in _memoised(('folders', depth), lambda: _scan_folders(depth))]
+
+
+def _scan_folders(depth):
     out = []
     if not ROOT.is_dir(): return out
     for src in sources():
@@ -287,4 +325,5 @@ def save(folder, name, raw, new_folder=''):
     while target.exists():
         target = base / f'{Path(_safe_name(name)).stem} ({n}){target.suffix}'; n += 1
     target.write_bytes(raw)
+    invalidate()
     return target

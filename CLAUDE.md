@@ -252,6 +252,17 @@ call real AI services. Never read the demo store anywhere else, and never let a 
 
 ## Lessons already learned (don't relearn them)
 
+- **Speed (6 Oct 2026, from the Speed page).** On PostgreSQL every round trip crosses Azure's network. `dbcompat` opens a `with`
+  block's transaction lazily, at the first statement that is not a plain SELECT (`_plain_read`); reads before that run without
+  BEGIN/COMMIT/savepoints (READ COMMITTED makes this equivalent). Within one web request, repeated work is reused with
+  `speed.memo(key, fn)` (rules via `rules_engine.all_rules`, cleared by `_rules_changed`; Temple's reviewer and the assistants list in
+  `agents.live_anatomy`); outside a request nothing is kept. `actions.summary(cached=True)` (menu badges, `/actions-count`, Home, the
+  Activity picture) reuses the last answer for 15 s while `store.AUDIT_GEN` (bumped by every `store.audit`) is unchanged; the Actions
+  page itself rebuilds. `doc_library` keeps the source and folder lists for 30 s (`invalidate()` after a save, a new source, Refresh
+  and opening the Documents page) and Purview labels per file until it changes; template pickers call `files(..., labels=False,
+  summaries=False)`. New code: never call `rules_engine.on()`/`all_rules()` in a loop over rows outside a request, and never read every
+  file's bytes just to list files.
+
 - **No module imports inside a write transaction.** Most modules create tables when first imported. Importing
   one (directly or via a helper like `temple.reviewer()`) inside `BEGIN IMMEDIATE` makes SQLite wait on
   itself for 15 seconds, then fail quietly. Resolve imports and helper calls before opening the transaction.

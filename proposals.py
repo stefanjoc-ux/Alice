@@ -220,6 +220,8 @@ def _template_folder(folder, strict=True):
     if not folder: return ''
     import doc_library
     if folder in {f['path'] for f in doc_library.folders(depth=4)}: return folder
+    doc_library.invalidate()            # made a moment ago? look again before refusing
+    if folder in {f['path'] for f in doc_library.folders(depth=4)}: return folder
     if strict: raise ValueError('Choose a folder from the document sources.')
     return folder                     # kept as set; templates() says if it has gone
 
@@ -231,7 +233,7 @@ def templates(folder=''):
     out = []
     for src in doc_library.sources():
         if folder and src['id'] != folder.split('/')[0]: continue
-        try: files = doc_library.files(src['id'])
+        try: files = doc_library.files(src['id'], labels=False, summaries=False)
         except ValueError: continue
         out += [{'path': f['path'], 'name': f['name'], 'source': src['name'], 'folder': f['path'].replace('\\', '/').rsplit('/', 1)[0] if '/' in f['path'].replace('\\', '/') else ''}
                 for f in files if f['name'].lower().endswith('.docx') and not f['name'].startswith('~$')

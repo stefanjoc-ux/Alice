@@ -342,8 +342,8 @@ def live_anatomy(a):
     an = dict(a['anatomy'])
     if an.get('model') == 'temple':
         try:
-            import temple
-            an['model'] = 'Temple reviewer: ' + ('GPT-6 Luna' if temple.reviewer() == 'openai' else 'Claude Haiku 4.5')
+            import temple, speed
+            an['model'] = 'Temple reviewer: ' + ('GPT-6 Luna' if speed.memo('temple_reviewer', temple.reviewer) == 'openai' else 'Claude Haiku 4.5')
         except Exception:
             an['model'] = 'Temple reviewer'
     try:
@@ -356,9 +356,9 @@ def live_anatomy(a):
     an['data'] = [{'key': k, 'name': DATA_SOURCES.get(k, k)} for k in an.get('data', [])]
     if a['id'] in ('alice-proposal-writer', 'alice-proposal-qa'):        # the model is set on each Proposal writer assistant
         try:
-            import assistants
+            import assistants, speed
             names = []
-            for x in assistants.listing()['assistants']:
+            for x in speed.memo('assistants_listing', assistants.listing)['assistants']:
                 if x['kind'] != 'proposal': continue
                 k = x['provider'] if a['id'] == 'alice-proposal-writer' else (x['settings'].get('qa_provider') or x['provider'])
                 names.append(f"{assistants.PROVIDERS.get(k, (k, k))[1]} ({x['name']})")

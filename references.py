@@ -44,7 +44,7 @@ def listing():
     import doc_library
     pts, out = _pointing(), []
     for src in doc_library.sources():
-        try: files = doc_library.files(src['id'])
+        try: files = doc_library.files(src['id'], summaries=False)     # its own pointers come from _pointing()
         except ValueError: continue
         for f in files:
             items = pts.get(f['full_path'], [])

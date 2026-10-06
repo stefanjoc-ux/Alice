@@ -2773,7 +2773,7 @@ NAV_SCRIPT = r"""
 window.addEventListener('load',()=>setTimeout(()=>{try{const nav=performance.getEntriesByType('navigation')[0];if(!nav)return;
  let end=nav.loadEventEnd||nav.domComplete;for(const r of performance.getEntriesByType('resource'))if(r.initiatorType==='fetch'&&r.name.includes('/admin/api/')&&!r.name.includes('/speed')&&r.startTime<6000)end=Math.max(end,r.responseEnd);
  api('/admin/api/speed/page','POST',{page:location.pathname,ms:Math.round(end),kb:Math.round((nav.transferSize||0)/1024)}).catch(()=>{})}catch{}},4000));
-async function navCounts(){try{const d=await api('/admin/api/actions');const n={};for(const s of d.sections)n[s.key]=s.count;
+async function navCounts(){try{const d=await api('/admin/api/actions?cached=1');const n={};for(const s of d.sections)n[s.key]=s.count;
  if(DEMO)return;document.querySelectorAll('.sidebar .nav-count').forEach(x=>x.remove());const counts={agents:n.agents||0,actions:d.total,memories:n.proposals||0,knowledge:(n.drafts||0)+(n.replacements||0),organisations:(n.orgfacts||0)+(n.opportunities||0),temple:n.suggestions||0,archive:n.chats||0,rules:n.rules||0,apps:n.apps||0};
  for(const [k,v] of Object.entries(counts)){if(!v)continue;const a=document.querySelector('.sidebar a[data-page="'+k+'"]');if(!a)continue;const c=document.createElement('span');c.className='nav-count';c.textContent=v;a.append(c)}}catch{}}
 navCounts();

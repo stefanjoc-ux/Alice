@@ -25,13 +25,28 @@ SKIP = ('/static/', '/healthz', '/favicon', '/manifest.webmanifest', '/icon-')
 
 
 class Meter:
-    __slots__ = ('queries', 'db_s', 'conns', 'conn_s')
+    __slots__ = ('queries', 'db_s', 'conns', 'conn_s', 'cache')
 
     def __init__(self):
         self.queries, self.db_s, self.conns, self.conn_s = 0, 0.0, 0, 0.0
+        self.cache = {}
 
 
 CURRENT = contextvars.ContextVar('alice_speed', default=None)
+
+
+def memo(key, fn):
+    """Within one web request, work done once (e.g. loading the rules, asked for dozens of times by one page) is reused.
+    Outside a request (background jobs, tests calling functions directly) it is simply done each time."""
+    m = CURRENT.get()
+    if m is None: return fn()
+    if key not in m.cache: m.cache[key] = fn()
+    return m.cache[key]
+
+
+def forget(key):
+    m = CURRENT.get()
+    if m is not None: m.cache.pop(key, None)
 
 
 def db_call(seconds):

@@ -11,7 +11,7 @@ def _safe(fn, default):
 
 def summary(tz=0):
     import actions, activity_log, agents, assistants, knowledge, organisations, rules_engine, doc_library
-    acts = _safe(actions.summary, {'total': 0, 'sections': []})
+    acts = _safe(lambda: actions.summary(cached=True), {'total': 0, 'sections': []})
     today = _safe(lambda: activity_log.overview('today', tz=tz), {'totals': {}})
     week = _safe(lambda: activity_log.overview('7d', tz=tz), {'buckets': [], 'groups': [], 'gate': []})
     spend = _safe(rules_engine.spend_status, {})

@@ -14,7 +14,25 @@ def _section(key, title, count, link, items=(), note='', level='normal', top=TOP
             'note': note, 'level': level, 'info': info, 'approve_all': key in APPROVE_ALL and count > 0}
 
 
-def summary():
+_CACHED = {}          # (dataset) -> (monotonic time, AUDIT_GEN, summary): the menu badges and Home reuse it briefly
+CACHE_SECONDS = 15
+
+
+def summary(cached=False):
+    """Everything waiting. cached=True (the menu badges, Home, the Activity picture): the last answer is reused for up to
+    CACHE_SECONDS while nothing has changed in this process (store.AUDIT_GEN); the Actions page itself always rebuilds."""
+    import copy, time
+    key = store.DATASET.get()
+    if cached and not _FULL.get():
+        hit = _CACHED.get(key)
+        if hit and time.monotonic() - hit[0] < CACHE_SECONDS and hit[1] == store.AUDIT_GEN[0]: return copy.deepcopy(hit[2])
+    gen = store.AUDIT_GEN[0]
+    out = _summary()
+    if not _FULL.get(): _CACHED[key] = (time.monotonic(), gen, copy.deepcopy(out))
+    return out
+
+
+def _summary():
     import temple, knowledge, clients, rules_engine
     today = datetime.now(timezone.utc).date().isoformat()
     out = []
@@ -192,7 +210,7 @@ def summary():
 
 
 def count():
-    try: return summary()['total']
+    try: return summary(cached=True)['total']
     except Exception: return 0
 
 

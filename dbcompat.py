@@ -187,18 +187,25 @@ class PgConnection:
         self._conn = pool.getconn()
         if ON_CONNECT: ON_CONNECT(time.perf_counter() - t0)
         self._tx = None
+        self._want_tx = False            # inside `with`, but the transaction starts only at the first write (see _run)
         self.row_factory = None          # accepted and ignored; rows always behave like sqlite3.Row
         if readonly: self._conn.execute('SET default_transaction_read_only = on')
 
     # sqlite3's context manager: commit on success, roll back on error (connection stays open)
+    # Speed (6 Oct 2026): the transaction is opened lazily, at the first statement that is not a plain SELECT. Reads before
+    # that run on their own (autocommit), with no BEGIN/COMMIT and no savepoint: one round trip instead of three to five.
+    # Under PostgreSQL's READ COMMITTED every statement takes a fresh snapshot anyway, so this reads exactly what a read
+    # inside the transaction would. Once a write has started the transaction, every statement runs in it as before.
     def __enter__(self):
-        if self._tx is None:
-            self._tx = self._conn.transaction()
-            self._tx.__enter__()
+        if self._tx is None: self._want_tx = True
         return self
 
+    def _begin(self):
+        self._tx = self._conn.transaction()
+        self._tx.__enter__()
+
     def __exit__(self, et, ev, tb):
-        tx, self._tx = self._tx, None
+        tx, self._tx, self._want_tx = self._tx, None, False
         if tx is not None:
             try: tx.__exit__(et, ev, tb)
             except psycopg.Error as e: raise _map_error(e) from e
@@ -221,6 +228,7 @@ class PgConnection:
             try: self._tx.__exit__(None, None, None)
             except Exception: pass
             self._tx = None
+        self._want_tx = False
         try:
             if self._readonly: self._conn.execute('RESET default_transaction_read_only')
         except Exception: pass
@@ -233,6 +241,7 @@ class PgConnection:
     def _run(self, sql, params):
         q = translate(sql)
         if q is None: return Cursor()
+        if self._tx is None and self._want_tx and not _plain_read(sql): self._begin()     # the first write opens the transaction
         t0 = time.perf_counter()
         try:
             return self._run_query(q, params)
@@ -265,6 +274,14 @@ class PgConnection:
     def executescript(self, script):
         for stmt in split_script(script): self._run(stmt, ())
         return Cursor()
+
+
+_READ = re.compile(r'^\s*(SELECT|PRAGMA\s+table_info)\b', re.I)
+
+
+def _plain_read(sql):
+    """A statement that only reads: SELECT (not BEGIN, which becomes an advisory lock, nor WITH, which may write)."""
+    return bool(_READ.match(sql or '')) and not re.search(r'\bFOR\s+(UPDATE|SHARE)\b', sql, re.I)
 
 
 _pools, _lock = {}, threading.Lock()

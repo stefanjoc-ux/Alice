@@ -2245,7 +2245,8 @@ class TemplateFolderIn(BaseModel):
 
 @app.get('/assistant/{aid}/templates')
 def proposal_templates(aid: str):
-    import proposals
+    import proposals, doc_library
+    doc_library.invalidate()          # Refresh: look at the folder again now
     try: return proposals.template_choices(aid)
     except LookupError: raise HTTPException(404,'No such proposal writer.') from None
 
@@ -2477,6 +2478,7 @@ class DocSourceIn(BaseModel):
 @app.get('/admin/api/document-sources')
 def admin_doc_sources():
     import doc_library
+    doc_library.invalidate()          # the Documents page always shows what is in the folders now
     return {'root':str(doc_library.ROOT),'exists':doc_library.ROOT.is_dir(),'sources':doc_library.sources(),'kinds':doc_library.KINDS}
 
 @app.get('/admin/api/document-sources/files')
@@ -2980,7 +2982,7 @@ def admin_demo_delete(sid: str):
     except ValueError as e: raise HTTPException(400, str(e)) from None
 
 @app.get('/admin/api/actions')
-def admin_actions(): return actions.summary()
+def admin_actions(cached: bool=False): return actions.summary(cached)   # cached=1: the menu badges
 
 @app.get('/healthz')
 def healthz():

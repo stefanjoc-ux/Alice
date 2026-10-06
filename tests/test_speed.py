@@ -72,3 +72,16 @@ rh = app.revision_hosts({'CONTAINER_APP_REVISION': 'alice-web--r596067d', 'CONTA
 t("a revision's own address is allowed, exactly, never a wildcard", rh == ['alice-web--r596067d.orangecoast-1.uksouth.azurecontainerapps.io'])
 t('outside Azure no extra address is added', app.revision_hosts({}) == [])
 t('any other host is still refused', cl.get('/healthz', headers={'Host': 'alice-web--r1234567.orangecoast-1.uksouth.azurecontainerapps.io'}).status_code == 400)
+
+# work done once per request (speed.memo): the rules are loaded once however often a page asks, and a change clears them
+import rules_engine as RE, speed as SP
+m = SP.Meter(); tok = SP.CURRENT.set(m)
+try:
+    a1 = RE.all_rules(); a2 = RE.all_rules()
+    a1[0]['name'] = 'changed by a caller'
+    t('within a request the rules are loaded once, and each caller gets its own copy', 'rules' in m.cache and RE.all_rules()[0]['name'] != 'changed by a caller')
+    rid = next(r['id'] for r in a2 if r['kind'] == 'guidance')
+    RE.update_rule(rid, text='Use UK English in every answer.')
+    t('changing a rule clears it, so the same request sees the change', next(r for r in RE.all_rules() if r['id'] == rid)['text'] == 'Use UK English in every answer.')
+finally: SP.CURRENT.reset(tok)
+t('outside a request nothing is kept', SP.memo('x', lambda: 1) == 1 and SP.CURRENT.get() is None)

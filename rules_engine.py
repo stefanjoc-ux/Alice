@@ -111,13 +111,25 @@ _init()
 
 
 # ---------------- rule access ----------------
-def all_rules():
+def _load_rules():
     with store.db() as c:
         rows = [dict(r) for r in c.execute('SELECT * FROM rules')]
     for r in rows:
         r['params'] = json.loads(r['params'] or '{}'); r['enabled'] = bool(r['enabled'])
         r['builtin'] = bool(r['builtin']); r['locked'] = bool(r['locked'])
     return sorted(rows, key=lambda r: (RANK.get(r['set_key'], 99), not r['builtin'], r['created_at'], r['name']))
+
+
+def all_rules():
+    """Every rule. Loaded once per web request (speed.memo; one page asks for them dozens of times) and handed out as copies,
+    so nothing a caller changes leaks into the next caller; any change to the rules clears it (_rules_changed)."""
+    import copy, speed
+    return copy.deepcopy(speed.memo('rules', _load_rules))
+
+
+def _rules_changed():
+    import speed
+    speed.forget('rules')
 
 
 def rule(rid):
@@ -159,6 +171,7 @@ def update_rule(rid, enabled=None, new_params=None, text=None, name=None):
     with store.db() as c:
         c.execute(f"UPDATE rules SET {','.join(fields)},updated_at=? WHERE id=?", args + [store.now(), rid])
         store.audit(c, 'rule_updated', rid, 'human_control', ', '.join(f.split('=')[0] for f in fields))
+    _rules_changed()
     return rule(rid)
 
 
@@ -217,6 +230,7 @@ def create_guidance(set_key, name, text, source=''):
         c.execute('INSERT INTO rules VALUES (?,?,?,?,?,?,1,?,0,0,?,?,?)',
                   (rid, set_key, name, 'guidance', '', text, '{}', source, store.now(), store.now()))
         store.audit(c, 'rule_created', rid, 'human_control', f'{set_key}: {name}')
+    _rules_changed()
     return rule(rid)
 
 
@@ -227,6 +241,7 @@ def delete_rule(rid):
     with store.db() as c:
         c.execute('DELETE FROM rules WHERE id=?', (rid,))
         store.audit(c, 'rule_deleted', rid, 'human_control', r['name'])
+    _rules_changed()
     return {'deleted': rid}
 
 
