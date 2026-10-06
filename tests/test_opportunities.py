@@ -175,3 +175,5 @@ with s.db() as c:
 t('a lapsed lease is taken over', OP._lease())
 r = cl.get('/healthz')
 t('health probe answers without data', r.status_code == 200 and r.json()['ok'] is True and set(r.json()) == {'ok', 'database'})
+t('hovering over Watched shows when Alice last checked and when she checks next', 'watchInfo' in cl.get('/admin/organisations').text
+  and 'Next run:' in cl.get('/admin/organisations').text)

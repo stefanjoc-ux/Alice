@@ -1485,6 +1485,15 @@ if(PAGE==='organisations'){
  const attention=o=>o.facts.proposed>0||o.facts.due>0;
  const openOpps=name=>st.opps.filter(x=>x.org.toLowerCase()===name.toLowerCase()&&OPEN.includes(x.status));
  const watched=name=>{const w=OT.data&&OT.data.watch.find(x=>x.org.toLowerCase()===name.toLowerCase());return !!w&&w.frequency!=='off'};
+ // Hover on Watched: how often Alice checks, when she last did and what happened, and when she checks next (6 Oct 2026).
+ const watchInfo=name=>{const w=OT.data&&OT.data.watch.find(x=>x.org.toLowerCase()===name.toLowerCase());if(!w)return '';
+  const when=iso=>{const d=new Date(iso);if(isNaN(d))return '';const days=Math.round((d-Date.now())/864e5);
+   const t=d.toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+   return t+(days===0?' (today)':days===1?' (tomorrow)':days===-1?' (yesterday)':days>1?' (in '+days+' days)':' ('+(-days)+' days ago)')};
+  const lines=['Alice checks for opportunities '+w.frequency];
+  lines.push(w.last_run?'Last run: '+when(w.last_run)+(w.last_status&&w.last_status!=='complete'?' · '+w.last_status:'')+(w.last_summary?'\n'+w.last_summary:''):'Not run yet');
+  lines.push(w.next_run?(new Date(w.next_run)<new Date()?'Next run: due now (within the hour)':'Next run: '+when(w.next_run)):'Next run: within the hour');
+  return lines.join('\n')};
  const domain=u=>(u||'').replace(/^https?:\/\/(www\.)?/i,'').split('/')[0];
  $('o-demo').checked=DEMO_ORG;$('o-demo').disabled=DEMO;if(DEMO)$('o-demo').parentElement.title='Demo mode is on for the whole Console';
  $('o-demo-bar').hidden=!DEMO_ORG;for(const id of ['o-research','o-opp-scan','o-r-go'])$(id).disabled=DEMO_ORG;
@@ -1501,7 +1510,7 @@ if(PAGE==='organisations'){
  function item(o){const b=el('button','','o-item'+(st.org===o.name?' on':''));b.type='button';b.append(el('span',o.name,'o-name'));const sub=el('span','','o-sub');
   if(o.is_client)sub.append(el('span','Client','o-flag cl'));sub.append(el('span',o.facts.approved+(o.facts.approved===1?' fact':' facts')));
   if(o.facts.proposed)sub.append(el('span',o.facts.proposed+' to approve','o-flag'));if(o.facts.due)sub.append(el('span',o.facts.due+' overdue','o-flag'));
-  if(watched(o.name))sub.append(el('span','Watched','o-flag o-watched'));const op=openOpps(o.name).length;if(op)sub.append(el('span',op+(op===1?' opportunity':' opportunities'),'o-flag o-opp'));if(o.account_manager)sub.append(el('span',o.account_manager));
+  if(watched(o.name)){const wf=el('span','Watched','o-flag o-watched');const wi=watchInfo(o.name);wf.title=wi;wf.setAttribute('aria-label','Watched. '+wi.replace(/\n/g,'. '));sub.append(wf)}const op=openOpps(o.name).length;if(op)sub.append(el('span',op+(op===1?' opportunity':' opportunities'),'o-flag o-opp'));if(o.account_manager)sub.append(el('span',o.account_manager));
   b.append(sub);b.onclick=()=>{st.org=o.name;st.status='approved';history.replaceState(null,'','?org='+encodeURIComponent(o.name));run(load)};return b}
  function renderList(){renderFilters();const rows=st.L.organisations.filter(matches);const box=$('o-list');box.replaceChildren();
   $('o-summary').textContent=(rows.length===st.L.organisations.length?'':rows.length+' of ')+st.L.organisations.length+(st.L.organisations.length===1?' organisation':' organisations');
