@@ -61,6 +61,11 @@ cl.post('/admin/api/rule-packs/state', json={'pack': 'hr', 'all_on': False}, hea
 t("Alice's own rules are untouched by the packs", json.dumps(R.all_rules(), sort_keys=True) == before)
 t('empty test message refused', cl.post('/admin/api/rule-packs/test', json={'pack': 'hr', 'text': '  '}, headers=H).status_code == 400)
 t('page renders', 'id="rp-rules"' in cl.get('/admin/rule-packs').text)
+page = cl.get('/admin/rule-packs').text
+t('page uses the Rules look: tiles, underline tabs, search, filters', all(x in page for x in ('id="rp-tiles" class="rl-tiles"', 'id="rp-packs" class="rl-tabs"', 'id="rp-q"', 'id="rp-kind"', 'id="rp-themes"')))
+d = cl.get('/admin/api/rule-packs').json()
+t('every category in every pack has an icon and a one-line description',
+  all({r['theme'] for r in p['rules']} == {x['name'] for x in p['themes']} and all(x['icon'] and x['description'] for x in p['themes']) for p in d['packs']))
 
 # 5. wider social care wording
 care_review = ("Draft a summary of Mr John Paterson's care review for his file. CHI 1504470001, tel 01738 123456, PH2 8DY. "

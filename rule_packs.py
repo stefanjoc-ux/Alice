@@ -525,6 +525,26 @@ PD = dict(
     ])
 
 PACKS = {p['id']: p for p in (HR, CARE, SEC, PD)}
+
+# How each safeguard category is shown on the Rule packs page: icon, colour (the Rules page's set colours) and one line
+THEMES = {
+    'Personal data': ('personal', 'personal', 'Information about people: where it may go and what is removed first.'),
+    'Identifiers': ('id', 'personal', 'Numbers and details that identify a person, removed before the AI sees them.'),
+    'Secrets and identifiers': ('lock', 'security', 'Keys, user names, addresses and IDs removed before the AI sees them.'),
+    'Fairness': ('scale', 'memory', 'Decisions about people stay with people, free of bias.'),
+    'Lawful use': ('scale', 'memory', 'Personal data used only as the law and its purpose allow.'),
+    'Confidentiality': ('lock', 'security', 'Confidential casework stays inside your tenant.'),
+    'Sensitive information': ('lock', 'security', 'Sensitive and protectively marked material stays inside your tenant.'),
+    'Protection': ('security', 'security', 'Concerns about someone\'s safety go to a person, never a model.'),
+    'Breaches and rights': ('security', 'security', 'Possible breaches and rights requests go to the Data Protection Officer.'),
+    'Where data goes': ('route', '', 'Which AI services may receive what.'),
+    'Access': ('organisation', '', 'Who may use what, and which services are approved.'),
+    'Oversight': ('eye', 'cost', 'A person checks what leaves, and people are told when AI helped.'),
+    'Human control': ('eye', 'cost', 'The AI recommends; people make the changes.'),
+    'Transparency': ('eye', 'cost', 'People know when AI is used, and only the data needed is used.'),
+    'Integrity': ('check', '', 'Evidence-led answers that cannot be steered by the data they read.'),
+    'Records': ('records', '', 'What is kept, for how long, and the audit trail.'),
+}
 ESCALATE_TO = {'care': 'the duty social work team', 'hr': 'the HR business partner', 'sec': 'the on-call incident manager',
                'pd': 'the Data Protection Officer'}
 
@@ -587,7 +607,9 @@ def public():
             'samples': [{'label': a, 'text': b} for a, b in p['samples']],
             'providers': [{'id': k, 'name': (p.get('providers') or {}).get(k, v['name'])} for k, v in PROVIDERS.items()],
             'rules': [{k: r[k] for k in ('id', 'theme', 'name', 'kind', 'action', 'what', 'why', 'locked', 'default')}
-                      | {'action_label': ACTIONS[r['action']][0]} for r in p['rules']]})
+                      | {'action_label': ACTIONS[r['action']][0]} for r in p['rules']],
+            'themes': [dict(zip(('name', 'icon', 'tone', 'description'), (t,) + THEMES.get(t, ('organisation', '', ''))))
+                       for t in dict.fromkeys(r['theme'] for r in p['rules'])]})
     return {'packs': out, 'state': state(), 'providers': [{'id': k, 'name': v['name']} for k, v in PROVIDERS.items()],
             'applied': list(applied())}
 
