@@ -108,9 +108,9 @@ SECTIONS = {
 <div class="as-bar"><input type="search" id="as-q" placeholder="Find an assistant" aria-label="Find an assistant"><div class="as-chips" id="as-kinds" role="group" aria-label="Type"></div><div class="as-chips" id="as-status" role="group" aria-label="Status"></div><div class="as-chips as-view" id="as-view" role="group" aria-label="View"></div></div>
 <div id="as-editor"></div>
 <div id="as-list"></div></section>''',
-'rule-packs': r'''<div id="rp-packs" class="t-tabs" role="tablist" aria-label="Rule packs"></div>
+'rule-packs': r'''<section class="rl-top"><div id="rp-tiles" class="rl-tiles"></div><div id="rp-packs" class="rl-tabs" role="tablist" aria-label="Rule packs"></div></section>
 <section id="rp-head"></section>
-<div class="rp-grid"><div id="rp-rules"></div>
+<div class="rp-grid"><section class="rp-list"><div class="rl-bar"><input id="rp-q" type="search" maxlength="80" placeholder="Search safeguards" aria-label="Search safeguards"><div id="rp-kind" class="rl-chips" role="group" aria-label="Show"></div><span id="rp-counts" class="muted small"></span></div><div id="rp-themes" class="rl-chips rl-setnav" role="group" aria-label="Category"></div><div id="rp-rules"></div></section>
 <aside class="rp-try"><section><div class="mem-head"><h2>Try it</h2><span class="muted small">No AI is called</span></div>
 <div id="rp-samples" class="mem-cats"></div>
 <label class="small" for="rp-text">Message</label><textarea id="rp-text" rows="4" maxlength="5000" placeholder="Type a request, or pick an example above"></textarea>
@@ -369,7 +369,7 @@ nav{display:flex;gap:20px;flex-wrap:wrap}
 .rl-tile.warn{border-color:#e2bf85;background:#fffaf0}.rl-tile.bad{border-color:#e3a3a3;background:#fdf3f3}
 .rl-ic{flex:none;width:34px;height:34px;border-radius:10px;display:grid!important;place-items:center;background:#e3f1f6;color:#075e79}.rl-ic svg{width:19px;height:19px}
 .rl-tabs{display:flex;gap:2px;margin-top:14px;overflow-x:auto;scrollbar-width:none}.rl-tab,.rl-tab:hover{background:none!important;border-radius:0!important}.rl-tab{all:unset;cursor:pointer;padding:10px 14px;font-size:14px;font-weight:600;color:#5d7385;border-bottom:3px solid transparent;white-space:nowrap}.rl-tab:hover{color:#102b40}.rl-tab.on{color:#075e79;border-bottom-color:#075e79}.rl-tab:focus-visible{outline:2px solid #075e79}
-.rl-panel[hidden]{display:none}.rl-bar{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.rl-bar input[type=search]{flex:1 1 220px;max-width:340px;margin:0}.rl-bar #r-counts{margin-left:auto}
+.rl-panel[hidden]{display:none}.rl-bar{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.rl-bar input[type=search]{flex:1 1 220px;max-width:340px;margin:0}.rl-bar #r-counts,.rl-bar #rp-counts{margin-left:auto}
 .rl-chips{display:flex;gap:6px;flex-wrap:wrap}.rl-setnav{margin:12px 0 4px}.chip-n{opacity:.65;font-weight:400}
 .rl-how{margin:8px 0 4px}.rl-how>summary{cursor:pointer;font-size:13px;color:#075e79}.rl-how p{margin:6px 0}
 .r-set{border:1px solid #dde7ee;border-radius:12px;margin:14px 0 0;background:#fff;overflow:hidden}.r-set-head{display:flex;gap:12px;align-items:center;padding:12px 14px;background:#f7fafc;border-bottom:1px solid #e6edf2}
@@ -383,7 +383,7 @@ details.r-row[open]>summary .r-sum{white-space:normal}.r-body{padding:0 14px 14p
 .r-switch{position:relative;flex:none;width:38px;height:22px;cursor:pointer}.r-switch input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}.r-knob{position:absolute;inset:0;border-radius:999px;background:#c5d2dc;transition:background .2s}.r-knob::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .2s}
 .r-switch input:checked+.r-knob{background:#1f8a4c}.r-switch input:checked+.r-knob::after{transform:translateX(16px)}.r-switch input:disabled+.r-knob{opacity:.55;cursor:not-allowed}.r-switch input:focus-visible+.r-knob{outline:2px solid #075e79;outline-offset:2px}
 .r-row.r-want{box-shadow:inset 3px 0 0 #075e79;background:#f3f9fc}.r-set .r-add{margin:0;padding:10px 14px;border-top:1px solid #eef3f6}
-@media(max-width:700px){.r-body{padding-left:14px}.rl-bar #r-counts{margin-left:0}}
+@media(max-width:700px){.r-body{padding-left:14px}.rl-bar #r-counts,.rl-bar #rp-counts{margin-left:0}}
 .ic-drawer{position:fixed;top:52px;right:0;bottom:0;width:min(460px,100vw);background:#fff;border-left:1px solid #dde7ee;box-shadow:-12px 0 30px -18px rgba(16,43,64,.45);z-index:40;display:flex;flex-direction:column;animation:ic-in .18s ease-out}
 .ic-drawer[hidden]{display:none}@keyframes ic-in{from{transform:translateX(24px);opacity:.4}to{transform:none;opacity:1}}@media(prefers-reduced-motion:reduce){.ic-drawer{animation:none}}
 .ic-backdrop{display:none}@media(max-width:900px){body.ic-open .ic-backdrop{display:block;position:fixed;inset:52px 0 0;background:rgba(11,22,38,.35);z-index:39}}
@@ -700,20 +700,13 @@ table.as-tbl{width:100%;border-collapse:collapse;background:var(--panel);border:
 .rp-live{font-size:12px;font-weight:700;color:#1e5b31;background:#e6f4ea;border:1px solid #9fcfaf;border-radius:999px;padding:2px 10px}.rp-live-note{margin:10px 0 0;padding:8px 12px;border-radius:8px;background:#e6f4ea;color:#1e5b31;font-size:13.5px}
 .rpa{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;border:1px solid var(--line);border-left:4px solid #1e7a5a;border-radius:10px;padding:10px 14px;margin:8px 0;background:#fff}
 .rpa .rpa-rules{flex-basis:100%;font-size:13px;color:var(--muted)}.r-svc{margin-top:10px}.r-svc summary{cursor:pointer;font-weight:600}.r-svc-row{display:flex;gap:12px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line)}.r-svc-row span{flex:1}
-.rp-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(320px,1fr);gap:16px;align-items:start}@media(max-width:1100px){.rp-grid{grid-template-columns:1fr}}
+.rp-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(320px,1fr);gap:16px;align-items:start}@media(max-width:1100px){.rp-grid{grid-template-columns:minmax(0,1fr)}}
 .rp-try{position:sticky;top:0;max-height:calc(100vh - 84px);overflow:auto;border-radius:12px}.rp-try section{margin-top:0}.rp-try textarea,.rp-try select{width:100%;margin:4px 0 8px}.rp-try textarea{resize:vertical;min-height:96px}
-#rp-head .rp-meta{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin-top:8px}#rp-head .rp-basis{font-size:13px;color:var(--muted);margin:6px 0 0}
-.rp-stat{font-size:13px;color:var(--muted)}.rp-stat strong{color:var(--ink);font-size:15px}
-.rp-theme{margin:14px 0 8px;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-.rp-rule{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 14px;background:#fff;border:1px solid var(--line);border-left:4px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:8px;transition:opacity .15s}
-.rp-rule.on{border-left-color:var(--teal)}.rp-rule:not(.on){opacity:.62;background:#f8fafb}
-.rp-rule.fired{box-shadow:0 0 0 2px #9fd3c3;border-left-color:#1e7a5a}.rp-rule.fired-block{box-shadow:0 0 0 2px #e0aaaa;border-left-color:#a33}.rp-rule.would{box-shadow:0 0 0 2px #e2bf85 inset;opacity:.9}
-.rp-rule .rp-top{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}.rp-rule h3{margin:0;font-size:15px}.rp-rule p{margin:2px 0 0;font-size:14px}.rp-rule .rp-why{font-size:12.5px;color:var(--muted)}
-.rp-kind{font-size:11.5px;padding:2px 8px;border-radius:999px;border:1px solid;white-space:nowrap}.rp-kind.enforced{background:#e3f1f6;color:#064b63;border-color:#89b1bf}.rp-kind.gate{background:#fdf3e1;color:#6b4406;border-color:#e2bf85}.rp-kind.guidance{background:#ede7f6;color:#4b2f73;border-color:#c7b8dd}.rp-kind.locked{background:#eef1f4;color:#4b5a66;border-color:#c1cbd3}
-.rp-act{font-size:12px;color:var(--muted)}.rp-hit{font-size:12px;font-weight:600;padding:2px 8px;border-radius:5px;background:#e6f4ea;color:#1e5b31}.rp-hit.blockish{background:#fbeaea;color:#7a1f1f}.rp-hit.would{background:#fdf3e1;color:#6b4406}
-.rp-switch{position:relative;display:inline-block;width:44px;height:24px;margin-top:2px;flex:none}.rp-switch input{opacity:0;width:0;height:0;position:absolute}
-.rp-switch span{position:absolute;inset:0;background:#c3cfd8;border-radius:999px;cursor:pointer;transition:background .15s}.rp-switch span::after{content:'';position:absolute;left:3px;top:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 2px #0003;transition:transform .15s}
-.rp-switch input:checked+span{background:var(--teal)}.rp-switch input:checked+span::after{transform:translateX(20px)}.rp-switch input:focus-visible+span{outline:2px solid var(--teal);outline-offset:2px}.rp-switch input:disabled+span{cursor:default;background:#7fa9b8}
+@media(max-width:1100px){.rp-try{position:static;max-height:none;overflow:visible}}
+#rp-head .rp-meta{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;margin-top:12px}#rp-head .rp-meta button{margin:0}#rp-head .rp-basis{font-size:13px;color:var(--muted);margin:6px 0 0}
+.rp-list .r-body p{margin:0}.rp-msg{margin-top:4px;color:#314d62}
+.r-row.rp-fired{box-shadow:inset 3px 0 0 #1e7a5a;background:#f3faf6}.r-row.rp-fired-block{box-shadow:inset 3px 0 0 #a33;background:#fdf6f6}.r-row.rp-would{box-shadow:inset 3px 0 0 #e2bf85;background:#fffaf0}
+.rp-hit{font-size:12px;font-weight:600;padding:2px 8px;border-radius:5px;background:#e6f4ea;color:#1e5b31}.rp-hit.blockish{background:#fbeaea;color:#7a1f1f}.rp-hit.would{background:#fdf3e1;color:#6b4406}
 .rp-out{margin-top:14px;border-radius:10px;border:1px solid var(--line);overflow:hidden}.rp-banner{padding:12px 14px;font-weight:700;font-size:15px;display:flex;gap:10px;align-items:center}
 .rp-banner.escalated{background:#ede7f6;color:#3e2468}.rp-banner.blocked{background:#fbeaea;color:#7a1f1f}.rp-banner.held{background:#fdf3e1;color:#6b4406}.rp-banner.redacted{background:#e3f1f6;color:#064b63}.rp-banner.allowed{background:#e6f4ea;color:#1e5b31}
 .rp-body{padding:10px 14px 14px;background:#fff}.rp-body h4{margin:12px 0 4px;font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}.rp-body ul{margin:0;padding-left:18px}.rp-body li{margin:3px 0;font-size:14px}
@@ -726,6 +719,10 @@ const $=id=>document.getElementById(id);let recordOffset=null,activityOffset=0;
 async function api(path,method='GET',body){const r=await fetch(path,{method,headers:{'Content-Type':'application/json','X-Admin-Token':'__TOKEN__',...(window.ALICE_DATASET==='demo'?{'X-Alice-Dataset':'demo'}:{})},...(body?{body:JSON.stringify(body)}:{})});if(!r.ok){let text=await r.text();try{text=JSON.parse(text).detail}catch{}throw Error(typeof text==='string'?text:'Request rejected; check the fields.')}return r.json()}
 function el(tag,text,cls){const e=document.createElement(tag);e.textContent=text;if(cls)e.className=cls;return e}
 async function run(fn){try{await fn()}catch(e){$('notice').textContent=e.message}}
+// Set icons, icon tiles and filter chips shared by the Rules and Rule packs pages
+const SETIC={security:'<path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/>',organisation:'<path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1M14 9h1M9 13h1M14 13h1M10 21v-4h4v4"/>',memory:'<path d="M12 5a3 3 0 0 0-6 1 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 6 1zM12 5a3 3 0 0 1 6 1 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-6 1z"/>',cost:'<circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .9-3 2s1.3 1.7 3 2 3 .9 3 2-1.3 2-3 2c-1.4 0-2.5-.5-3-1.5M12 6v12"/>',personal:'<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4.5-6 8-6s7 2 8 6"/>',id:'<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 16c.6-1.4 1.7-2 3-2s2.4.6 3 2M15 10h3M15 13h3"/>',lock:'<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',scale:'<path d="M12 3v18M7 21h10M5 7h14M5 7l-3 7a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0z"/>',route:'<circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h6a3 3 0 0 0 0-6h-4a3 3 0 0 1 0-6h6"/>',eye:'<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',check:'<circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>',records:'<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/>'};
+const setIco=(k,cls)=>{const d=el('span','',cls||'rl-ic');d.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(SETIC[k]||SETIC.personal)+'</svg>';return d};
+function filterChips(box,items,cur,fn){box.replaceChildren(...items.map(([k,l,n])=>{const b=el('button','','chip'+(cur===k?' on':''));b.type='button';b.append(document.createTextNode(l));if(n!=null)b.append(el('span',' '+n,'chip-n'));b.setAttribute('aria-pressed',cur===k);b.onclick=()=>fn(k);return b}))}
 async function files(){const data=await api('/files');$('file-list').replaceChildren();if(!data.length)$('file-list').textContent='No saved files.';for(const f of data){const box=el('div','', 'card');box.append(el('strong',f.name),el('p',f.summary));const b=el('button','View extracted text');b.onclick=()=>run(async()=>{$('extract').textContent='Loading…';const d=await api('/admin/api/files/'+f.id);$('extract').textContent=d.text});box.append(b);$('file-list').append(box)}}
 async function records(more=false){const offset=more?recordOffset:0;if(offset===null)return;const d=await api('/admin/api/records?status='+$('record-status').value+'&query='+encodeURIComponent($('record-query').value)+'&offset='+offset);if(!more)$('record-list').replaceChildren();if(!d.total)$('record-list').textContent='No matching records.';for(const r of d.records){const c=el('div','','card');c.append(el('h3',r.title),el('strong',r.status.toUpperCase(),r.status),el('pre',r.content),el('p','Source (as supplied): '+r.source),el('p','Created '+r.created_at+(r.reviewed_at?' · Reviewed '+r.reviewed_at:''),'muted'));if(r.status==='proposed'){for(const decision of ['approved','rejected']){const b=el('button',decision==='approved'?'Approve memory':'Reject');b.onclick=()=>run(async()=>{const note=askReason(decision);if(note===null)return;b.disabled=true;try{await api('/admin/api/records/'+r.id+'/review','POST',{decision,note});$('notice').textContent='Record '+decision+'.';await records();await activity()}finally{b.disabled=false}});c.append(b)}}c.append(memoryControls(r));$('record-list').append(c)}recordOffset=d.next_offset;$('more-records').hidden=recordOffset===null}
 async function activity(more=false){if(!$('activity-list'))return;if(!more){activityOffset=0;$('activity-list').replaceChildren()}const rows=await api('/admin/api/activity?offset='+activityOffset);for(const r of rows){const c=el('div','','card');c.append(el('strong',r.action),el('p',r.created_at+' · '+r.target),el('p','Rule: '+r.rule+' · '+r.detail));$('activity-list').append(c)}if(!rows.length&&!more)$('activity-list').textContent='No activity yet.';activityOffset+=rows.length;$('more-activity').hidden=rows.length<50}
@@ -879,8 +876,6 @@ if(PAGE==='rules'){
   else if(r.id==='client_separation'){const l1=el('label','','r-check');const st=document.createElement('input');st.type='checkbox';st.checked=!!p.strict;l1.append(st,document.createTextNode(' Strict: untagged chats see General material only'));const l2=el('label','Claude Desktop and Claude Code see','r-param');const ex=document.createElement('select');for(const [v,t] of [['all','All material'],['general','General material only']]){const o=document.createElement('option');o.value=v;o.textContent=t;ex.append(o)}ex.value=p.external||'all';l2.append(ex);box.append(l1,l2,saveBtn(()=>patch(r.id,{params:{strict:st.checked,external:ex.value}})));const a=document.createElement('a');a.href='/admin/clients';a.textContent='Manage clients and tags ↗';a.className='small';box.append(a)}
   else if(r.id==='external_scope'){const wrap=el('div','','r-checks');const chosen=new Set(p.allowed_categories);for(const c of data.categories){const l=el('label','','r-check');const i=document.createElement('input');i.type='checkbox';i.checked=chosen.has(c);i.onchange=()=>i.checked?chosen.add(c):chosen.delete(c);l.append(i,document.createTextNode(' '+c));wrap.append(l)}box.append(el('p',chosen.size?'Only ticked categories are readable by Claude Desktop and Claude Code.':'Nothing ticked: all categories are readable.','small'),wrap,saveBtn(()=>patch(r.id,{params:{allowed_categories:[...chosen]}})));if(!data.categories.length)box.append(el('p','Create categories on the Memories page first.','muted small'))}
   return box.childElementCount?box:null}
- const SETIC={security:'<path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/>',organisation:'<path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1M14 9h1M9 13h1M14 13h1M10 21v-4h4v4"/>',memory:'<path d="M12 5a3 3 0 0 0-6 1 3 3 0 0 0-2 5 3 3 0 0 0 2 5 3 3 0 0 0 6 1zM12 5a3 3 0 0 1 6 1 3 3 0 0 1 2 5 3 3 0 0 1-2 5 3 3 0 0 1-6 1z"/>',cost:'<circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .9-3 2s1.3 1.7 3 2 3 .9 3 2-1.3 2-3 2c-1.4 0-2.5-.5-3-1.5M12 6v12"/>',personal:'<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4.5-6 8-6s7 2 8 6"/>'};
- const ico=(k,cls)=>{const d=el('span','',cls||'rl-ic');d.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(SETIC[k]||SETIC.personal)+'</svg>';return d};
  const RS={set:'',kind:'',q:'',open:new Set()},WANT=new URLSearchParams(location.search).get('rule');if(WANT)RS.open.add(WANT);
  function ruleRow(r){const ed=paramsEditor(r);const hasMore=r.kind==='guidance'||ed||(r.description||'').length>110;
   const row=document.createElement(hasMore?'details':'div');row.className='r-row'+(r.enabled?'':' off');row.dataset.rule=r.id;if(hasMore){row.open=RS.open.has(r.id);row.addEventListener('toggle',()=>row.open?RS.open.add(r.id):RS.open.delete(r.id))}
@@ -897,17 +892,16 @@ if(PAGE==='rules'){
    const rules=data.rules.filter(x=>x.set_key===set.key&&(!RS.kind||(RS.kind==='off'?!x.enabled:x.kind===RS.kind))&&(!q||(x.name+' '+(x.description||'')+' '+(x.text||'')).toLowerCase().includes(q)));
    if(!rules.length&&(q||RS.kind))continue;shown+=rules.length;
    const all=data.rules.filter(x=>x.set_key===set.key),on=all.filter(x=>x.enabled).length;
-   const card=el('div','','r-set r-'+set.key);const h=el('div','','r-set-head');const ht=el('div','');ht.append(el('h3',set.name),el('div',set.description,'small muted'));h.append(ico(set.key),ht,el('span',on+' of '+all.length+' on','r-set-n'));card.append(h);
+   const card=el('div','','r-set r-'+set.key);const h=el('div','','r-set-head');const ht=el('div','');ht.append(el('h3',set.name),el('div',set.description,'small muted'));h.append(setIco(set.key),ht,el('span',on+' of '+all.length+' on','r-set-n'));card.append(h);
    const list=el('div','','r-list');for(const r of rules)list.append(ruleRow(r));card.append(list);if(!q&&!RS.kind)card.append(addForm(set));sets.append(card)}
   if(!shown&&(q||RS.kind))sets.append(el('p','No rules match.','muted'))}
- function chips(box,items,cur,fn){box.replaceChildren(...items.map(([k,l,n])=>{const b=el('button','','chip'+(cur===k?' on':''));b.type='button';b.append(document.createTextNode(l));if(n!=null)b.append(el('span',' '+n,'chip-n'));b.setAttribute('aria-pressed',cur===k);b.onclick=()=>fn(k);return b}))}
- function filters(){const R=data.rules;chips($('rl-sets'),[['','All sets',R.length]].concat(data.sets.map(x=>[x.key,x.name,R.filter(r=>r.set_key===x.key).length])),RS.set,k=>{RS.set=k;filters();renderSets()});
-  chips($('rl-kind'),[['','All'],['enforced','Enforced'],['guidance','Guidance'],['off','Switched off',R.filter(r=>!r.enabled).length]],RS.kind,k=>{RS.kind=k;filters();renderSets()})}
+ function filters(){const R=data.rules;filterChips($('rl-sets'),[['','All sets',R.length]].concat(data.sets.map(x=>[x.key,x.name,R.filter(r=>r.set_key===x.key).length])),RS.set,k=>{RS.set=k;filters();renderSets()});
+  filterChips($('rl-kind'),[['','All'],['enforced','Enforced'],['guidance','Guidance'],['off','Switched off',R.filter(r=>!r.enabled).length]],RS.kind,k=>{RS.kind=k;filters();renderSets()})}
  const TABS=[['rules','Rules'],['spend','Spending'],['packs','Rule packs and services'],['labels','Purview labels'],['guidance','Your guidance'],['blocks','Recent blocks']];
  function tab(k,focus){if(!TABS.some(t=>t[0]===k))k='rules';for(const p of document.querySelectorAll('.rl-panel'))p.hidden=p.dataset.tab!==k;
   $('rl-tabs').replaceChildren(...TABS.map(([key,l])=>{const b=el('button',l,'rl-tab'+(key===k?' on':''));b.type='button';b.setAttribute('role','tab');b.setAttribute('aria-selected',key===k);b.onclick=()=>tab(key,true);return b}));
   try{localStorage.setItem('alice-rules-tab',k)}catch{}if(focus)window.history.replaceState(null,'','#'+k)}
- function tiles(){const R=data.rules,sp=data.spend,box=$('rl-tiles');const T=(k,v,l,sub,cls,goto)=>{const b=el('button','','rl-tile'+(cls?' '+cls:''));b.type='button';b.onclick=goto;b.append(ico(k,'rl-ic'));const x=el('div','');x.append(el('b',v),el('span',l));if(sub)x.append(el('span',sub,'sub'));b.append(x);return b};
+ function tiles(){const R=data.rules,sp=data.spend,box=$('rl-tiles');const T=(k,v,l,sub,cls,goto)=>{const b=el('button','','rl-tile'+(cls?' '+cls:''));b.type='button';b.onclick=goto;b.append(setIco(k,'rl-ic'));const x=el('div','');x.append(el('b',v),el('span',l));if(sub)x.append(el('span',sub,'sub'));b.append(x);return b};
   const enf=R.filter(r=>r.kind==='enforced'),gd=R.filter(r=>r.kind==='guidance'),off=R.filter(r=>!r.enabled);
   const lvl=sp.level==='off'?'Caps off':fmtD(sp.today_usd)+' today';
   box.replaceChildren(T('security',enf.filter(r=>r.enabled).length+' of '+enf.length,'Enforced rules on','Run in code where data moves','',()=>{tab('rules',1);RS.kind='enforced';RS.set='';filters();renderSets()}),
@@ -2541,42 +2535,62 @@ if(PAGE==='agents'){
 
 SCRIPT += r"""
 if(PAGE==='rule-packs'){
- const st={P:null,pack:new URLSearchParams(location.search).get('pack')||(()=>{try{return localStorage.getItem('alice-rp-pack')||'care'}catch{return 'care'}})(),res:null,ran:false};
- const KIND={enforced:'Enforced in code',gate:'Human sign-off',guidance:'Guidance to the AI'};
+ const st={P:null,pack:new URLSearchParams(location.search).get('pack')||(()=>{try{return localStorage.getItem('alice-rp-pack')||'care'}catch{return 'care'}})(),res:null,ran:false,kind:'',theme:'',q:'',open:new Set()};
+ const KIND={enforced:'Enforced in code',gate:'Human sign-off',guidance:'Guidance to the AI'},KB={enforced:'v-ok',gate:'v-warn',guidance:'v-run'};
  const BLOCKISH=['block','escalate','review'];
  async function load(){st.P=await api('/admin/api/rule-packs');render()}
  function providers(P){const sel=$('rp-provider'),cur=sel.value||'tenant';sel.replaceChildren(...P.providers.map(p=>{const o=el('option',p.name);o.value=p.id;return o}));sel.value=cur}
  const pack=()=>st.P.packs.find(p=>p.id===st.pack)||st.P.packs[0];
- function render(){const P=pack(),on=st.P.state[P.id];providers(P);
-  $('rp-packs').replaceChildren(...st.P.packs.map(p=>{const b=el('button',p.name+((st.P.applied||[]).includes(p.id)?' ●':''),'chip'+(p.id===P.id?' on':''));if((st.P.applied||[]).includes(p.id))b.title='Applied to live rules';b.type='button';b.setAttribute('role','tab');b.setAttribute('aria-selected',p.id===P.id);
-   b.onclick=()=>{st.pack=p.id;st.res=null;st.ran=false;$('rp-text').value='';try{localStorage.setItem('alice-rp-pack',p.id)}catch{};render()};return b}));
-  const n=P.rules.filter(r=>on[r.id]).length,enf=P.rules.filter(r=>on[r.id]&&r.kind!=='guidance').length;
-  const h=$('rp-head');h.replaceChildren();const top=el('div','','mem-head');top.append(el('h2',P.name+' pack'),el('span',(st.P.applied||[]).includes(P.id)?'':'Sandbox until applied: Alice\'s own rules are not changed','muted small'));h.append(top,el('p',P.audience),el('p','Grounded in: '+P.basis,'rp-basis'));
-  const meta=el('div','','rp-meta');const stat=el('span','','rp-stat');stat.append(el('strong',n+' of '+P.rules.length),document.createTextNode(' safeguards on · '+enf+' enforced or sign-off'));
-  const live=(st.P.applied||[]).includes(P.id);
-  const ap=el('button',live?'Remove from live rules':'Apply to live rules',live?'secondary':'primary');ap.type='button';
+ const filter=(kind,theme)=>{st.kind=kind;st.theme=theme;render()};
+ function tiles(P,on,live){const T=(k,v,l,sub,cls,goto)=>{const b=el('button','','rl-tile'+(cls?' '+cls:''));b.type='button';b.onclick=goto;b.append(setIco(k,'rl-ic'));const x=el('div','');x.append(el('b',v),el('span',l));if(sub)x.append(el('span',sub,'sub'));b.append(x);return b};
+  const R=P.rules,strict=R.filter(r=>r.kind!=='guidance'),off=R.filter(r=>!on[r.id]);
+  $('rp-tiles').replaceChildren(T('security',R.filter(r=>on[r.id]).length+' of '+R.length,'Safeguards on','In the '+P.name+' pack','',()=>filter('','')),
+   T('check',strict.filter(r=>on[r.id]).length+' of '+strict.length,'Enforced or sign-off','Checked in code or by a person','',()=>filter('','')),
+   T('route',live?'Live':'Sandbox','Live rules',live?'Applied: switches change what Alice enforces':'Not applied: Alice\'s rules unchanged','',()=>$('rp-apply').focus()),
+   T('memory',String(off.length),'Switched off',off.length?off.map(r=>r.name).slice(0,2).join(', ')+(off.length>2?'…':''):'Everything is on',off.length?'warn':'',()=>filter('off','')))}
+ function row(r,on,f,w){const isOn=!!on[r.id];const d=document.createElement('details');d.className='r-row'+(isOn?'':' off')+(f?(BLOCKISH.includes(r.action)?' rp-fired-block':' rp-fired'):'')+(w?' rp-would':'');d.dataset.rule=r.id;
+  d.open=st.open.has(r.id);d.addEventListener('toggle',()=>d.open?st.open.add(r.id):st.open.delete(r.id));
+  const top=el('summary','','r-top');const sw=el('label','','r-switch');sw.title=r.locked?'Always on':(isOn?'On: click to switch off':'Off: click to switch on');
+  const cb=document.createElement('input');cb.type='checkbox';cb.setAttribute('role','switch');cb.checked=isOn;cb.disabled=r.locked;cb.setAttribute('aria-label',(isOn?'Turn off ':'Turn on ')+r.name);
+  cb.onchange=()=>change({rule:r.id,enabled:cb.checked});sw.append(cb,el('span','','r-knob'));sw.addEventListener('click',e=>e.stopPropagation());
+  const txt=el('div','','r-txt');const nm=el('div','','r-name');nm.append(el('strong',r.name),el('span',KIND[r.kind],'badge '+KB[r.kind]),el('span',r.action_label,'badge v-none'));
+  if(r.locked)nm.append(el('span','Always on','badge v-none'));if(!isOn)nm.append(el('span','Off','badge v-warn'));
+  if(f&&r.action!=='guide'&&r.action!=='log')nm.append(el('span','Applied','rp-hit'+(BLOCKISH.includes(r.action)?' blockish':'')));
+  if(w)nm.append(el('span','Off: would have applied','rp-hit would'));
+  txt.append(nm,el('div',r.what,'r-sum small'));if(f&&r.action!=='guide')txt.append(el('div','→ '+f.message,'small rp-msg'));if(w)txt.append(el('div','→ '+w.message,'small rp-msg'));
+  top.append(sw,txt,el('span','','r-chev'));const body=el('div','','r-body');body.append(el('p','Why: '+r.why,'small muted'));d.append(top,body);return d}
+ function render(){const P=pack(),on=st.P.state[P.id],live=(st.P.applied||[]).includes(P.id);providers(P);
+  $('rp-packs').replaceChildren(...st.P.packs.map(p=>{const b=el('button',p.name+((st.P.applied||[]).includes(p.id)?' ●':''),'rl-tab'+(p.id===P.id?' on':''));if((st.P.applied||[]).includes(p.id))b.title='Applied to live rules';b.type='button';b.setAttribute('role','tab');b.setAttribute('aria-selected',p.id===P.id);
+   b.onclick=()=>{st.pack=p.id;st.res=null;st.ran=false;st.theme='';$('rp-text').value='';try{localStorage.setItem('alice-rp-pack',p.id)}catch{};render()};return b}));
+  tiles(P,on,live);
+  const h=$('rp-head');h.replaceChildren();const top=el('div','','mem-head');top.append(el('h2',P.name+' pack'),el('span',live?'':'Sandbox until applied: Alice\'s own rules are not changed','muted small'));h.append(top,el('p',P.audience),el('p','Grounded in: '+P.basis,'rp-basis'));
+  const meta=el('div','','rp-meta');
+  const ap=el('button',live?'Remove from live rules':'Apply to live rules',live?'secondary':'primary');ap.type='button';ap.id='rp-apply';
   ap.onclick=()=>run(async()=>{if(live?!confirm('Remove the '+P.name+' pack from Alice\'s live rules?'):!confirm('Apply the '+P.name+' pack to Alice\'s live rules?\n\nIts switched-on safeguards will check your chat messages and Temple\'s requests: identifiers removed, sensitive requests blocked or sent to a person, guidance added to every model. Alice\'s own rules stay in force. You can remove it at any time on this page or the Rules page.'))return;
    const r=await api('/admin/api/rule-packs/apply','POST',{pack:P.id,apply:!live});st.P.applied=r.applied.map(x=>x.id);$('notice').textContent=live?P.name+' pack removed from live rules.':P.name+' pack applied to live rules. Switches on this page now change live rules.';render()});
   if(live)top.append(el('span','● Live in Alice','rp-live'));
   const b1=el('button','All on','secondary'),b2=el('button','All off','secondary'),b3=el('button','Recommended','secondary');[b1,b2,b3].forEach(b=>b.type='button');
-  b1.onclick=()=>change({all_on:true});b2.onclick=()=>change({all_on:false});b3.onclick=()=>change({reset:true});b3.title='Back to the recommended settings for this pack';meta.append(stat,b1,b2,b3,ap);h.append(meta);
+  b1.onclick=()=>change({all_on:true});b2.onclick=()=>change({all_on:false});b3.onclick=()=>change({reset:true});b3.title='Back to the recommended settings for this pack';meta.append(b1,b2,b3,ap);h.append(meta);
   if(live)h.append(el('p','Applied to live rules: switching a safeguard here changes what Alice enforces, and is recorded in Activity. The test box below is still a sandbox.','rp-live-note'));
+  const R=P.rules,themes=P.themes||[];if(st.theme&&!themes.some(t=>t.name===st.theme))st.theme='';
+  filterChips($('rp-kind'),[['','All',R.length],['enforced','Enforced',R.filter(r=>r.kind==='enforced').length],['guidance','Guidance',R.filter(r=>r.kind==='guidance').length],['gate','Sign-off',R.filter(r=>r.kind==='gate').length],['off','Switched off',R.filter(r=>!on[r.id]).length]],st.kind,k=>filter(k,st.theme));
+  filterChips($('rp-themes'),[['','All categories',R.length]].concat(themes.map(t=>[t.name,t.name,R.filter(r=>r.theme===t.name).length])),st.theme,k=>filter(st.kind,k));
+  $('rp-counts').textContent=R.filter(r=>on[r.id]).length+' of '+R.length+' safeguards on';
   const fired={},would={};if(st.res){for(const f of st.res.fired)fired[f.rule]=f;for(const f of st.res.off)would[f.rule]=f}
-  const box=$('rp-rules');box.replaceChildren();let theme='';
-  for(const r of P.rules){if(r.theme!==theme){theme=r.theme;box.append(el('div',theme,'rp-theme'))}
-   const f=fired[r.id],w=would[r.id];const card=el('div','','rp-rule'+(on[r.id]?' on':'')+(f?(BLOCKISH.includes(r.action)?' fired-block':' fired'):'')+(w?' would':''));
-   const sw=el('label','','rp-switch');const cb=document.createElement('input');cb.type='checkbox';cb.setAttribute('role','switch');cb.checked=!!on[r.id];cb.disabled=r.locked;cb.setAttribute('aria-label',(on[r.id]?'Turn off ':'Turn on ')+r.name);
-   cb.onchange=()=>change({rule:r.id,enabled:cb.checked});sw.append(cb,el('span',''));
-   const main=el('div','');const t=el('div','','rp-top');t.append(el('h3',r.name),el('span',r.locked?'Always on':KIND[r.kind],'rp-kind '+(r.locked?'locked':r.kind)),el('span',r.action_label,'rp-act'));
-   if(f&&r.action!=='guide'&&r.action!=='log')t.append(el('span','Applied','rp-hit'+(BLOCKISH.includes(r.action)?' blockish':'')));
-   if(w)t.append(el('span','Off: would have applied','rp-hit would'));
-   main.append(t,el('p',r.what),el('p','Why: '+r.why,'rp-why'));if(f&&r.action!=='guide')main.append(el('p','→ '+f.message,'small'));if(w)main.append(el('p','→ '+w.message,'small'));
-   card.append(sw,main);box.append(card)}
+  const q=st.q.toLowerCase(),box=$('rp-rules');box.replaceChildren();let shown=0;
+  for(const t of themes){if(st.theme&&st.theme!==t.name)continue;const all=R.filter(r=>r.theme===t.name);
+   const rules=all.filter(r=>(!st.kind||(st.kind==='off'?!on[r.id]:r.kind===st.kind))&&(!q||(r.name+' '+r.what+' '+r.why+' '+r.action_label).toLowerCase().includes(q)));
+   if(!rules.length)continue;shown+=rules.length;
+   const card=el('div','','r-set'+(t.tone?' r-'+t.tone:''));const hd=el('div','','r-set-head');const ht=el('div','');ht.append(el('h3',t.name));if(t.description)ht.append(el('div',t.description,'small muted'));
+   hd.append(setIco(t.icon),ht,el('span',all.filter(r=>on[r.id]).length+' of '+all.length+' on','r-set-n'));card.append(hd);
+   const list=el('div','','r-list');for(const r of rules)list.append(row(r,on,fired[r.id],would[r.id]));card.append(list);box.append(card)}
+  if(!shown)box.append(el('p','No safeguards match.','muted'));
   $('rp-samples').replaceChildren(...P.samples.map(x=>{const b=el('button',x.label,'chip');b.type='button';b.onclick=()=>{$('rp-text').value=x.text;test()};return b}));
   result()}
  async function change(body){const r=await api('/admin/api/rule-packs/state','POST',{pack:st.pack,...body});st.P.state=r.state;if(st.ran)await test(true);else render()}
  async function test(quiet){const text=$('rp-text').value.trim();if(!text){if(!quiet)$('notice').textContent='Type a message or pick an example.';return}
   st.res=await api('/admin/api/rule-packs/test','POST',{pack:st.pack,text,provider:$('rp-provider').value});st.ran=true;render();if(!quiet)$('rp-result').scrollIntoView({block:'nearest',behavior:'smooth'})}
+ $('rp-q').oninput=()=>{st.q=$('rp-q').value.trim();render()};
  function result(){const out=$('rp-result');out.replaceChildren();const R=st.res;if(!R)return;
   const w=el('div','','rp-out');const ICON={escalated:'⇢',blocked:'⛔',held:'⏸',redacted:'✂',allowed:'✓'};const bn=el('div','','rp-banner '+R.outcome);bn.append(el('span',ICON[R.outcome]||''),el('span',R.headline));w.append(bn);
   const b=el('div','','rp-body');const acts=R.fired.filter(f=>!['guide','log'].includes(f.action));
