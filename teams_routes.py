@@ -3,7 +3,7 @@ in app.py's protect_admin middleware apply to every change."""
 import asyncio
 import base64
 
-from fastapi import APIRouter, HTTPException, Path as FPath
+from fastapi import APIRouter, HTTPException, Path as FPath, Query
 from pydantic import BaseModel, Field
 
 import teams
@@ -23,6 +23,39 @@ def _do(fn, *a, **k):
 class TeamIn(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     description: str = Field('', max_length=600)
+    colour: str = Field('', max_length=20)
+    icon: str = Field('', max_length=20)
+    discipline: str = Field('', max_length=60)
+    template: str = Field('', max_length=40)
+
+
+class IdentityIn(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=80)
+    description: str | None = Field(None, max_length=600)
+    colour: str | None = Field(None, max_length=20)
+    icon: str | None = Field(None, max_length=20)
+    discipline: str | None = Field(None, max_length=60)
+
+
+class PinIn(BaseModel):
+    on: bool = True
+
+
+class RateEntry(BaseModel):
+    ref: str = Field(min_length=1, max_length=20)
+    rate: float | None = None
+    unpriced: bool = False
+
+
+class RatesDecisionIn(BaseModel):
+    entries: list[RateEntry] = Field(max_length=500)
+    save_to_library: bool = True
+    go_on: bool = False
+
+
+class TalkJobIn(BaseModel):
+    message: str = Field(min_length=1, max_length=4000)
+    job: str = Field('', pattern=r'^([0-9a-f]{32})?$')
 
 
 class AutonomyIn(BaseModel):
@@ -109,7 +142,14 @@ def teams_home():
 
 @router.post('/admin/api/teams')
 def teams_create(t: TeamIn):
-    return _do(teams.create, t.name, t.description)
+    if t.template: return _do(teams.from_template, t.template, t.name, t.description, t.colour, t.icon, t.discipline)
+    return _do(teams.create, t.name, t.description, colour=t.colour, icon=t.icon, discipline=t.discipline)
+
+
+@router.get('/admin/api/teams/board')
+def teams_board():
+    """All teams: summary, what needs you across teams, one entry per team (the All teams page)."""
+    return teams.board()
 
 
 @router.get('/admin/api/teams/demo-project')
@@ -140,6 +180,16 @@ def teams_job(jid: str = FPath(pattern=HEX)):
     return _do(teams.job_detail, jid)
 
 
+@router.get('/admin/api/teams/jobs/{jid}/page')
+def teams_job_page(jid: str = FPath(pattern=HEX)):
+    return _do(teams.job_page, jid)
+
+
+@router.post('/admin/api/teams/jobs/{jid}/rates')
+def teams_job_rates(d: RatesDecisionIn, jid: str = FPath(pattern=HEX)):
+    return _do(team_qs.decide_rates, jid, [e.model_dump() for e in d.entries], d.save_to_library, d.go_on)
+
+
 @router.post('/admin/api/teams/jobs/{jid}/resume')
 def teams_job_resume(jid: str = FPath(pattern=HEX)):
     return _do(teams.resume, jid)
@@ -159,6 +209,38 @@ def teams_step(d: DecideIn, sid: str = FPath(pattern=HEX)):
 @router.get('/admin/api/teams/{tid}')
 def teams_one(tid: str = FPath(pattern=ID)):
     return _do(teams.overview, tid)
+
+
+@router.get('/admin/api/teams/{tid}/page')
+def teams_page(tid: str = FPath(pattern=ID)):
+    return _do(teams.page, tid)
+
+
+@router.post('/admin/api/teams/{tid}/seen')
+def teams_seen(tid: str = FPath(pattern=ID)):
+    return _do(teams.seen, tid)
+
+
+@router.put('/admin/api/teams/{tid}/pin')
+def teams_pin(p: PinIn, tid: str = FPath(pattern=ID)):
+    return _do(teams.set_pin, tid, p.on)
+
+
+@router.put('/admin/api/teams/{tid}/identity')
+def teams_identity(i: IdentityIn, tid: str = FPath(pattern=ID)):
+    return _do(teams.set_identity, tid, i.name, i.description, i.colour, i.icon, i.discipline)
+
+
+@router.get('/admin/api/teams/{tid}/talk')
+def teams_talk_history(tid: str = FPath(pattern=ID), job: str = Query('', pattern=r'^([0-9a-f]{32})?$')):
+    return {'messages': _do(teams.messages, tid, job)}
+
+
+@router.post('/admin/api/teams/{tid}/talk')
+async def teams_talk(q: TalkJobIn, tid: str = FPath(pattern=ID)):
+    try: return await asyncio.to_thread(teams.talk, tid, q.job, q.message)
+    except LookupError as e: raise HTTPException(404, str(e)) from None
+    except ValueError as e: raise HTTPException(400, str(e)) from None
 
 
 @router.put('/admin/api/teams/{tid}/autonomy')
