@@ -113,7 +113,7 @@ page = cl.get(f'/assistant/{aid}').text
 t('the Parker page shows model suggestions with Apply and Dismiss', 'pkSuggestions' in page and 'suggested changes' in page)
 t('the Proposals list badges proposals with suggestions, and a new page points to them', 'wb-sug' in page and 'pkWaiting()' in page
   and 'Open it to apply or dismiss' in page)
-t('Apply waits for the draft to load before applying draft changes', 'The draft is still loading' in page)
+t('Apply waits for the draft to load before applying draft changes', 'The proposal is still loading' in page)
 row = next(x for x in cl.get(f'/assistant/{aid}/proposals', headers=h).json()['proposals'] if x['id'] == pid)
 t('nothing waiting once applied or dismissed', row['suggestions'] == 0)
 
@@ -193,7 +193,7 @@ PS.decide(aid, pid, s2['suggestion'], 'dismissed')
 x = rows()[pid]
 t('applied or dismissed, it goes back to Written, dated by its last edit',
   x['group'] == 'written' and x['activity_kind'] == 'edit' and x['activity_at'] == x['edited_at'] and not x['suggestions'])
-t('suggestions are still never applied by Alice: the notes are unchanged', P.get(pid)['inputs'].get('notes') != 'Say six weeks in the approach.')
+t('the applied suggestion is saved on the written proposal, the dismissed one is not', P.get(pid)['notes'] == 'Keep the summary to one paragraph.')
 t('a suggestion on a proposal in progress keeps it In progress',
   (PS.suggest(PS.ref(form), 'n', {'notes': 'More detail.'}, 'Claude') and rows()[form]['group'] == 'progress'))
 page = cl.get(f'/assistant/{aid}').text

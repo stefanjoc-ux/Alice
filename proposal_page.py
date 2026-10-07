@@ -116,6 +116,7 @@ table.t td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}ta
 .pk-ch{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}.pk-ch span{background:#f1ebf7;border:1px solid #d6c8ea;color:#4b2f73;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:600;cursor:pointer}
 .pk-q{margin:8px 0 0;padding:8px 10px 8px 26px;background:#fdf7ea;border:1px solid #ecd6a8;border-radius:10px;font-size:13px;white-space:normal}
 .pk-q li{cursor:pointer}.pk-q li:hover{text-decoration:underline}
+.ca-btn[hidden]{display:none!important}
 .pk-undo{margin-top:6px;font-size:12px;border:0!important;background:none!important;color:#634394!important;padding:0!important;text-decoration:underline;cursor:pointer}
 .pk-starts{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.pk-starts button{font-size:12.5px;padding:5px 11px;border-radius:999px;border:1px solid #d6c8ea;background:#fff;color:#4b2f73;font-weight:600}
 .pk-typing{align-self:flex-start;display:inline-flex;gap:4px;background:#fff;border:1px solid #e4dbf0;border-radius:14px;padding:11px 13px}
@@ -451,10 +452,11 @@ function show(p){CUR=p;EDS=null;DOC=null;if(formEmpty()&&!p.inputs.qa_only&&S)se
  if(p.error)top.append(mk('p','The last re-check did not finish: '+p.error,'err'));
  const act=mk('div','','act');
  if(!p.inputs.qa_only){const lf=document.createElement('button');lf.type='button';lf.className='secondary';lf.textContent='Load into the form';lf.title='Put this proposal\u2019s brief, notes, template, references and roles back into the form, to change it with Parker or write a new version';lf.onclick=()=>loadIntoForm(p,false);act.append(lf)}
- if(!p.inputs.qa_only&&(p.draft.sections||[]).length){const eb=document.createElement('button');eb.type='button';eb.className='secondary';eb.textContent='Edit the draft and check again';eb.onclick=()=>editDraft(p);act.append(eb)}
+ if(!p.inputs.qa_only&&(p.draft.sections||[]).length){const eb=document.createElement('button');eb.type='button';eb.className='secondary';eb.textContent='Edit the draft and check again';eb.onclick=()=>editDraft(p);act.append(eb);
+  const ca=mk('button','Check again','primary');ca.type='button';ca.className='primary ca-btn';ca.title='Saves the brief, notes, title, rate card and draft as they are on this page, then Argus checks what was saved';ca.onclick=()=>checkAgain(ca);act.append(ca,mk('span','','hint unsaved'))}
  const ul_=mk('label','Upload a revised version for QA','btnlike');const fi=document.createElement('input');fi.type='file';fi.accept='.docx,.pdf,.txt,.md';fi.hidden=true;ul_.append(fi);
  fi.onchange=async()=>{const f=fi.files[0];fi.value='';if(!f)return;try{await api('/proposals/'+p.id+'/qa-upload','POST',{name:f.name,data:await fileData(f)});follow(p.id)}catch(e){alertBox(e.message)}};act.append(ul_);
- act.append(mk('span',p.inputs.qa_only?'Changed it? Upload the new version and Argus checks it again.':'Edited it in Word? Upload it and Argus checks your version against the brief (it is not kept).','hint'));top.append(act);
+ act.append(mk('span',p.inputs.qa_only?'Changed it? Upload the new version and Argus checks it again.':'Edited it in Word? Upload it and Argus checks your version against the brief (it is not kept).','hint'));top.append(act);setTimeout(drawUnsaved,0);
  if(!p.inputs.qa_only&&(p.draft.sections||[]).length&&S){const tr=mk('div','','retpl');const ts2=document.createElement('select');ts2.setAttribute('aria-label','Template');
   const cur=p.inputs.template||'';const opt=(v,t)=>{const o=document.createElement('option');o.value=v;o.textContent=t;return o};
   ts2.append(...(S.templates||[]).map(x=>opt(x.path,x.name)),opt('','Alice’s own Word layout'));if(cur&&![...ts2.options].some(o=>o.value===cur))ts2.prepend(opt(cur,cur.split('/').pop()));ts2.value=cur;
@@ -527,7 +529,7 @@ function sellTable(pr){const tb=mk('table');const tr=mk('tr');for(const [h,c] of
 function drawDoc(p){const d=p.draft||{},pr=p.pricing||{},doc=mk('article','','doc'),eds=[];doc.setAttribute('aria-label','The draft of '+(p.title||'this proposal'));
  const head=mk('header','','doc-head');head.append(mk('h1',p.title||'Untitled proposal','doc-title'));const meta=[p.organisation,p.inputs.qa_only?'':(p.inputs.template?('Template: '+p.inputs.template.split('/').pop().replace(/\.docx$/i,'')):'Alice’s own layout')].filter(Boolean).join(' \u00b7 ');if(meta)head.append(mk('p',meta,'doc-meta'));doc.append(head);
  const bar=mk('div','','doc-bar');bar.hidden=true;const cnt=mk('b','');const go=mk('button','Save changes and check again','primary');const cancel=mk('button','Cancel','secondary');go.type=cancel.type='button';
- bar.append(mk('strong','Editing the draft'),mk('span','Click into any section’s text to change it. Headings come from the template; standard text stays as it is. Argus checks your version and the Word document is rebuilt.','hint'),cnt,go,cancel);
+ bar.append(mk('strong','Editing the draft'),mk('span','Click into any section’s text to change it. Headings come from the template; standard text stays as it is. Argus checks your version and the Word document is rebuilt.','hint'),cnt,go,cancel,mk('span','','hint unsaved'));
  const count=()=>{const n=eds.filter(([x,e])=>e.value!==(x.body||'')).length;cnt.textContent=n?n+(n===1?' section changed':' sections changed'):''};
  let priced=false;const lines=(pr.lines||[]).length&&!p.inputs.qa_only;
  for(const x of d.sections||[]){const sec=mk('section','','doc-sec'+(x.keep?' keep':''));sec.append(mk('h2',x.title,'doc-h'));
@@ -537,14 +539,14 @@ function drawDoc(p){const d=p.draft||{},pr=p.pricing||{},doc=mk('article','','do
    const grow=()=>{ta.style.height='auto';ta.style.height=(ta.scrollHeight+4)+'px'};const mark=()=>{sec.classList.toggle('changed',ta.value!==(x.body||''));count()};
    const open=()=>{if(!doc.classList.contains('editing')||!ta.hidden)return;body.hidden=true;ta.hidden=false;grow();ta.focus()};
    body.onclick=open;body.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();open()}};
-   ta.oninput=()=>{grow();mark()};ta.onblur=()=>{paint(ta.value);ta.hidden=true;body.hidden=false};ta.onkeydown=e=>{if(e.key==='Escape'){e.stopPropagation();ta.blur()}};
+   ta.oninput=()=>{grow();mark();drawUnsaved()};ta.onblur=()=>{paint(ta.value);ta.hidden=true;body.hidden=false};ta.onkeydown=e=>{if(e.key==='Escape'){e.stopPropagation();ta.blur()}};
    sec.append(body,ta);
    const ed={get value(){return ta.value},set value(v){ta.value=v;if(ta.hidden)paint(v);else grow();mark()},classList:sec.classList,scrollIntoView:o=>sec.scrollIntoView(o),body};
    eds.push([x,ed])}
   if(lines&&!priced&&PRICE_RE.test(x.title)){sec.append(mk('p','Pricing table, from the rate card:','doc-auto'),sellTable(pr));priced=true}
   doc.append(sec)}
  if(lines&&!priced){const sec=mk('section','','doc-sec keep');sec.append(mk('h2','Commercials','doc-h'),mk('p','Pricing table, from the rate card:','doc-auto'),sellTable(pr));doc.append(sec)}
- go.onclick=async()=>{go.disabled=true;try{await api('/proposals/'+p.id+'/recheck','POST',{sections:(d.sections||[]).map(x=>{const e=eds.find(y=>y[0]===x);return {title:x.title,body:e?e[1].value:''}})});follow(p.id)}catch(e){go.disabled=false;alertBox(e.message)}};
+ go.onclick=()=>checkAgain(go);
  cancel.onclick=()=>show(p);
  const editing=on=>{doc.classList.toggle('editing',on);bar.hidden=!on;for(const [,e] of eds){e.body.tabIndex=on?0:-1;if(on)e.body.setAttribute('role','button');else e.body.removeAttribute('role');e.body.title=on?'Click to edit this section':''}};
  return {doc,bar,eds,editing,pid:p.id}}
@@ -554,7 +556,7 @@ const PK={history:[],doc:null,busy:false};
 function snap(){return {f:['title','org','brief','notes'].map(id=>[id,$(id).value]),tpl:$('tplsel').value,refs:[...picked],rates:rateEd.value(),mem:$('mem').checked,drafts:EDS?EDS.map(([x,t])=>[x.title,t.value]):null}}
 async function restore(u){for(const[id,v]of u.f){$(id).value=v;$(id).classList.remove('tfill');$(id).dispatchEvent(new Event('input',{bubbles:true}))}
  if($('tplsel').value!==u.tpl){$('tplsel').value=u.tpl;await $('tplsel').onchange()}picked.clear();u.refs.forEach(x=>picked.add(x));drawRefs();rateEd.set(u.rates);$('mem').checked=u.mem;clearTags();
- if(EDS&&CUR){for(const [x,t] of EDS){const old=u.drafts?(u.drafts.find(d=>d[0]===x.title)||[])[1]:x.body;if(old!=null)t.value=old;t.classList.remove('tfill')}}summary()}
+ if(EDS&&CUR){for(const [x,t] of EDS){const old=u.drafts?(u.drafts.find(d=>d[0]===x.title)||[])[1]:((CUR.draft.sections||[]).find(d=>d.title===x.title)||x).body;if(old!=null)t.value=old;t.classList.remove('tfill')}}summary()}
 ['title','org','brief','notes'].forEach(id=>$(id).addEventListener('keydown',()=>$(id).classList.remove('tfill')));
 function clearTags(){document.querySelectorAll('.pk-tag').forEach(x=>x.remove())}
 function reveal(node){const p=node.closest('.panel');if(!p)return;if(p.tagName==='DETAILS')p.open=true;else p.classList.remove('shut');
@@ -569,7 +571,7 @@ async function applyParker(u){clearTags();
  if(u.roles){rateEd.merge(u.roles);reveal($('rates'))}
  if(u.draft&&CUR){if(!EDS)editDraft(CUR);let first=null;for(const d of u.draft){const e=(EDS||[]).find(x=>x[0].title===d.title);if(!e)continue;e[1].value=d.body;e[1].classList.add('tfill');first=first||e[1]}if(first)first.scrollIntoView({behavior:'smooth',block:'center'})}
  summary()}
-function draftNow(){if(EDS&&CUR)return (CUR.draft.sections||[]).map(s=>{const e=EDS.find(x=>x[0]===s);return {title:s.title,body:e?e[1].value:s.body,keep:!!s.keep}});
+function draftNow(){if(EDS&&CUR)return (CUR.draft.sections||[]).map(s=>{const e=EDS.find(x=>x[0].title===s.title);return {title:s.title,body:e?e[1].value:s.body,keep:!!s.keep}});
  if(CUR&&!CUR.inputs.qa_only&&CUR.draft)return (CUR.draft.sections||[]).map(s=>({title:s.title,body:s.body,keep:!!s.keep}));return []}
 function form(){return {title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value,template:$('tplsel').value,
  references:[...picked],sections:((CUR&&!CUR.inputs.qa_only&&(CUR.draft||{}).sections)||TPLSECS).map(x=>x.title),draft:draftNow(),roles:rateEd?rateEd.value().map(r=>({role:r.role,unit:r.unit,use:r.use,days:r.days,sell:r.sell,cost:r.cost})):[],
@@ -603,13 +605,28 @@ function pkSuggestions(p){const list=((p.context||{}).model_suggestions||[]).fil
   if((sg.no_longer||[]).length){const g=mk('div','','pk-gone');g.append(mk('b','No longer applies here'));const ul=mk('ul');for(const x of sg.no_longer)ul.append(mk('li',x));g.append(ul);m.append(g)}
   const bar=mk('div','','pk-mbar');const ap=mk('button','Apply','primary');const di=mk('button','Dismiss','secondary');ap.type=di.type='button';
   if(!(sg.changed||[]).length){ap.disabled=true;ap.title='Nothing in it applies to this version: dismiss it'}
-  ap.onclick=async()=>{ap.disabled=di.disabled=true;try{if(sg.updates.draft){for(let k=0;k<40&&!(CUR&&CUR.id===p.id);k++)await new Promise(r=>setTimeout(r,250));if(!(CUR&&CUR.id===p.id))throw new Error('The draft is still loading: try Apply again in a moment.')}
-    const before=snap();VIA=sg.from;await applyParker(sg.updates);await api('/proposals/'+p.id+'/suggestions/'+sg.id,'POST',{action:'applied'});await reloadVer(p.id);changed();recent();
+  ap.onclick=async()=>{ap.disabled=di.disabled=true;try{const written=p.status!=='form';if(sg.updates.draft||written){for(let k=0;k<40&&!(CUR&&CUR.id===p.id);k++)await new Promise(r=>setTimeout(r,250));if(!(CUR&&CUR.id===p.id))throw new Error('The proposal is still loading: try Apply again in a moment.')}
+    const before=snap();
+    if(written){const r=await api('/proposals/'+p.id+'/suggestions/'+sg.id,'POST',{action:'applied'});LOADING++;try{await applyParker(sg.updates)}finally{LOADING--}fresh(r.proposal);
+     const un=mk('button','Undo these changes','pk-undo');un.type='button';un.onclick=async()=>{un.disabled=true;try{const u=await api('/proposals/'+p.id+'/suggestions/'+sg.id+'/saved','POST',{action:'undo'});fresh(u.proposal);LOADING++;try{await restore(before)}finally{LOADING--}drawUnsaved();un.replaceWith(mk('span','Undone: the saved proposal is back as it was.','hint'))}catch(e){un.disabled=false;alertBox(e.message)}};
+     bar.replaceChildren(mk('span','Applied and saved: '+andList(r.saved||[])+'.'+((r.left_out||[]).includes('template')?' The template is only changed in the form: use Move the content to this template to change it.':'')+' Argus has not checked it yet: Check again when you are ready.','hint'),un);return}
+    VIA=sg.from;await applyParker(sg.updates);await api('/proposals/'+p.id+'/suggestions/'+sg.id,'POST',{action:'applied'});await reloadVer(p.id);changed();recent();
     const un=mk('button','Undo these changes','pk-undo');un.type='button';un.onclick=async()=>{await restore(before);un.replaceWith(mk('span','Undone.','hint'))};
-    bar.replaceChildren(mk('span','Applied. Check it, then save or send it to Argus as usual.','hint'),un)}catch(e){ap.disabled=di.disabled=false;alertBox(e.message)}};
+    bar.replaceChildren(mk('span','Applied to the form, which saves itself.','hint'),un)}catch(e){ap.disabled=di.disabled=false;alertBox(e.message)}};
   di.onclick=async()=>{ap.disabled=di.disabled=true;try{await api('/proposals/'+p.id+'/suggestions/'+sg.id,'POST',{action:'dismissed'});recent();bar.replaceChildren(mk('span','Dismissed.','hint'))}catch(e){ap.disabled=di.disabled=false;alertBox(e.message)}};
   bar.append(ap,di);m.append(bar)}
- if(list.length)pkScroll()}
+ for(const lx of p.lost_suggestions||[]){const sg=((p.context||{}).model_suggestions||[]).find(x=>x.id===lx.id);if(!sg)continue;const m=pkSay('pk-p pk-model','');
+  m.append(mk('strong',lx.from+'’s changes were not saved'),mk('div',sg.note||'','pk-mnote'),mk('div','Marked applied on '+when(lx.applied_at)+', but only the form changed: the saved proposal still has the old '+andList(lx.names)+'.','hint'));
+  const ch=mk('div','','pk-ch');for(const c of lx.names)ch.append(mk('span',c));m.append(ch);
+  const bar=mk('div','','pk-mbar');const ra=mk('button','Re-apply','primary'),lv=mk('button','Leave as it is','secondary');ra.type=lv.type='button';
+  ra.onclick=async()=>{ra.disabled=lv.disabled=true;try{for(let k=0;k<40&&!(CUR&&CUR.id===p.id);k++)await new Promise(r=>setTimeout(r,250));
+    const before=snap();const r=await api('/proposals/'+p.id+'/suggestions/'+sg.id+'/saved','POST',{action:'reapply'});const u={};for(const k of lx.missing)u[k]=sg.updates[k];
+    LOADING++;try{await applyParker(u)}finally{LOADING--}fresh(r.proposal);
+    const un=mk('button','Undo','pk-undo');un.type='button';un.onclick=async()=>{un.disabled=true;try{const x=await api('/proposals/'+p.id+'/suggestions/'+sg.id+'/saved','POST',{action:'undo'});fresh(x.proposal);LOADING++;try{await restore(before)}finally{LOADING--}drawUnsaved();un.replaceWith(mk('span','Undone.','hint'))}catch(e){un.disabled=false;alertBox(e.message)}};
+    bar.replaceChildren(mk('span','Re-applied and saved: '+andList(r.saved||[])+'. Argus has not checked it yet: Check again when you are ready.','hint'),un)}catch(e){ra.disabled=lv.disabled=false;alertBox(e.message)}};
+  lv.onclick=async()=>{ra.disabled=lv.disabled=true;try{await api('/proposals/'+p.id+'/suggestions/'+sg.id+'/saved','POST',{action:'leave'});bar.replaceChildren(mk('span','Left as it is.','hint'))}catch(e){ra.disabled=lv.disabled=false;alertBox(e.message)}};
+  bar.append(ra,lv);m.append(bar)}
+ if(list.length||(p.lost_suggestions||[]).length)pkScroll()}
 $('pk-send').onclick=()=>{const t=$('pk-msg').value;$('pk-msg').value='';pkGrow();pkSend(t)};
 $('pk-msg').addEventListener('input',pkGrow);
 $('pk-msg').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('pk-send').click()}});
@@ -639,6 +656,23 @@ $('full').addEventListener('input',()=>setTimeout(drawPriceDiff,0));$('full').ad
 function alertBox(msg){const e=mk('div',msg,'err');$('result').prepend(e);setTimeout(()=>e.remove(),8000)}
 function editDraft(p){if(RO||!DOC||DOC.pid!==p.id)return;DOC.editing(true);EDS=DOC.eds;const c=$('draft-ed');if(c)c.scrollIntoView({behavior:'smooth',block:'start'});
  const first=DOC.eds[0];if(first)setTimeout(()=>first[1].body.focus({preventScroll:true}),300)}
+// ---------- a written proposal: what is not saved yet, what Argus has not checked, Check again saves both ----------
+const sameT=(a,b)=>String(a||'').split(/\s+/).join(' ').trim()===String(b||'').split(/\s+/).join(' ').trim();
+function unsaved(){if(!CUR||CUR.status==='form'||CUR.inputs.qa_only)return [];const out=[];
+ for(const [id,k,n] of [['title','title','title'],['org','organisation','client'],['brief','brief','brief'],['notes','notes','notes']])if(!sameT($(id).value,CUR[k]))out.push(n);
+ if(priceDiff().length)out.push('rate card');const ds=draftNow(),was=new Map((CUR.draft.sections||[]).map(x=>[x.title,x.body]));const nd=ds.filter(x=>!x.keep&&!sameT(x.body,was.get(x.title))).length;
+ if(nd)out.push(nd+' draft section'+(nd>1?'s':''));return out}
+function andList(x){return x.length>1?x.slice(0,-1).join(', ')+' and '+x[x.length-1]:x[0]||''}
+function drawUnsaved(){if(!CUR)return;const un=unsaved(),uc=(CUR.context||{}).unchecked;const t=[];
+ if(un.length)t.push('Not saved yet: '+andList(un)+'. Check again saves them, then Argus checks.');
+ if(uc&&(uc.what||[]).length)t.push('Changed since Argus last checked: '+andList(uc.what)+' (saved '+when(uc.at||uc.since)+').');
+ document.querySelectorAll('#result .unsaved').forEach(e=>{e.textContent=t.join(' ');e.classList.toggle('warnline',!!t.length)});
+ document.querySelectorAll('#result .ca-btn').forEach(b=>{b.hidden=!(un.length||uc);b.disabled=CUR.status==='running'})}
+async function checkAgain(btn){if(!CUR)return;btn.disabled=true;const f={title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value};
+ if(priceDiff().length)f.rate_card=rateEd.value();
+ try{await api('/proposals/'+CUR.id+'/recheck','POST',{sections:draftNow().map(x=>({title:x.title,body:x.keep?'':x.body})),form:f});DIRTY=false;updateBar();follow(CUR.id);document.querySelector('main').scrollTop=0}
+ catch(e){btn.disabled=false;alertBox(e.message)}}
+function fresh(p){if(!p)return;CUR=p;PRICED=p.pricing||null;if(EDS&&unsaved().some(x=>/draft section/.test(x))){drawPriceDiff();drawUnsaved()}else{show(p);if(p.superseded_by)retired(p)}reloadVer(p.id);recent()}
 // ---------- proposals on the go: list, switching, autosave ----------
 let WORK=null,OPEN=null,LOADING=0,saveT=null,ITEMS=[],DIRTY=false;
 let HIST=[],VIA='';
@@ -716,13 +750,13 @@ document.addEventListener('click',e=>{if(!e.target.closest('#wb-rp,#wb-repl'))$(
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('wb-rp').hidden=true});
 function updateBar(){$('wb-title').textContent=$('title').value.trim()||(OPEN?'Untitled proposal':'New proposal');const rf=$('wb-ref');rf.hidden=!OPEN;rf.textContent=OPEN?'P-'+String(OPEN).slice(0,6).toUpperCase():'';const x=ITEMS.find(i=>i.id===OPEN);
  $('wb-keep').hidden=!(OPEN&&!WORK&&DIRTY)||RO;$('wb-repl').hidden=!(OPEN&&x&&!x.superseded_by&&x.status!=='running')||RO;if(!saveT&&!$('wb-state').classList.contains('bad')){const st=$('wb-state');
-  if(WORK)st.textContent=st.textContent||'Saved';else if(x&&x.status!=='form'){st.className='wb-state';st.textContent=STATE(x)[0]+(DIRTY?' · changes not saved: write a new version or Save as a new version':'')}else if(!OPEN){st.className='wb-state';st.textContent=DIRTY?'':'Saves itself as you work'}}}
+  if(WORK)st.textContent=st.textContent||'Saved';else if(x&&x.status!=='form'){st.className='wb-state';st.textContent=STATE(x)[0]+(DIRTY&&unsaved().length?' · changes not saved: Check again saves them, or Save as a new version':'')}else if(!OPEN){st.className='wb-state';st.textContent=DIRTY?'':'Saves itself as you work'}}}
 function setState(t,cls){const st=$('wb-state');st.textContent=t;st.className='wb-state'+(cls?' '+cls:'')}
 let FROM='';
 function formData(){return {via:VIA,started_from:FROM,parker_chat:WORK?[]:PK.history,parker_cost:WORK?0:(PK.cost||0),title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value,template:$('tplsel').value,
  rate_card:rateEd.value(),references:[...picked],writer:$('wm').value,qa:$('qm').value,use_memory:$('mem').checked}}
 function changed(){if(LOADING||RO||mode!=='write'||!S)return;DIRTY=true;
- if(!WORK&&OPEN){updateBar();return}                                           // a written proposal: kept as it is unless you save a new version
+ if(!WORK&&OPEN){updateBar();drawUnsaved();return}                             // a written proposal: Check again saves it, or Save as a new version
  clearTimeout(saveT);setState('Saving…');saveT=setTimeout(saveNow,1200)}
 async function saveNow(force){clearTimeout(saveT);saveT=null;const f=formData();
  if(!WORK&&!force&&!f.title.trim()&&!f.brief.trim()&&!f.notes.trim()){setState('');return}

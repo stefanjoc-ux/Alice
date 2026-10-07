@@ -331,20 +331,21 @@ class El{constructor(tag){this.tagName=tag.toUpperCase();this.children=[];this.k
  replaceChildren(...n){this.kids=[];this.children=[];this.append(...n)}
  setAttribute(k,v){this.attrs[k]=String(v)}getAttribute(k){return this.attrs[k]??null}removeAttribute(k){delete this.attrs[k]}
  focus(){FOCUS=this}scrollIntoView(){}}
-const document={createElement:t=>new El(t),createTextNode:t=>new Txt(t)};
+const document={createElement:t=>new El(t),createTextNode:t=>new Txt(t),querySelectorAll:()=>[],querySelector:()=>({scrollTop:0})};
 """
 page_js = '\n'.join(__import__('re').findall(r'<script>(.*?)</script>', cl.get('/assistant/proposal-writer').text, __import__('re').S))
 def _between(src, a, b): i = src.index(a); return src[i:src.index(b, i)]
 doc_js = (_between(page_js, '// ---------- the draft as one document', '// ---------- Parker: work on the form')
+          + _between(page_js, 'function draftNow(){', 'function form(){')
           + _between(page_js, 'function editDraft(p){', '// ---------- proposals on the go'))
 if node:
     js = Path(tempfile.mkdtemp()) / 'doc.js'
     js.write_text(SHIM + proposal_ui.PE_JS + """
-const mk=PE.mk;let RO=false,DOC=null,EDS=null;const CALLS={api:[],follow:[]};
-const $=id=>({scrollIntoView(){}});const api=async(path,method,body)=>{CALLS.api.push([path,method,body]);return {}};
+const mk=PE.mk;let RO=false,DOC=null,EDS=null,CUR=null,DIRTY=false;const CALLS={api:[],follow:[]};
+const $=id=>({scrollIntoView(){},value:''}),priceDiff=()=>[],updateBar=()=>{},when=t=>t;const api=async(path,method,body)=>{CALLS.api.push([path,method,body]);return {}};
 const follow=id=>CALLS.follow.push(id),show=()=>{},alertBox=m=>console.log('ALERT',m);
 """ + doc_js + """
-module.exports={drawDoc,editDraft,calls:()=>CALLS,focused:()=>FOCUS,get:k=>({DOC,EDS,RO})[k],set:o=>{if('DOC' in o)DOC=o.DOC;if('EDS' in o)EDS=o.EDS;if('RO' in o)RO=o.RO}};
+module.exports={drawDoc:p=>{CUR=p;return drawDoc(p)},editDraft,calls:()=>CALLS,focused:()=>FOCUS,get:k=>({DOC,EDS,RO})[k],set:o=>{if('DOC' in o)DOC=o.DOC;if('EDS' in o)EDS=o.EDS;if('RO' in o)RO=o.RO}};
 """, encoding='utf-8')
     res = subprocess.run([node, str(Path(__file__).parent / 'js' / 'draft_doc_test.js'), str(js)], capture_output=True, text=True, timeout=60)
     out = (res.stdout + res.stderr).strip()

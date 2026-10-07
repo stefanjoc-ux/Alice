@@ -795,10 +795,17 @@ def version_of(r, ctx):
 
 def _save(pid, **f):
     f['updated_at'] = store.now()
+    checked = 'qa' in f and not isinstance(f['qa'], str) and bool(f['qa']) and not str(f['qa'][-1].get('source') or '').startswith('uploaded')
     for k in ('draft', 'qa', 'pricing', 'context', 'inputs'):
         if k in f and not isinstance(f[k], str): f[k] = json.dumps(f[k])
     with store.db() as c:
         c.execute(f'UPDATE proposals SET {",".join(k + "=?" for k in f)} WHERE id=?', list(f.values()) + [pid])
+        if checked:                                   # Argus has now checked what is stored: no longer "changed since Argus last checked"
+            row = c.execute('SELECT context FROM proposals WHERE id=?', (pid,)).fetchone()
+            try: ctx = json.loads(row['context'] or '{}')
+            except (ValueError, TypeError): ctx = {}
+            if ctx.pop('unchecked', None) is not None:
+                c.execute('UPDATE proposals SET context=? WHERE id=?', (json.dumps(ctx), pid))
         if f.get('status') == 'done':                 # Parker wrote it, or Argus checked a new version
             row = c.execute('SELECT qa,context FROM proposals WHERE id=?', (pid,)).fetchone()
             try: qa, hist = json.loads(row['qa'] or '[]'), json.loads(row['context'] or '{}').get('history') or []
@@ -1050,11 +1057,23 @@ def _owned(aid, pid):
     return p
 
 
-def recheck(aid, pid, sections):
-    """Your edits to the draft: saved, checked by QA again, and the Word document rebuilt."""
+def recheck(aid, pid, sections, form=None):
+    """Your edits to the draft: saved, checked by QA again, and the Word document rebuilt. form: the title, client, brief and notes
+    as they stand on the page, and the rate card when it has changed: whatever differs from the stored proposal is saved first
+    (repriced as Reprice does), so Argus checks against the saved brief and price."""
     import rules_engine
     p = _owned(aid, pid)
     if p['inputs'].get('qa_only'): raise ValueError('This was a QA of your own document: upload a new version to check it again.')
+    f = form if isinstance(form, dict) else {}
+    ups = {}
+    for k, n in (('title', 150), ('organisation', 80)):
+        if f.get(k) is not None and _clean(f[k], n) != (p[k] or ''): ups[k] = _clean(f[k], n)
+    for k, n in (('brief', MAX_BRIEF), ('notes', 4000)):
+        if f.get(k) is not None and str(f[k] or '').strip()[:n] != (p[k] or '').strip(): ups[k] = str(f[k] or '').strip()[:n]
+    card = None
+    if f.get('rate_card') is not None:
+        card = used(clean_rate_card(f['rate_card']))
+        if _card_key(card) == _card_key(p['inputs'].get('rate_card') or []): card = None
     old = {x['title']: x for x in (p['draft'].get('sections') or [])}
     secs = []
     for x in sections or []:
@@ -1064,10 +1083,175 @@ def recheck(aid, pid, sections):
         secs.append({'title': t, 'body': '' if old[t].get('keep') else str(x.get('body') or '').strip()[:20000], 'keep': old[t].get('keep', False)})
     if len(secs) != len(old): raise ValueError('Send every section of the draft back, with its title unchanged.')
     rules_engine.check_outbound(_sections_text(secs), 'Proposal QA', packs=False)
+    edited = [x['title'] for x in secs if not x['keep'] and x['body'] != str(old[x['title']].get('body') or '').strip()]
+    if ups or card is not None:
+        names = [NAMES_SAVED[k] for k in ups] + (['rate card'] if card is not None else [])
+        what = ('Saved your changes to ' + _and(names + ([f'{len(edited)} draft section' + ('s' if len(edited) != 1 else '')] if edited else []))
+                + ' from the Parker page; Argus checked them next')
+        _store_changes(p, ups, card=card, via='Parker page', what=what, kind='saved', mark=False)
     _save(pid, status='running', stage='Argus is checking your changes', error='')
     _background(pid, _recheck_job, secs)
     with store.db() as c: store.audit(c, 'proposal_rechecked', pid, 'human_review', f'{p["title"]}: your edits sent to QA')
     return {'id': pid}
+
+
+# ---------------- changes stored on a written proposal (Apply, Re-apply, Undo, Check again) ----------------
+NAMES_SAVED = {'title': 'title', 'organisation': 'client', 'brief': 'brief', 'notes': 'notes', 'structure': 'structure',
+               'references': 'references', 'roles': 'roles', 'draft': 'draft sections', 'template': 'template'}
+
+
+def _and(xs):
+    xs = [x for x in xs if x]
+    return ', '.join(xs[:-1]) + ' and ' + xs[-1] if len(xs) > 1 else (xs[0] if xs else 'nothing')
+
+
+def _card_key(card):
+    return sorted((str(r.get('role') or '').casefold(), r.get('days'), r.get('cost'), r.get('sell'), bool(r.get('use', True))) for r in card or [])
+
+
+def structure_text(st):
+    """Parker's structure (headings with points) as the text the form holds."""
+    if isinstance(st, str): return st.strip()[:6000]
+    return '\n'.join(x['heading'] + ('\n' + '\n'.join('- ' + q for q in x.get('points') or []) if x.get('points') else '')
+                     for x in st or [] if isinstance(x, dict) and x.get('heading'))[:6000]
+
+
+def merge_roles(card, roles):
+    """A suggestion's roles merged into a rate card as the page does it (rateEd.merge): ticked or not, fixed days, a sell rate set by hand."""
+    out = [dict(r) for r in card or []]
+    for g in roles or []:
+        r = next((x for x in out if x['role'].casefold() == str(g.get('role') or '').casefold()), None)
+        if not r: continue
+        r['use'] = g.get('use') is not False
+        if g.get('days'): r['days'] = g['days']
+        if g.get('sell'): r['sell'], r['override'] = g['sell'], True
+    return out
+
+
+def _priced(p, card, a):
+    """Reprice from the ticked roles exactly as reprice() does: fixed days win, unticked roles come out, ticked roles with days go in."""
+    cards = {r['role'].casefold(): r for r in card}
+    plan = []
+    for x in ((p['draft'] or {}).get('resource_plan') or []):
+        r = cards.get(str(x.get('role') or '').casefold())
+        if not r: continue
+        plan.append({'role': r['role'], 'quantity': r['days'] or x.get('quantity') or 0, 'purpose': x.get('purpose', '')})
+    have = {x['role'] for x in plan}
+    plan += [{'role': r['role'], 'quantity': r['days'], 'purpose': ''} for r in card if r.get('days') and r['role'] not in have]
+    plan = [x for x in plan if x['quantity'] and x['quantity'] > 0]
+    if not plan: raise ValueError('Add days to the ticked roles: there is nothing to price.')
+    return plan, price(plan, card, a['settings'].get('min_margin', 25))
+
+
+def _store_changes(p, ups, card=None, via='Parker page', what='', kind='applied', mark=True, logical_at=None):
+    """Store changes on a written proposal: title, client, brief, notes, structure, references, roles (repriced as Reprice does)
+    and draft sections. Checked like save_form first (secrets and protective markings refused). Returns (names saved, the stored
+    values they replaced, so Undo can put them back). mark: the draft is then 'changed since Argus last checked' until a check runs."""
+    import assistants, organisations, rules_engine
+    a = assistants.get(p['assistant_id'])
+    f, inputs, draft = {}, dict(p['inputs']), dict(p['draft'] or {})
+    before = {'title': p['title'], 'organisation': p['organisation'], 'client': p['client'], 'brief': p['brief'], 'notes': p['notes']}
+    names = []
+    if 'title' in ups:
+        t = _clean(ups['title'], 150)
+        if len(t) < 3: raise ValueError('Give the proposal a title.')
+        f['title'] = t; names.append('title')
+    if 'organisation' in ups:
+        org = _clean(ups['organisation'], 80)
+        if org:
+            try: org = organisations.canonical(org)
+            except ValueError: pass
+        f['organisation'], f['client'] = org, _client_for(org); names.append('client')
+    if 'brief' in ups:
+        b = str(ups['brief'] or '').strip()
+        if len(b.split()) < 10: raise ValueError('Keep a brief of at least a few sentences: what the client wants.')
+        f['brief'] = b[:MAX_BRIEF]; names.append('brief')
+    if 'notes' in ups: f['notes'] = str(ups['notes'] or '').strip()[:4000]; names.append('notes')
+    if 'structure' in ups:
+        before['structure'] = inputs.get('structure', ''); inputs['structure'] = structure_text(ups['structure']); names.append('structure')
+    if 'references' in ups:
+        before['references'] = inputs.get('references') or []
+        inputs['references'] = [str(x)[:300] for x in ups['references'] or []][:10]; names.append('references')
+    if 'roles' in ups and card is None: card = used(merge_roles(inputs.get('rate_card') or [], ups['roles']))
+    if card is not None:
+        if not card: raise ValueError('Tick at least one role on the rate card.')
+        before.update(rate_card=inputs.get('rate_card') or [], resource_plan=draft.get('resource_plan') or [], pricing=p['pricing'] or {})
+        plan, f['pricing'] = _priced(p, card, a)
+        inputs['rate_card'], draft['resource_plan'] = card, plan
+        names.append('roles' if 'roles' in ups else 'rate card')
+    if ups.get('draft'):
+        before['draft_sections'] = draft.get('sections') or []
+        bodies = {d['title']: str(d.get('body') or '').strip()[:20000] for d in ups['draft'] if isinstance(d, dict)}
+        draft['sections'] = [dict(s, body=bodies[s['title']]) if s['title'] in bodies and not s.get('keep') else s for s in draft.get('sections') or []]
+        names.append('draft sections')
+    if not names: return [], {}
+    text = '\n'.join([f.get('title', ''), f.get('organisation', ''), f.get('brief', ''), f.get('notes', ''),
+                      inputs.get('structure', '') if 'structure' in ups else ''] + [str(d.get('body') or '') for d in ups.get('draft') or [] if isinstance(d, dict)])
+    if text.strip(): rules_engine.check_file(text, 'Proposal')          # as save_form: secrets and protective markings are refused
+    f['inputs'], f['draft'] = inputs, draft
+    now = store.now()
+    with store.db() as c:
+        row = c.execute('SELECT context FROM proposals WHERE id=?', (p['id'],)).fetchone()
+        try: ctx = json.loads(row['context'] or '{}')
+        except (ValueError, TypeError): ctx = {}
+        before['unchecked'] = ctx.get('unchecked')
+        at = ctx.get('saved_fields_at') or {}
+        for k in ups:
+            if k in NAMES_SAVED and k != 'template': at[k] = max(at.get(k, ''), logical_at or now)
+        ctx['saved_fields_at'] = at
+        if mark:
+            u = ctx.get('unchecked') or {}
+            ctx['unchecked'] = {'since': u.get('since') or now, 'at': now, 'what': sorted(set(u.get('what') or []) | set(names)), 'via': via}
+        f['context'] = ctx
+        f['updated_at'] = now
+        vals = {k: json.dumps(v) if not isinstance(v, str) else v for k, v in f.items()}
+        c.execute(f'UPDATE proposals SET {",".join(k + "=?" for k in vals)} WHERE id=?', list(vals.values()) + [p['id']])
+        note_version(c, p['id'], via, what or ('Saved changes: ' + _and(names)), kind)
+        store.audit(c, 'proposal_changes_saved', p['id'], 'human_review', f'{p["title"]}: {_and(names)} saved' + (f' (from {via})' if via else ''))
+    return names, before
+
+
+def save_applied(aid, pid, updates, by, again=False, applied_at=''):
+    """A model's suggestion applied (or re-applied) on a written proposal: its changes are stored straight away. A template change
+    is not stored here (Move the content to this template does that). Returns (names saved, stored values replaced, left out)."""
+    p = _owned(aid, pid)
+    if p['status'] == 'form': raise ValueError('A proposal in progress saves itself: apply it in the form.')
+    if p['inputs'].get('qa_only'): raise ValueError('This was a QA of your own document: there is nothing to apply it to.')
+    ups = {k: v for k, v in (updates or {}).items() if k in NAMES_SAVED and k != 'template'}
+    names = [NAMES_SAVED[k] for k in ups]
+    stamp = store.now()[:16].replace('T', ' ')
+    what = ((f'Re-applied and saved changes suggested by {by}' + (f' (applied {applied_at[:16].replace("T", " ")} but never saved)' if applied_at else '')
+             if again else f'Saved changes suggested by {by}') + ': ' + _and(names)
+            + (' (repriced)' if 'roles' in ups else '') + f'. Not checked by Argus yet (saved {stamp} UTC)')
+    saved, before = _store_changes(p, ups, via=by, what=what, kind='applied', logical_at=applied_at or None)
+    return saved, before, (['template'] if 'template' in (updates or {}) else [])
+
+
+def undo_saved(aid, pid, before, by, what):
+    """Undo: put back the stored values an applied suggestion replaced."""
+    p = _owned(aid, pid)
+    b = before or {}
+    f, inputs, draft = {}, dict(p['inputs']), dict(p['draft'] or {})
+    for k in ('title', 'organisation', 'client', 'brief', 'notes'):
+        if k in b: f[k] = b[k] or ''
+    for k in ('structure', 'references', 'rate_card'):
+        if k in b: inputs[k] = b[k]
+    if 'resource_plan' in b: draft['resource_plan'] = b['resource_plan']
+    if 'draft_sections' in b: draft['sections'] = b['draft_sections']
+    if 'pricing' in b: f['pricing'] = b['pricing']
+    f['inputs'], f['draft'] = inputs, draft
+    with store.db() as c:
+        row = c.execute('SELECT context FROM proposals WHERE id=?', (pid,)).fetchone()
+        try: ctx = json.loads(row['context'] or '{}')
+        except (ValueError, TypeError): ctx = {}
+        if b.get('unchecked'): ctx['unchecked'] = b['unchecked']
+        else: ctx.pop('unchecked', None)
+        f['context'], f['updated_at'] = ctx, store.now()
+        vals = {k: json.dumps(v) if not isinstance(v, str) else v for k, v in f.items()}
+        c.execute(f'UPDATE proposals SET {",".join(k + "=?" for k in vals)} WHERE id=?', list(vals.values()) + [pid])
+        note_version(c, pid, by, what, 'undone')
+        store.audit(c, 'proposal_changes_undone', pid, 'human_review', f'{p["title"]}: {what}')
+    return p
 
 
 def revise(aid, pid, fixes, rejected=()):
