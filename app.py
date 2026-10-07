@@ -2136,6 +2136,7 @@ class ProposalWork(BaseModel):
 
 class ProposalRecheck(BaseModel):
     sections: list[dict] = Field(min_length=1,max_length=40)
+    form: dict | None = None
 
 class ProposalQAOnly(BaseModel):
     title: str = Field(min_length=1,max_length=150)
@@ -2379,7 +2380,7 @@ def proposal_qa_only(aid: str, x: ProposalQAOnly, request: Request):
 def proposal_recheck(aid: str, pid: str, x: ProposalRecheck, request: Request):
     import proposals
     _same_origin(request)
-    return _proposal_call(lambda: proposals.recheck(aid,pid,x.sections))
+    return _proposal_call(lambda: proposals.recheck(aid,pid,x.sections,x.form))
 
 @app.post('/assistant/{aid}/proposals/{pid}/qa-upload')
 def proposal_qa_upload(aid: str, pid: str, x: ProposalDoc, request: Request):
@@ -2425,6 +2426,18 @@ def proposal_suggestion_decide(aid: str, pid: str, sid: str, x: SuggestionDecisi
     _same_origin(request); _proposal_writer(aid)
     return _proposal_call(lambda: proposal_share.decide(aid,pid,sid,x.action))
 
+class SuggestionAgain(BaseModel):
+    action: str = Field(pattern='^(undo|reapply|leave)$')
+
+@app.post('/assistant/{aid}/proposals/{pid}/suggestions/{sid}/saved')
+def proposal_suggestion_saved(aid: str, pid: str, sid: str, x: SuggestionAgain, request: Request):
+    """On a written proposal: undo an applied suggestion (the stored values go back), re-apply one whose changes were never
+    stored, or leave a lost one as it is."""
+    import proposal_share
+    _same_origin(request); _proposal_writer(aid)
+    fn={'undo':proposal_share.undo,'reapply':proposal_share.reapply,'leave':proposal_share.leave}[x.action]
+    return _proposal_call(lambda: fn(aid,pid,sid))
+
 @app.post('/assistant/{aid}/work')
 def proposal_work_save(aid: str, x: ProposalWork, request: Request):
     import proposals
@@ -2468,6 +2481,8 @@ def proposal_get(aid: str, pid: str):
     if p['assistant_id']!=aid: raise HTTPException(404,'No such proposal.')
     import proposal_bids
     p['bid']=proposal_bids.info(pid)
+    import proposal_share
+    p['lost_suggestions']=proposal_share.lost(p)
     return p
 
 @app.get('/admin/api/proposal-templates')

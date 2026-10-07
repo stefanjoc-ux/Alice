@@ -213,22 +213,132 @@ def page_link(p):
     return os.environ.get('ALICE_PUBLIC_URL', '').rstrip('/') + '/assistant/' + p['assistant_id'] + '?p=' + p['id']
 
 
+def _suggestion(c, aid, pid, sid):
+    r = c.execute('SELECT context,status FROM proposals WHERE id=? AND assistant_id=?', (pid, aid)).fetchone()
+    if not r: raise LookupError('No such proposal.')
+    ctx = json.loads(r['context'] or '{}')
+    hit = next((x for x in ctx.get('model_suggestions') or [] if x.get('id') == sid), None)
+    if not hit: raise LookupError('No such suggestion.')
+    return ctx, hit, r['status']
+
+
+def _mark(aid, pid, sid, **f):
+    with store.db() as c:
+        ctx, hit, _ = _suggestion(c, aid, pid, sid)
+        hit.update(f)
+        c.execute('UPDATE proposals SET context=? WHERE id=?', (json.dumps(ctx), pid))
+    return hit
+
+
 def decide(aid, pid, sid, action):
-    """The user applied or dismissed a model's suggestion (the page applies it to the form itself)."""
+    """The user applied or dismissed a model's suggestion. On a proposal in progress the page applies it to the form, which saves
+    itself; on a written proposal Alice stores its changes straight away (proposals.save_applied: checked like save_form, roles
+    repriced, the draft marked as changed since Argus last checked)."""
+    import proposals
     if action not in ('applied', 'dismissed'): raise ValueError('Apply or dismiss.')
     with store.db() as c:
-        r = c.execute('SELECT context FROM proposals WHERE id=? AND assistant_id=?', (pid, aid)).fetchone()
-        if not r: raise LookupError('No such proposal.')
-        ctx = json.loads(r['context'] or '{}')
-        hit = next((x for x in ctx.get('model_suggestions') or [] if x.get('id') == sid), None)
-        if not hit: raise LookupError('No such suggestion.')
+        _, hit, st = _suggestion(c, aid, pid, sid)
+    if hit.get('state') != 'pending': return {'state': hit['state']}
+    res = {'state': action}
+    if action == 'applied' and st != 'form':
+        saved, before, left = proposals.save_applied(aid, pid, hit.get('updates') or {}, hit.get('from') or 'a model')
+        now = store.now()
+        _mark(aid, pid, sid, state='applied', decided_at=now, saved_at=now, on_written=True, saved=saved, before=before)
+        with store.db() as c:
+            store.audit(c, 'proposal_change_applied', pid, 'human_review', f'{hit["from"]}: {", ".join(saved)} (saved)')
+        return dict(res, saved=saved, left_out=left, proposal=proposals.get(pid))
+    with store.db() as c:
+        ctx, hit, st = _suggestion(c, aid, pid, sid)
         if hit.get('state') != 'pending': return {'state': hit['state']}
         hit['state'], hit['decided_at'] = action, store.now()
         c.execute('UPDATE proposals SET context=? WHERE id=?', (json.dumps(ctx), pid))
         if action == 'applied':
-            import proposals
-            st = c.execute('SELECT status FROM proposals WHERE id=?', (pid,)).fetchone()['status']
-            proposals.note_version(c, pid, hit['from'], f'Applied changes suggested by {hit["from"]}: ' + ', '.join(hit['changed'])
-                                   + ('' if st == 'form' else ' (in the form: written when you save a new version or check again)'), 'applied')
+            proposals.note_version(c, pid, hit['from'], f'Applied changes suggested by {hit["from"]} in the form: ' + ', '.join(hit['changed'])
+                                   + ' (saved with the form)', 'applied')
         store.audit(c, 'proposal_change_' + action, pid, 'human_review', f'{hit["from"]}: {", ".join(hit["changed"])}')
-    return {'state': action}
+    return res
+
+
+def undo(aid, pid, sid):
+    """Undo an applied suggestion on a written proposal: the stored values it replaced are put back (not just the form)."""
+    import proposals
+    with store.db() as c:
+        _, hit, _ = _suggestion(c, aid, pid, sid)
+    if hit.get('state') != 'applied' or not hit.get('saved_at') or not hit.get('before'):
+        raise ValueError('Only a suggestion Alice saved on a written proposal can be undone here.')
+    names = hit.get('saved') or hit.get('changed') or []
+    proposals.undo_saved(aid, pid, hit['before'], hit.get('from') or 'a model',
+                         f'Undid the changes suggested by {hit.get("from") or "a model"}: the stored ' + proposals._and(names) + ' put back as they were')
+    _mark(aid, pid, sid, state='undone', undone_at=store.now(), saved_at='', before=None)
+    return {'state': 'undone', 'proposal': proposals.get(pid)}
+
+
+def _same(a, b): return ' '.join(str(a or '').split()) == ' '.join(str(b or '').split())
+
+
+def _missing(p, u):
+    """Which of a suggestion's changes are not in the stored proposal (keys of updates)."""
+    import proposals
+    inp, card = p['inputs'] or {}, {r['role'].casefold(): r for r in (p['inputs'] or {}).get('rate_card') or [] if r.get('role')}
+    out = []
+    for k, v in u.items():
+        if k in ('title', 'brief', 'notes') and not _same(p.get(k), v): out.append(k)
+        elif k == 'organisation' and str(p.get('organisation') or '').casefold() != str(v or '').casefold(): out.append(k)
+        elif k == 'structure' and not _same(inp.get('structure'), proposals.structure_text(v)): out.append(k)
+        elif k == 'references' and set(inp.get('references') or []) != set(v or []): out.append(k)
+        elif k == 'roles':
+            for g in v or []:
+                r = card.get(str(g.get('role') or '').casefold())
+                if g.get('use') is False:
+                    if r and r.get('use', True): out.append(k); break
+                elif not r or (g.get('days') and r.get('days') != g['days']) or (g.get('sell') and r.get('sell') != g['sell']):
+                    out.append(k); break
+        elif k == 'draft':
+            have = {s['title']: s.get('body') for s in (p['draft'] or {}).get('sections') or []}
+            if any(d['title'] in have and not _same(have[d['title']], d.get('body')) for d in v or []): out.append(k)
+    return out
+
+
+def lost(p):
+    """Suggestions marked applied on a written proposal whose changes never reached the stored proposal (before Apply saved, the
+    page only changed the form): each with the changes still missing, so the page can offer Re-apply. A change counts as missing
+    only if nothing later (another saved suggestion, Check again) saved that field."""
+    if p.get('status') in ('form', 'running', 'discarded') or p.get('superseded_by') or (p.get('inputs') or {}).get('qa_only'): return []
+    ctx = p.get('context') or {}
+    written = next((x.get('at') for x in ctx.get('history') or [] if isinstance(x, dict) and x.get('kind') == 'written'), None)
+    if not written: return []
+    later = ctx.get('saved_fields_at') or {}
+    out = []
+    for s in ctx.get('model_suggestions') or []:
+        if s.get('state') != 'applied' or s.get('saved_at') or s.get('left_as_is'): continue
+        at = s.get('decided_at') or ''
+        if not (s.get('on_written') or at > written): continue          # applied in the form before it was written: saved with the form
+        miss = [k for k in _missing(p, s.get('updates') or {}) if (later.get(k) or '') <= at]
+        if miss:
+            import proposal_starter as ps
+            out.append({'id': s['id'], 'from': s.get('from') or 'a model', 'note': s.get('note') or '', 'applied_at': at,
+                        'missing': miss, 'names': [ps.NAMES.get(k, k) for k in miss]})
+    return sorted(out, key=lambda x: x['applied_at'])
+
+
+def reapply(aid, pid, sid):
+    """Re-apply an applied suggestion whose changes were never stored, from the suggestion itself (no need to ask the model again)."""
+    import proposals
+    p = proposals.get(pid)
+    if p['assistant_id'] != aid: raise LookupError('No such proposal.')
+    hit = next((x for x in lost(p) if x['id'] == sid), None)
+    if not hit: raise ValueError('Nothing to re-apply: these changes are already in the saved proposal.')
+    with store.db() as c:
+        _, s, _ = _suggestion(c, aid, pid, sid)
+    ups = {k: v for k, v in (s.get('updates') or {}).items() if k in hit['missing']}
+    saved, before, _ = proposals.save_applied(aid, pid, ups, hit['from'], again=True, applied_at=hit['applied_at'])
+    _mark(aid, pid, sid, saved_at=store.now(), reapplied=True, saved=saved, before=before)
+    return {'state': 'applied', 'saved': saved, 'proposal': proposals.get(pid)}
+
+
+def leave(aid, pid, sid):
+    """Leave a lost change out on purpose: no more Re-apply for it."""
+    _mark(aid, pid, sid, left_as_is=store.now())
+    with store.db() as c:
+        store.audit(c, 'proposal_change_left_out', pid, 'human_review', f'Suggestion {sid[:12]} left as it is (not re-applied)')
+    return {'state': 'left'}
