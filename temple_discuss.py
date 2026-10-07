@@ -119,6 +119,9 @@ def _item_context(key):
                                                                                    'target': r['target'], 'detail': r['detail'], 'your_reason': r['reason']},
                 'held_back_because': r['why_waiting'], 'your_earlier_review': '',
                 'related_items': [{'memories_affected': titles, 'categories_now': cats, 'tags_now': tags}]}
+    if kind == 'teamstep':
+        import teams
+        return teams.discussion_context(iid)
     raise ValueError('That cannot be discussed.')
 
 

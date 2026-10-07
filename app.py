@@ -92,6 +92,8 @@ with connect_db() as connection:
         PRIMARY KEY (chat_id, file_id))""")
 
 app = FastAPI()
+import teams_routes                       # Digital teams (the Teams page): its own routes, under /admin/api/teams
+app.include_router(teams_routes.router)
 # Extra host names (e.g. your Tailscale name, my-pc.tailnet-name.ts.net) come from .env. Never a wildcard.
 EXTRA_HOSTS = [h.strip() for h in os.environ.get("SUBSTRATE_ALLOWED_HOSTS", "").split(",") if h.strip() and h.strip() != "*"]
 
@@ -2885,15 +2887,16 @@ async def admin_ask_temple(q: AskTemple):
 class DiscussIn(BaseModel):
     message: str = Field(min_length=1,max_length=4000)
 
-# Discuss with Temple from an Actions card: r-<record>, k-<knowledge draft>, o-<organisation fact>, t-<category or tag change>
+# Discuss with Temple from an Actions card: r-<record>, k-<knowledge draft>, o-<organisation fact>, t-<category or tag change>,
+# h-<digital team hand-off, question or sign-off>
 def _discuss_key(key):
     return key[2:] if key.startswith('r-') else key
 
 @app.get('/admin/api/review-items/{key}/discussion')
-def admin_item_discussion(key: str=FPath(pattern=r'^[rkot]-[0-9a-f]{6,40}$')): return {'messages': temple_discuss.history(_discuss_key(key))}
+def admin_item_discussion(key: str=FPath(pattern=r'^[rkoth]-[0-9a-f]{6,40}$')): return {'messages': temple_discuss.history(_discuss_key(key))}
 
 @app.post('/admin/api/review-items/{key}/discussion')
-async def admin_item_discuss(q: DiscussIn, key: str=FPath(pattern=r'^[rkot]-[0-9a-f]{6,40}$')): return await admin_discuss(_discuss_key(key), q)
+async def admin_item_discuss(q: DiscussIn, key: str=FPath(pattern=r'^[rkoth]-[0-9a-f]{6,40}$')): return await admin_discuss(_discuss_key(key), q)
 
 @app.get('/admin/api/records/{rid}/discussion')
 def admin_discussion(rid: str): return {'messages': temple_discuss.history(rid)}

@@ -1,0 +1,11 @@
+{
+ "title": "FICTIONAL demo: Larchbank Community Hall",
+ "location": "Perth, Scotland",
+ "brief": "FICTIONAL DEMO PROJECT. Larchbank Community Trust (fictional) wants an early cost estimate for a new single-storey community hall on a cleared, level site near Perth, Scotland. The hall seats about 120 for events, with a kitchen, accessible toilets, a small meeting room and storage. Gross internal floor area about 300 m2. Traditional construction: concrete strip foundations and ground-bearing slab, timber frame, pitched roof with concrete tiles, rendered blockwork outer leaf. The Trust needs a budget figure to support a funding bid, excluding VAT, land and loose furniture. Use the specification and the room and finishes schedules attached.",
+ "rate_library": "FICTIONAL rate library.csv",
+ "documents": [
+  {"name": "FICTIONAL specification.md", "file": "FICTIONAL specification.md", "kind": "spec"},
+  {"name": "FICTIONAL room schedule.csv", "file": "FICTIONAL room schedule.csv", "kind": "schedule"},
+  {"name": "FICTIONAL finishes schedule.csv", "file": "FICTIONAL finishes schedule.csv", "kind": "schedule"}
+ ]
+}

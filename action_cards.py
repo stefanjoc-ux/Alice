@@ -3,14 +3,15 @@ hard"): a memory or decision, a knowledge draft, an organisation fact and Temple
 information card (see CLAUDE.md, Information cards) with the full content, where it came from, why it waits, Temple's review and the
 items it was compared with, plus Discuss with Temple (`temple_discuss`, keyed by `key()`) while it still waits.
 
-Keys: r-<record id> (memory or decision), k-<file id> (knowledge), o-<fact id> (organisation fact), t-<change id> (taxonomy), or a
+Keys: r-<record id> (memory or decision), k-<file id> (knowledge), o-<fact id> (organisation fact), t-<change id> (taxonomy),
+h-<step id> (a digital team's hand-off, question or sign-off; built by teams.step_card), or a
 reference (M-0001, D-0001, K-0001) for items reached from a card's Related list."""
 import json
 import re
 
 import substrate_store as store
 
-KEY = re.compile(r'^([rkot])-([0-9a-f]{6,40})$')
+KEY = re.compile(r'^([rkoth])-([0-9a-f]{6,40})$')
 REF = re.compile(r'^[MDK]-\d{4,6}$')
 DISCUSS = '/admin/api/review-items/{key}/discussion'
 
@@ -19,7 +20,7 @@ def split(key):
     """('record'|'knowledge'|'orgfact'|'taxonomy', id) for a card key or a reference."""
     key = (key or '').strip()
     m = KEY.match(key)
-    if m: return {'r': 'record', 'k': 'knowledge', 'o': 'orgfact', 't': 'taxonomy'}[m.group(1)], m.group(2)
+    if m: return {'r': 'record', 'k': 'knowledge', 'o': 'orgfact', 't': 'taxonomy', 'h': 'teamstep'}[m.group(1)], m.group(2)
     if REF.match(key.upper()):
         import refs
         t, i = refs.find(key.upper())
@@ -30,6 +31,9 @@ def split(key):
 
 def card(key):
     kind, iid = split(key)
+    if kind == 'teamstep':
+        import teams
+        return teams.step_card(iid)
     return {'record': _record, 'knowledge': _knowledge, 'orgfact': _orgfact, 'taxonomy': _taxonomy}[kind](iid)
 
 

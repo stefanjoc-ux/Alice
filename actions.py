@@ -198,7 +198,16 @@ def _summary():
                         [{'type': 'link', 'id': f'app{n}', 'title': i['app'] + ': ' + i['title'], 'detail': i['detail'], 'href': i['href']}
                          for n, i in enumerate(aw)], 'Open the app to check and approve each one.' if aw else ''))
 
-    # 10. Spending
+    # 10. Digital teams: hand-offs, questions and sign-offs waiting for you, and Temple's suggested instructions
+    try:
+        import teams
+        tw = teams.waiting()
+    except Exception:
+        tw = []
+    out.append(_section('teams', 'Digital teams: waiting for you', len(tw), '/admin/teams', tw,
+                        'Open an item for the full hand-off, and to discuss it with Temple.' if tw else '', top=10))
+
+    # 11. Spending
     sp = rules_engine.spend_status()
     if sp['level'] in ('warning', 'blocked'):
         out.insert(0, _section('spend', 'Spending cap ' + ('reached' if sp['level'] == 'blocked' else 'warning'), 1, '/admin/rules',
