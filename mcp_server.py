@@ -624,7 +624,7 @@ def list_proposals(query: Annotated[str, Field(max_length=200)] = '',
 @mcp.tool(annotations={'readOnlyHint': True, 'destructiveHint': False})
 @_marked
 def get_proposal(proposal: Annotated[str, Field(min_length=1, max_length=200)]) -> dict:
-    """One of Parker's proposals in full: brief, notes, structure, template, sections (with guidance), reference documents, the
+    """One of Parker's proposals in full: brief, notes, template, sections (from the template, with guidance), reference documents, the
     draft as written (each section's text), gaps, the rate card (roles ticked, days, cost rate, sell rate, margin), the pricing
     (each role's quantity, sell, cost and margin, totals), Argus's latest QA (verdict, score, brief requirements met, what to fix)
     and any model suggestions waiting, and its bid (every version's reference; which is current). An earlier version says it was
@@ -653,11 +653,12 @@ def propose_proposal_changes(proposal: Annotated[str, Field(min_length=1, max_le
     updates: any of
       title, organisation, brief, notes (text);
       template (a template path, as get_proposal shows it or one from the writer's templates folder);
-      structure ([{"heading": "...", "points": ["..."]}]);
       references (document paths);
       roles ([{"role": a role already on the rate card, "use": true/false, "days": number, "sell": sell rate in GBP}]);
       draft ([{"title": an existing section of the draft that is not standard text, "body": the full new text in simple markdown}]).
-    Anything not on offer (unknown roles, templates or sections) is left out and listed in left_out. Pass on the message returned,
+    A proposal's sections come from its template (or Alice's own layout): structure and new sections are refused. Put what to
+    emphasise in notes, or change the text of an existing section with draft. Anything else not on offer (unknown roles, templates
+    or section titles) is left out and listed in left_out. Pass on the message returned,
     with its link: the changes are not in the proposal until the user Applies them. An earlier (superseded) version is refused:
     the reply names the current version to suggest changes to."""
     import proposal_share
