@@ -1,13 +1,8 @@
-"""Editors shared by the proposal page and the Assistants page: Format and flow (sections) and the Rate card.
+"""Editors shared by the proposal page and the Assistants page: the Rate card. (The Format and flow section editor was removed
+on 7 Oct 2026: a proposal's sections come from its template, or Alice's own layout.)
 Self-contained JavaScript (its own helpers) so it can sit on either page."""
 
 PE_CSS = r'''
-.pe-list{display:grid;gap:8px}.pe-sec{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;align-items:start;background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px}
-.pe-sec input[type=text]{font-weight:600}.pe-sec textarea{grid-column:1/-1;min-height:44px;resize:vertical}
-.pe-sec .pe-tools{display:flex;gap:4px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
-.pe-sec .pe-meta{grid-column:1/-1;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}
-.pe-tag{font-size:11.5px;padding:1px 8px;border-radius:999px;border:1px solid var(--line);background:#f4f6f8;color:#4b5a66}
-.pe-tag.template{background:#e3f1f6;color:#064b63;border-color:#89b1bf}.pe-tag.keep{background:#fdf3e1;color:#6b4406;border-color:#e2bf85}
 .pe-mini{padding:3px 9px!important;font-size:12px!important;margin:0!important;min-height:0!important}
 .pe-rates{width:100%;border-collapse:collapse;font-size:14px}.pe-rates th{text-align:left;font-size:12.5px;color:var(--muted);font-weight:600;padding:4px 6px}
 .pe-rates td{padding:4px 6px;vertical-align:middle}.pe-rates input,.pe-rates select{width:100%;min-width:0}.pe-rates td.num{text-align:right;white-space:nowrap}
@@ -23,7 +18,6 @@ PE_CSS = r'''
 .pe-rtotal{display:flex;gap:6px 18px;flex-wrap:wrap;align-items:center;margin-top:10px;padding:10px 12px;border-radius:10px;background:#f4f8fb;border:1px solid var(--line);font-size:14px}
 .pe-rsum{display:flex;gap:6px 14px;flex-wrap:wrap;align-items:baseline}.pe-rsum span{color:var(--muted);font-size:12.5px}.pe-rsum b{font-variant-numeric:tabular-nums;margin-right:6px}.pe-bad{color:#b3261e;font-weight:600}
 .pe-paste{display:grid;gap:6px;margin-top:10px;padding:10px 12px;border:1px dashed var(--line2,#b9cbd8);border-radius:10px;background:#fbfcfd}.pe-paste textarea{width:100%;font-family:ui-monospace,Consolas,monospace;font-size:13px}
-.pe-sec textarea.pe-inc{grid-column:1/-1;background:#fbfaf6;border-color:#e2d6b0}.pe-incbtn{margin-left:auto!important}
 .pe-note{font-size:12.5px;color:var(--muted);margin:6px 0 10px}
 @media(max-width:700px){.pe-rates thead{display:none}.pe-rates tr{display:grid;grid-template-columns:1fr 1fr;gap:4px;border-top:1px solid var(--line);padding:6px 0}.pe-rates td:first-child{grid-column:1/-1}}
 '''
@@ -32,22 +26,6 @@ PE_JS = r'''
 const PE=(()=>{
  const mk=(tag,text,cls)=>{const e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e};
  const btn=(label,fn,title)=>{const b=mk('button',label,'secondary pe-mini');b.type='button';if(title){b.title=title;b.setAttribute('aria-label',title)}b.onclick=fn;return b};
- function sections(box,items,opts={}){let list=(items||[]).map(s=>({title:s.title||'',guidance:s.guidance||'',include:s.include||'',keep:!!s.keep,source:s.source||''}));
-  function draw(){box.replaceChildren();const wrap=mk('div','','pe-list');
-   list.forEach((s,i)=>{const row=mk('div','','pe-sec');const t=document.createElement('input');t.type='text';t.maxLength=120;t.value=s.title;t.placeholder='Section title';t.setAttribute('aria-label','Section '+(i+1)+' title');t.oninput=()=>{s.title=t.value};
-    const tools=mk('div','','pe-tools');tools.append(btn('↑',()=>{if(i){[list[i-1],list[i]]=[list[i],list[i-1]];draw()}},'Move up'),btn('↓',()=>{if(i<list.length-1){[list[i+1],list[i]]=[list[i],list[i+1]];draw()}},'Move down'),btn('Remove',()=>{list.splice(i,1);draw()},'Remove section '+(s.title||(i+1))));
-    const g=document.createElement('textarea');g.maxLength=1500;g.rows=2;g.value=s.guidance;g.placeholder=s.keep?'Standard text is copied from the template as it is.':'What this section should cover: content suggestions, points to make, length, a table to include…';g.setAttribute('aria-label','Guidance for '+(s.title||'section '+(i+1)));g.oninput=()=>{s.guidance=g.value};g.disabled=s.keep&&s.source==='template';
-    const meta=mk('div','','pe-meta');if(s.source)meta.append(mk('span',s.source==='template'?'From the template':s.source==='format and flow'?'Format and flow':'Added','pe-tag'+(s.source==='template'?' template':'')));
-    const kl=mk('label');const kc=document.createElement('input');kc.type='checkbox';kc.checked=s.keep;kc.onchange=()=>{s.keep=kc.checked;draw()};kl.append(kc,document.createTextNode(' Standard text (keep as written)'));if(s.source==='template'||opts.allowKeep)meta.append(kl);
-    if(s.keep)meta.append(mk('span','Kept word for word','pe-tag keep'));
-    row.append(t,tools,g);
-    if(opts.include&&!s.keep){const inc=document.createElement('textarea');inc.maxLength=4000;inc.rows=3;inc.value=s.include;inc.placeholder='Paste points or wording to include in this section: the writer works them in, keeping every point.';inc.setAttribute('aria-label','Text to include in '+(s.title||'section '+(i+1)));inc.className='pe-inc';inc.oninput=()=>{s.include=inc.value};
-     if(s.include||s.showInc)row.append(inc);else{const b=btn('+ Text to include',()=>{s.showInc=true;draw();box.querySelectorAll('.pe-sec')[i]?.querySelector('.pe-inc')?.focus()},'Add text to include in '+(s.title||'this section'));b.classList.add('pe-incbtn');meta.append(b)}}
-    row.append(meta);wrap.append(row)});
-   if(!list.length)wrap.append(mk('p',opts.empty||'No sections yet.','pe-note'));
-   const add=btn('Add section',()=>{list.push({title:'',guidance:'',keep:false,source:'added'});draw();const ins=box.querySelectorAll('.pe-sec input[type=text]');ins[ins.length-1]?.focus()});add.classList.add('pe-add');
-   box.append(wrap,add)}
-  draw();return {value:()=>list.filter(s=>s.title.trim()).map(s=>({title:s.title.trim(),guidance:s.guidance.trim(),include:(s.include||'').trim(),keep:s.keep})),set:x=>{list=(x||[]).map(s=>({...s}));draw()},add:x=>{list=list.concat((x||[]).map(s=>({...s})));draw()}}}
  const gbp=v=>{const x=Number(v||0);return '£'+x.toLocaleString('en-GB',Number.isInteger(x)?{}:{minimumFractionDigits:2,maximumFractionDigits:2})};
  function parseRates(text){const lines=String(text||'').split(/\r?\n/).map(l=>l.replace(/\s+$/,'')).filter(l=>l.trim()&&!/^\s*\|?\s*:?-{2,}/.test(l));const notes=[];
   const split=l=>(/\t/.test(l)?l.split('\t'):/\|/.test(l)?l.replace(/^\s*\||\|\s*$/g,'').split('|'):/;/.test(l)&&!/,\d{3}/.test(l)?l.split(';'):/ {2,}/.test(l)?l.split(/ {2,}/):l.split(',')).map(c=>c.trim());
@@ -140,5 +118,5 @@ const PE=(()=>{
    merge:roles=>{for(const g of roles||[]){const r=list.find(x=>x.role.trim().toLowerCase()===String(g.role).toLowerCase());if(!r)continue;r.use=g.use!==false;if(g.days)r.days=g.days;if(g.sell){r.sell=g.sell;r.override=true}}if(list.some(r=>r.use))showAll=false;draw()},
    pick:roles=>{const m=new Map((roles||[]).map(r=>[String(r.role).toLowerCase(),r]));for(const r of list){const g=m.get(r.role.trim().toLowerCase());r.use=!!g;if(g){m.delete(r.role.trim().toLowerCase());if(g.days)r.days=g.days;
     if(g.sell!=null&&g.sell!==''&&n(g.sell)!==n(r.sell)){r.sell=g.sell;r.override=true}}}for(const g of m.values())if(g.role)list.push(mk_({...g,use:true}));showAll=false;draw()}}}
- return {sections,rates,parseRates,gbp,mk}})();
+ return {rates,parseRates,gbp,mk}})();
 '''

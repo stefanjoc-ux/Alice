@@ -69,7 +69,8 @@ t('the client is recognised by its other name', u['organisation'] == 'Northshire
 t('only templates on offer are kept', u['template'].replace('\\', '/') == 'Proposal Templates/Insight-template.docx')
 t('invented documents and another client\'s are dropped', [p.replace('\\', '/') for p in u['references']] == ['SharePoint/References/Fabric-guide.docx'])
 t('only rate card roles, once each, days rounded to half days, ticks kept', u['roles'] == [{'role': 'Solution architect', 'use': True, 'days': 10.0, 'sell': None}, {'role': 'Project manager', 'use': False, 'days': None, 'sell': None}])
-t('empty headings and points are dropped; unknown fields ignored', u['structure'] == [{'heading': 'Approach', 'points': ['governance first']}] and 'bogus' not in u)
+t('Parker cannot set a structure or sections; unknown fields ignored', 'structure' not in u and 'sections' not in u and 'bogus' not in u
+  and 'structure' not in x['changed'] and '"structure"' not in PS.PROMPT and 'come from its template' in PS.PROMPT)
 t('questions and what changed are passed on', x['questions'] == ['Who is the named sponsor?', 'What is the budget?'] and x['changed'][:3] == ['title', 'client', 'brief'] and x['model'] == 'Claude Haiku 4.5')
 msg = calls[-1]['messages'][0]['content']
 t('Parker sees the client profile and relevant memories', 'moving its finance data to Microsoft Fabric' in msg and 'Fabric baseline approach' in msg)

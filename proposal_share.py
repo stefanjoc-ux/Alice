@@ -4,8 +4,8 @@ Through Alice's connector tools any model can list the proposals (written ones a
 notes, sections, the draft, the rate card with cost, sell and margin, the pricing and Argus's latest points) and propose changes.
 A model never changes a proposal itself: what it proposes is checked by the same code as Parker's own suggestions
 (`proposal_starter._validate`: only templates, documents, roles and draft sections that exist) and kept with the proposal
-(`context.model_suggestions`) until you Apply or Dismiss it on the Parker page, where Apply fills the form or the draft's edit
-boxes exactly as a Parker turn does (with Undo). Client separation and the secret and protective-marking checks still apply to
+(`context.model_suggestions`) until you Apply or Dismiss it on the Parker page, where Apply fills the form or changes the draft in
+place exactly as a Parker turn does (with Undo). Client separation and the secret and protective-marking checks still apply to
 what is returned; a proposal that fails them is left out and counted."""
 import json, os
 import re
@@ -119,12 +119,18 @@ def detail(key):
                            and isinstance(r.get('cost'), (int, float)) else None} for r in inp.get('rate_card') or []]
     pr = p['pricing'] or {}
     reqs = qa.get('requirements') or []
+    secs = inp.get('sections') or []
+    if not secs and not draft.get('sections'):                    # a form in progress: the sections its template will give
+        try:
+            import assistants
+            secs = proposals.outline(assistants.get(p['assistant_id']), inp.get('template') or '')
+        except (ValueError, LookupError): secs = []
     return {'proposal': ref(p['id']), 'title': p['title'], 'organisation': p['organisation'], 'client': p['client'],
             'status': STATUS.get(p['status'], p['status']), 'stage': p.get('stage') or '', 'error': p.get('error') or '',
-            'brief': p['brief'], 'notes': p['notes'], 'structure': inp.get('structure', ''),
+            'brief': p['brief'], 'notes': p['notes'], 'structure': inp.get('structure', ''),     # older proposals only: no longer set
             'template': inp.get('template') or '', 'template_name': (inp.get('template') or '').split('/')[-1] or "Alice's own layout",
             'sections': [{'title': s.get('title'), 'guidance': s.get('guidance', ''), 'standard_text': bool(s.get('keep')),
-                          'include': s.get('include', '')} for s in inp.get('sections') or []],
+                          'include': s.get('include', '')} for s in secs],
             'references': inp.get('references') or [],
             'draft': [{'title': s.get('title'), 'body': '' if s.get('keep') else s.get('body', ''), 'standard_text': bool(s.get('keep'))}
                       for s in draft.get('sections') or []],
@@ -173,6 +179,9 @@ def suggest(key, note, updates, by):
     if p['status'] == 'running': raise ValueError('This proposal is being written or checked right now: try again when it has finished.')
     note = ' '.join(str(note or '').split())[:1000]
     if not isinstance(updates, dict) or not updates: raise ValueError('Give at least one change in updates.')
+    if 'structure' in updates or 'sections' in updates:            # since 7 Oct 2026: the template decides the sections
+        raise ValueError('A proposal\'s sections come from its template (or Alice\'s own layout), so structure and new sections are '
+                         'not accepted. Put what to emphasise in notes, or change the text of existing draft sections with draft.')
     rules_engine.check_outbound(note + '\n' + json.dumps(updates)[:60000], 'Parker', packs=False)   # secrets and markings never go in
     tpls, tpl_paths, refs_, ref_paths = ps._offer(p['client'] or '', p['assistant_id'])
     card = p['inputs'].get('rate_card') or []
@@ -181,7 +190,7 @@ def suggest(key, note, updates, by):
     clean = ps._validate({'updates': updates}, tpl_paths, ref_paths, roles_known, p['organisation'] or '', draft)
     if not clean:
         raise ValueError('None of those changes could be used. Change only: title, organisation, brief, notes, template (a path from the '
-                         'templates offered), structure, references, roles (roles already on the rate card: role, use, days, sell) or '
+                         'templates offered), references, roles (roles already on the rate card: role, use, days, sell) or '
                          'draft (existing, non-standard sections: title and body).')
     changed = [ps.NAMES[k] for k in clean]
     s = {'id': uuid.uuid4().hex[:12], 'from': ' '.join(str(by or 'a model').split())[:60], 'at': store.now(), 'note': note,
@@ -196,6 +205,10 @@ def suggest(key, note, updates, by):
         c.execute('UPDATE proposals SET context=? WHERE id=?', (json.dumps(ctx), p['id']))
         store.audit(c, 'proposal_change_suggested', p['id'], 'approval_required', f'{s["from"]} suggested changes to {ref(p["id"])} ({", ".join(changed)})')
     dropped = sorted(set(k for k in updates) - set(clean))
+    have = {x.get('title', '').casefold() for x in clean.get('draft') or []}
+    for d in updates.get('draft') or [] if isinstance(updates.get('draft'), list) else []:
+        t = ' '.join(str((d or {}).get('title') or '').split())[:120] if isinstance(d, dict) else ''
+        if t and t.casefold() not in have: dropped.append(f'draft: "{t}" (not an existing section of the draft that can be changed; new sections cannot be added)')
     link = page_link(p)
     return {'proposal': ref(p['id']), 'suggestion': s['id'], 'changes': changed, 'left_out': dropped, 'open': link,
             'message': (f'Saved for the user, not applied yet. To see it: open {link}' if link.startswith('http') else

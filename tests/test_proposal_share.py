@@ -85,6 +85,15 @@ t('the Parker page\'s Proposals list carries the count waiting and who from', ro
 t('list shows the count waiting', next(x for x in M.list_proposals()['proposals'] if x['proposal'] == ref)['pending_model_suggestions'] == 1)
 try: M.propose_proposal_changes(ref, 'x', {'astronauts': 1}); t('nothing usable: refused, saying what can change', False)
 except ValueError as e: t('nothing usable: refused, saying what can change', 'roles' in str(e) and 'draft' in str(e))
+for bad in ({'structure': [{'heading': 'Social value', 'points': ['local jobs']}]}, {'sections': [{'title': 'Social value'}]},
+            {'structure': [{'heading': 'Why now'}], 'notes': 'Stress the deadline.'}):
+    try: M.propose_proposal_changes(ref, 'Adds a section', bad); t(f'the connector refuses {sorted(bad)}', False)
+    except ValueError as e: t(f'the connector refuses {sorted(bad)}, pointing to notes and draft', 'come from its template' in str(e) and 'notes' in str(e))
+t('nothing was kept for a refused suggestion', len(P.get(pid)['context']['model_suggestions']) == 1)
+t('a draft change to a section that does not exist is left out, saying new sections cannot be added',
+  any('Not a section' in x and 'new sections cannot be added' in x for x in r['left_out']))
+_src = open(M.__file__, encoding='utf-8').read(); _doc = _src[_src.index('def propose_proposal_changes'):_src.index('import proposal_share', _src.index('def propose_proposal_changes'))]
+t('the tool description no longer offers structure, and says why', 'structure ([' not in _doc and 'structure and new sections are refused' in _doc)
 try: M.propose_proposal_changes(ref, 'Adds the key', {'notes': 'api key sk-ant-api03-' + 'A' * 90}); t('a secret is refused', False)
 except ValueError as e: t('a secret is refused', True)
 try: M.propose_proposal_changes(ref, 'Marked', {'brief': 'OFFICIAL-SENSITIVE: the restructure'}); t('a protective marking is refused', False)

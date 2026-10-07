@@ -25,7 +25,7 @@ NAMESPACE_LIVE, NAMESPACE_DEMO = 'alice', 'alicedemo'
 # fixed app IDs, so uploading a newer package updates the same app in Teams instead of adding a second one
 APP_ID_LIVE = 'a11ce000-5ab5-4c0e-9a11-ce0000000001'
 APP_ID_DEMO = 'a11ce000-5ab5-4c0e-9a11-ce0000000002'
-VERSION = '1.2.7'           # raise it whenever the package changes, so Teams takes the upload as an update
+VERSION = '1.2.8'           # raise it whenever the package changes, so Teams takes the upload as an update
 # Copilot needs a card template on every tool (without one the whole agent fails to run). Fixed text only: a template that reads
 # fields from Alice's answers showed '${description}', because her answers do not have those fields at the top.
 RESULT_CARD = {'type': 'AdaptiveCard', '$schema': 'https://adaptivecards.io/schemas/adaptive-card.json', 'version': '1.6',
