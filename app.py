@@ -753,18 +753,14 @@ def manifest():
         'description':'Your personal AI substrate: chat, files, memories and voice.','icons':icons}),
         media_type='application/manifest+json')
 
-SERVICE_WORKER = """// AI Substrate: makes the chat installable. Network only: chats, files and
-// answers are never cached on the device.
-self.addEventListener('install', e => self.skipWaiting());
-self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
-self.addEventListener('fetch', e => {
-  if (e.request.mode !== 'navigate') return;
-  if (new URL(e.request.url).pathname.startsWith('/.auth/')) return;   // sign-in pages go straight to the network
-  e.respondWith(fetch(e.request).catch(() => new Response(
-    '<meta name=viewport content="width=device-width"><body style="font-family:system-ui;background:#02030a;color:#dbe7ff;padding:32px">'
-    + '<h2>AI Substrate is offline</h2><p>Your PC may be asleep, or Tailscale is disconnected. Check both, then pull to refresh.</p>',
-    {headers: {'Content-Type': 'text/html'}})));
-});
+SERVICE_WORKER = """// Alice's service worker is retired (7 Oct 2026): an installed copy could sit between the browser and
+// Microsoft sign-in after the 8-hour session expired. This version removes itself and reloads the pages it controlled.
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', e => e.waitUntil((async () => {
+  try { for (const k of await caches.keys()) await caches.delete(k); } catch (err) {}
+  await self.registration.unregister();
+  for (const c of await self.clients.matchAll({type: 'window'})) { try { await c.navigate(c.url); } catch (err) {} }
+})()));
 """
 
 @app.get('/sw.js')
@@ -1310,9 +1306,16 @@ def signout(request: Request, everywhere: int = 0):
     r.headers['Cache-Control'] = 'no-store'
     return r
 
+def _reset_cookie(name: str) -> bool:
+    n = name.lower()
+    return n.startswith('appserviceauth') or n.startswith('nonce')
+
 @app.get('/signed-out')
-def signed_out(everywhere: int = 0):
+def signed_out(request: Request, everywhere: int = 0, reset: int = 0):
+    """The page after signing out, outside sign-in. ?reset=1 clears this browser's sign-in state (Container Apps sign-in
+    cookies, its Nonce cookies, any service worker) when sign-in keeps looping; it lists cookie names only, never values."""
     from ui_theme import SHARED_CSS
+    if reset: return _signin_reset(request, SHARED_CSS)
     page = SIGNED_OUT_HTML.replace('__CSS__', SHARED_CSS)
     if everywhere: page = page.replace('<h1 id="so-t">Signed out of Alice</h1>', '<h1 id="so-t">Signed out of Alice everywhere</h1>').replace(
         'Your Microsoft sign-in for Outlook', 'Every device that was signed in to Alice now has to sign in again. Your Microsoft sign-in for Outlook')
@@ -1329,7 +1332,37 @@ SIGNED_OUT_HTML = '''<!doctype html><html lang="en"><head><meta charset="utf-8">
 <a class="go" href="/">Sign in to Alice again</a>
 <p class="alt muted">You will be asked to sign in (password, Windows Hello or passkey), even though this browser is still signed in to Microsoft.</p>
 <p class="alt muted">On a shared computer? <a href="/.auth/logout?post_logout_redirect_uri=/signed-out">Sign out of Microsoft in this browser too</a>.</p>
+<p class="alt muted">Trouble signing in? <a href="/signed-out?reset=1">Reset sign-in on this device</a>.</p>
 </main><script>fetch('/me',{credentials:'same-origin',redirect:'manual',headers:{'X-Requested-With':'XMLHttpRequest'}}).then(r=>r.ok?r.json():null).then(m=>{if(m&&m.signed_in)document.getElementById('so-warn').hidden=false}).catch(()=>{})</script>
+</body></html>'''
+
+def _signin_reset(request: Request, css: str):
+    import html as _html
+    found = sorted({n for n in request.cookies if _reset_cookie(n)})
+    items = ''.join(f'<li><code>{_html.escape(n)}</code></li>' for n in found)
+    listing = (f'<p>Found and cleared {len(found)} sign-in cookie{"" if len(found) == 1 else "s"}:</p><ul class="ck">{items}</ul>' if found
+               else '<p>Found 0 sign-in cookies. Nothing was left over from an earlier sign-in.</p>')
+    page = (SIGNIN_RESET_HTML.replace('__CSS__', css).replace('__LIST__', listing)
+            .replace('__COUNT__', str(len(found))))
+    r = HTMLResponse(page, headers={'Cache-Control': 'no-store'})
+    for name in sorted(set(AUTH_COOKIES) | {'Nonce'} | set(found)):
+        r.delete_cookie(name, path='/', secure=True, httponly=True, samesite='lax')
+    return r
+
+SIGNIN_RESET_HTML = '''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign-in reset</title><link rel="icon" href="/static/favicon.png"><style>__CSS__
+.so{max-width:460px;margin:12vh auto 0;padding:28px 30px;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 6px 24px rgba(10,30,50,.08)}
+.so h1{margin:0 0 6px;font-size:22px}.so p{margin:8px 0}.so .go{display:inline-block;margin:14px 0 4px;padding:9px 18px;border-radius:9px;background:var(--teal);color:#fff;text-decoration:none;font-weight:600}
+.so .ck{margin:6px 0 10px;padding-left:20px;font-size:13px}.so .alt{font-size:13px}
+</style></head><body><main class="so"><h1>Sign-in reset on this device</h1>
+<div id="rs-cookies" data-count="__COUNT__">__LIST__</div>
+<p id="rs-sw">Checking for an Alice service worker…</p>
+<a class="go" href="/">Sign in to Alice</a>
+<p class="alt muted">Only cookie names are shown, never their values. Your Microsoft sign-in for Outlook, Teams and the Azure portal is untouched.</p>
+</main><script>(async()=>{const el=document.getElementById('rs-sw');let n=0;
+try{if('serviceWorker' in navigator){for(const r of await navigator.serviceWorker.getRegistrations()){if(await r.unregister())n++}}
+if(window.caches){for(const k of await caches.keys())await caches.delete(k)}}catch(e){}
+el.textContent=n?'Removed '+n+' service worker'+(n===1?'':'s')+'.':'No service worker was installed.'})()</script>
 </body></html>'''
 
 @app.get('/admin/api/speed')
@@ -3363,7 +3396,6 @@ byId('temple-refresh-chat').onclick=()=>templeRun(()=>refreshTemple(true));
 byId('temple-chat-enabled').onchange=()=>templeRun(async()=>{await templeAPI('/admin/api/temple-chat-setting','PUT',{enabled:byId('temple-chat-enabled').checked});await refreshTemple()});
 byId('temple-analyse').onclick=()=>templeRun(async()=>{if(!chatId)return;const b=byId('temple-analyse');b.disabled=true;try{const result=await templeAPI('/admin/api/temple-chat/'+chatId+'/analyse','POST',{});await refreshTemple();byId('temple-message').textContent=result.message;}finally{b.disabled=false}});
 
-if('serviceWorker' in navigator&&window.isSecureContext)navigator.serviceWorker.register('/sw.js').catch(()=>{});
 guard(async()=>{await setupVoice();await refreshFiles();const chats=await api('/chats');const requested=location.hash.slice(1);if(location.search)window.history.replaceState(null,'',location.pathname+location.hash);
  const asked=chats.find(c=>c.id===requested);if(asked){await loadChat(asked.id);return}
  const empty=chats.find(c=>!c.turns);if(empty)await loadChat(empty.id);else await createChat()});

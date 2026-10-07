@@ -107,7 +107,36 @@ for path in ('/', '/admin', '/admin/memories', '/admin/signins'):
     t(f'{path}: background requests say so (sign-in answers 401, not a new sign-in)', "h.set('X-Requested-With','XMLHttpRequest')" in h
       and h.index('window.__aliceFetch') < (h.index("api(") if "api(" in h else len(h)) and 'Your Alice session has ended.' in h)
 sw = cl.get('/sw.js').text
-t('the offline helper never touches the sign-in pages', "startsWith('/.auth/')" in sw)
+t('the service worker is retired: it removes itself and reloads the pages it controlled',
+  'self.registration.unregister()' in sw and 'skipWaiting' in sw and '.navigate(' in sw and "addEventListener('fetch'" not in sw
+  and 'Tailscale' not in sw and 'offline' not in sw.lower())
+t('the chat page no longer installs a service worker', 'serviceWorker.register' not in cl.get('/').text)
+
+# sign-in reset on this device (the signed-out page is outside sign-in, so it works while sign-in loops)
+p = cl.get('/signed-out')
+t('signed-out page offers the sign-in reset', 'Trouble signing in?' in p.text and 'href="/signed-out?reset=1"' in p.text)
+cl.cookies.clear()
+for name, val in (('AppServiceAuthSession', 'secret-session-AAA'), ('AppServiceAuthSession2', 'secret-chunk-BBB'),
+                  ('Nonce', 'secret-nonce-CCC'), ('alice_pref', 'keep-me-DDD')):
+    cl.cookies.set(name, val)
+r = cl.get('/signed-out?reset=1')
+sc = r.headers.get_list('set-cookie')
+expired = {c.split('=', 1)[0] for c in sc if 'Max-Age=0' in c or 'expires=' in c.lower()}
+t('reset: every AppServiceAuth cookie and the Nonce cookie are expired for path /',
+  r.status_code == 200 and {'AppServiceAuthSession', 'AppServiceAuthSession1', 'AppServiceAuthSession2', 'AppServiceAuthSession3', 'Nonce'} <= expired
+  and all('Path=/' in c for c in sc))
+t('reset: other cookies are left alone', 'alice_pref' not in expired)
+t('reset: lists the names it found and their count, never a value',
+  'AppServiceAuthSession2' in r.text and '>Nonce<' in r.text and 'data-count="3"' in r.text and 'cleared 3 sign-in cookies' in r.text
+  and 'secret-' not in r.text and 'keep-me' not in r.text and 'alice_pref' not in r.text)
+t('reset: removes any service worker and offers sign in', 'getRegistrations()' in r.text and '.unregister()' in r.text
+  and '>Sign in to Alice</a>' in r.text and 'no-store' in r.headers.get('cache-control', ''))
+cl.cookies.clear()
+r = cl.get('/signed-out?reset=1')
+t('reset with nothing to clear says so', 'Found 0 sign-in cookies' in r.text and 'data-count="0"' in r.text)
+os.environ['ALICE_TRUST_EASYAUTH'] = '1'
+t('reset still opens for a session signed out everywhere', cl.get('/signed-out?reset=1', headers=old_phone).status_code == 200)
+os.environ.pop('ALICE_TRUST_EASYAUTH', None)
 
 # which release is running, at the bottom of the Console menu
 from ui_theme import version_info
