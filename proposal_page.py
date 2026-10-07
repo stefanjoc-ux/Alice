@@ -271,7 +271,6 @@ table.t th{text-transform:uppercase;letter-spacing:.05em;font-size:11.5px}table.
 <section class="hero"><div class="hero-in"><div><div class="ptitle">''' + parker_logo(58, 'hr') + '''<div><p class="eyebrow">Proposal writer \u00b7 bid and proposal studio</p><h1>''' + escape(a['name']) + '''</h1></div></div><p class="lead" id="greeting"></p></div>
 <ol class="flow" aria-label="How it works"><li>Brief</li><li>Draft</li><li>Argus checks</li><li>Word document</li></ol></div></section>
 <section class="card" id="prog" hidden aria-live="polite"><h2 id="prog-title">Working on it</h2><ol class="steps" id="steps"></ol><div class="err" id="perr" hidden></div></section>
-<div id="result"></div>
 <form id="f">
 <div class="formbar"><span>Proposal form</span><button type="button" id="exp-all">Expand all</button><button type="button" id="col-all">Collapse all</button></div>
 <section class="panel"><div class="ph"><div class="mode"><div><h2 id="f-h">New proposal</h2><span class="ps">The brief, and who it is for</span></div><div class="chips" role="tablist" aria-label="What to do"><button type="button" class="chip on" id="m-write" role="tab" aria-selected="true">Write a proposal</button><button type="button" class="chip" id="m-qa" role="tab" aria-selected="false">Check one I already have</button></div></div></div>
@@ -296,6 +295,7 @@ table.t th{text-transform:uppercase;letter-spacing:.05em;font-size:11.5px}table.
 <div class="ref-list" id="ref-list"></div></div></details>
 <div class="err" id="ferr" role="alert" hidden></div>
 </form>
+<div id="result"></div>
 </div>
 <aside class="side">
 <section class="pk" id="pk" aria-label="Work with Parker"><div class="pk-head">''' + parker_logo(34, 'ch') + '''<div><b id="pk-title">Start with Parker</b><span class="s">Your proposal assistant</span></div><button type="button" class="secondary pk-new" id="pk-wide" title="Make Parker’s panel wider" aria-pressed="false">Wider</button><button type="button" class="secondary pk-new" id="pk-new" title="Start a new conversation (the form stays as it is)" style="margin-left:6px">New chat</button></div>
