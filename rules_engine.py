@@ -48,6 +48,10 @@ BUILTIN = [
      'In a chat tagged with a client, memory and file tools return only that client\'s material plus General '
      '(untagged) material. Strict mode also keeps client material out of untagged chats.', True,
      {'strict': False, 'external': 'all'}, '', False),
+    ('client_documents', 'organisation', 'Client-facing documents use only that client\'s material', 'enforced',
+     'Proposals written by Parker and digital team outputs marked client-facing use only General (untagged) material and material '
+     'tagged to that document\'s own client; anything tagged to another client is left out and logged. A document with no client uses '
+     'General material only. Works on its own, whatever the Client separation switch says.', True, {}, '', False),
     ('commercial_caution', 'organisation', 'Commercial caution', 'guidance', '', True, {},
      'Do not state prices, discounts, rates or Insight commitments unless they come from a saved file or approved '
      'memory, and cite that source.', False),

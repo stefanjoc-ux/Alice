@@ -71,7 +71,7 @@ LABELS = {
     'team_suggestion_approved': ('teams', 'Temple\'s suggested instructions approved'), 'team_suggestion_rejected': ('teams', 'Temple\'s suggested instructions rejected'),
 }
 RULE_NAMES = {'secret_detection': 'Secret detection', 'protective_marking': 'Protective marking guard', 'pii': 'Personal identifiers',
-              'provider_allow': 'Provider allow-list', 'external_scope': 'External client scope', 'client_separation': 'Client separation',
+              'provider_allow': 'Provider allow-list', 'external_scope': 'External client scope', 'client_separation': 'Client separation', 'client_documents': 'Client-facing documents',
               'quality': 'Quality check', 'duplicates': 'Duplicate block', 'spend_cap': 'Spending caps', 'retention': 'Chat retention',
               'purview_labels': 'Purview sensitivity labels'}
 HEX = re.compile(r'^[0-9a-f]{32}$')

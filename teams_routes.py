@@ -55,6 +55,7 @@ class JobTypeIn(BaseModel):
     name: str | None = Field(None, max_length=80)
     description: str | None = Field(None, max_length=600)
     stages: list[StageIn] | None = Field(None, max_length=12)
+    client_facing: bool | None = None
 
 
 class RestoreIn(BaseModel):
@@ -192,7 +193,8 @@ def teams_job_type_add(t: TeamIn, tid: str = FPath(pattern=ID)):
 
 @router.put('/admin/api/teams/{tid}/job-types/{jt}')
 def teams_job_type(j: JobTypeIn, tid: str = FPath(pattern=ID), jt: str = FPath(pattern=ID)):
-    return _do(teams.update_job_type, tid, jt, j.name, j.description, [s.model_dump() for s in j.stages] if j.stages is not None else None)
+    return _do(teams.update_job_type, tid, jt, j.name, j.description, [s.model_dump() for s in j.stages] if j.stages is not None else None,
+               j.client_facing)
 
 
 @router.post('/admin/api/teams/{tid}/restore')

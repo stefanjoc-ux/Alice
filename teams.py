@@ -208,7 +208,8 @@ def create(name, description='', autonomy='approve', tid=None, members=(), job_t
     ms = [_norm_member(m) for m in members]
     ids = {m['id'] for m in ms}
     jts = [{'id': jt.get('id') or _new_id('j-'), 'name': _clean(jt.get('name'), 80), 'description': _block(jt.get('description'), 600),
-            'finish': _clean(jt.get('finish'), 30), 'stages': [_norm_stage(s, ids) for s in jt.get('stages') or []]} for jt in job_types]
+            'finish': _clean(jt.get('finish'), 30), 'client_facing': bool(jt.get('client_facing')),
+            'stages': [_norm_stage(s, ids) for s in jt.get('stages') or []]} for jt in job_types]
     d = {'name': _clean(name, 80), 'description': _block(description, 600), 'autonomy': autonomy, 'settings': dict(settings or {}),
          'members': ms, 'job_types': jts}
     return _save(tid, d, 'Team created', new=True)
@@ -257,7 +258,7 @@ def remove_member(tid, mid):
     return _save(tid, d, f'Member removed: {m["role"]}')
 
 
-def update_job_type(tid, jid, name=None, description=None, stages=None):
+def update_job_type(tid, jid, name=None, description=None, stages=None, client_facing=None):
     d = get(tid)
     jt = next((x for x in d['job_types'] if x['id'] == jid), None)
     if not jt: raise ValueError('No such job type.')
@@ -265,6 +266,8 @@ def update_job_type(tid, jid, name=None, description=None, stages=None):
     ids = {m['id'] for m in d['members']}
     if name is not None: jt['name'] = _clean(name, 80)
     if description is not None: jt['description'] = _block(description, 600)
+    was_facing = facing(old)
+    if client_facing is not None: jt['client_facing'] = bool(client_facing)
     if stages is not None:
         known = {s['key']: s for s in old['stages']}
         new = []
@@ -278,6 +281,8 @@ def update_job_type(tid, jid, name=None, description=None, stages=None):
     what = []
     if old['name'] != jt['name']: what.append('renamed')
     if old.get('description') != jt.get('description'): what.append('description')
+    if client_facing is not None and bool(client_facing) != was_facing:
+        what.append('marked client-facing' if client_facing else 'no longer client-facing')
     if old['stages'] != jt['stages']:
         ok, nk = [s['key'] for s in old['stages']], [s['key'] for s in jt['stages']]
         if ok != nk: what.append('stages added, removed or reordered')
@@ -650,13 +655,35 @@ def member_prompt(member, stage, ctx):
     return '\n'.join(x for x in lines if x)
 
 
+def client_facing(job):
+    """Is this job's output client-facing? Set per job type on the page; the seeded Cost estimate is (older versions without the
+    flag count as client-facing when they produce the cost plan)."""
+    try: _, jt = _job_team(job)
+    except (ValueError, KeyError): return True
+    return facing(jt)
+
+
+def facing(jt):
+    return bool(jt.get('client_facing', jt.get('finish') == 'cost_estimate'))
+
+
+def client_rule(job):
+    """(keep(item_client) -> bool, rule id) for this job: client-facing output follows 'Client-facing documents…', other jobs
+    follow Client separation. Decided by the Rules page."""
+    import clients
+    return clients.item_filter(job.get('client') or '', client_facing=client_facing(job))
+
+
 def _knowledge(job, member, fam):
-    """Knowledge in the member's categories: active, never Local only, general or this job's client, allowed to this model."""
-    import assistants, knowledge, rules_engine
+    """Knowledge in the member's categories: active, never Local only, allowed to this model, and allowed by the client rule
+    that applies to this job (client_rule)."""
+    import assistants, clients, knowledge, rules_engine
     if not member.get('categories'): return ''
-    items = [i for i in knowledge.listing(status='active', limit=100000)['items']
-             if i['category'] in member['categories'] and i['label'] != 'local' and (not i.get('client') or i.get('client') == job['client'])
-             and not knowledge.model_block(i['id'], fam)]
+    keep, rule_id = client_rule(job)
+    cand = [i for i in knowledge.listing(status='active', limit=100000)['items']
+            if i['category'] in member['categories'] and i['label'] != 'local' and not knowledge.model_block(i['id'], fam)]
+    items = [i for i in cand if keep(i.get('client') or '')]
+    clients.log_withheld(rule_id, f'Digital team: {member["role"]}', len(cand) - len(items))
     found = assistants.sources({'categories': member['categories'], 'provider': fam}, f'{job["title"]} {job["brief"][:600]}', items)[:4]
     out = []
     for x in found:

@@ -211,6 +211,26 @@ def allowed(item_client, context_client, cfg=None):
     return not cfg['strict']                                    # untagged chat: all, unless strict
 
 
+def item_filter(context_client, client_facing=False):
+    """(predicate item_client -> bool, rule id), decided by the Rules page once per call (never per row).
+    Client-facing documents (Parker's proposals, client-facing digital team outputs) follow the rule 'client_documents':
+    on = General material plus the document's own client only; off = everything. Everything else follows Client separation
+    (`allowed`, with its strict setting)."""
+    import rules_engine
+    if client_facing:
+        on = rules_engine.on('client_documents')
+        return (lambda ic: not ic or not on or ic == context_client), 'client_documents'
+    cfg = settings()
+    return (lambda ic: allowed(ic, context_client, cfg)), 'client_separation'
+
+
+def log_withheld(rule_id, target, n):
+    """One block line for what a client filter left out (Rules page, Recent blocks)."""
+    if n:
+        import rules_engine
+        rules_engine.log_block(rule_id, target, f'{n} item(s) tagged to another client left out')
+
+
 def _org_owner():
     """Organisation name (lower case) -> client name, for organisations that are clients."""
     return {n.lower(): n for n in names()}

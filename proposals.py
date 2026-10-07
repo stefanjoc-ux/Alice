@@ -390,7 +390,10 @@ def gather(a, title, brief, org, client, use_memory=True, providers=None):
     for f_ in fams:
         recs, n = rules_engine.filter_records_for_provider(recs, f_); skipped += n
     tags = clients.clients_for('memory', [r['id'] for r in recs])
-    recs = [r for r in recs if not tags.get(r['id']) or tags.get(r['id']) == client]      # general, or this client only
+    keep, rule_id = clients.item_filter(client, client_facing=True)       # the rule 'Client-facing documents…' decides
+    before = len(recs)
+    recs = [r for r in recs if keep(tags.get(r['id']) or '')]
+    withheld = before - len(recs)
     def score(text, head=''):
         w = assistants._words(text); hw = set(assistants._words(head))
         return (sum(1 for x in w if x in words) + 3 * len(words & hw)) / (1 + len(w) ** 0.5)
@@ -404,8 +407,10 @@ def gather(a, title, brief, org, client, use_memory=True, providers=None):
         lines.append(text); size += len(text); used['memories'].append(r['title'])
         agents.note('read', 'memory', r['id'], 'context for a proposal')
     if lines: parts.append('APPROVED MEMORIES AND DECISIONS\n' + '\n'.join(lines))
-    items = [i for i in knowledge.listing(status='active', limit=100000)['items']
-             if i['label'] != 'local' and (not i.get('client') or i.get('client') == client) and not any(knowledge.model_block(i['id'], f_) for f_ in fams)]
+    every = knowledge.listing(status='active', limit=100000)['items']
+    items = [i for i in every if i['label'] != 'local' and keep(i.get('client') or '') and not any(knowledge.model_block(i['id'], f_) for f_ in fams)]
+    withheld += sum(1 for i in every if i['label'] != 'local' and not keep(i.get('client') or ''))
+    clients.log_withheld(rule_id, f'Proposal context ({client or "no client"})', withheld)
     ids = [i['id'] for i in items]
     texts = {}
     if ids:

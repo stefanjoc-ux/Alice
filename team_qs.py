@@ -125,7 +125,7 @@ def _seed_team():
     teams.create('Quantity surveying', 'A small QS team that produces an early cost estimate (cost plan) from a brief, a specification, '
                  'schedules and drawings. Every rate has a source; the arithmetic is done by Alice.', 'approve', tid=TEAM_ID,
                  members=MEMBERS, settings=SETTINGS,
-                 job_types=[{'id': 'cost-estimate', 'name': 'Cost estimate', 'finish': 'cost_estimate',
+                 job_types=[{'id': 'cost-estimate', 'name': 'Cost estimate', 'finish': 'cost_estimate', 'client_facing': True,
                              'description': 'From brief to a draft cost plan (Word and Excel) and a Market Trends report.', 'stages': STAGES}])
 
 
@@ -418,32 +418,36 @@ RATE_LINE = re.compile(r'^RATE \| (?P<ref>[^|]*) \| (?P<desc>[^|]+) \| (?P<unit>
 
 
 def history(job, member):
-    """Past rates held in Alice: finished team jobs, and cost plans in Knowledge carrying a RATES USED block. General or this
-    job's client only; Local only and items this model may not read are left out."""
-    import assistants, knowledge
+    """Past rates held in Alice: finished team jobs, and cost plans in Knowledge carrying a RATES USED block. Which clients' material
+    counts follows the Rules page (teams.client_rule); Local only and items this model may not read are left out."""
+    import assistants, clients, knowledge
     fam = assistants.family(member['provider'])
     out, seen_k = [], set()
+    keep, rule_id = teams.client_rule(job)                    # client-facing: 'Client-facing documents…'; else Client separation
+    withheld = 0
     with store.db() as c:
         rows = [dict(r) for r in c.execute("SELECT id, title, client, outputs, updated_at, knowledge_id FROM team_jobs WHERE status='done' AND id<>?", (job['id'],))]
     for r in rows:
-        if r['client'] and r['client'] != job['client']: continue
+        if not keep(r['client'] or ''): withheld += 1; continue
         seen_k.add(r['knowledge_id'])
         for it in (json.loads(r['outputs'] or '{}').get('price') or {}).get('items') or []:
             if it.get('rate_source') in ('web', 'library') and it.get('rate'):
                 out.append({'description': it['description'], 'unit': it['unit'], 'rate': it['rate'], 'date': it.get('source_date') or r['updated_at'][:10],
                             'source': f'{teams.ref(r["id"])} {r["title"]}', 'kind': it['rate_source']})
     items = [i for i in knowledge.listing(status='active', limit=100000)['items']
-             if i['id'] not in seen_k and i['label'] != 'local' and (not i.get('client') or i.get('client') == job['client']) and not knowledge.model_block(i['id'], fam)]
+             if i['id'] not in seen_k and i['label'] != 'local' and not knowledge.model_block(i['id'], fam)]
     if items:
         with store.db() as c:
             for i in items:
                 text = (c.execute('SELECT text FROM files WHERE id=?', (i['id'],)).fetchone() or [''])[0] or ''
                 if 'RATE |' not in text: continue
+                if not keep(i.get('client') or ''): withheld += 1; continue
                 for m in RATE_LINE.finditer(text):
                     rate = _num(m.group('rate'))
                     if rate: out.append({'description': m.group('desc').strip(), 'unit': unit_key(m.group('unit')), 'rate': rate, 'date': m.group('date').strip(),
                                          'source': i['title'], 'kind': m.group('kind').strip()})
                 agents.note('read', 'knowledge', i['id'], f'{member["role"]}: past rates')
+    clients.log_withheld(rule_id, f'Digital team: {member["role"]} (past rates)', withheld)
     for n, h in enumerate(out, 1): h['hid'] = f'H{n}'
     return out[:400]
 
