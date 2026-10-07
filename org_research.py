@@ -9,6 +9,7 @@ to), then returns short facts for the profile sections that public information c
 - Organisational information and roles only: named people, contact details and personal circumstances are refused.
 - Each run is recorded (sources consulted, facts proposed, facts dropped and why) and is an agent on the Agents page.
 """
+import contextvars
 import json
 import logging
 import os
@@ -26,6 +27,18 @@ MAX_SEARCHES = 6
 PROVIDER_NAMES = {'openai': 'OpenAI', 'claude': 'Anthropic'}
 KEYS = {'openai': 'OPENAI_API_KEY', 'claude': 'ANTHROPIC_API_KEY'}
 LOG = logging.getLogger('alice.websearch')          # goes to web.log with the app's other logging
+_QUERIES = contextvars.ContextVar('alice_web_queries', default=None)    # the searches the provider says it ran (search_runs record)
+
+
+def _ran(q):
+    lst = _QUERIES.get()
+    q = ' '.join(str(q or '').split())[:200]
+    if lst is not None and q and q not in lst: lst.append(q)
+
+
+def last_queries():
+    """The searches the provider reported running during the last search() in this context."""
+    return list(_QUERIES.get() or [])
 
 with store.db() as c:
     c.execute('''CREATE TABLE IF NOT EXISTS org_research (id INTEGER PRIMARY KEY AUTOINCREMENT, org TEXT NOT NULL COLLATE NOCASE,
@@ -109,6 +122,7 @@ def _ask_openai(prompt, query, workload='Temple organisation research'):
     seen = {}
     for item in getattr(r, 'output', []) or []:
         action = getattr(item, 'action', None)
+        if getattr(item, 'type', '') == 'web_search_call': _ran(getattr(action, 'query', None))
         for s in (getattr(action, 'sources', None) or []):
             url = getattr(s, 'url', None) or (s.get('url') if isinstance(s, dict) else None)
             if url: seen.setdefault(url, getattr(s, 'title', '') or '')
@@ -129,6 +143,7 @@ def _ask_claude(prompt, query, workload='Temple organisation research'):
             r = client.messages.create(model='claude-haiku-4-5-20251001', system=prompt, max_tokens=6000, tools=tools, messages=messages)
             import usage_meter; usage_meter.log(r, 'claude', 'claude-haiku-4-5-20251001', workload, time.time() - t0)
             for b in r.content:
+                if b.type == 'server_tool_use' and isinstance(getattr(b, 'input', None), dict): _ran(b.input.get('query'))
                 if b.type == 'web_search_tool_result':
                     for res in (b.content if isinstance(b.content, list) else []):
                         if getattr(res, 'url', None): seen.setdefault(res.url, getattr(res, 'title', '') or '')
@@ -167,6 +182,7 @@ def search(prompt, query_for, provider, workload='Temple organisation research')
     key is set. query_for(provider) builds and checks what is sent to that provider (its own provider rules).
     Returns (raw text, sources seen, provider used, failures before it). Raises SearchFailed."""
     failures = []
+    _QUERIES.set([])
     for p in [provider] + [x for x in KEYS if x != provider]:
         if failures:
             st = failures[-1]['status']
@@ -224,6 +240,9 @@ def _research(name, website, provider=''):
     key = KEYS[provider]
     if not os.getenv(key): raise ValueError(f'Missing {key} for Temple. Set it in .env and restart.')
     prompt = PROMPT.format(today=date.today().isoformat(), kinds=', '.join(O.KINDS), sections=', '.join(PUBLIC_SECTIONS), max_facts=MAX_FACTS)
+    import search_runs
+    gtext, gver = search_runs.prompt_block(existing) if existing else ('', 0)
+    prompt += gtext + ('\n\nAlso return "searches": ["the searches you ran"] in the JSON.')
 
     def query_for(p):
         if p != provider: rules_engine.check_outbound(query, 'organisation research', provider=p)
@@ -232,6 +251,9 @@ def _research(name, website, provider=''):
         raw, seen, provider, failures = search(prompt, query_for, provider)
     except SearchFailed as e:
         _record(existing or name or _domain(website), query, website, e.failures[-1]['provider'], 'failed', error=str(e)[:500])
+        search_runs.record(existing or name or _domain(website), 'research', 'failed', 'you', e.failures[-1]['provider'],
+                           queries=[{'sent': query, 'provider': PROVIDER_NAMES.get(e.failures[-1]['provider'], ''), 'searches': last_queries()}],
+                           error=str(e), guidance_version=gver)
         raise ValueError(str(e) + ' Try again, or check the provider on the Agents page.') from None
     data = _parse(raw)
 
@@ -260,23 +282,29 @@ def _research(name, website, provider=''):
 
     seen_norm = {_norm_url(u): (u, t) for u, t in seen.items()}
     proposed, duplicates, dropped, ids, used = 0, 0, [], [], {}
+    found, rejected = [], []
     for f in (data.get('facts') or [])[:MAX_FACTS]:
         if not isinstance(f, dict): continue
         section, statement, url = f.get('section'), O._clean(f.get('statement'), 400), str(f.get('source_url') or '').strip()
         if section not in PUBLIC_SECTIONS:
-            dropped.append({'statement': statement[:120], 'reason': 'Not a section public sources can answer.'}); continue
+            dropped.append({'statement': statement[:120], 'reason': 'Not a section public sources can answer.'})
+            rejected.append(search_runs.rejected(statement, 'outside_profile', f'section “{section}” is not one public sources can answer')); continue
         match = seen_norm.get(_norm_url(url))
         if not match:
-            dropped.append({'statement': statement[:120], 'reason': 'Its source was not among the pages the search returned.'}); continue
+            dropped.append({'statement': statement[:120], 'reason': 'Its source was not among the pages the search returned.'})
+            rejected.append(search_runs.rejected(statement, 'no_citation', 'its source was not among the pages the search returned' + (f' ({url[:160]})' if url else ''))); continue
         url, title = match
         as_of = str(f.get('as_of') or '')[:10]
         if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', as_of) or as_of > date.today().isoformat(): as_of = ''
         try:
             r = O.propose_fact(org, section, statement, f'Public web: {_domain(url)}', url, as_of=as_of, by='Temple research')
         except ValueError as e:
-            dropped.append({'statement': statement[:120], 'reason': str(e)[:200]}); continue
-        if r.get('duplicate'): duplicates += 1; continue
+            dropped.append({'statement': statement[:120], 'reason': str(e)[:200]})
+            rejected.append(search_runs.rejected(statement, 'rules', str(e)[:200])); continue
+        if r.get('duplicate'):
+            duplicates += 1; rejected.append(search_runs.rejected(statement, 'duplicate', 'the same fact is already on the profile')); continue
         proposed += 1; ids.append(r['id'])
+        found.append({'title': statement[:200], 'section': section, 'url': url})
         used[url] = title or str(f.get('source_title') or '')[:200]
     for u, t in seen.items(): agents.note('read', 'web', u, ((t or '')[:160] + ' · ' if t else '') + ('cited' if u in used else 'returned by the search, not cited'))
     for fid in ids: agents.note('wrote', 'org_fact', fid, 'proposed from public web')
@@ -285,9 +313,18 @@ def _research(name, website, provider=''):
     summary = f'{proposed} facts proposed from {len(used)} source{"s" if len(used) != 1 else ""}' + (f'; {len(dropped)} dropped' if dropped else '') + \
               (f'; {duplicates} already known' if duplicates else '') + '; ' + searched_with(provider, failures)
     _record(org, query, site, provider, 'complete', summary, sources, proposed, duplicates, dropped)
-    return {'status': 'complete', 'org': org, 'website': site, 'proposed': proposed, 'duplicates': duplicates, 'dropped': dropped,
+    if not existing: gver = 0
+    reported = [_clean_q(x) for x in data.get('searches') or [] if _clean_q(x)]
+    run_id = search_runs.record(org, 'research', 'complete', 'you', provider,
+                                queries=[{'sent': query, 'provider': PROVIDER_NAMES[provider], 'searches': last_queries() or reported[:12]}],
+                                sources=sources, found=found, rejected_=rejected, summary=summary, guidance_version=gver)
+    return {'status': 'complete', 'org': org, 'run_id': run_id, 'guidance_version': gver, 'website': site, 'proposed': proposed, 'duplicates': duplicates, 'dropped': dropped,
             'sources': sources, 'summary': summary, 'ids': ids, 'provider': provider, 'provider_name': PROVIDER_NAMES[provider],
             'fallback_from': [f['text'] for f in failures]}
+
+
+def _clean_q(q):
+    return ' '.join(str(q or '').split())[:200] if isinstance(q, str) else ''
 
 
 def _clean_url_safe(url):

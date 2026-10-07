@@ -65,6 +65,9 @@ LABELS = {
     'team_signoff_sent_back': ('teams', 'Team job sent back at sign-off'), 'team_job_done': ('teams', 'Team job finished'),
     'team_job_stopped': ('teams', 'Team job stopped'), 'team_rates_imported': ('teams', 'Rate library rates added'),
     'team_rates_removed': ('teams', 'Rate library rates removed'), 'temple_team_chat': ('temple', 'Discussed a team member with Temple'),
+    'research_guidance_saved': ('organisations', 'Research guidance saved'), 'research_guidance_proposed': ('temple', 'Temple suggested research guidance'),
+    'research_guidance_approved': ('organisations', 'Temple\'s research guidance approved'), 'research_guidance_rejected': ('organisations', 'Temple\'s research guidance rejected'),
+    'temple_search_chat': ('temple', 'Discussed a research run or scan with Temple'),
     'team_suggestion_approved': ('teams', 'Temple\'s suggested instructions approved'), 'team_suggestion_rejected': ('teams', 'Temple\'s suggested instructions rejected'),
 }
 RULE_NAMES = {'secret_detection': 'Secret detection', 'protective_marking': 'Protective marking guard', 'pii': 'Personal identifiers',
