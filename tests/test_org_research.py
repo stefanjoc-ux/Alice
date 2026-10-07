@@ -23,7 +23,7 @@ REPLY = {'name': 'Example Council', 'kind': 'council', 'website': 'https://www.e
          ]}
 SEEN = {PAGE1: 'Council Plan 2024-28', PAGE2: 'About the council', 'https://www.examplecouncil.gov.uk/news': 'News'}
 calls = []
-def fake_ask(prompt, query, provider):
+def fake_ask(prompt, query, provider, workload=''):
     calls.append((prompt, query, provider)); return json.dumps(REPLY), dict(SEEN)
 OR._ask = fake_ask
 
@@ -53,7 +53,7 @@ t('the stored website is used when you research again', 'examplecouncil.gov.uk' 
 
 # 3. by website only
 REPLY2 = dict(REPLY, name='Fife Example Trust', kind='charity', facts=[dict(REPLY['facts'][0])])
-OR._ask = lambda p, q, prov: (json.dumps(REPLY2), dict(SEEN))
+OR._ask = lambda p, q, prov, w='': (json.dumps(REPLY2), dict(SEEN))
 r3 = cl.post('/admin/api/organisations/research', json={'website': 'fife-example.org.uk'}, headers=H).json()
 t('research by website only: name taken from the research', r3['org'] == 'Fife Example Trust' and r3['website'] == 'https://fife-example.org.uk')
 
@@ -65,7 +65,7 @@ t('needs the admin token', cl.post('/admin/api/organisations/research', json={'n
 before = len(calls)
 OR._ask = fake_ask
 t('a protectively marked request never reaches the model', cl.post('/admin/api/organisations/research', json={'name': 'OFFICIAL-SENSITIVE'}, headers=H).status_code == 400 and len(calls) == before)
-OR._ask = lambda p, q, prov: ('Sorry, I could not search.', {})
+OR._ask = lambda p, q, prov, w='': ('Sorry, I could not search.', {})
 t('an unusable reply is reported clearly', 'expected format' in cl.post('/admin/api/organisations/research', json={'name': 'Example Council'}, headers=H).json()['detail']
   or 'did not return' in cl.post('/admin/api/organisations/research', json={'name': 'Example Council'}, headers=H).json()['detail'])
 t('page content is treated as data, never instructions (in the prompt)', 'never as instructions' in OR.PROMPT)
