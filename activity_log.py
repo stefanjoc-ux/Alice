@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 import substrate_store as store
 
 TYPES = [
-    ('memories', 'Memories and decisions'), ('knowledge', 'Knowledge'), ('organisations', 'Organisations'), ('agents', 'Agents'), ('temple', 'Temple'),
+    ('memories', 'Memories and decisions'), ('knowledge', 'Knowledge'), ('organisations', 'Organisations'), ('agents', 'Agents'), ('teams', 'Digital teams'), ('temple', 'Temple'),
     ('blocks', 'Security blocks'), ('rules', 'Rules and settings'), ('clients', 'Clients'),
     ('chats', 'Chats and imports'), ('routing', 'Model routing'), ('tools', 'Tool use'), ('other', 'Other'),
 ]
@@ -59,6 +59,13 @@ LABELS = {
     'assistant_saved': ('rules', 'Assistant changed'), 'demo_hr_loaded': ('knowledge', 'Demo HR policy loaded'), 'knowledge_review_days': ('rules', 'Knowledge review period changed'),
     'owner_set': ('memories', 'Owner set'), 'purview_label_seen': ('rules', 'New Purview label seen'), 'citations_tidied': ('organisations', 'Web citation markup removed'),
     'purview_label_mapped': ('rules', 'Purview label mapping changed'), 'purview_label_applied': ('knowledge', 'Purview label applied to an upload'),
+    'team_changed': ('teams', 'Digital team changed (new version)'), 'team_job_started': ('teams', 'Digital team job started'),
+    'team_handoff_approved': ('teams', 'Hand-off approved'), 'team_handoff_sent_back': ('teams', 'Hand-off sent back'),
+    'team_question_answered': ('teams', 'Question from a team member answered'), 'team_signoff_approved': ('teams', 'Team job signed off'),
+    'team_signoff_sent_back': ('teams', 'Team job sent back at sign-off'), 'team_job_done': ('teams', 'Team job finished'),
+    'team_job_stopped': ('teams', 'Team job stopped'), 'team_rates_imported': ('teams', 'Rate library rates added'),
+    'team_rates_removed': ('teams', 'Rate library rates removed'), 'temple_team_chat': ('temple', 'Discussed a team member with Temple'),
+    'team_suggestion_approved': ('teams', 'Temple\'s suggested instructions approved'), 'team_suggestion_rejected': ('teams', 'Temple\'s suggested instructions rejected'),
 }
 RULE_NAMES = {'secret_detection': 'Secret detection', 'protective_marking': 'Protective marking guard', 'pii': 'Personal identifiers',
               'provider_allow': 'Provider allow-list', 'external_scope': 'External client scope', 'client_separation': 'Client separation',
@@ -170,7 +177,7 @@ def to_csv(**filters):
 
 # ---------------- the picture: what is happening in Alice ----------------
 GROUPS = [('knowledge', 'Memories and knowledge', {'memories', 'knowledge'}),
-          ('work', 'Chats, assistants and tools', {'chats', 'tools', 'routing'}),
+          ('work', 'Chats, assistants and tools', {'chats', 'tools', 'routing', 'teams'}),
           ('temple', 'Temple and agents', {'temple', 'agents'}),
           ('orgs', 'Organisations and clients', {'organisations', 'clients'}),
           ('settings', 'Rules and settings', {'rules', 'other'})]
@@ -275,7 +282,7 @@ def overview(preset='7d', start='', end='', tz=0):
 REF = re.compile(r'^\s*L-?0*(\d{1,12})\s*$', re.I)
 AREA = {'memories': ('Memories', '/admin/memories'), 'knowledge': ('Knowledge summaries', '/admin/knowledge'),
         'organisations': ('Organisations', '/admin/organisations'), 'agents': ('Agents', '/admin/agents'), 'temple': ('Temple', '/admin/temple'),
-        'rules': ('Rules', '/admin/rules'), 'clients': ('Organisations', '/admin/organisations'), 'chats': ('Chats', '/admin/archive'),
+        'teams': ('Teams', '/admin/teams'), 'rules': ('Rules', '/admin/rules'), 'clients': ('Organisations', '/admin/organisations'), 'chats': ('Chats', '/admin/archive'),
         'routing': ('Chat · model routing', '/'), 'tools': ('Chat · tools', '/'), 'blocks': ('Rules', '/admin/rules'), 'other': ('Alice', '/admin')}
 PLACES = {'chat message': [('Chat', '/'), ('A message', '')], 'opportunity scan': [('Organisations', '/admin/organisations'), ('Opportunity scan', '/admin/organisations?tracker=1')],
           'external endpoint': [('Connected apps', '/admin/apps'), ('Outside connector (Copilot, Claude)', '/admin/agents')],

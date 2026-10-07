@@ -1,0 +1,11 @@
+Code,Description,Unit,Rate,Region,As of,Source
+F-01,Concrete strip foundation 600 x 900 mm including excavation,m,165,UK,2025-06,FICTIONAL demo rate library
+F-02,Ground bearing slab 150 mm on hardcore with insulation and DPM,m2,95,UK,2025-06,FICTIONAL demo rate library
+F-03,Timber frame external wall 140 mm studs insulated,m2,120,UK,2025-06,FICTIONAL demo rate library
+F-04,Blockwork outer leaf 100 mm with through-coloured render,m2,110,UK,2025-06,FICTIONAL demo rate library
+F-05,Aluminium clad timber double glazed window 1.2 x 1.2 m,nr,950,UK,2025-06,FICTIONAL demo rate library
+F-06,Concrete interlocking roof tiles on battens and membrane,m2,48,UK,2025-06,FICTIONAL demo rate library
+F-07,Sprung timber sports floor,m2,85,UK,2025-06,FICTIONAL demo rate library
+F-08,Carpet tiles,m2,32,UK,2025-06,FICTIONAL demo rate library
+F-09,Safety vinyl flooring,m2,45,UK,2025-06,FICTIONAL demo rate library
+F-10,Internal timber stud partition plasterboard both sides,m2,68,UK,2025-06,FICTIONAL demo rate library

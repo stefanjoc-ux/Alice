@@ -1144,7 +1144,7 @@ if(PAGE==='actions'){
  const ACCEPT={memory:'Propose memory',decision:'Propose decision',knowledge:'Save note',guidance:'Add to guidance',rule_request:'Log request'};
  function btn(label,fn,secondary){const b=el('button',label,secondary?'secondary mini-act':'mini-act');b.type='button';b.onclick=()=>run(async()=>{b.disabled=true;const inCard=!!b.closest('#ic-drawer');try{await fn();if(inCard)closeCard();await load()}finally{b.disabled=false}});return b}
  // The information card for an item waiting here: full content, why it waits, Temple's review, related items, and Ask Temple.
- const CARD_KEY={proposal:'r-',decision:'r-',draft:'k-',orgfact:'o-',taxonomy:'t-'};
+ const CARD_KEY={proposal:'r-',decision:'r-',draft:'k-',orgfact:'o-',taxonomy:'t-',team_handoff:'h-',team_question:'h-',team_signoff:'h-'};
  function openItem(list,ix){const i=list[ix];openCard('/admin/api/cards/review/'+CARD_KEY[i.type]+i.id,{position:(ix+1)+' of '+list.length,
    prev:ix>0?()=>openItem(list,ix-1):null,next:ix<list.length-1?()=>openItem(list,ix+1):null,footer:()=>actionsFor(i)})}
  function actionsFor(i){const box=el('div','','act-buttons');
@@ -1165,6 +1165,11 @@ if(PAGE==='actions'){
    box.append(btn(i.replaces?'Approve only':'Approve',async()=>{await api('/admin/api/records/'+i.id+'/review','POST',{decision:'approved'});$('notice').textContent='Decision approved: '+(i.ref?i.ref+' ':'')+i.title},!!i.replaces),
     btn('Approve with a note',async()=>{const n=note('Your note (kept with the approval):');if(n===null)return;await api('/admin/api/records/'+i.id+'/review','POST',{decision:'approved',note:n});$('notice').textContent='Decision approved with your note.'},true),
     btn('Reject',async()=>{const n=note('Why are you rejecting it? (optional)');if(n===null)return;await api('/admin/api/records/'+i.id+'/review','POST',{decision:'rejected',note:n});$('notice').textContent='Decision rejected: '+i.title},true))}
+  else if(i.type==='team_handoff'||i.type==='team_signoff'){const step=(a,n)=>api('/admin/api/teams/steps/'+i.id,'POST',{action:a,note:n||''});
+   box.append(btn(i.type==='team_signoff'?'Approve and finish':'Approve',async()=>{await step('approve');$('notice').textContent=i.type==='team_signoff'?'Signed off: '+i.title:'Approved: the next member starts now.'}),
+    btn('Send back',async()=>{const n=prompt('What needs to change? The member redoes the work with your note.');if(!n||!n.trim())return;await step('send_back',n);$('notice').textContent='Sent back with your note.'},true))}
+  else if(i.type==='team_question'){box.append(btn('Answer',async()=>{const n=prompt(i.detail+'\n\nYour answer:');if(!n||!n.trim())return;await api('/admin/api/teams/steps/'+i.id,'POST',{action:'answer',note:n});$('notice').textContent='Answer sent; the team carries on.'}))}
+  else if(i.type==='team_suggestion'){box.append(btn('Approve',async()=>{await api('/admin/api/teams/suggestions/'+i.id,'POST',{action:'approve'});$('notice').textContent='Applied as a new team version.'}),btn('Reject',async()=>{await api('/admin/api/teams/suggestions/'+i.id,'POST',{action:'reject'})},true));const e=document.createElement('a');e.href=i.href;e.textContent='Compare first ↗';e.className='small';box.append(e)}
   else if(i.type==='auto'){box.append(btn('Undo',async()=>{if(!confirm('Take “'+i.title+'” back out? It is retired with its history kept.'))return;await api('/admin/api/auto-approve/undo','POST',{item_type:i.item_type,id:i.id});$('notice').textContent='Taken back out: '+i.title},true))}
   else if(i.href){const a=document.createElement('a');a.href=i.href;a.textContent='Open ↗';a.className='small';box.append(a)}
   return box}
@@ -2618,9 +2623,14 @@ if(PAGE==='rules'){
 }
 """
 
+import teams_ui                # Digital teams: the Teams page lives in its own module
+PAGES['teams'] = teams_ui.TITLE
+SECTIONS['teams'] = teams_ui.SECTION
+SCRIPT += teams_ui.SCRIPT
+
 PERSONAL_PAGES = {'health', 'trading', 'mileage'}      # Stefan's own apps: never on the demo Alice
 NAV_GROUPS = [('', ['home', 'actions']),
-              ('Workspace', ['temple', 'assistants', 'apps', 'organisations']),
+              ('Workspace', ['temple', 'assistants', 'teams', 'apps', 'organisations']),
               ('Knowledge', ['memories', 'knowledge', 'documents', 'archive']),
               ('Admin', ['agents', 'rules', 'rule-packs', 'activity', 'usage', 'speed', 'signins'])]
 NAV_FOLDS = {'Admin'}            # groups that fold away (remembered per browser; open when you are on one of their pages)
@@ -2631,6 +2641,7 @@ NAV_ICONS = {
  'actions': _I('<path d="M4 13l2.5-8h11L20 13"/><path d="M4 13v6h16v-6"/><path d="M4 13h4.5l1.5 2.5h4l1.5-2.5H20"/>'),
  'temple': _I('<path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8z"/><path d="M18.5 15.5l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8z"/>'),
  'assistants': _I('<rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 7V4"/><circle cx="12" cy="3.5" r=".6" fill="currentColor"/><path d="M9 12.5v1M15 12.5v1"/><path d="M9.5 16h5"/>'),
+ 'teams': _I(teams_ui.ICON),
  'apps': _I('<rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/>'),
  'organisations': _I('<path d="M4 20V6l7-3v17"/><path d="M11 9h9v11"/><path d="M3 20h18"/><path d="M7 8h1M7 11h1M7 14h1M15 12h1M15 15h1"/>'),
  'memories': _I('<path d="M12 5a3 3 0 0 0-5.6 1.4A3 3 0 0 0 4 9.5a3 3 0 0 0 .8 4.6A3.2 3.2 0 0 0 9 18.5c1.2 0 2.3-.6 3-1.5V5z"/><path d="M12 5a3 3 0 0 1 5.6 1.4A3 3 0 0 1 20 9.5a3 3 0 0 1-.8 4.6 3.2 3.2 0 0 1-4.2 4.4c-1.2 0-2.3-.6-3-1.5"/>'),
