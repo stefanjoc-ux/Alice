@@ -170,19 +170,20 @@ def save_and_summarise(aid, token, folder, title='', tag='general', client='', c
 # ---------------- what the writer gets ----------------
 def context(paths, brief, client, providers):
     """REFERENCE DOCUMENTS block for the writer, the names used and notes on anything left out."""
-    import assistants, doc_library, knowledge
+    import assistants, clients, doc_library, knowledge
     fams = list(dict.fromkeys(assistants.family(p) for p in providers))
     pts, parts, used, skipped, size = _pointing(), [], [], [], 0
+    keep, rule_id = clients.item_filter(client, client_facing=True)       # the rule 'Client-facing documents…' decides
     for rel in list(dict.fromkeys(paths or []))[:10]:
         p = doc_library.resolve(rel)
         if not p: skipped.append(f'{rel}: not found in the document sources'); continue
         items = pts.get(str(p), [])
         tags = {i['client'] for i in items if i['client']}
-        if tags and client not in tags and not any(not i['client'] for i in items):
-            skipped.append(f'{p.name}: tagged to another client'); continue
+        if tags and not any(keep(i['client'] or '') for i in items):
+            skipped.append(f'{p.name}: tagged to another client'); clients.log_withheld(rule_id, f'Proposal reference {p.name}', 1); continue
         summ = ''
         for i in items:
-            if i['status'] == 'active' and (not i['client'] or i['client'] == client) and i['label'] != 'local' \
+            if i['status'] == 'active' and keep(i['client'] or '') and i['label'] != 'local' \
                     and not any(knowledge.model_block(i['id'], f) for f in fams):
                 with store.db() as c:
                     t = c.execute('SELECT text FROM files WHERE id=?', (i['id'],)).fetchone()

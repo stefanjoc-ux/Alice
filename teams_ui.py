@@ -177,6 +177,7 @@ if(PAGE==='teams'){
  // ---------- job types: stages and hand-offs ----------
  function drawTypes(){const t=T.d.team;const box=$('tm-types');box.replaceChildren();const mopts=t.members.map(m=>[m.id,m.role]);
   for(const jt of t.job_types){const c=el('div','','tm-mem');c.append(el('h3',jt.name));const name=input(jt.name,80),desc=area(jt.description,600);desc.rows=2;c.append(field('Name',name),field('Description',desc));
+   const cf=document.createElement('input');cf.type='checkbox';cf.checked=jt.client_facing!==undefined?!!jt.client_facing:jt.finish==='cost_estimate';const cfl=el('label','','r-check');cfl.append(cf,document.createTextNode(' Client-facing output: uses only General material and the job\u2019s own client (rule “Client-facing documents use only that client\u2019s material” on the Rules page). Unticked, the Client separation rule applies.'));c.append(cfl);
    const flow=el('p','','tm-flow');c.append(flow);const list=el('div','');c.append(list);let rows=jt.stages.map(s=>({...s}));
    const redraw=()=>{flow.textContent='Flow: '+rows.map(s=>(t.members.find(m=>m.id===s.member)||{role:'?'}).role).join(' → ')+' → you (sign-off)';list.replaceChildren(...rows.map((s,i)=>{const w=el('div','','tm-stage');
     const ti=input(s.title,80),mem=select(mopts,s.member),task=area(s.task,2000),hands=area(s.hands,600),chk=area(s.checks,1000);task.rows=2;hands.rows=2;chk.rows=2;
@@ -187,7 +188,7 @@ if(PAGE==='teams'){
     w.append(top,field('Task',task),field('What they hand on',hands),field(i?'What they check before accepting the work handed to them':'What they check (first stage: nothing is handed to them)',chk));
     if(s.handler&&s.handler!=='generic')w.append(el('span','Built-in step: '+s.handler.replace('qs_','')+' (its source and arithmetic checks run in code)','small muted'));return w}))};
    redraw();const r=el('div','','act-buttons');r.append(b('Add a stage',()=>{rows.push({key:'',title:'New stage',member:mopts[0]?mopts[0][0]:'',task:'',hands:'',checks:'',handler:'generic'});redraw()},true),
-    b('Save stages',async()=>{await api('/admin/api/teams/'+encodeURIComponent(t.id)+'/job-types/'+encodeURIComponent(jt.id),'PUT',{name:name.value,description:desc.value,stages:rows.map(s=>({key:s.key||'',title:s.title,member:s.member,task:s.task||'',hands:s.hands||'',checks:s.checks||''}))});$('notice').textContent='Saved as a new team version. Jobs already running keep the version they started on.';await load()}));
+    b('Save stages',async()=>{await api('/admin/api/teams/'+encodeURIComponent(t.id)+'/job-types/'+encodeURIComponent(jt.id),'PUT',{name:name.value,description:desc.value,client_facing:cf.checked,stages:rows.map(s=>({key:s.key||'',title:s.title,member:s.member,task:s.task||'',hands:s.hands||'',checks:s.checks||''}))});$('notice').textContent='Saved as a new team version. Jobs already running keep the version they started on.';await load()}));
    c.append(r);box.append(c)}
   const add=el('div','','act-buttons');add.append(b('Add a job type',async()=>{const n=prompt('Name of the job type, e.g. Feasibility estimate');if(!n||!n.trim())return;await api('/admin/api/teams/'+encodeURIComponent(t.id)+'/job-types','POST',{name:n});$('notice').textContent='Job type added with one stage. Add the stages and hand-offs, then Save stages.';await load()},true));box.append(add)}
  // ---------- rate library ----------
