@@ -600,9 +600,11 @@ def _caller_label(who):
 @_marked
 def list_proposals(query: Annotated[str, Field(max_length=200)] = '',
                    limit: Annotated[int, Field(ge=1, le=50)] = 20) -> dict:
-    """The proposals Parker (Alice's proposal writer) is working on: written ones and forms still in progress. Each has a
-    reference (P-1A2B3C), title, organisation, status, template, Argus's QA verdict and score, the sell total and how many
-    model suggestions are waiting. query: words from the title, organisation, reference or brief. Use get_proposal for one in full."""
+    """The proposals Parker (Alice's proposal writer) is working on: written ones and forms still in progress, one entry per bid
+    (a bid is a chain of versions of one proposal). Each entry is the bid's current version: reference (P-1A2B3C), title,
+    organisation, status, template, Argus's QA verdict and score, the sell total, how many model suggestions are waiting, and
+    earlier_versions (the superseded versions' references, read-only). query: words from the title, organisation, reference (of
+    any version) or brief. Use get_proposal for one in full."""
     import proposal_share
     who = _who()
     agent, run = _app('list_proposals')
@@ -610,6 +612,8 @@ def list_proposals(query: Annotated[str, Field(max_length=200)] = '',
     for r in proposal_share.listing(query, 200):
         if _client_hidden(r['organisation'], who) or not _passes(r['title'] + ' ' + r['organisation'], 'proposal ' + r['proposal']):
             hidden += 1; continue
+        r['earlier_versions'] = [e for e in r['earlier_versions'] if not _client_hidden(e['organisation'], who)
+                                 and _passes(e['title'] + ' ' + e['organisation'], 'proposal ' + e['proposal'])]
         rows.append(r)
         if len(rows) >= limit: break
     agents.app_note(run, 'read', 'proposal', [r['proposal'] for r in rows], f'{len(rows)} listed')
@@ -623,8 +627,9 @@ def get_proposal(proposal: Annotated[str, Field(min_length=1, max_length=200)]) 
     """One of Parker's proposals in full: brief, notes, structure, template, sections (with guidance), reference documents, the
     draft as written (each section's text), gaps, the rate card (roles ticked, days, cost rate, sell rate, margin), the pricing
     (each role's quantity, sell, cost and margin, totals), Argus's latest QA (verdict, score, brief requirements met, what to fix)
-    and any model suggestions waiting. proposal: its reference (P-1A2B3C), or words from its title.
-    To change it, use propose_proposal_changes: the user applies changes on the Parker page."""
+    and any model suggestions waiting, and its bid (every version's reference; which is current). An earlier version says it was
+    superseded and names the current version. proposal: its reference (P-1A2B3C), or words from its title (the current version
+    when versions share a title). To change it, use propose_proposal_changes: the user applies changes on the Parker page."""
     import proposal_share
     who = _who()
     agent, run = _app('get_proposal')
@@ -653,7 +658,8 @@ def propose_proposal_changes(proposal: Annotated[str, Field(min_length=1, max_le
       roles ([{"role": a role already on the rate card, "use": true/false, "days": number, "sell": sell rate in GBP}]);
       draft ([{"title": an existing section of the draft that is not standard text, "body": the full new text in simple markdown}]).
     Anything not on offer (unknown roles, templates or sections) is left out and listed in left_out. Pass on the message returned,
-    with its link: the changes are not in the proposal until the user Applies them."""
+    with its link: the changes are not in the proposal until the user Applies them. An earlier (superseded) version is refused:
+    the reply names the current version to suggest changes to."""
     import proposal_share
     who = _who()
     agent, run = _app('propose_proposal_changes')

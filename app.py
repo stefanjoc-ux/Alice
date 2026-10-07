@@ -2128,6 +2128,7 @@ class ProposalIn(BaseModel):
     structure: str = Field(default='',max_length=6000)
     template: str|None = Field(default=None,max_length=300)
     work_id: str = Field(default='',max_length=40)
+    started_from: str = Field(default='',max_length=40)
 
 class ProposalWork(BaseModel):
     id: str = Field(default='',max_length=40)
@@ -2220,7 +2221,7 @@ def proposal_setup(aid: str):
 def proposal_start(aid: str, x: ProposalIn, request: Request):
     import proposals
     _same_origin(request)
-    try: return {'id':proposals.start(aid,x.title,x.organisation,x.brief,x.notes,x.sections,x.rate_card,x.use_memory,x.writer_model,x.qa_model,x.references,x.structure,x.template,x.work_id)}
+    try: return {'id':proposals.start(aid,x.title,x.organisation,x.brief,x.notes,x.sections,x.rate_card,x.use_memory,x.writer_model,x.qa_model,x.references,x.structure,x.template,x.work_id,x.started_from)}
     except LookupError: raise HTTPException(404,'No such proposal writer.') from None
     except Exception as e:
         code,detail=_assistant_error(e)
@@ -2438,8 +2439,26 @@ def proposal_work_discard(aid: str, pid: str, request: Request):
 
 @app.get('/assistant/{aid}/proposals')
 def proposal_list(aid: str):
-    import proposals
-    return {'proposals':[proposals.summary_row(r) for r in proposals.listing(aid)]}
+    import proposals, proposal_bids
+    rows=[proposals.summary_row(r) for r in proposals.listing(aid)]
+    return {'proposals':rows,'bids':proposal_bids.grouped(rows)}
+
+class ProposalReplaces(BaseModel):
+    replaces: list[Annotated[str, Field(max_length=40)]] = Field(min_length=1,max_length=20)
+
+@app.post('/assistant/{aid}/proposals/{pid}/replaces')
+def proposal_replaces(aid: str, pid: str, x: ProposalReplaces, request: Request):
+    """Make this proposal replace others: they become its earlier versions (Stefan picks them; never linked by title)."""
+    import proposal_bids
+    _same_origin(request); _proposal_writer(aid)
+    return _proposal_call(lambda: proposal_bids.link(aid,pid,x.replaces))
+
+@app.post('/assistant/{aid}/proposals/{pid}/restore')
+def proposal_restore(aid: str, pid: str, request: Request):
+    """Undo it: a superseded version becomes a separate proposal again."""
+    import proposal_bids
+    _same_origin(request); _proposal_writer(aid)
+    return _proposal_call(lambda: proposal_bids.restore(aid,pid))
 
 @app.get('/assistant/{aid}/proposals/{pid}')
 def proposal_get(aid: str, pid: str):
@@ -2447,6 +2466,8 @@ def proposal_get(aid: str, pid: str):
     try: p=proposals.get(pid)
     except LookupError: raise HTTPException(404,'No such proposal.') from None
     if p['assistant_id']!=aid: raise HTTPException(404,'No such proposal.')
+    import proposal_bids
+    p['bid']=proposal_bids.info(pid)
     return p
 
 @app.get('/admin/api/proposal-templates')
