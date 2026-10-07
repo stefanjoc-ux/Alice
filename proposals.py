@@ -57,7 +57,7 @@ def _num(v, name, lo=0.0, hi=1e6):
     return round(x, 2)
 
 
-# ---------------- settings: template, format and flow, rate card ----------------
+# ---------------- settings: template, rate card (settings.sections, the old Format and flow, is kept but no longer used) ----------------
 def clean_sections(items):
     out = []
     for s in (items or [])[:30]:
@@ -296,20 +296,24 @@ def _template(path):
     return raw, proposal_docx.Template(raw)
 
 
+# Alice's own layout: the sections of a proposal with no template (or a template without Heading 1 sections). The pricing table
+# is added by the document builder under its own Commercials heading, so it is not a section here.
+OWN_LAYOUT = ('Executive summary', 'Our understanding of your needs', 'Our approach', 'Delivery plan and timescales',
+              'Team and governance', 'Risks and how we manage them', 'Why us')
+
+
+def own_layout():
+    return [{'title': t, 'guidance': '', 'keep': False, 'include': '', 'source': 'alice'} for t in OWN_LAYOUT]
+
+
 def outline(a, template=None):
-    """The starting section list for a new proposal: the template's sections, then your format and flow."""
+    """The sections of a new proposal: the template's Heading 1s, or Alice's own layout when there is no template (or it has no
+    Heading 1s). Since 7 Oct 2026 (Stefan) there is no Format and flow: the assistant's stored settings.sections are no longer added;
+    anything to emphasise goes in Notes for the writer."""
     st = a['settings']
     _, t = _template(st.get('template') if template is None else template)
     secs = [dict(s, source='template') for s in (t.outline() if t else [])]
-    by = {s['title'].casefold(): s for s in secs}
-    for d in st.get('sections') or []:
-        hit = by.get(d['title'].casefold())
-        if hit:
-            if d['guidance']: hit['guidance'] = (hit['guidance'] + '\n' if hit['guidance'] else '') + d['guidance']
-            hit['keep'] = hit['keep'] or d['keep']
-        else:
-            secs.append(dict(d, source='format and flow'))
-    return secs
+    return secs or own_layout()
 
 
 def setup(aid):
@@ -318,7 +322,7 @@ def setup(aid):
     a = assistants.get(aid)
     if a['kind'] != 'proposal': raise LookupError('Not a proposal writer.')
     try: secs, err = outline(a), ''
-    except ValueError as e: secs, err = [dict(s, source='format and flow') for s in a['settings'].get('sections') or []], str(e)
+    except ValueError as e: secs, err = own_layout(), str(e)
     orgs = [{'name': o['name'], 'client': o['is_client']} for o in organisations.listing()['organisations']]
     return {'assistant': {k: a[k] for k in ('id', 'name', 'description', 'greeting', 'status')}, 'sections': secs,
             'rate_card': a['settings'].get('rate_card') or [], 'template': a['settings'].get('template') or '', 'template_error': err,
@@ -345,7 +349,7 @@ def check_template(path):
 
 
 def outline_for(aid, template):
-    """The sections a template gives, merged with the assistant's format and flow (for the page when you pick a template)."""
+    """The sections a template gives (Alice's own layout without one), for the page when you pick a template."""
     import assistants
     a = assistants.get(aid)
     if a['kind'] != 'proposal': raise LookupError('Not a proposal writer.')
@@ -815,9 +819,11 @@ def _save(pid, **f):
 
 
 def start(aid, title, organisation, brief, notes='', sections=None, rate_card=None, use_memory=True, writer_model='', qa_model='', references=None,
-          structure='', template=None, work_id='', started_from=''):
+          template=None, work_id='', started_from=''):
     """Check the request and start the background job. Returns the proposal id. started_from: the written proposal this is a new
-    version of (it then joins that bid and supersedes its current version)."""
+    version of (it then joins that bid and supersedes its current version). The sections come from the template (Alice's own layout
+    without one); the Parker page no longer sends any (Format and flow and the pasted structure were removed, 7 Oct 2026), and
+    `sections` stays only for older API callers."""
     import assistants, organisations, rules_engine, rule_packs, proposal_bids
     a = assistants.get(aid)
     if a['kind'] != 'proposal': raise ValueError('This assistant does not write proposals.')
@@ -833,8 +839,7 @@ def start(aid, title, organisation, brief, notes='', sections=None, rate_card=No
         except ValueError: org = _clean(organisation, 80)                 # not on the Organisations page: use the name as typed
     client = _client_for(org)
     rules_engine.check_spend('chat')
-    structure = (structure or '').strip()[:6000]
-    for text in (title, brief, notes, structure):
+    for text in (title, brief, notes):
         if text: rules_engine.check_outbound(text, 'Proposal writer', packs=False)
     writer = writer_model or a['provider']
     qa = qa_model or a['settings'].get('qa_provider') or a['provider']
@@ -842,14 +847,13 @@ def start(aid, title, organisation, brief, notes='', sections=None, rate_card=No
         if m not in assistants.PROVIDERS: raise ValueError('Choose a model from the list.')
     if a['packs']:
         r = rule_packs.live_check(brief, assistants.family(writer), a['name'], packs=a['packs']); brief = r['text']
-    secs = clean_sections(sections) if sections is not None else outline(a)
-    if not secs: raise ValueError('List at least one section (Format and flow), or choose a template on the Assistants page.')
     card = used(clean_rate_card(rate_card) if rate_card is not None else a['settings'].get('rate_card') or [])
     tpl = a['settings'].get('template') or '' if template is None else check_template(template)
     if tpl: _template(tpl)                                                          # fail now, not in the background
+    secs = clean_sections(sections) if sections else outline(a, tpl)
     pid = uuid.uuid4().hex
     inputs = {'sections': secs, 'rate_card': card, 'use_memory': bool(use_memory), 'template': tpl,
-              'writer': writer, 'qa': qa, 'references': [str(x)[:300] for x in (references or [])][:10], 'structure': structure}
+              'writer': writer, 'qa': qa, 'references': [str(x)[:300] for x in (references or [])][:10]}
     with store.db() as c:
         w = c.execute("SELECT id FROM proposals WHERE id=? AND assistant_id=? AND status='form'", (str(work_id or '')[:40], aid)).fetchone() if work_id else None
         if w and c.execute('SELECT superseded_by FROM proposals WHERE id=?', (w['id'],)).fetchone()['superseded_by']:
@@ -1465,12 +1469,9 @@ def save_form(aid, form, work_id=''):
     f = form if isinstance(form, dict) else {}
     title, org = _clean(f.get('title'), 150), _clean(f.get('organisation'), 80)
     brief, notes = str(f.get('brief') or '').strip()[:MAX_BRIEF], str(f.get('notes') or '').strip()[:4000]
-    structure = str(f.get('structure') or '').strip()[:6000]
-    try: secs = clean_sections(f.get('sections'))
-    except ValueError: secs = [s_ for s_ in (f.get('sections') or []) if isinstance(s_, dict)][:40]      # mid-edit duplicates: keep as typed
     try: card = clean_rate_card(f.get('rate_card'))
     except ValueError: card = None                                                                        # a half-typed number: keep the last good card
-    text = '\n'.join([title, org, brief, notes, structure] + [str(x.get('include') or '') + str(x.get('guidance') or '') for x in secs])
+    text = '\n'.join([title, org, brief, notes])
     if text.strip(): rules_engine.check_file(text, 'Proposal form')
     import proposal_bids
     sf, replaces = _clean(f.get('started_from'), 40), ''
@@ -1485,10 +1486,12 @@ def save_form(aid, form, work_id=''):
             old = json.loads(row['inputs'] or '{}')
         else:
             row, old = None, {}
-        inputs = {'form': True, 'sections': secs, 'rate_card': card if card is not None else old.get('rate_card', []),
+        # sections come from the template now: the page sends none; an older form's own sections and structure are kept as stored
+        inputs = {'form': True, 'sections': old.get('sections') or [], 'rate_card': card if card is not None else old.get('rate_card', []),
                   'use_memory': f.get('use_memory') is not False, 'template': _clean(f.get('template'), 300),
                   'writer': _clean(f.get('writer'), 20), 'qa': _clean(f.get('qa'), 20),
-                  'references': [str(x)[:300] for x in (f.get('references') or [])][:10], 'structure': structure}
+                  'references': [str(x)[:300] for x in (f.get('references') or [])][:10]}
+        if old.get('structure'): inputs['structure'] = old['structure']
         now = store.now()
         via = _clean(f.get('via'), 60)
         if row:

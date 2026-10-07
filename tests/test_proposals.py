@@ -37,8 +37,8 @@ body = {'name': 'Proposal writer', 'provider': 'claude_sonnet', 'kind': 'proposa
         'settings': {'template': 'Proposal Templates/Proposal-template.docx', 'rate_card': card, 'min_margin': 50,
                      'sections': [{'title': 'Executive summary', 'guidance': 'Mention value for money.'}, {'title': 'Risks', 'guidance': 'Top five risks with mitigations.'}]}}
 r = cl.put('/admin/api/assistants/proposal-writer', headers=H, json=body)
-t('format and flow, rate card and template are saved', r.status_code == 200 and r.json()['settings']['rate_card'][0]['sell'] == 1200
-  and r.json()['settings']['template'].endswith('Proposal-template.docx'))
+t('rate card and template are saved (and the old Format and flow sections stay stored)', r.status_code == 200 and r.json()['settings']['rate_card'][0]['sell'] == 1200
+  and r.json()['settings']['template'].endswith('Proposal-template.docx') and [x['title'] for x in r.json()['settings']['sections']] == ['Executive summary', 'Risks'])
 for bad, why in [({'rate_card': [{'role': 'X', 'cost': 'abc', 'sell': 1}]}, 'number'), ({'template': '../../etc/passwd'}, 'template'),
                  ({'sections': [{'title': 'A'}, {'title': 'a'}]}, 'twice'), ({'rate_card': [{'role': 'X', 'cost': -1, 'sell': 1}]}, 'between')]:
     rr = cl.put('/admin/api/assistants/proposal-writer', headers=H, json=dict(body, settings=dict(body['settings'], **bad)))
@@ -48,8 +48,8 @@ t('templates are listed from the document sources', any(x['name'] == 'Proposal-t
                                                       for x in cl.get('/admin/api/proposal-templates', headers=H).json()['templates']))
 st = cl.get('/assistant/proposal-writer/setup').json()
 secs = [x['title'] for x in st['sections']]
-t('the page starts from the template sections plus your format and flow', secs[0] == 'Executive summary' and secs[-1] == 'Risks'
-  and 'Mention value for money.' in st['sections'][0]['guidance'] and st['sections'][-1]['source'] == 'format and flow')
+t('the page starts from the template\'s sections only: no Format and flow added', secs == titles and 'Risks' not in secs
+  and 'Mention value for money.' not in st['sections'][0]['guidance'] and all(x['source'] == 'template' for x in st['sections']))
 
 # ---------------- context material ----------------
 O.create('Northshire Council', 'council', client=True, aliases=['NSC'])
@@ -138,7 +138,7 @@ import documents as D
 doc = D.get(p['document_id'])['data']
 text = K.docx_to_text(doc)
 t('the document is the template, filled in', 'HEADER: Northshire Council | Fabric security baseline' in text and 'Prepared for Northshire Council' in text)
-t('every section is there in order, the extra one at the end', text.index('# Executive summary') < text.index('# Proposed approach') < text.index('# Risks'))
+t('every template section is there in order, nothing added after them', text.index('# Executive summary') < text.index('# Proposed approach') and '# Risks' not in text)
 t('standard [keep] text is kept word for word', 'We are an independent technology partner' in text and '[keep]' not in text)
 t('the pricing table sits in the Commercials section, cost never appears', 'Row 4: Total |  |  | £24,750' in text and '£650' not in text and '13,250' not in text and 'All prices exclude VAT.' in text)
 t('no guidance or placeholders are left', '[Two or three' not in text and '{{' not in text)
@@ -198,8 +198,10 @@ lst = cl.get('/assistant/proposal-writer/proposals').json()['proposals']
 t('recent proposals are listed with their QA verdict', lst and any(x['verdict'] == 'client_ready' for x in lst))
 t('another assistant cannot read a proposal', cl.get(f'/assistant/hr-policy/proposals/{p["id"]}').status_code == 404)
 page = cl.get('/assistant/proposal-writer').text
-t('the proposal page has the brief, format and flow and rate card', 'id="brief"' in page and 'Format and flow' in page and 'Rate card' in page)
-t('the Assistants page offers the proposal settings', 'Format and flow' in cl.get('/admin/assistants').text)
+t('the proposal page has the brief, notes and rate card, and no Format and flow', 'id="brief"' in page and 'id="notes"' in page and 'Rate card' in page and 'Format and flow' not in page)
+_as = cl.get('/admin/assistants').text
+t('the Assistants page offers the proposal settings, without default sections', 'Rate card and price book' in _as and 'Format and flow' not in _as
+  and 'PE.sections' not in _as and 'sections:S.sections||[]' in _as)
 
 # no template: Alice's own layout
 cl.put('/admin/api/assistants/proposal-writer', headers=H, json=dict(body, settings=dict(body['settings'], template='')))
@@ -245,15 +247,25 @@ openai.OpenAI = OAI
 AS._call('openai_astra', 'sys', [{'role': 'user', 'content': 'x'}])
 t('GPT-6 Astra is called with reasoning on (it has no "none" setting)', seen_o[-1]['model'] == 'gpt-6-astra' and seen_o[-1]['reasoning']['effort'] == 'medium')
 
-# ---------------- structure, text to include, re-checks and QA of your own document ----------------
+# ---------------- no pasted structure; older custom sections; re-checks and QA of your own document ----------------
 anthropic.Anthropic = Anth
 calls.clear(); MODE['qa'] = [QA2]
-r = start(structure='1. Why now\n- budget pressure\n2. Approach', sections=[{'title': 'Summary', 'include': '- Fixed price\n- Starts in January'}, {'title': 'Pricing'}], rate_card=card)
-p5 = wait(r.json()['id'])
+r = start(structure='1. Why now\n- budget pressure\n2. Approach', rate_card=card)
+pn = wait(r.json()['id'])
 wmsg = [c for c in calls if c['system'].startswith('You are the proposal writer')][0]['messages'][0]['content']
-t('a pasted structure reaches the writer as the author\'s outline', 'STRUCTURE AND POINTS FROM THE AUTHOR\n1. Why now\n- budget pressure' in wmsg)
-t('text to include is given per section', 'Include: - Fixed price' in wmsg and 'Starts in January' in wmsg and p5['inputs']['sections'][0]['include'].startswith('- Fixed'))
-t('a structure with a secret is refused', start(structure='key sk-proj-abcdefghijklmnopqrstuvwxyz0123456789ABCD').status_code == 400)
+t('a new proposal takes the template\'s sections; a structure sent anyway is ignored', pn['status'] == 'done'
+  and [x['title'] for x in pn['inputs']['sections']] == titles and [x['title'] for x in pn['draft']['sections']] == titles
+  and 'STRUCTURE AND POINTS FROM THE AUTHOR' not in wmsg and 'Why now' not in wmsg and 'structure' not in pn['inputs'])
+calls.clear(); MODE['qa'] = [QA2]
+r = start(sections=[{'title': 'Summary', 'include': '- Fixed price\n- Starts in January'}, {'title': 'Pricing'}], rate_card=card)
+p5 = wait(r.json()['id'])
+with s.db() as c_:                      # an older proposal: written with its own sections and a pasted structure (before 7 Oct 2026)
+    c_.execute('UPDATE proposals SET inputs=? WHERE id=?', (json.dumps(dict(p5['inputs'], structure='1. Why now\n- budget pressure')), p5['id']))
+p5 = cl.get(f'/assistant/proposal-writer/proposals/{p5["id"]}').json()
+wmsg = [c for c in calls if c['system'].startswith('You are the proposal writer')][0]['messages'][0]['content']
+t('an older proposal with its own sections still opens with them', [x['title'] for x in p5['draft']['sections']] == ['Summary', 'Pricing']
+  and p5['inputs']['structure'].startswith('1. Why now') and 'Include: - Fixed price' in wmsg)
+t('and its Word document has those sections', all(x in K.docx_to_text(D.get(p5['document_id'])['data']) for x in ('Summary', 'Pricing')))
 
 calls.clear(); MODE['qa'] = [QA2]
 edited = [{'title': x['title'], 'body': ('My edited summary with the January start date and a fixed price for the council. ' * 3) if x['title'] == 'Summary' else x['body']}
@@ -294,7 +306,9 @@ t('a QA-only proposal cannot be "edited and re-checked"', cl.post(f'/assistant/p
 secs = P.document_sections('t.docx', PD.fill(raw, [{'title': 'Executive summary', 'body': 'A ' * 150}, {'title': 'Proposed approach', 'body': 'B ' * 150}], {'title': 'T', 'client': 'C'}))
 t('a document is split at its main headings', [x['title'] for x in secs][-2:] == ['Executive summary', 'Proposed approach'])
 page = cl.get('/assistant/proposal-writer').text
-t('the page offers the structure box, QA-only mode and re-checks', all(x in page for x in ('id="structure"', 'Turn into sections', 'Check one I already have', 'Edit the draft and check again', 'Upload a revised version for QA')))
+t('the page offers QA-only mode and re-checks', all(x in page for x in ('Check one I already have', 'Edit the draft and check again', 'Upload a revised version for QA')))
+t('no Format and flow: no section editor and no structure box', not any(x in page for x in ('Format and flow', 'id="structure"', 'Turn into sections', 'Paste a structure', 'PE.sections', 'id="secs"')))
+t('the draft is shown as one document with editing in place', all(x in page for x in ('function drawDoc', "'doc-sec'", "'doc-ed'", 'Click into any section', 'From the template')))
 
 # pasting a rate card table (the parser runs in the browser; checked with Node when it is installed)
 import shutil, subprocess, proposal_ui
@@ -304,6 +318,38 @@ if node:
     js.write_text('const document={};' + proposal_ui.PE_JS + 'module.exports=PE;', encoding='utf-8')
     out = subprocess.run([node, str(Path(__file__).parent / 'js' / 'rate_paste_test.js'), str(js)], capture_output=True, text=True, timeout=60).stdout
     t('a pasted rate card table is read: headings, order, units, £ and commas, markdown, no headings', out.strip().endswith('7 passed 0 failed'))
+# the draft as one document, edited in place (the page's own functions, run with Node against a small stand-in for the browser)
+SHIM = r"""
+let FOCUS=null;
+class Txt{constructor(t){this.nodeType=3;this.data=String(t)}get textContent(){return this.data}}
+class El{constructor(tag){this.tagName=tag.toUpperCase();this.children=[];this.kids=[];this.attrs={};this.style={};this.dataset={};this.hidden=false;this._c=new Set();this.scrollHeight=40;
+  const me=this;this.classList={add:(...k)=>k.forEach(x=>me._c.add(x)),remove:(...k)=>k.forEach(x=>me._c.delete(x)),contains:k=>me._c.has(k),toggle:(k,on)=>{on=on===undefined?!me._c.has(k):!!on;on?me._c.add(k):me._c.delete(k);return on}}}
+ set className(v){this._c=new Set(String(v).split(/\s+/).filter(Boolean))}get className(){return [...this._c].join(' ')}
+ get textContent(){return this.kids.map(k=>k.textContent).join('')}set textContent(v){this.kids=[new Txt(v)];this.children=[]}
+ append(...n){for(let x of n){if(typeof x==='string')x=new Txt(x);this.kids.push(x);if(x instanceof El){x.parentNode=this;this.children.push(x)}}}
+ prepend(...n){const k=this.kids;this.kids=[];this.children=this.children.filter(()=>false);this.append(...n);for(const x of k)this.append(x)}
+ replaceChildren(...n){this.kids=[];this.children=[];this.append(...n)}
+ setAttribute(k,v){this.attrs[k]=String(v)}getAttribute(k){return this.attrs[k]??null}removeAttribute(k){delete this.attrs[k]}
+ focus(){FOCUS=this}scrollIntoView(){}}
+const document={createElement:t=>new El(t),createTextNode:t=>new Txt(t),querySelectorAll:()=>[],querySelector:()=>({scrollTop:0})};
+"""
+page_js = '\n'.join(__import__('re').findall(r'<script>(.*?)</script>', cl.get('/assistant/proposal-writer').text, __import__('re').S))
+def _between(src, a, b): i = src.index(a); return src[i:src.index(b, i)]
+doc_js = (_between(page_js, '// ---------- the draft as one document', '// ---------- Parker: work on the form')
+          + _between(page_js, 'function draftNow(){', 'function form(){')
+          + _between(page_js, 'function editDraft(p){', '// ---------- proposals on the go'))
+if node:
+    js = Path(tempfile.mkdtemp()) / 'doc.js'
+    js.write_text(SHIM + proposal_ui.PE_JS + """
+const mk=PE.mk;let RO=false,DOC=null,EDS=null,CUR=null,DIRTY=false;const CALLS={api:[],follow:[]};
+const $=id=>({scrollIntoView(){},value:''}),priceDiff=()=>[],updateBar=()=>{},when=t=>t;const api=async(path,method,body)=>{CALLS.api.push([path,method,body]);return {}};
+const follow=id=>CALLS.follow.push(id),show=()=>{},alertBox=m=>console.log('ALERT',m);
+""" + doc_js + """
+module.exports={drawDoc:p=>{CUR=p;return drawDoc(p)},editDraft,calls:()=>CALLS,focused:()=>FOCUS,get:k=>({DOC,EDS,RO})[k],set:o=>{if('DOC' in o)DOC=o.DOC;if('EDS' in o)EDS=o.EDS;if('RO' in o)RO=o.RO}};
+""", encoding='utf-8')
+    res = subprocess.run([node, str(Path(__file__).parent / 'js' / 'draft_doc_test.js'), str(js)], capture_output=True, text=True, timeout=60)
+    out = (res.stdout + res.stderr).strip()
+    t('the draft renders as one document and edits in place save to the right sections (12 browser checks)', out.endswith('12 passed 0 failed') or print(out))
 t('the rate card offers Paste a table', 'Paste a table' in proposal_ui.PE_JS and 'parseRates' in proposal_ui.PE_JS)
 
 # ---------------- choosing the template on each proposal ----------------
@@ -311,14 +357,15 @@ cl.put('/admin/api/assistants/proposal-writer', headers=H, json=dict(body, setti
 st2 = cl.get('/assistant/proposal-writer/setup').json()
 t('the page lists the templates in the document sources', any(x['path'].replace('\\', '/') == 'Proposal Templates/Proposal-template.docx' for x in st2['templates']))
 o = cl.get('/assistant/proposal-writer/outline', params={'template': 'Proposal Templates/Proposal-template.docx'}).json()
-t('picking a template gives its sections, plus your format and flow', o['sections'][0]['title'] == 'Executive summary' and o['sections'][-1]['title'] == 'Risks' and 'client' in o['placeholders'])
-t('no template: just your format and flow', [x['title'] for x in cl.get('/assistant/proposal-writer/outline', params={'template': ''}).json()['sections']] == ['Executive summary', 'Risks'])
+t('picking a template gives its sections only', [x['title'] for x in o['sections']] == titles and 'client' in o['placeholders'])
+t('no template: Alice\'s own layout', [x['title'] for x in cl.get('/assistant/proposal-writer/outline', params={'template': ''}).json()['sections']] == list(P.OWN_LAYOUT))
 t('a path outside the document sources is refused', cl.get('/assistant/proposal-writer/outline', params={'template': '../../secret.docx'}).status_code == 400
   and start(template='../x.docx').status_code == 400)
 calls.clear(); MODE['qa'] = [QA2]
-p9 = wait(start(template='', sections=[{'title': 'Summary'}, {'title': 'Pricing'}], rate_card=card).json()['id'])
-t('a proposal can skip the template: Alice\'s own layout', p9['status'] == 'done' and p9['inputs']['template'] == ''
-  and 'HEADER:' not in K.docx_to_text(D.get(p9['document_id'])['data']))
+p9 = wait(start(template='', rate_card=card).json()['id'])
+t('a proposal can skip the template: Alice\'s own layout and sections', p9['status'] == 'done' and p9['inputs']['template'] == ''
+  and [x['title'] for x in p9['draft']['sections']] == list(P.OWN_LAYOUT)
+  and 'HEADER:' not in K.docx_to_text(D.get(p9['document_id'])['data']) and 'Our approach' in K.docx_to_text(D.get(p9['document_id'])['data']))
 calls.clear(); MODE['qa'] = [QA2]
 p10 = wait(start(sections=[{'title': 'Executive summary'}], rate_card=card).json()['id'])
 t('without a choice, the assistant\'s default template is used', p10['inputs']['template'].endswith('Proposal-template.docx') and 'HEADER:' in K.docx_to_text(D.get(p10['document_id'])['data']))

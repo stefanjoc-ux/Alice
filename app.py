@@ -2119,13 +2119,12 @@ class ProposalIn(BaseModel):
     organisation: str = Field(default='',max_length=80)
     brief: str = Field(min_length=1,max_length=20000)
     notes: str = Field(default='',max_length=4000)
-    sections: list[dict]|None = Field(default=None,max_length=30)
+    sections: list[dict]|None = Field(default=None,max_length=30)    # older callers only: the Parker page takes the template's sections
     rate_card: list[dict]|None = Field(default=None,max_length=300)
     use_memory: bool = True
     writer_model: str = Field(default='',max_length=20)
     qa_model: str = Field(default='',max_length=20)
     references: list[Annotated[str, Field(max_length=300)]] = Field(default_factory=list,max_length=10)
-    structure: str = Field(default='',max_length=6000)
     template: str|None = Field(default=None,max_length=300)
     work_id: str = Field(default='',max_length=40)
     started_from: str = Field(default='',max_length=40)
@@ -2222,7 +2221,7 @@ def proposal_setup(aid: str):
 def proposal_start(aid: str, x: ProposalIn, request: Request):
     import proposals
     _same_origin(request)
-    try: return {'id':proposals.start(aid,x.title,x.organisation,x.brief,x.notes,x.sections,x.rate_card,x.use_memory,x.writer_model,x.qa_model,x.references,x.structure,x.template,x.work_id,x.started_from)}
+    try: return {'id':proposals.start(aid,x.title,x.organisation,x.brief,x.notes,x.sections,x.rate_card,x.use_memory,x.writer_model,x.qa_model,x.references,x.template,x.work_id,x.started_from)}
     except LookupError: raise HTTPException(404,'No such proposal writer.') from None
     except Exception as e:
         code,detail=_assistant_error(e)

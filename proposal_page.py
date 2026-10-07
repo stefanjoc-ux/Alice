@@ -53,7 +53,25 @@ table.t td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}ta
 .internal{border:2px dashed #c7b8dd;background:#faf7fd}.internal h2::after{content:' \\00b7 internal: costs and margins never go in the document; Parker sees them, the writer and Argus do not';font-size:12px;font-weight:400;color:#634394}
 .warnline{color:#7a1f1f;font-weight:600;margin:6px 0 0}
 .issues{display:grid;gap:8px;margin:0;padding:0;list-style:none}.issues li{display:grid;gap:2px;border-left:3px solid #c1cbd3;padding-left:10px}.issues li.high{border-color:#b3261e}.issues li.medium{border-color:#e2a33b}
-.draft h3{margin:16px 0 4px;font-size:15px}.draft .body{white-space:pre-wrap;font-size:14px;line-height:1.55}
+.doc-card{display:grid;gap:12px}.doc-card>h2{margin:0}.doc-card>.hint{margin:-6px 0 0}
+.doc{background:#fff;border:1px solid #d5dee6;border-radius:4px;box-shadow:0 1px 3px rgba(16,42,67,.08),0 14px 30px -20px rgba(16,42,67,.35);padding:52px 64px 60px;max-width:860px;width:100%;margin:0 auto;box-sizing:border-box;font-family:Aptos,Calibri,'Segoe UI',Carlito,Arial,sans-serif;font-size:15.5px;line-height:1.58;color:#1d2328}
+.doc-head{border-bottom:2px solid #0f4761;padding-bottom:12px;margin-bottom:8px}.doc .doc-title{margin:0;font-size:30px;line-height:1.2;font-weight:600;color:#0f4761;letter-spacing:-.005em}
+.doc-meta{margin:6px 0 0;color:#5b6b78;font-size:14px}
+.doc-sec{position:relative;border-radius:6px;margin:0 -12px;padding:2px 12px}.doc .doc-h{margin:26px 0 8px;font-size:21px;line-height:1.3;font-weight:600;color:#0f4761}
+.doc-body p{margin:0 0 10px}.doc-body ul,.doc-body ol{margin:0 0 10px;padding-left:26px}.doc-body li{margin:0 0 4px}.doc .doc-sub{margin:16px 0 6px;font-size:17px;font-weight:600;color:#0f4761}
+.doc table{border-collapse:collapse;width:100%;margin:4px 0 12px;font-size:14.5px}.doc td,.doc th{border:1px solid #b9cbd8;padding:5px 8px;text-align:left;vertical-align:top}.doc th{background:#e3f1f6;font-weight:600}
+.doc td.num,.doc th.num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}.doc tr.tot td{font-weight:700}
+.doc-std{margin:0 0 10px;color:#5b6b78;font-style:italic}.doc-tag{display:inline-block;font:600 11.5px/1.6 inherit;font-style:normal;color:#064b63;background:#e3f1f6;border:1px solid #89b1bf;border-radius:999px;padding:0 8px;margin-right:6px;vertical-align:1px}
+.doc-empty{color:#9aabb8;font-style:italic}.doc-auto{color:#5b6b78;font-size:13px;margin:0 0 8px}
+.doc.editing .doc-sec:not(.keep) .doc-body{cursor:text;border-radius:6px;outline:1px dashed #c4d3de;outline-offset:4px;transition:background .12s}
+.doc.editing .doc-sec:not(.keep) .doc-body:hover,.doc.editing .doc-sec:not(.keep) .doc-body:focus{background:#f5fafc;outline-color:#6aa6bd}
+.doc-ed{display:block;width:100%;box-sizing:border-box;border:0;border-radius:6px;background:#f8fbfd;font:inherit;line-height:inherit;color:inherit;resize:none;overflow:hidden;padding:6px 8px;margin:-6px 0 4px;outline:2px solid rgba(7,94,121,.35);white-space:pre-wrap}
+.doc-sec.changed{background:#fffbf2;box-shadow:inset 3px 0 0 #e2a33b}.doc-sec.tfill{background:#fbf8ff;box-shadow:inset 3px 0 0 #7a5bb0}
+.doc-sec.changed>.doc-h::after,.doc-sec.tfill>.doc-h::after{content:'changed, not saved yet';font:600 11.5px/1.6 Aptos,Calibri,'Segoe UI',sans-serif;color:#6b4406;background:#fdf3e1;border:1px solid #ecd6a8;border-radius:999px;padding:1px 8px;margin-left:10px;vertical-align:3px}
+.doc-sec.tfill>.doc-h::after{content:'suggested change, not saved yet';color:#4b2f73;background:#f1ebf7;border-color:#d6c8ea}
+.doc-bar{position:sticky;top:0;z-index:5;display:flex;gap:10px 14px;align-items:center;flex-wrap:wrap;background:#f3f9fb;border:1px solid #bcdbe6;border-radius:12px;padding:10px 14px;box-shadow:0 8px 18px -14px rgba(16,42,67,.6)}
+.doc-bar .hint{flex:1;min-width:220px}.doc-bar b{white-space:nowrap}
+@media(max-width:760px){.doc{padding:28px 20px 34px;font-size:15px}.doc .doc-title{font-size:24px}}
 .recent{display:grid;gap:6px}.recent button{text-align:left;display:flex;justify-content:space-between;gap:12px;width:100%}
 .err{background:#fbeaea;border:1px solid #e0aaaa;border-radius:10px;padding:10px 12px}
 .cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
@@ -68,7 +86,6 @@ table.t td{padding:6px;border-bottom:1px solid var(--line);vertical-align:top}ta
 .pk-model{border-left:3px solid #7a5bb0}.pk-model strong{display:block;margin-bottom:4px}.pk-mnote{white-space:pre-wrap}.pk-mbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
 .rounds{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:13px;color:var(--muted);margin:4px 0}.rounds b{color:var(--ink)}
 .act{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:6px}.act label.btnlike{cursor:pointer;border:1px solid var(--line2,#b9cbd8);border-radius:8px;padding:8px 14px;font-weight:600;font-size:14px;background:#fff}
-.edit-sec{display:grid;gap:4px;margin:12px 0}.edit-sec textarea{min-height:140px;font-size:14px;line-height:1.5}
 .ref-tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px}.ref-tools input{flex:1;min-width:200px}
 .ref-upl{cursor:pointer;border:1px solid var(--line2,#b9cbd8);border-radius:8px;padding:8px 14px;font-weight:600;font-size:14px;background:#fff}.ref-upl:hover{border-color:var(--teal)}
 .tpl-tools{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:-4px}.tpl-fold{display:grid;gap:4px;font-weight:600;font-size:13px;flex:1;min-width:220px}.tpl-tools .ref-upl,.tpl-tools button{white-space:nowrap}
@@ -263,7 +280,7 @@ table.t th{text-transform:uppercase;letter-spacing:.05em;font-size:11.5px}table.
 <label>Brief and context<textarea id="brief" maxlength="20000" required placeholder="Paste the brief or describe what the client wants: outcomes, scope, requirements, timescales, evaluation criteria, anything they said."></textarea>
 <span class="hint">Everything in the brief is checked before it goes to the AI: secrets and protective markings are refused.</span></label>
 <div class="qa-only" hidden><label>Your proposal document<input type="file" id="qa-file" accept=".docx,.pdf,.txt,.md"><span class="hint">Word, PDF or text. Argus checks it against the brief above. Your document is read for the check and not kept.</span></label></div>
-<label class="w-only">Notes for the writer <span class="hint">(optional: angle to take, things to stress or avoid)</span><textarea id="notes" maxlength="4000" rows="3" placeholder="e.g. Lead with value for money; they were burned by a big-bang migration before."></textarea></label>
+<label class="w-only">Notes for the writer <span class="hint">(optional: anything to emphasise, the angle to take, what to avoid; the sections come from the template)</span><textarea id="notes" maxlength="4000" rows="3" placeholder="e.g. Lead with value for money; they were burned by a big-bang migration before."></textarea></label>
 </section>
 <section class="panel"><div class="ph"><div><span class="pt">Set-up</span><span class="ps">Template, models and what Alice may draw on</span></div></div>
 <label class="w-only">Proposal template<select id="tplsel"></select><span class="hint" id="tpl-hint"></span></label>
@@ -277,10 +294,6 @@ table.t th{text-transform:uppercase;letter-spacing:.05em;font-size:11.5px}table.
 <div class="ref-tools"><button type="button" class="secondary" id="ref-browse">Choose documents</button><input type="search" id="ref-q" placeholder="Filter by name or source" aria-label="Filter reference documents" hidden><label class="secondary ref-upl" tabindex="0">Upload a reference document<input type="file" id="ref-file" accept=".docx,.pdf,.txt,.md,.csv" hidden></label></div>
 <div class="ref-panel" id="ref-panel" hidden></div>
 <div class="ref-list" id="ref-list"></div></div></details>
-<details class="fold panel w-only" open><summary><span>Format and flow<span class="psub">Sections, order and what goes in each</span></span></summary><div class="pbody">
-<label>Paste a structure <span class="hint">(optional: headings, points or a rough outline, e.g. from the client's question list)</span><textarea id="structure" maxlength="6000" rows="4" placeholder="1. Executive summary&#10;- why now, value for money&#10;2. Our approach&#10;- phased, governance first&#10;3. Social value"></textarea></label>
-<div class="go"><button type="button" class="secondary" id="struct-go">Turn into sections</button><span class="hint">Headings become sections; bullet points under a heading become text to include. Or leave it here and the writer follows it as an outline.</span></div>
-<p class="pe-note">The sections in order. Template sections keep the template's formatting; add sections, rename them, reorder them, or add content suggestions for each. Standard text is copied from the template word for word.</p><div id="secs"></div><p class="pe-note" id="tpl"></p></div></details>
 <div class="err" id="ferr" role="alert" hidden></div>
 </form>
 </div>
@@ -299,7 +312,7 @@ table.t th{text-transform:uppercase;letter-spacing:.05em;font-size:11.5px}table.
 <script>''' + FETCH_JS + '''
 const A=''' + data.replace('</', '<\\/') + ''';
 ''' + PE_JS + r'''
-const $=id=>document.getElementById(id),mk=PE.mk;let S=null,secEd=null,rateEd=null,timer=null;
+const $=id=>document.getElementById(id),mk=PE.mk;let S=null,TPLSECS=[],rateEd=null,timer=null,DOC=null;
 const base='/assistant/'+encodeURIComponent(A.id);
 async function api(path,method,body){const r=await fetch(base+path,{method:method||'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(typeof d.detail==='string'?d.detail:(Array.isArray(d.detail)?d.detail.map(x=>x.msg).join('; '):'Something went wrong. Try again.'));return d}
 const STEPS=[['Gathering','Gathering what Alice knows and writing the draft'],['checking the draft','Argus checks the draft against the brief'],['Revising','Revising with the QA feedback (only if needed)'],['checking the revision','Argus checks the revision'],['Building','Building the Word document']];
@@ -357,7 +370,7 @@ async function load(){S=await api('/setup');loadRefs();$('greeting').textContent
  const cost=()=>{const w=S.models.find(m=>m.key===$('wm').value),q=S.models.find(m=>m.key===$('qm').value);if(!w||!q||w.writer_cost==null||q.qa_cost==null){$('cost').textContent='';window.estimate=null;return}
   const t=mode==='qa'?q.qa_cost/2:w.writer_cost+q.qa_cost;window.estimate=t;$('cost').textContent='Roughly $'+t.toFixed(2)+(mode==='qa'?' for the QA check.':' for this proposal (draft, QA, one revision and a second QA check), depending on the brief and context. Defaults are set on the Assistants page.')};
  $('wm').onchange=cost;$('qm').onchange=cost;cost();window.cost=cost;
- secEd=PE.sections($('secs'),S.sections,{include:true,empty:'No sections yet: add some, or choose a template on the Assistants page.'});rateEd=PE.rates($('rates'),S.rate_card,S.units,{target:S.target_margin,minMargin:S.min_margin,parse:async f=>api('/rates/parse','POST',{name:f.name,data:await fileData(f)})});
+ TPLSECS=S.sections||[];rateEd=PE.rates($('rates'),S.rate_card,S.units,{target:S.target_margin,minMargin:S.min_margin,parse:async f=>api('/rates/parse','POST',{name:f.name,data:await fileData(f)})});
  const ts=$('tplsel');const topt=(v,txt)=>{const o=document.createElement('option');o.value=v;o.textContent=txt;return o};
  const fillT=(list,want)=>{S.templates=list;const cur=want!=null?want:ts.value;
   ts.replaceChildren(...list.map(x=>topt(x.path,x.name+(S.template_folder?(x.folder!==S.template_folder?' · '+x.folder.split('/').slice(1).join('/'):''):' · '+x.source)+(x.path===S.template?' (default)':''))),topt('','No template: Alice’s own Word layout'));
@@ -375,12 +388,12 @@ async function load(){S=await api('/setup');loadRefs();$('greeting').textContent
  $('tpl-file').onchange=async()=>{const f=$('tpl-file').files[0];$('tpl-file').value='';if(!f)return;
   if(!S.template_folder){tplNote('Choose the templates folder first, then add the template to it.');return}
   tplNote('Adding '+f.name+'…');try{const r=await api('/templates','POST',{name:f.name,data:await fileData(f)});applyT(r,r.added);await ts.onchange();tplNote(f.name+' added to “'+r.folder.replace(/\//g,' › ')+'” and chosen for this proposal.')}catch(e){tplNote(e.message)}};
- let tplTitles=new Set(S.sections.filter(x=>x.source==='template').map(x=>x.title));window.tplOf=()=>tplTitles;
- const tplHint=(o,err)=>{$('tpl-hint').textContent=err||(ts.value?(o&&o.sections?o.sections.filter(x=>x.source==='template').length+' sections from the template; its cover, styles, header and footer are kept.':'Sections, styles, cover, header and footer come from the template.'):'No template: the proposal uses Alice’s own Word layout with the sections below.')+(S.templates.length?'':' Choose the templates folder below and add a template to it.')};
- tplHint(null,S.template_error);$('tpl').textContent='';
- ts.onchange=async()=>{try{const o=await api('/outline?template='+encodeURIComponent(ts.value));const now=secEd.value();const fresh=new Set(o.sections.map(x=>x.title.toLowerCase()));
-   const mine=now.filter(x=>!tplTitles.has(x.title)&&!fresh.has(x.title.toLowerCase())).map(x=>({...x,source:'added'}));
-   secEd.set(o.sections.concat(mine));tplTitles=new Set(o.sections.filter(x=>x.source==='template').map(x=>x.title));tplHint(o)}catch(e){tplHint(null,e.message)}};
+ const tplHint=err=>{const fromT=TPLSECS.filter(x=>x.source==='template'),names=TPLSECS.map(x=>x.title+(x.keep?' (standard text)':'')).join(' · ');
+  $('tpl-hint').textContent=err||(ts.value&&fromT.length?fromT.length+' sections from the template, in order: '+names+'. Its cover, styles, header and footer are kept.':
+   (ts.value?'This template has no Heading 1 sections, so Alice’s own sections are used, in its styles: ':'No template: Alice’s own Word layout and sections: ')+names+'.')
+   +' Anything to emphasise goes in Notes for the writer.'+(S.templates.length?'':' Choose the templates folder below and add a template to it.')};
+ tplHint(S.template_error);
+ ts.onchange=async()=>{try{const o=await api('/outline?template='+encodeURIComponent(ts.value));TPLSECS=o.sections;tplHint()}catch(e){tplHint(e.message)}};
  if(A.paused)$('go').disabled=true;summary();await recent();const q=new URLSearchParams(location.search).get('p');if(q)await openItem(q);else{setState('Saves itself as you work');updateBar();pkWaiting()}}
 $('org').addEventListener('input',()=>drawRefs());
 $('org').oninput=()=>{const o=S&&S.organisations.find(x=>x.name.toLowerCase()===$('org').value.trim().toLowerCase());$('org-hint').textContent=o?(o.client?o.name+' is a client: its tagged memories and knowledge are included; other clients’ never are.':'Its approved profile is used.'):($('org').value.trim()?'Not in the list: Alice checks other names it knows (e.g. SBC); if none match, the name is used as typed.':'Its approved profile is used. Only this client’s tagged material is used, never another client’s.')};
@@ -388,10 +401,9 @@ let mode='write',CUR=null,EDS=null;
 function formEmpty(){return !$('title').value.trim()&&!$('brief').value.trim()}
 async function loadIntoForm(p,quiet,noSay){LOADING++;try{await fillIn(p,quiet,noSay)}finally{LOADING--}}
 async function fillIn(p,quiet,noSay){const i=p.inputs||{};const before=snap();
- $('title').value=p.title||'';$('org').value=p.organisation||'';$('brief').value=p.brief||'';$('notes').value=p.notes||'';$('structure').value=i.structure||'';
- ['title','org','brief','notes','structure'].forEach(id=>$(id).dispatchEvent(new Event('input',{bubbles:true})));
+ $('title').value=p.title||'';$('org').value=p.organisation||'';$('brief').value=p.brief||'';$('notes').value=p.notes||'';
+ ['title','org','brief','notes'].forEach(id=>$(id).dispatchEvent(new Event('input',{bubbles:true})));
  if(i.template!=null&&i.template!==$('tplsel').value&&[...$('tplsel').options].some(o=>o.value===i.template)){$('tplsel').value=i.template;await $('tplsel').onchange()}
- if((i.sections||[]).length){const tt=window.tplOf?window.tplOf():new Set();secEd.set(i.sections.map(x=>({...x,source:tt.has(x.title)?'template':'added'})))}
  picked.clear();(i.references||[]).forEach(x=>picked.add(x));drawRefs();
  if(i.form)rateEd.set(i.rate_card||[]);else if((i.rate_card||[]).length)rateEd.pick(i.rate_card);
  for(const [id,k] of [['wm','writer'],['qm','qa']])if(i[k]&&[...$(id).options].some(o=>o.value===i[k]))$(id).value=i[k];
@@ -402,7 +414,7 @@ function summary(){const dl=$('sum');if(!dl||!S)return;dl.replaceChildren();cons
  const org=$('org').value.trim();const o=S.organisations.find(x=>x.name.toLowerCase()===org.toLowerCase());row('Client',org?(org+(o&&o.client?' (client)':'')):'');
  if(mode==='qa'){row('Document',($('qa-file').files[0]||{}).name||'');row('QA model',($('qm').selectedOptions[0]||{}).textContent||'')}
  else{const ts=$('tplsel').selectedOptions[0];row('Template',ts?(ts.value?ts.textContent.split(' · ')[0].replace(/\.docx$/i,''):'Alice’s own layout'):'');
-  row('Sections',secEd?String(secEd.value().length):'');row('References',picked.size?String(picked.size):'');
+  row('Sections',String(((CUR&&(CUR.draft||{}).sections)||TPLSECS).length||''));row('References',picked.size?String(picked.size):'');
   row('Writer',($('wm').selectedOptions[0]||{}).textContent||'');row('Alice’s knowledge',$('mem').checked?'Used':'Not used')}
  const big=$('sum-big');big.replaceChildren();const tile=(k,v)=>{const d=mk('div');d.append(mk('span',k),mk('b',v));big.append(d)};
  if(mode!=='qa'&&rateEd){const rs=rateEd.value().filter(r=>r.use);const priced=rs.filter(r=>r.days&&r.sell!=='');const sell=priced.reduce((a,r)=>a+Number(String(r.sell).replace(/[£,]/g,''))*Number(r.days),0);
@@ -415,20 +427,11 @@ function setMode(m){mode=m;$('pk').hidden=m==='qa';$('f').classList.toggle('qa-m
  $('m-write').setAttribute('aria-selected',m==='write');setTimeout(summary,0);$('m-qa').setAttribute('aria-selected',m==='qa');$('f-h').textContent=m==='qa'?'Check a proposal':'New proposal';
  $('go').textContent=m==='qa'?'Check it against the brief':'Write proposal';$('go-note').textContent=m==='qa'?'Argus reads your document and checks it against the brief: usually under a minute.':'Writing, a QA check and one revision if needed: usually two to four minutes.';if(S)cost()}
 $('m-write').onclick=()=>setMode('write');$('go2').onclick=()=>{if(!$('go').disabled)$('f').requestSubmit($('go'))};new MutationObserver(()=>{$('go2').disabled=$('go').disabled;$('go2').textContent=$('go').textContent}).observe($('go'),{attributes:true,childList:true});$('m-qa').onclick=()=>setMode('qa');
-function parseStructure(text){const out=[];let cur=null;const head=/^\s{0,1}(#{1,4}\s+|\d{1,2}(\.\d{1,2})*[.)]\s+|[A-Z][.)]\s+)?(.+)$/;
- for(const raw of text.split(/\r?\n/)){if(!raw.trim())continue;const bullet=/^\s*([-*•▪–]|\(?[a-z]\))\s+/.test(raw)||/^\s{2,}\S/.test(raw);
-  if(bullet&&cur){cur.include+=(cur.include?'\n':'')+'- '+raw.replace(/^\s*([-*•▪–]|\(?[a-z]\))\s*/,'').trim();continue}
-  const m=raw.match(head);const t=(m?m[3]:raw).replace(/[:\s]+$/,'').trim();if(!t)continue;
-  if(t.length>120&&cur){cur.include+=(cur.include?'\n':'')+t;continue}
-  cur={title:t.slice(0,120),guidance:'',include:'',keep:false,source:'added'};out.push(cur)}
- return out}
-$('struct-go').onclick=()=>{const secs=parseStructure($('structure').value);if(!secs.length){$('ferr').textContent='Paste some headings first: one per line, with any points under them.';$('ferr').hidden=false;return}$('ferr').hidden=true;
- const cur=secEd.value();if(cur.length&&!confirm('Replace the current sections with these '+secs.length+'?\n\nCancel adds them after the current sections instead.'))secEd.add(secs);else secEd.set(secs);$('structure').value=''};
 async function fileData(f){if(f.size>15*1024*1024)throw new Error('That file is larger than 15 MB.');return await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]);r.onerror=no;r.readAsDataURL(f)})}
 $('f').onsubmit=async e=>{e.preventDefault();$('ferr').hidden=true;$('go').disabled=true;
  if(mode==='qa'){try{const f=$('qa-file').files[0];if(!f)throw new Error('Choose your proposal document.');const r=await api('/proposals/qa-only','POST',{title:$('title').value,organisation:$('org').value,brief:$('brief').value,name:f.name,data:await fileData(f),qa_model:$('qm').value});
    history.replaceState(null,'','?p='+r.id);follow(r.id);document.querySelector('main').scrollTop=0}catch(err){$('ferr').textContent=err.message;$('ferr').hidden=false;$('go').disabled=A.paused}return}
- try{const r=await api('/proposals','POST',{structure:$('structure').value,title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value,use_memory:$('mem').checked,references:[...picked],template:$('tplsel').value,writer_model:$('wm').value,qa_model:$('qm').value,sections:secEd.value(),rate_card:rateEd.value(),work_id:WORK||'',started_from:(!WORK&&OPEN)?OPEN:''});
+ try{const r=await api('/proposals','POST',{title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value,use_memory:$('mem').checked,references:[...picked],template:$('tplsel').value,writer_model:$('wm').value,qa_model:$('qm').value,rate_card:rateEd.value(),work_id:WORK||'',started_from:(!WORK&&OPEN)?OPEN:''});
   clearTimeout(saveT);saveT=null;stashChat();if(WORK&&WORK!==r.id)moveChat(WORK,r.id);else if(!WORK)moveChat(OPEN,r.id,!!OPEN);WORK=null;OPEN=r.id;DIRTY=false;setState('');recent();
   history.replaceState(null,'','?p='+r.id);document.querySelectorAll('details.fold').forEach(d=>d.open=false);follow(r.id);document.querySelector('main').scrollTop=0}
  catch(err){$('ferr').textContent=err.message;$('ferr').hidden=false;$('go').disabled=A.paused}};
@@ -441,14 +444,14 @@ function follow(pid){clearInterval(timer);$('result').replaceChildren();$('prog'
  tick();timer=setInterval(tick,1500)}
 function table(head,rows,cls){const t=mk('table','','t');const h=document.createElement('tr');for(const x of head)h.append(mk('th',x));t.append(h);for(const r of rows){const tr=document.createElement('tr');if(r.cls)tr.className=r.cls;for(const c of r.cells){const td=document.createElement('td');if(c&&c.node)td.append(c.node);else td.textContent=c??'';if(c&&c.num)td.className='num';tr.append(td)}t.append(tr)}return t}
 const n=(v,num)=>({node:mk('span',v),num});
-function show(p){CUR=p;EDS=null;if(formEmpty()&&!p.inputs.qa_only&&S)setTimeout(()=>loadIntoForm(p,true,!!p.superseded_by),0);const box=$('result');box.replaceChildren();const qa=p.qa[p.qa.length-1]||{};
+function show(p){CUR=p;EDS=null;DOC=null;if(formEmpty()&&!p.inputs.qa_only&&S)setTimeout(()=>loadIntoForm(p,true,!!p.superseded_by),0);const box=$('result');box.replaceChildren();const qa=p.qa[p.qa.length-1]||{};
  const top=mk('section','','card');const v=mk('div','','verdict '+(qa.verdict==='client_ready'?'ok':(qa.issues||[]).some(i=>i.severity==='high')?'bad':'warn'));
  const sc=mk('span',qa.score!=null?String(qa.score):'—','score');sc.style.setProperty('--p',qa.score||0);sc.title=qa.score!=null?qa.score+' out of 100':'';v.append(sc);const vt=mk('div');vt.append(mk('strong',qa.verdict==='client_ready'?'Client ready, according to Argus':'Needs your attention before it goes to the client'),mk('div',qa.summary||'','hint'));v.append(vt);
  if(p.document_id){const dl=document.createElement('a');dl.href='/documents/'+p.document_id+'/download';dl.className='dl';dl.textContent='Download Word document';v.append(dl)}top.append(mk('h2',p.title+(p.organisation?' · '+p.organisation:'')),v);
  if(p.qa.length>1){const rr=mk('div','','rounds');rr.append(mk('span','Argus checks:'));p.qa.forEach((q,i)=>{if(i)rr.append(mk('span','→'));const b=mk('b',(q.score??'?')+'/100');b.title=(q.source||'check '+(i+1));rr.append(mk('span',(q.source||('check '+(i+1)))+' '),b)});top.append(rr)}
  if(p.error)top.append(mk('p','The last re-check did not finish: '+p.error,'err'));
  const act=mk('div','','act');
- if(!p.inputs.qa_only){const lf=document.createElement('button');lf.type='button';lf.className='secondary';lf.textContent='Load into the form';lf.title='Put this proposal\u2019s brief, notes, template, sections, references and roles back into the form, to change it with Parker or write a new version';lf.onclick=()=>loadIntoForm(p,false);act.append(lf)}
+ if(!p.inputs.qa_only){const lf=document.createElement('button');lf.type='button';lf.className='secondary';lf.textContent='Load into the form';lf.title='Put this proposal\u2019s brief, notes, template, references and roles back into the form, to change it with Parker or write a new version';lf.onclick=()=>loadIntoForm(p,false);act.append(lf)}
  if(!p.inputs.qa_only&&(p.draft.sections||[]).length){const eb=document.createElement('button');eb.type='button';eb.className='secondary';eb.textContent='Edit the draft and check again';eb.onclick=()=>editDraft(p);act.append(eb);
   const ca=mk('button','Check again','primary');ca.type='button';ca.className='primary ca-btn';ca.title='Saves the brief, notes, title, rate card and draft as they are on this page, then Argus checks what was saved';ca.onclick=()=>checkAgain(ca);act.append(ca,mk('span','','hint unsaved'))}
  const ul_=mk('label','Upload a revised version for QA','btnlike');const fi=document.createElement('input');fi.type='file';fi.accept='.docx,.pdf,.txt,.md';fi.hidden=true;ul_.append(fi);
@@ -502,33 +505,76 @@ function show(p){CUR=p;EDS=null;if(formEmpty()&&!p.inputs.qa_only&&S)setTimeout(
  ul2.append(mk('li',u.organisation?'Organisation profile: '+u.organisation:'No organisation profile.'));ul2.append(mk('li',(u.memories||[]).length?'Memories: '+u.memories.join('; '):'No memories.'));ul2.append(mk('li',(u.knowledge||[]).length?'Knowledge: '+u.knowledge.join('; '):'No knowledge.'));
  if((u.references||[]).length)ul2.append(mk('li','Reference documents: '+u.references.join('; ')));for(const x of u.references_skipped||[])ul2.append(mk('li','Reference left out: '+x));
  if((p.context||{}).skipped)ul2.append(mk('li',p.context.skipped+' item(s) left out by the rules.'));more.append(ul2)}
- const dr=document.createElement('details');dr.className='fold draft';dr.append(mk('summary','Read the draft here'));for(const s of d.sections||[]){dr.append(mk('h3',s.title),mk('div',s.keep?'(standard text from the template)':s.body,'body'))}more.append(dr);box.append(more)}
+ if((d.sections||[]).length){const dc=mk('section','','card doc-card');dc.id='draft-ed';dc.append(mk('h2','The draft'),mk('p',p.inputs.qa_only?'Your document as Argus read it, section by section.':'As it will read in the Word document: the title, then each section from the template in order. To change the text, use Edit the draft and check again, or ask Parker.','hint'));
+  DOC=drawDoc(p);dc.append(DOC.bar,DOC.doc);box.append(dc)}
+ if(more.childNodes.length)box.append(more)}
+// ---------- the draft as one document: read it here, and edit it in place ----------
+const PRICE_RE=/commercial|pricing|price|investment|fees|costs?\b/i;
+function inl(el,text){for(const part of String(text).split(/(\*\*[^*]+\*\*)/)){if(!part)continue;if(part.length>4&&part.startsWith('**')&&part.endsWith('**'))el.append(mk('strong',part.slice(2,-2)));else el.append(document.createTextNode(part))}return el}
+function mdNodes(text){const out=[],lines=String(text||'').replace(/\r\n/g,'\n').split('\n');let para=[],i=0;      // the same simple markdown the Word document reads
+ const flush=()=>{if(para.length){out.push(inl(mk('p'),para.join(' ')));para=[]}};
+ while(i<lines.length){const t=lines[i].trim();let m;
+  if(!t){flush();i++;continue}
+  if((m=t.match(/^(#{1,4})\s+(.*)/))){flush();out.push(inl(mk('h3','','doc-sub'),m[2].trim()));i++;continue}
+  if(t.startsWith('|')){flush();const rows=[];
+   while(i<lines.length&&lines[i].trim().startsWith('|')){const c=lines[i].trim().replace(/^\|/,'').replace(/\|$/,'').split('|').map(x=>x.trim());if(!c.filter(Boolean).every(x=>/^:?-{2,}:?$/.test(x)))rows.push(c);i++}
+   if(rows.length){const tb=mk('table');rows.forEach((r,n)=>{const tr=mk('tr');for(const x of r)tr.append(inl(mk(n?'td':'th'),x));tb.append(tr)});out.push(tb)}continue}
+  if(/^[-*\u2022]\s+/.test(t)){flush();const ul=mk('ul');while(i<lines.length&&/^\s*[-*\u2022]\s+/.test(lines[i])){ul.append(inl(mk('li'),lines[i].replace(/^\s*[-*\u2022]\s+/,'').trim()));i++}out.push(ul);continue}
+  if(/^\d+[.)]\s+/.test(t)){flush();const ol=mk('ol');while(i<lines.length&&/^\s*\d+[.)]\s+/.test(lines[i])){ol.append(inl(mk('li'),lines[i].replace(/^\s*\d+[.)]\s+/,'').trim()));i++}out.push(ol);continue}
+  para.push(t);i++}
+ flush();return out}
+function sellTable(pr){const tb=mk('table');const tr=mk('tr');for(const [h,c] of [['Role',''],['Quantity','num'],['Rate','num'],['Price','num']])tr.append(mk('th',h,c));tb.append(tr);
+ for(const l of pr.lines||[]){const r=mk('tr');r.append(mk('td',l.role),mk('td',l.quantity+' '+l.unit+(l.quantity===1?'':'s'),'num'),mk('td',PE.gbp(l.sell_rate),'num'),mk('td',PE.gbp(l.sell),'num'));tb.append(r)}
+ const tt=mk('tr','','tot');tt.append(mk('td','Total'),mk('td'),mk('td'),mk('td',PE.gbp(pr.sell),'num'));tb.append(tt);return tb}
+function drawDoc(p){const d=p.draft||{},pr=p.pricing||{},doc=mk('article','','doc'),eds=[];doc.setAttribute('aria-label','The draft of '+(p.title||'this proposal'));
+ const head=mk('header','','doc-head');head.append(mk('h1',p.title||'Untitled proposal','doc-title'));const meta=[p.organisation,p.inputs.qa_only?'':(p.inputs.template?('Template: '+p.inputs.template.split('/').pop().replace(/\.docx$/i,'')):'Alice’s own layout')].filter(Boolean).join(' \u00b7 ');if(meta)head.append(mk('p',meta,'doc-meta'));doc.append(head);
+ const bar=mk('div','','doc-bar');bar.hidden=true;const cnt=mk('b','');const go=mk('button','Save changes and check again','primary');const cancel=mk('button','Cancel','secondary');go.type=cancel.type='button';
+ bar.append(mk('strong','Editing the draft'),mk('span','Click into any section’s text to change it. Headings come from the template; standard text stays as it is. Argus checks your version and the Word document is rebuilt.','hint'),cnt,go,cancel,mk('span','','hint unsaved'));
+ const count=()=>{const n=eds.filter(([x,e])=>e.value!==(x.body||'')).length;cnt.textContent=n?n+(n===1?' section changed':' sections changed'):''};
+ let priced=false;const lines=(pr.lines||[]).length&&!p.inputs.qa_only;
+ for(const x of d.sections||[]){const sec=mk('section','','doc-sec'+(x.keep?' keep':''));sec.append(mk('h2',x.title,'doc-h'));
+  if(x.keep){const st=mk('p','','doc-std');st.append(mk('span','From the template','doc-tag'),document.createTextNode('Standard text, copied into the Word document word for word; not edited here.'));sec.append(st)}
+  else{const body=mk('div','','doc-body'),ta=document.createElement('textarea');ta.className='doc-ed';ta.maxLength=20000;ta.value=x.body||'';ta.hidden=true;ta.setAttribute('aria-label','Text of '+x.title);
+   const paint=v=>body.replaceChildren(...(String(v).trim()?mdNodes(v):[mk('p','(Nothing written in this section yet.)','doc-empty')]));paint(x.body||'');
+   const grow=()=>{ta.style.height='auto';ta.style.height=(ta.scrollHeight+4)+'px'};const mark=()=>{sec.classList.toggle('changed',ta.value!==(x.body||''));count()};
+   const open=()=>{if(!doc.classList.contains('editing')||!ta.hidden)return;body.hidden=true;ta.hidden=false;grow();ta.focus()};
+   body.onclick=open;body.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();open()}};
+   ta.oninput=()=>{grow();mark();drawUnsaved()};ta.onblur=()=>{paint(ta.value);ta.hidden=true;body.hidden=false};ta.onkeydown=e=>{if(e.key==='Escape'){e.stopPropagation();ta.blur()}};
+   sec.append(body,ta);
+   const ed={get value(){return ta.value},set value(v){ta.value=v;if(ta.hidden)paint(v);else grow();mark()},classList:sec.classList,scrollIntoView:o=>sec.scrollIntoView(o),body};
+   eds.push([x,ed])}
+  if(lines&&!priced&&PRICE_RE.test(x.title)){sec.append(mk('p','Pricing table, from the rate card:','doc-auto'),sellTable(pr));priced=true}
+  doc.append(sec)}
+ if(lines&&!priced){const sec=mk('section','','doc-sec keep');sec.append(mk('h2','Commercials','doc-h'),mk('p','Pricing table, from the rate card:','doc-auto'),sellTable(pr));doc.append(sec)}
+ go.onclick=()=>checkAgain(go);
+ cancel.onclick=()=>show(p);
+ const editing=on=>{doc.classList.toggle('editing',on);bar.hidden=!on;for(const [,e] of eds){e.body.tabIndex=on?0:-1;if(on)e.body.setAttribute('role','button');else e.body.removeAttribute('role');e.body.title=on?'Click to edit this section':''}};
+ return {doc,bar,eds,editing,pid:p.id}}
 
 // ---------- Parker: work on the form in conversation ----------
 const PK={history:[],doc:null,busy:false};
-function snap(){const tt=window.tplOf?window.tplOf():new Set();return {f:['title','org','brief','notes','structure'].map(id=>[id,$(id).value]),tpl:$('tplsel').value,secs:secEd.value().map(x=>({...x,source:tt.has(x.title)?'template':'added'})),refs:[...picked],rates:rateEd.value(),mem:$('mem').checked,drafts:EDS?EDS.map(([x,t])=>[x.title,t.value]):null}}
+function snap(){return {f:['title','org','brief','notes'].map(id=>[id,$(id).value]),tpl:$('tplsel').value,refs:[...picked],rates:rateEd.value(),mem:$('mem').checked,drafts:EDS?EDS.map(([x,t])=>[x.title,t.value]):null}}
 async function restore(u){for(const[id,v]of u.f){$(id).value=v;$(id).classList.remove('tfill');$(id).dispatchEvent(new Event('input',{bubbles:true}))}
- if($('tplsel').value!==u.tpl){$('tplsel').value=u.tpl;await $('tplsel').onchange()}secEd.set(u.secs);picked.clear();u.refs.forEach(x=>picked.add(x));drawRefs();rateEd.set(u.rates);$('mem').checked=u.mem;clearTags();
+ if($('tplsel').value!==u.tpl){$('tplsel').value=u.tpl;await $('tplsel').onchange()}picked.clear();u.refs.forEach(x=>picked.add(x));drawRefs();rateEd.set(u.rates);$('mem').checked=u.mem;clearTags();
  if(EDS&&CUR){for(const [x,t] of EDS){const old=u.drafts?(u.drafts.find(d=>d[0]===x.title)||[])[1]:((CUR.draft.sections||[]).find(d=>d.title===x.title)||x).body;if(old!=null)t.value=old;t.classList.remove('tfill')}}summary()}
-['title','org','brief','notes','structure'].forEach(id=>$(id).addEventListener('keydown',()=>$(id).classList.remove('tfill')));
+['title','org','brief','notes'].forEach(id=>$(id).addEventListener('keydown',()=>$(id).classList.remove('tfill')));
 function clearTags(){document.querySelectorAll('.pk-tag').forEach(x=>x.remove())}
 function reveal(node){const p=node.closest('.panel');if(!p)return;if(p.tagName==='DETAILS')p.open=true;else p.classList.remove('shut');
  const head=p.tagName==='DETAILS'?p.querySelector('summary>span'):p.querySelector('.ph h2,.ph .pt');if(head&&!head.querySelector('.pk-tag'))head.append(mk('span','Updated by Parker','pk-tag'));
  p.classList.remove('pk-hit');void p.offsetWidth;p.classList.add('pk-hit')}
 function fill(id,v){if(!v)return false;const e=$(id);e.value=v;e.classList.add('tfill');e.dispatchEvent(new Event('input',{bubbles:true}));reveal(e);return true}
-const WHERE={'draft sections':'draft-ed',title:'title',client:'org',brief:'brief',notes:'notes',template:'tplsel',structure:'structure',references:'ref-list',roles:'rates'};
+const WHERE={'draft sections':'draft-ed',title:'title',client:'org',brief:'brief',notes:'notes',template:'tplsel',references:'ref-list',roles:'rates'};
 async function applyParker(u){clearTags();
  fill('title',u.title);fill('org',u.organisation);fill('brief',u.brief);fill('notes',u.notes);
  if(u.template&&u.template!==$('tplsel').value){$('tplsel').value=u.template;await $('tplsel').onchange();reveal($('tplsel'))}
- if(u.structure)fill('structure',u.structure.map(x=>x.heading+(x.points.length?'\n'+x.points.map(p=>'- '+p).join('\n'):'')).join('\n'));
  if(u.references){picked.clear();u.references.forEach(x=>picked.add(x));drawRefs();reveal($('ref-list'))}
  if(u.roles){rateEd.merge(u.roles);reveal($('rates'))}
- if(u.draft&&CUR){if(!EDS)editDraft(CUR);let first=null;for(const d of u.draft){const e=EDS.find(x=>x[0].title===d.title);if(!e)continue;e[1].value=d.body;e[1].classList.add('tfill');first=first||e[1]}if(first)first.scrollIntoView({behavior:'smooth',block:'center'})}
+ if(u.draft&&CUR){if(!EDS)editDraft(CUR);let first=null;for(const d of u.draft){const e=(EDS||[]).find(x=>x[0].title===d.title);if(!e)continue;e[1].value=d.body;e[1].classList.add('tfill');first=first||e[1]}if(first)first.scrollIntoView({behavior:'smooth',block:'center'})}
  summary()}
 function draftNow(){if(EDS&&CUR)return (CUR.draft.sections||[]).map(s=>{const e=EDS.find(x=>x[0].title===s.title);return {title:s.title,body:e?e[1].value:s.body,keep:!!s.keep}});
  if(CUR&&!CUR.inputs.qa_only&&CUR.draft)return (CUR.draft.sections||[]).map(s=>({title:s.title,body:s.body,keep:!!s.keep}));return []}
-function form(){return {title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value,template:$('tplsel').value,structure:$('structure').value,
- references:[...picked],sections:secEd?secEd.value().map(x=>x.title):[],draft:draftNow(),roles:rateEd?rateEd.value().map(r=>({role:r.role,unit:r.unit,use:r.use,days:r.days,sell:r.sell,cost:r.cost})):[],
+function form(){return {title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value,template:$('tplsel').value,
+ references:[...picked],sections:((CUR&&!CUR.inputs.qa_only&&(CUR.draft||{}).sections)||TPLSECS).map(x=>x.title),draft:draftNow(),roles:rateEd?rateEd.value().map(r=>({role:r.role,unit:r.unit,use:r.use,days:r.days,sell:r.sell,cost:r.cost})):[],
  priced:CUR&&CUR.pricing?(CUR.pricing.lines||[]).map(l=>({role:l.role,quantity:l.quantity,sell_rate:l.sell_rate,cost_rate:l.cost_rate})):[],priced_total:CUR&&CUR.pricing?CUR.pricing.sell:null,priced_cost:CUR&&CUR.pricing?CUR.pricing.cost:null}}
 function pkScroll(){const l=$('pk-log');l.scrollTop=l.scrollHeight}
 function pkSay(cls,text){const m=mk('div',text,'pk-m '+cls);$('pk-log').append(m);pkScroll();return m}
@@ -608,11 +654,8 @@ function drawPriceDiff(el){const box=el||$('pdiff');if(!box||!CUR)return;box.rep
  box.append(b,mk('span','Alice reprices it from the ticked roles (your days win), Argus checks the draft against the new price, and the Word document is rebuilt. Ask Parker to bring the wording in line, e.g. \u201c20 consultant days\u201d.','hint'));box.classList.toggle('on',!!diff.length)}
 $('full').addEventListener('input',()=>setTimeout(drawPriceDiff,0));$('full').addEventListener('change',()=>setTimeout(drawPriceDiff,0));$('full').addEventListener('click',()=>setTimeout(drawPriceDiff,0));
 function alertBox(msg){const e=mk('div',msg,'err');$('result').prepend(e);setTimeout(()=>e.remove(),8000)}
-function editDraft(p){const box=$('result');const c=mk('section','','card');c.append(mk('h2','Edit the draft'),mk('p','Change any section, then send it back: Argus checks your version against the brief and the Word document is rebuilt from the template. The headings stay as they are.','hint'));
- const eds=[];for(const s of p.draft.sections||[]){const w=mk('div','','edit-sec');w.append(mk('b',s.title));if(s.keep){w.append(mk('span','(standard text from the template: not edited here)','hint'))}else{const t=document.createElement('textarea');t.value=s.body;t.maxLength=20000;t.setAttribute('aria-label','Text of '+s.title);w.append(t);eds.push([s,t])}c.append(w)}
- const go=document.createElement('button');go.type='button';go.className='primary';go.textContent='Save changes and check again';const cancel=document.createElement('button');cancel.type='button';cancel.className='secondary';cancel.textContent='Cancel';cancel.onclick=()=>show(p);
- go.onclick=()=>checkAgain(go);
- const a=mk('div','','act');a.append(go,cancel,mk('span','','hint unsaved'));c.append(a);box.replaceChildren(c);EDS=eds;c.id='draft-ed';c.addEventListener('input',drawUnsaved);drawUnsaved();document.querySelector('main').scrollTop=0}
+function editDraft(p){if(RO||!DOC||DOC.pid!==p.id)return;DOC.editing(true);EDS=DOC.eds;const c=$('draft-ed');if(c)c.scrollIntoView({behavior:'smooth',block:'start'});
+ const first=DOC.eds[0];if(first)setTimeout(()=>first[1].body.focus({preventScroll:true}),300)}
 // ---------- a written proposal: what is not saved yet, what Argus has not checked, Check again saves both ----------
 const sameT=(a,b)=>String(a||'').split(/\s+/).join(' ').trim()===String(b||'').split(/\s+/).join(' ').trim();
 function unsaved(){if(!CUR||CUR.status==='form'||CUR.inputs.qa_only)return [];const out=[];
@@ -629,7 +672,7 @@ async function checkAgain(btn){if(!CUR)return;btn.disabled=true;const f={title:$
  if(priceDiff().length)f.rate_card=rateEd.value();
  try{await api('/proposals/'+CUR.id+'/recheck','POST',{sections:draftNow().map(x=>({title:x.title,body:x.keep?'':x.body})),form:f});DIRTY=false;updateBar();follow(CUR.id);document.querySelector('main').scrollTop=0}
  catch(e){btn.disabled=false;alertBox(e.message)}}
-function fresh(p){if(!p)return;CUR=p;PRICED=p.pricing||null;if(EDS){drawPriceDiff();drawUnsaved()}else{show(p);if(p.superseded_by)retired(p)}reloadVer(p.id);recent()}
+function fresh(p){if(!p)return;CUR=p;PRICED=p.pricing||null;if(EDS&&unsaved().some(x=>/draft section/.test(x))){drawPriceDiff();drawUnsaved()}else{show(p);if(p.superseded_by)retired(p)}reloadVer(p.id);recent()}
 // ---------- proposals on the go: list, switching, autosave ----------
 let WORK=null,OPEN=null,LOADING=0,saveT=null,ITEMS=[],DIRTY=false;
 let HIST=[],VIA='';
@@ -710,8 +753,8 @@ function updateBar(){$('wb-title').textContent=$('title').value.trim()||(OPEN?'U
   if(WORK)st.textContent=st.textContent||'Saved';else if(x&&x.status!=='form'){st.className='wb-state';st.textContent=STATE(x)[0]+(DIRTY&&unsaved().length?' · changes not saved: Check again saves them, or Save as a new version':'')}else if(!OPEN){st.className='wb-state';st.textContent=DIRTY?'':'Saves itself as you work'}}}
 function setState(t,cls){const st=$('wb-state');st.textContent=t;st.className='wb-state'+(cls?' '+cls:'')}
 let FROM='';
-function formData(){return {via:VIA,started_from:FROM,parker_chat:WORK?[]:PK.history,parker_cost:WORK?0:(PK.cost||0),title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value,structure:$('structure').value,template:$('tplsel').value,
- sections:secEd.value(),rate_card:rateEd.value(),references:[...picked],writer:$('wm').value,qa:$('qm').value,use_memory:$('mem').checked}}
+function formData(){return {via:VIA,started_from:FROM,parker_chat:WORK?[]:PK.history,parker_cost:WORK?0:(PK.cost||0),title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value,template:$('tplsel').value,
+ rate_card:rateEd.value(),references:[...picked],writer:$('wm').value,qa:$('qm').value,use_memory:$('mem').checked}}
 function changed(){if(LOADING||RO||mode!=='write'||!S)return;DIRTY=true;
  if(!WORK&&OPEN){updateBar();drawUnsaved();return}                             // a written proposal: Check again saves it, or Save as a new version
  clearTimeout(saveT);setState('Saving…');saveT=setTimeout(saveNow,1200)}
@@ -723,7 +766,7 @@ async function saveNow(force){clearTimeout(saveT);saveT=null;const f=formData();
  catch(e){setState('Not saved: '+e.message,'bad')}}
 $('f').addEventListener('input',changed);$('f').addEventListener('change',changed);
 $('full').addEventListener('input',changed);$('full').addEventListener('change',changed);$('full').addEventListener('click',e=>{if(e.target.closest('button'))setTimeout(changed,0)});
-$('secs').addEventListener('click',e=>{if(e.target.closest('button'))setTimeout(changed,0)});$('ref-list').addEventListener('change',changed);
+$('ref-list').addEventListener('change',changed);
 $('title').addEventListener('input',updateBar);
 $('wb-keep').onclick=()=>{stashChat();const from=OPEN;FROM=from||'';OPEN=null;CUR=null;DIRTY=true;saveNow(true).then(()=>{if(OPEN&&from)moveChat(from,OPEN,true)})};
 $('wb-list').onclick=()=>{const p=$('wb-pop');p.hidden=!p.hidden;$('wb-list').setAttribute('aria-expanded',String(!p.hidden));if(!p.hidden){drawItems();$('wb-q').focus()}};
@@ -735,10 +778,10 @@ function stashChat(){}
 function moveChat(){}
 function restoreChat(id,p){PK.history=[];PK.cost=0;PK.doc=null;pkDocs();pkIntro();const h=((p&&p.context)||{}).parker_chat||[];
  if(h.length){PK.history=h;$('pk-title').textContent='Parker';for(const m of h)pkSay(m.role==='you'?'you':'pk-p',m.text)}}
-async function resetForm(){LOADING++;try{clearInterval(timer);$('result').replaceChildren();$('prog').hidden=true;$('ferr').hidden=true;CUR=null;EDS=null;
- for(const id of ['title','org','brief','notes','structure']){$(id).value='';$(id).classList.remove('tfill')}
+async function resetForm(){LOADING++;try{clearInterval(timer);$('result').replaceChildren();$('prog').hidden=true;$('ferr').hidden=true;CUR=null;EDS=null;DOC=null;
+ for(const id of ['title','org','brief','notes']){$(id).value='';$(id).classList.remove('tfill')}
  if($('tplsel').value!==(S.template||'')){$('tplsel').value=S.template||'';await $('tplsel').onchange()}
- secEd.set(S.sections);rateEd.set(S.rate_card);picked.clear();drawRefs();$('wm').value=S.writer;$('qm').value=S.qa;$('mem').checked=true;clearTags();
+ rateEd.set(S.rate_card);picked.clear();drawRefs();$('wm').value=S.writer;$('qm').value=S.qa;$('mem').checked=true;clearTags();
  ['org','title'].forEach(id=>$(id).dispatchEvent(new Event('input',{bubbles:true})));if(window.cost)window.cost();summary()}finally{LOADING--}}
 async function flush(){if(saveT){await saveNow()}}
 async function openNew(){await flush();stashChat();setRO(false);await resetForm();WORK=null;OPEN=null;DIRTY=false;VIA='';FROM='';HIST=[];drawVer();setState('Saves itself as you work');history.replaceState(null,'',location.pathname);restoreChat(null);updateBar();drawItems();pkWaiting();document.querySelector('main').scrollTop=0}
