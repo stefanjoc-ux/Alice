@@ -146,37 +146,11 @@ def _ask(prompt, query, provider, workload='Temple organisation research'):
     return _ask_openai(prompt, query, workload) if provider == 'openai' else _ask_claude(prompt, query, workload)
 
 
-_KEYLIKE = re.compile(r'(?i)\b(?:sk|sk-ant|sk-proj|xai|key)-[A-Za-z0-9_\-*.]{6,}|\bBearer\s+\S+|\b[A-Za-z0-9_\-]{40,}\b')
-
-
 def _failure(error, provider, query=''):
-    """What went wrong, from the provider's own error: HTTP status and its message, trimmed. Anything that looks like a
-    key and any echo of what was sent are removed, so this is safe to keep in the run, the activity log and web.log."""
-    import rules_engine
-    status = getattr(error, 'status_code', None)
-    body, detail = getattr(error, 'body', None), ''
-    if isinstance(body, dict):
-        inner = body.get('error', body)
-        detail = (inner.get('message') if isinstance(inner, dict) else str(inner)) or ''
-    if not detail: detail = getattr(error, 'message', '') or ('' if status is None and not isinstance(error, ValueError) else str(error))
-    detail = ' '.join(str(detail).split())
-    for part in {query, *(query.split('\n') if query else [])}:
-        if part and len(part) >= 12 and part in detail: detail = detail.replace(part, '[request]')
-    detail = _KEYLIKE.sub('[removed]', detail)
-    for name, pat in rules_engine.SECRET_PATTERNS: detail = re.sub(pat, '[removed]', detail)
-    if len(detail) > 220: detail = detail[:217].rstrip() + '…'
-    name, kind = PROVIDER_NAMES.get(provider, provider), type(error).__name__
-    if status and 400 <= status < 500:
-        why = {401: f'{name} did not accept the API key', 403: f'{name} refused access for this key or account',
-               404: f'{name} says the model or tool is not available to this account',
-               429: f'{name} rate limit or credit reached'}.get(status, f'{name} rejected the web search request')
-        text = f'{why} (HTTP {status})'
-    elif status: text = f'{name} had an error running the web search (HTTP {status}); usually temporary'
-    elif 'Timeout' in kind: text = f'{name} took too long to answer the web search'
-    elif 'Connection' in kind: text = f'Could not reach {name} for the web search'
-    else: text = f'The {name} web search did not complete ({kind})'
-    return {'provider': provider, 'status': status, 'kind': kind, 'detail': detail,
-            'text': text + (f': {detail}' if detail and detail not in text else '')}
+    """What went wrong, from the provider's own error (see provider_errors): safe for the run, the activity log,
+    web.log and the page."""
+    import provider_errors
+    return provider_errors.describe(error, provider, sent=(query,), what='web search request')
 
 
 class SearchFailed(ValueError):

@@ -120,6 +120,15 @@ def _set(sid, **kw):
             c.execute(f'UPDATE demo_scenarios SET {k}=? WHERE id=?', (v if isinstance(v, str) else json.dumps(v), sid))
 
 
+def _failed(e):
+    """Why a background job failed: the message for Alice's own errors, the provider's own reason for a model call
+    (no keys or content), otherwise the error type only."""
+    import provider_errors
+    if isinstance(e, ValueError): return str(e)[:400]
+    if provider_errors.is_provider_error(e): return provider_errors.message(e, log='Client demo')[:400]
+    return 'Something went wrong (' + type(e).__name__ + '). Details are in the logs folder.'
+
+
 def generate(org, website='', notes=''):
     _need()
     org = ' '.join(str(org or '').split())[:80]
@@ -134,7 +143,7 @@ def generate(org, website='', notes=''):
 
 def _generate_safe(sid):
     try: _generate(sid)
-    except Exception as e: _set(sid, status='failed', error=str(e)[:400] if isinstance(e, ValueError) else type(e).__name__ + ': ' + str(e)[:300])
+    except Exception as e: _set(sid, status='failed', error=_failed(e))
 
 
 def _research(org, website, sid=None):
@@ -295,7 +304,7 @@ def load(sid):
             _set(sid, progress=f"Loaded: {r['memories']} memories, {r['decisions']} decisions, {r['knowledge']} knowledge items, {r['conversations']} conversations. "
                                f"Temple is reviewing the {r['pending']} items still waiting." + (f" {len(r['skipped'])} items were left out by Alice's own rules (duplicates or too thin)." if r['skipped'] else ''))
         except Exception as e:
-            _set(sid, status='failed', error=(str(e) if isinstance(e, ValueError) else type(e).__name__ + ': ' + str(e))[:400])
+            _set(sid, status='failed', error=_failed(e))
         finally:
             _lock.release()
     threading.Thread(target=work, daemon=True).start()

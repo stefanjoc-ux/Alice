@@ -243,6 +243,14 @@ Rules you must follow:
 {pack_guidance}'''
 
 
+def claude_messages(messages):
+    """Anthropic refuses (HTTP 400) a conversation that starts with an assistant turn or holds an empty message: a trimmed
+    history can do either. Drop empty messages and any assistant turns before the first user turn."""
+    out = [m for m in messages if not (isinstance(m.get('content'), str) and not m['content'].strip())]
+    while out and out[0].get('role') != 'user': out.pop(0)
+    return out
+
+
 def _call(provider, system, messages, max_tokens=1500, timeout=60, workload='Assistant', meta=None):
     """The model's text. Pass a dict as meta to learn whether the answer was cut off at max_tokens (meta['truncated'])."""
     import os, usage_meter
@@ -261,7 +269,7 @@ def _call(provider, system, messages, max_tokens=1500, timeout=60, workload='Ass
     if not os.getenv('ANTHROPIC_API_KEY'): raise ValueError('Missing ANTHROPIC_API_KEY.')
     from anthropic import Anthropic
     with Anthropic(timeout=timeout, max_retries=0) as client:
-        r = client.messages.create(model=model, system=system, max_tokens=max_tokens, messages=messages)
+        r = client.messages.create(model=model, system=system, max_tokens=max_tokens, messages=claude_messages(messages))
     usage_meter.log(r, 'claude', model, workload)
     meta['truncated'] = getattr(r, 'stop_reason', None) == 'max_tokens'
     return '\n'.join(b.text for b in r.content if b.type == 'text')

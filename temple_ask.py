@@ -255,7 +255,8 @@ def _ask(question, history=()):
         from anthropic import Anthropic
         model = 'claude-haiku-4-5-20251001'
         tools = [{'name': t['name'], 'description': t['description'], 'input_schema': t['schema']} for t in TOOLS]
-        messages = past + [{'role': 'user', 'content': question}]
+        import assistants
+        messages = assistants.claude_messages(past + [{'role': 'user', 'content': question}])
         with Anthropic(timeout=120, max_retries=0) as client:
             for rnd in range(MAX_ROUNDS + 1):
                 r = client.messages.create(model=model, system=system, messages=messages, max_tokens=1800,

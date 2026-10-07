@@ -797,10 +797,12 @@ def tracked(aid, trigger='automatic', subject=None):
                 raise
             except Exception as e:
                 name = type(e).__name__
+                import provider_errors      # the provider's own reason (status and message, no keys or content), not just the name
+                reason = provider_errors.message(e, log=f'Agent {aid}') if provider_errors.is_provider_error(e) else name
                 if name in TRANSIENT:            # provider or database briefly unavailable: not the agent's fault
-                    status, error = 'blocked', ('Temporarily unavailable: ' + name)[:500]
+                    status, error = 'blocked', ('Temporarily unavailable: ' + reason)[:500]
                 else:
-                    status, error = 'failed', (str(e) if isinstance(e, ValueError) else name)[:500]
+                    status, error = 'failed', (str(e) if isinstance(e, ValueError) else reason)[:500]
                 raise
             finally:
                 _current.reset(token)

@@ -86,7 +86,7 @@ def openai_500(prompt, query, provider, workload='x'):
     calls.append(provider); raise http_error(openai.InternalServerError, 500, {'error': {'message': 'The server had an error.'}})
 OR._ask = openai_500
 d = cl.post('/admin/api/organisations/research', json={'name': 'Fallback Council'}, headers=H).json()['detail']
-t('a 5xx is reported plainly and not retried elsewhere', calls == ['openai'] and 'OpenAI had an error running the web search (HTTP 500)' in d, d)
+t('a 5xx is reported plainly and not retried elsewhere', calls == ['openai'] and 'OpenAI had an error answering the web search request (HTTP 500)' in d, d)
 
 # 4. no fallback when the other provider has no key
 calls.clear(); saved = os.environ.pop('ANTHROPIC_API_KEY')
@@ -113,7 +113,7 @@ t('401: the key is named as the problem, never shown', f['text'].startswith('Ope
 f = OR._failure(anthropic.APITimeoutError(request=httpx.Request('POST', 'https://x')), 'claude')
 t('timeout described plainly', f['text'].startswith('Anthropic took too long to answer the web search'), f)
 f = OR._failure(RuntimeError('internal ' + FAKE_KEY), 'claude')
-t('an unexpected error shows its type only', f['text'] == 'The Anthropic web search did not complete (RuntimeError)', f)
+t('an unexpected error shows its type only', f['text'] == 'The web search request to Anthropic did not complete (RuntimeError)', f)
 f = OR._failure(openai_400('x' * 500), 'openai')
 t('long provider messages are trimmed', len(f['detail']) <= 220)
 

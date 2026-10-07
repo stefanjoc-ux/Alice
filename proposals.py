@@ -883,7 +883,7 @@ def _run(pid, who):
             import rules_engine, logging
             known = isinstance(e, (ValueError, LookupError, agents.AgentBlocked)) or isinstance(e, rules_engine.RuleViolation)
             if not known: logging.exception('Proposal failed')
-            msg = str(e) if known else 'The AI service did not answer or something went wrong (' + type(e).__name__ + '). Try again.'
+            msg = str(e) if known else _ai_failed(e, 'Proposal failed')
             _save(pid, status='failed', stage='', error=msg[:500])
             with store.db() as c: store.audit(c, 'proposal_failed', pid, 'assistant', msg[:300])
         finally:
@@ -1031,6 +1031,13 @@ def _job_of(p):
             'decisions': (p.get('context') or {}).get('fix_decisions') or []}
 
 
+def _ai_failed(e, where):
+    """A failed model call in plain words, with the provider's own reason (no keys or content)."""
+    import provider_errors
+    if provider_errors.is_provider_error(e): return provider_errors.message(e, log=where) + '. Try again.'
+    return 'Something went wrong (' + type(e).__name__ + '). Try again; details are in the logs folder.'
+
+
 def _background(pid, fn, *args):
     who = store.actor()
     def go():
@@ -1042,7 +1049,7 @@ def _background(pid, fn, *args):
                 known = isinstance(e, (ValueError, LookupError, agents.AgentBlocked)) or isinstance(e, rules_engine.RuleViolation)
                 if not known: logging.exception('Proposal re-check failed')
                 _save(pid, status='done' if get(pid)['document_id'] or get(pid)['inputs'].get('qa_only') else 'failed', stage='',
-                      error=(str(e) if known else 'The AI service did not answer (' + type(e).__name__ + '). Try again.')[:500])
+                      error=(str(e) if known else _ai_failed(e, 'Proposal re-check failed'))[:500])
             finally:
                 add_cost(pid, box.usd, 'writing')
     threading.Thread(target=go, daemon=True, name='proposal-recheck-' + pid[:6]).start()
