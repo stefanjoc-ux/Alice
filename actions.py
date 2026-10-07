@@ -207,7 +207,20 @@ def _summary():
     out.append(_section('teams', 'Digital teams: waiting for you', len(tw), '/admin/teams', tw,
                         'Open an item for the full hand-off, and to discuss it with Temple.' if tw else '', top=10))
 
-    # 11. Spending
+    # 11. Research guidance Temple suggested in a discussion about a run: saved only when you approve it on the organisation's page
+    try:
+        from urllib.parse import quote
+        import search_runs  # noqa: F401  (creates org_guidance)
+        with store.db() as c:
+            gp = [dict(r) for r in c.execute("SELECT id, org, reason FROM org_guidance WHERE status='proposed' ORDER BY created_at")]
+    except Exception:
+        gp = []
+    out.append(_section('guidance', 'Research guidance Temple suggests', len(gp), '/admin/organisations',
+                        [{'type': 'link', 'id': g['id'], 'title': g['org'] + ': suggested research guidance', 'detail': g['reason'],
+                          'href': '/admin/organisations?org=' + quote(g['org'])} for g in gp],
+                        'Approve or reject each one under Searches and guidance on the organisation\'s page.' if gp else ''))
+
+    # 12. Spending
     sp = rules_engine.spend_status()
     if sp['level'] in ('warning', 'blocked'):
         out.insert(0, _section('spend', 'Spending cap ' + ('reached' if sp['level'] == 'blocked' else 'warning'), 1, '/admin/rules',

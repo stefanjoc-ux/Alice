@@ -1953,6 +1953,50 @@ def admin_org_research_history(org: str=Query(min_length=1,max_length=60)):
     try: return {'runs':org_research.history(org)}
     except ValueError as e: raise HTTPException(404,str(e)) from None
 
+# Why Temple found what it found: each research run and scan's record, Ask Temple about a run, research guidance (search_runs.py)
+@app.get('/admin/api/organisations/searches')
+def admin_org_searches(org: str=Query(min_length=1,max_length=60)):
+    import search_runs
+    try: return {'runs':search_runs.runs(org),'guidance':search_runs.overview(org),'reasons':search_runs.REASONS}
+    except ValueError as e: raise HTTPException(404,str(e)) from None
+
+class GuidanceIn(BaseModel):
+    org: str = Field(min_length=1,max_length=60)
+    text: str = Field(max_length=4000)
+
+@app.put('/admin/api/organisations/guidance')
+def admin_org_guidance(g: GuidanceIn):
+    import search_runs
+    try: return search_runs.set_guidance(g.org,g.text)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+class GuidanceDecision(BaseModel):
+    action: Literal['approve','reject']
+
+@app.post('/admin/api/organisations/guidance/{gid}')
+def admin_org_guidance_decide(d: GuidanceDecision, gid: str=FPath(pattern=r'^[0-9a-f]{32}$')):
+    import search_runs
+    try: return search_runs.decide_guidance(gid,d.action)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+@app.get('/admin/api/search-runs/{rid}/discussion')
+def admin_search_run_discussion(rid: str=FPath(pattern=r'^[0-9a-f]{32}$')):
+    import search_runs
+    try: return {'messages':search_runs.discussion(rid)}
+    except ValueError as e: raise HTTPException(404,str(e)) from None
+
+class RunTalk(BaseModel):
+    message: str = Field(min_length=1,max_length=4000)
+
+@app.post('/admin/api/search-runs/{rid}/discussion')
+async def admin_search_run_discuss(q: RunTalk, rid: str=FPath(pattern=r'^[0-9a-f]{32}$')):
+    import search_runs
+    try: return await asyncio.to_thread(search_runs.ask,rid,q.message)
+    except (APIError, anthropic.APIError) as e:
+        if any(k in type(e).__name__ for k in ('Timeout','Connection','InternalServer')): router.note_failure(temple.reviewer())
+        raise HTTPException(502,'Temple: '+provider_error(e)) from None
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
 class OppScan(BaseModel):
     org: str = Field(min_length=1,max_length=60)
 

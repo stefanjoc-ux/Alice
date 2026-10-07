@@ -32,6 +32,7 @@ DEFAULT_OFFERINGS = ['Microsoft 365 and modern workplace', 'Azure cloud and infr
                      'Data and analytics (Fabric, Power Platform)', 'Managed services and support', 'Devices and licensing']
 NEWS_DAYS = 60
 MAX_OPPS = 6
+MIN_CONFIDENCE = 0.3          # a suggestion the model itself rates below this is left out as below relevance (and recorded)
 
 with store.db() as c:
     c.execute('''CREATE TABLE IF NOT EXISTS org_watch (org TEXT PRIMARY KEY COLLATE NOCASE, frequency TEXT NOT NULL DEFAULT 'weekly',
@@ -191,17 +192,32 @@ def _scan(org, trigger):
                                                              for t in open_) if open_ else ''))
         rules_engine.check_outbound(query, 'opportunity scan', **({'provider': p} if p != provider else {}))
         return query
-    prompt = PROMPT.format(today=date.today().isoformat(), days=NEWS_DAYS, max_opps=MAX_OPPS, offerings='; '.join(offerings()))
+    import search_runs
+    gtext, gver = search_runs.prompt_block(org)
+    prompt = PROMPT.format(today=date.today().isoformat(), days=NEWS_DAYS, max_opps=MAX_OPPS, offerings='; '.join(offerings())) + gtext + \
+        ('\n\nAlso return, in the same JSON object, "searches": ["the searches you ran"] and "considered": [{"title": "", "reason": '
+         '"outside_profile|low_relevance|closed|duplicate", "note": "one sentence"}] for items you looked at but did not suggest.')
+    sent = {}
+
+    def query_logged(p):
+        q = query_for(p); sent['q'], sent['p'] = q, p
+        return q
     try:
-        raw, seen, provider, failures = OR.search(prompt, query_for, provider, 'Temple opportunity scan')
+        raw, seen, provider, failures = OR.search(prompt, query_logged, provider, 'Temple opportunity scan')
     except OR.SearchFailed as e:
         _finish_watch(org, 'failed', str(e))
         with store.db() as c: store.audit(c, 'opportunity_scan_failed', org, 'approval_required', f'{str(e)[:500]} ({trigger})')
+        search_runs.record(org, 'scan', 'failed', trigger, e.failures[-1]['provider'], error=str(e), guidance_version=gver,
+                           queries=[{'sent': sent.get('q', '')[:3000], 'provider': OR.PROVIDER_NAMES.get(e.failures[-1]['provider'], ''), 'searches': OR.last_queries()}])
         raise ValueError(str(e) + ' Try again, or check the provider on the Agents page.') from None
     try:
         data = OR._parse(raw)
     except ValueError as e:
-        _finish_watch(org, 'failed', str(e)); raise
+        _finish_watch(org, 'failed', str(e))
+        search_runs.record(org, 'scan', 'failed', trigger, provider, error=str(e), guidance_version=gver,
+                           sources=[{'url': u, 'title': (t or '')[:200], 'cited': False} for u, t in seen.items()],
+                           queries=[{'sent': sent.get('q', '')[:3000], 'provider': OR.PROVIDER_NAMES.get(provider, ''), 'searches': OR.last_queries()}])
+        raise
     seen_norm = {OR._norm_url(u): (u, t) for u, t in seen.items()}
     today = date.today().isoformat()
     news_added, opps_added, dropped, ids = 0, 0, [], []
@@ -217,16 +233,28 @@ def _scan(org, trigger):
             news_added += max(0, cur.rowcount)
         existing = [_norm(r['title']) for r in c.execute('SELECT title FROM opportunities WHERE org=?', (org,))]
     offer_set = {x.lower(): x for x in offerings()}
+    import rules_engine as RE
+    rejected, found = [], []
     for o in (data.get('opportunities') or [])[:MAX_OPPS]:
         if not isinstance(o, dict): continue
         title = _txt(o.get('title'), 120)
         ev = [seen_norm[OR._norm_url(str(u))][0] for u in (o.get('evidence') or []) if OR._norm_url(str(u)) in seen_norm][:5]
         if not title or not ev:
-            dropped.append({'title': title or '(untitled)', 'reason': 'No evidence from pages the search returned.'}); continue
+            dropped.append({'title': title or '(untitled)', 'reason': 'No evidence from pages the search returned.'})
+            rejected.append(search_runs.rejected(title, 'no_citation', 'no evidence from pages the search returned')); continue
         if _norm(title) in existing or any(_similar(_norm(title), x) for x in existing):
-            dropped.append({'title': title, 'reason': 'Already in the tracker.'}); continue
+            dropped.append({'title': title, 'reason': 'Already in the tracker.'})
+            rejected.append(search_runs.rejected(title, 'duplicate', 'already in the tracker')); continue
+        blob = '\n'.join(str(o.get(k) or '') for k in ('title', 'summary', 'why_now', 'next_step'))
+        try: RE.check_outbound(blob, f'opportunity suggestion for {org}', packs=False)     # the Rules page decides: secrets, markings
+        except RE.RuleViolation as e:
+            dropped.append({'title': title, 'reason': 'Failed a rules check.'})
+            rejected.append(search_runs.rejected(title, 'rules', str(e)[:160])); continue
         try: conf = max(0.0, min(1.0, float(o.get('confidence'))))
         except (TypeError, ValueError): conf = None
+        if conf is not None and conf < MIN_CONFIDENCE:
+            dropped.append({'title': title, 'reason': 'Below relevance.'})
+            rejected.append(search_runs.rejected(title, 'low_relevance', f'confidence {conf:.2f}, below {MIN_CONFIDENCE}')); continue
         size = o.get('size') if o.get('size') in SIZES else ''
         offering = offer_set.get(str(o.get('offering') or '').lower(), _txt(o.get('offering'), 80))
         oid = uuid.uuid4().hex
@@ -236,7 +264,13 @@ def _scan(org, trigger):
                       (oid, org, title, _txt(o.get('summary'), 600), _txt(o.get('why_now'), 400), offering, size, conf, _txt(o.get('next_step'), 300),
                        _txt(o.get('timing'), 120), json.dumps(ev), 'suggested', store.now(), store.now(), trigger))
         existing.append(_norm(title)); ids.append(oid); opps_added += 1
-    refreshed, closed, changed = _apply_checks(org, data.get('checks') or [], short, seen_norm, today)
+        found.append({'title': title, 'offering': offering, 'confidence': conf, 'evidence': ev})
+    checked = []
+    refreshed, closed, changed = _apply_checks(org, data.get('checks') or [], short, seen_norm, today, out=checked)
+    rejected += [search_runs.rejected(x['title'], 'closed', x['note'] or 'the news says it has closed') for x in checked if x['state'] == 'closed']
+    for x in (data.get('considered') or [])[:20]:
+        if isinstance(x, dict) and x.get('reason') in search_runs.REASONS and _txt(x.get('title'), 120):
+            rejected.append(search_runs.rejected(_txt(x['title'], 120), x['reason'], 'Temple\'s judgement: ' + (_txt(x.get('note'), 240) or 'no note')))
     cited = set()
     with store.db() as c:
         for oid in ids: cited.update(json.loads(c.execute('SELECT evidence FROM opportunities WHERE id=?', (oid,)).fetchone()[0] or '[]'))
@@ -248,7 +282,12 @@ def _scan(org, trigger):
     _finish_watch(org, 'complete', summary)
     with store.db() as c:
         store.audit(c, 'opportunity_scan', org, 'approval_required', f'{summary} ({trigger})')
-    return {'status': 'complete', 'org': org, 'opportunities': opps_added, 'news': news_added, 'dropped': dropped, 'summary': summary,
+    reported = [' '.join(x.split())[:200] for x in data.get('searches') or [] if isinstance(x, str) and x.strip()]
+    run_id = search_runs.record(org, 'scan', 'complete', trigger, provider, summary=summary, guidance_version=gver,
+                                queries=[{'sent': sent.get('q', '')[:3000], 'provider': OR.PROVIDER_NAMES[provider], 'searches': OR.last_queries() or reported[:12]}],
+                                sources=[{'url': u, 'title': (t or '')[:200], 'cited': u in cited} for u, t in seen.items()],
+                                found=found, rejected_=rejected, checks=checked)
+    return {'status': 'complete', 'org': org, 'run_id': run_id, 'guidance_version': gver, 'opportunities': opps_added, 'news': news_added, 'dropped': dropped, 'summary': summary,
             'checked': refreshed, 'changed': changed, 'closed': closed, 'provider': provider, 'provider_name': OR.PROVIDER_NAMES[provider],
             'fallback_from': [f['text'] for f in failures]}
 
@@ -256,7 +295,7 @@ def _scan(org, trigger):
 OPEN = ('suggested', 'tracking', 'pursuing')
 
 
-def _apply_checks(org, checks, short, seen_norm, today):
+def _apply_checks(org, checks, short, seen_norm, today, out=None):
     """Keep open opportunities fresh. Each scan says whether they are still live; 'changed' and 'closed' need a URL the
     search returned. A closed suggestion is dismissed (you never acted on it); a closed one you are tracking or pursuing
     is only flagged: that call is yours."""
@@ -281,6 +320,7 @@ def _apply_checks(org, checks, short, seen_norm, today):
             elif state in ('changed', 'closed'):
                 store.audit(c, 'opportunity_changed', org, 'advisory_metadata', f"{r['title']}: {state}: {note}"[:500])
         done += 1; closed += state == 'closed'; changed += state == 'changed'
+        if out is not None: out.append({'title': r['title'], 'state': state, 'note': note, 'evidence': ev})
     return done, closed, changed
 
 
