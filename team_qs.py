@@ -26,7 +26,19 @@ import teams
 TEAM_ID = 'quantity-surveying'
 DRAFT_MARK = 'Draft: AI-assisted, for review by a qualified quantity surveyor'
 DEMO_DIR = Path(__file__).resolve().parent / 'demo_content' / 'teams' / 'community_hall'
-SOURCE_LABELS = {'web': 'Published rate (web)', 'library': 'Your rate library', 'unpriced': 'Unpriced: flagged as an assumption'}
+SOURCE_LABELS = {'web': 'Published rate (web)', 'library': 'Your rate library', 'yours': 'Your rate', 'unpriced': 'Unpriced: flagged as an assumption'}
+# Where the Cost Surveyor's prices come from, in the order qs_price applies them (shown on the team page from here, never retyped).
+# 'yours' is not in it: a rate you enter for an unpriced item is your decision afterwards, recorded as "Your rate".
+PRICE_RULES = [
+    {'key': 'web', 'title': 'Published rates on the web', 'detail': 'A rate found by web search counts only with the page the search returned, '
+     'the page\'s date and the item\'s unit; each one is cited.'},
+    {'key': 'library', 'title': 'Your rate library', 'detail': 'Otherwise the closest row of the team\'s rate library with the same unit (Knowledge tab); '
+     'the rate is taken from the library, never from the model.'},
+    {'key': 'unpriced', 'title': 'Flagged as unpriced', 'detail': 'Otherwise the item is left unpriced and listed as an assumption: a rate is never invented. '
+     'You can enter your own rate for it on the job page.'},
+]
+PRICE_NOTE = ('A regional factor is applied only when a published one is found for the location (between 0.7 and 1.4), else national rates are used. '
+              'Totals and amounts (quantity × rate) are worked out by Alice, not by the models.')
 FACTOR_RANGE = (0.7, 1.4)
 
 UNITS = {'m2': 'm2', 'm²': 'm2', 'sqm': 'm2', 'sq m': 'm2', 'square metre': 'm2', 'square metres': 'm2', 'm3': 'm3', 'm³': 'm3', 'cu m': 'm3',
@@ -122,11 +134,9 @@ def seed():
 
 
 def _seed_team():
-    teams.create('Quantity surveying', 'A small QS team that produces an early cost estimate (cost plan) from a brief, a specification, '
-                 'schedules and drawings. Every rate has a source; the arithmetic is done by Alice.', 'approve', tid=TEAM_ID,
-                 members=MEMBERS, settings=SETTINGS,
-                 job_types=[{'id': 'cost-estimate', 'name': 'Cost estimate', 'finish': 'cost_estimate', 'client_facing': True,
-                             'description': 'From brief to a draft cost plan (Word and Excel) and a Market Trends report.', 'stages': STAGES}])
+    t = _template()
+    teams.create(t['name'], t['description'], t['autonomy'], tid=TEAM_ID, members=t['members'], settings=t['settings'], job_types=t['job_types'],
+                 colour=t['colour'], icon=t['icon'], discipline=t['discipline'])
 
 
 # ---------------- rate library ----------------
@@ -400,7 +410,8 @@ def qs_assemble(job, stage, member, ctx):
     d = _ask(job, member, ctx, stage, spec, extra=extra, include_docs=False)
     out = _common(d)
     if not out['accept'] and not ctx.get('must_accept'): return out
-    auto = [f'{i["ref"]} {i["description"]}: unpriced (no published rate with a source and date, and no rate library row); excluded from the total.' for i in items if i['rate_source'] == 'unpriced']
+    auto = [f'{i["ref"]} {i["description"]}: ' + (f'left unpriced by {i["decision"]["by"]}' if i.get('decision') else
+             'unpriced (no published rate with a source and date, and no rate library row)') + '; excluded from the total.' for i in items if i['rate_source'] == 'unpriced']
     auto += [f'{i["ref"]} {i["description"]}: quantity read from a drawing, approximate.' for i in items if i.get('approximate')]
     auto.append(loc.get('note') or 'National rates used.')
     out['output'] = {'cost_plan': plan, 'summary': teams._block(d.get('summary'), 1500),
@@ -431,7 +442,7 @@ def history(job, member):
         if not keep(r['client'] or ''): withheld += 1; continue
         seen_k.add(r['knowledge_id'])
         for it in (json.loads(r['outputs'] or '{}').get('price') or {}).get('items') or []:
-            if it.get('rate_source') in ('web', 'library') and it.get('rate'):
+            if it.get('rate_source') in ('web', 'library', 'yours') and it.get('rate'):
                 out.append({'description': it['description'], 'unit': it['unit'], 'rate': it['rate'], 'date': it.get('source_date') or r['updated_at'][:10],
                             'source': f'{teams.ref(r["id"])} {r["title"]}', 'kind': it['rate_source']})
     items = [i for i in knowledge.listing(status='active', limit=100000)['items']
@@ -518,6 +529,7 @@ def _md(job, out):
     for i in items:
         if i['rate_source'] == 'web': md.append(f'- {i["ref"]}: {i.get("source_title") or ""}, {i["source_url"]} (dated {i["source_date"]})')
         elif i['rate_source'] == 'library': md.append(f'- {i["ref"]}: your rate library, “{i["library_row"]["description"]}” ({i["library_row"]["source"]}{", " + i["library_row"]["as_of"] if i["library_row"]["as_of"] else ""})')
+        elif i['rate_source'] == 'yours': md.append(f'- {i["ref"]}: your rate, entered by {(i.get("decision") or {}).get("by", "you")} on {i.get("source_date") or ""}')
         else: md.append(f'- {i["ref"]}: unpriced. {i.get("rate_note", "")}')
     md += ['', '# Where each quantity came from'] + [f'- {i["ref"]}: {i["source_text"]}' + (' (from a drawing: approximate)' if i.get('approximate') else '') for i in items]
     md += ['', '# Assumptions'] + [f'- {a}' for a in asm.get('assumptions') or []]
@@ -568,7 +580,8 @@ def finish(job, team, jt):
     summary = (f'Estimated total {_gbp(cp["total"])} excluding VAT ({_gbp(cp["construction"])} construction, preliminaries {cp["percentages"]["prelims_pct"]}%, '
                f'contingency {cp["percentages"]["contingency_pct"]}%, fees {cp["percentages"]["fees_pct"]}%). '
                f'{sum(1 for i in items if i["rate_source"] == "web")} rates from published sources, {sum(1 for i in items if i["rate_source"] == "library")} from your rate library, '
-               f'{sum(1 for i in items if i["rate_source"] == "unpriced")} unpriced. {(price.get("location") or {}).get("note", "")} {DRAFT_MARK}.')
+               + (f'{sum(1 for i in items if i["rate_source"] == "yours")} entered by you, ' if any(i['rate_source'] == 'yours' for i in items) else '')
+               + f'{sum(1 for i in items if i["rate_source"] == "unpriced")} unpriced. {(price.get("location") or {}).get("note", "")} {DRAFT_MARK}.')
     return {'documents': [{'id': d['id'], 'name': d['name'], 'kind': d['kind']} for d in docs], 'summary': summary, 'total': cp['total']}
 
 
@@ -606,6 +619,7 @@ def _describe_price(o):
     def src(i):
         if i['rate_source'] == 'web': return f'published: {i.get("source_title") or ""} {i["source_url"]} ({i["source_date"]})'
         if i['rate_source'] == 'library': return f'your rate library: {i["library_row"]["description"]}'
+        if i['rate_source'] == 'yours': return 'your rate'
         return 'unpriced'
     lines = [f'{i["ref"]} {i["description"]}: {_gbp(i["rate"]) + " per " + i["unit"] if i.get("rate") is not None else "no rate"} ({src(i)})' for i in o.get('items') or []]
     return '\n'.join(lines + [(o.get('location') or {}).get('note', '')])
@@ -640,6 +654,166 @@ def load_demo_rates(tid=TEAM_ID):
         if c.execute("SELECT 1 FROM team_rates WHERE team_id=? AND batch_name=?", (tid, 'FICTIONAL demo rate library')).fetchone():
             raise ValueError('The fictional demo rate library is already loaded.')
     return import_rates(tid, meta['rate_library'], raw, 'FICTIONAL demo rate library')
+
+
+# ---------------- the job page: unpriced items you decide, and the cost plan so far (Stefan, 7 Oct 2026) ----------------
+VIEW_SOURCES = {'web': 'Web', 'library': 'Library', 'yours': 'Your rate', 'unpriced': 'Unpriced', 'to_price': 'Not priced yet'}
+
+
+def undecided(outputs):
+    """Unpriced items you have not decided on yet (enter a rate, or leave unpriced)."""
+    items = ((outputs or {}).get('price') or {}).get('items') or []
+    return [i for i in items if i.get('rate_source') == 'unpriced' and not i.get('decision')]
+
+
+def _price_stage(jt):
+    return next((s for s in jt['stages'] if s.get('handler') == 'qs_price'), None)
+
+
+def job_view(d, team, jt):
+    """For the job page: the decision panel (unpriced items while the job waits on you) and the cost plan so far: each item
+    with its quantity, rate, where the rate came from and its amount (worked out here), and a total only once every item is
+    priced or marked unpriced."""
+    outs = d['outputs']
+    members = {m['id']: m for m in team['members']}
+    ps = _price_stage(jt)
+    lead = (members.get(teams.lead_id(team)) or {}).get('role', 'The lead')
+    pricer = (members.get(ps['member']) or {}).get('role', 'The Cost Surveyor') if ps else 'The Cost Surveyor'
+    done = d['status'] == 'done'
+    open_ = [] if done else undecided(outs)
+    decision = None
+    if open_ and d['status'] == 'waiting' and d['pending']:
+        p = d['pending'][0]
+        state = 'handoff' if p['kind'] == 'handoff' and ps and p['stage'] == ps['key'] else 'signoff' if p['kind'] == 'signoff' else 'other'
+        decision = {'lead': lead, 'pricer': pricer, 'step_id': p['id'], 'state': state, 'count': len(open_),
+                    'title': f'{lead} needs a decision on {len(open_)} item{"s" if len(open_) != 1 else ""}',
+                    'why': (f'{pricer} found no published rate with a source and date for these, and no row of your rate library matches. '
+                            'Enter a rate for an item, or leave it unpriced: an unpriced item is excluded from the total and listed as an assumption.'),
+                    'items': [{'ref': i['ref'], 'element': i['element'], 'description': i['description'], 'quantity': i['quantity'], 'unit': i['unit'],
+                               'approximate': bool(i.get('approximate'))} for i in open_]}
+    price, measure = outs.get('price') or {}, outs.get('measure') or {}
+    plan = None
+    if price.get('items'):
+        loc = price.get('location') or {}
+        cp = (outs.get('assemble') or {}).get('cost_plan') or compute(price['items'], loc.get('factor', 1.0), team.get('settings'))
+        amounts = {l['ref']: l['amount'] for l in cp['lines']}
+        rows = []
+        for i in price['items']:
+            src = i.get('rate_source')
+            lib = i.get('library_row') or {}
+            rows.append({'ref': i['ref'], 'element': i['element'], 'description': i['description'], 'quantity': i['quantity'], 'unit': i['unit'],
+                         'approximate': bool(i.get('approximate')), 'rate': i.get('rate'), 'source': src, 'source_label': VIEW_SOURCES.get(src, src),
+                         'source_url': i.get('source_url') if src == 'web' else '', 'source_title': i.get('source_title') or lib.get('source') or '',
+                         'source_date': i.get('source_date') or '', 'note': i.get('rate_note') or '', 'amount': amounts.get(i['ref']),
+                         'quantity_source': i.get('source_text') or '', 'decided_by': (i.get('decision') or {}).get('by', ''),
+                         'undecided': src == 'unpriced' and not i.get('decision') and not done})
+        n_open = sum(1 for r in rows if r['undecided'])
+        plan = {'stage': 'price', 'rows': rows, 'counts': {k: sum(1 for r in rows if r['source'] == k) for k in VIEW_SOURCES if k != 'to_price'},
+                'undecided': n_open, 'location_note': loc.get('note', ''), 'factor': cp.get('factor', 1.0),
+                'totals': None if n_open else {k: cp[k] for k in ('construction', 'prelims', 'contingency', 'fees', 'total')},
+                'elements': None if n_open else cp['elements'], 'percentages': cp.get('percentages'),
+                'assembled': bool(outs.get('assemble')), 'labels': VIEW_SOURCES}
+    elif measure.get('items'):
+        rows = [{'ref': i['ref'], 'element': i['element'], 'description': i['description'], 'quantity': i['quantity'], 'unit': i['unit'],
+                 'approximate': bool(i.get('approximate')), 'rate': None, 'source': 'to_price', 'source_label': VIEW_SOURCES['to_price'], 'source_url': '',
+                 'source_title': '', 'source_date': '', 'note': '', 'amount': None, 'quantity_source': i.get('source_text') or '', 'decided_by': '',
+                 'undecided': False} for i in measure['items']]
+        plan = {'stage': 'measure', 'rows': rows, 'counts': {'to_price': len(rows)}, 'undecided': 0, 'location_note': '', 'totals': None,
+                'elements': None, 'assembled': False, 'labels': VIEW_SOURCES}
+    return {'decision': decision, 'plan': plan, 'documents': outs.get('documents') or []}
+
+
+def decide_rates(jid, entries, save_to_library=True, go_on=False):
+    """Your decision on unpriced items: a rate you enter (recorded as yours, source "Your rate", in the job's history, and saved to
+    the team's rate library through its usual checks when save_to_library is on), or leave unpriced. Arithmetic is redone here.
+    go_on: when the job waits on the hand-off out of the pricing stage, approve it once your rates are in."""
+    j = teams._row(jid)
+    if j['status'] in ('done', 'stopped'): raise ValueError('This job has finished.')
+    team, jt = teams._job_team(j)
+    outs = j['outputs']
+    price = outs.get('price') or {}
+    items = price.get('items') or []
+    open_ = {i['ref']: i for i in undecided(outs)}
+    if not open_: raise ValueError('No unpriced items are waiting for a decision.')
+    rates, leave = {}, []
+    for e in entries or []:
+        r = str(e.get('ref') or '')
+        if r not in open_: raise ValueError(f'{r or "An item"} is not an unpriced item waiting for a decision.')
+        if e.get('unpriced'): leave.append(r); continue
+        if e.get('rate') in (None, ''): continue
+        v = _num(e.get('rate'))
+        if v is None or not 0 < v < 10_000_000: raise ValueError(f'{r}: give a rate above zero in pounds per {open_[r]["unit"]}.')
+        rates[r] = float(money(v))
+    if not rates and not leave: raise ValueError('Enter a rate, or tick Leave unpriced, for at least one item.')
+    who, now, today = teams._actor(), store.now(), date.today().isoformat()
+    saved = 0
+    if rates and save_to_library:                         # through the rate library's own import and checks; a refusal changes nothing
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(['Description', 'Unit', 'Rate', 'As of', 'Source'])
+        for r, v in rates.items(): w.writerow([open_[r]['description'], open_[r]['unit'], v, today, f'Your rate ({teams.ref(jid)})'])
+        saved = import_rates(j['team_id'], f'{teams.ref(jid)} rates.csv', buf.getvalue().encode('utf-8'), f'Your rates from {teams.ref(jid)}')['added']
+    for i in items:
+        if i['ref'] in rates:
+            i.update({'rate': rates[i['ref']], 'rate_source': 'yours', 'source_title': 'Your rate', 'source_date': today,
+                      'rate_note': f'Entered by {who}' + (' and saved to the rate library' if saved else ''), 'decision': {'by': who, 'at': now, 'action': 'rate'}})
+        elif i['ref'] in leave:
+            i.update({'rate_note': f'Left unpriced by {who}', 'decision': {'by': who, 'at': now, 'action': 'unpriced'}})
+    outs['price'] = price
+    asm = outs.get('assemble')
+    if asm:                                               # already assembled: the cost plan is recalculated in code
+        asm['cost_plan'] = compute(items, (price.get('location') or {}).get('factor', 1.0), team.get('settings'))
+        priced = {f'{r} ' for r in rates}
+        asm['assumptions'] = [a for a in asm.get('assumptions') or [] if not (any(a.startswith(p) for p in priced) and ': unpriced' in a)]
+        for i in items:
+            if i['ref'] in leave:
+                asm['assumptions'] = [a for a in asm['assumptions'] if not (a.startswith(i['ref'] + ' ') and 'unpriced' in a)]
+                asm['assumptions'].insert(0, f'{i["ref"]} {i["description"]}: left unpriced by {who}; excluded from the total.')
+    rebuild = bool(outs.pop('_finished', None))
+    if rebuild: outs.pop('documents', None)
+    teams._set(jid, outputs=outs)
+    if rebuild and teams.FINISHERS.get(jt.get('finish') or ''):        # the Word and Excel documents follow the new figures
+        new = teams.FINISHERS[jt['finish']](teams._row(jid), team, jt) or {}
+        outs = teams._row(jid)['outputs']
+        outs.update(new)
+        outs['_finished'] = True
+        teams._set(jid, outputs=outs)
+        with store.db() as c:
+            for r in c.execute("SELECT id, content FROM team_steps WHERE job_id=? AND kind='signoff' AND status='pending'", (jid,)).fetchall():
+                content = json.loads(r[1] or '{}')
+                content['summary'] = (outs.get('summary') or '')[:600]
+                c.execute('UPDATE team_steps SET content=? WHERE id=?', (json.dumps(content, ensure_ascii=False), r[0]))
+    parts = [f'{len(rates)} rate{"s" if len(rates) != 1 else ""} entered as Your rate ({", ".join(f"{r} £{v:,.2f}" for r, v in rates.items())})'] if rates else []
+    if leave: parts.append(f'{len(leave)} left unpriced ({", ".join(leave)})')
+    if saved: parts.append(f'{saved} saved to the rate library')
+    note = '; '.join(parts) + '.'
+    ps = _price_stage(jt)
+    sid = teams._add_step(jid, 'rates', ps['key'] if ps else 'price', 'stefan', status='done', note=note,
+                          content={'by': who, 'rates': [{'ref': r, 'description': open_[r]['description'], 'unit': open_[r]['unit'], 'rate': v} for r, v in rates.items()],
+                                   'unpriced': leave, 'saved_to_library': saved})
+    with store.db() as c:
+        c.execute('UPDATE team_steps SET decided_at=?, decided_by=? WHERE id=?', (now, who, sid))
+        store.audit(c, 'team_rates_decided', jid, 'human_review', f'{teams.ref(jid)} {j["title"]}: {note}')
+    if go_on:
+        p = next((s for s in teams._steps(jid) if s['status'] == 'pending'), None)
+        if p and p['kind'] == 'handoff' and ps and p['stage'] == ps['key']:
+            return teams.decide(p['id'], 'approve')
+    return teams.job_detail(jid)
+
+
+def _template():
+    return {'name': 'Quantity surveying', 'description': 'A small QS team that produces an early cost estimate (cost plan) from a brief, a specification, '
+            'schedules and drawings. Every rate has a source; the arithmetic is done by Alice.', 'discipline': 'Quantity surveying', 'colour': 'teal',
+            'icon': 'calculator', 'autonomy': 'approve', 'members': MEMBERS, 'settings': SETTINGS,
+            'job_types': [{'id': 'cost-estimate', 'name': 'Cost estimate', 'finish': 'cost_estimate', 'client_facing': True,
+                           'description': 'From brief to a draft cost plan (Word and Excel) and a Market Trends report.', 'stages': STAGES}]}
+
+
+teams.JOB_VIEWS['cost_estimate'] = job_view
+teams.UNDECIDED['cost_estimate'] = undecided
+teams.PRICING['qs_price'] = lambda: {'order': PRICE_RULES, 'note': PRICE_NOTE, 'rules': ['commercial_caution']}
+teams.TEMPLATES['quantity-surveying'] = _template
+teams.HANDLER_TOOLS.update({'qs_price': ['Web search', 'Rate library'], 'qs_trends': ['Past rates held in Alice']})
 
 
 seed()
