@@ -235,12 +235,21 @@ table.t th{text-transform:uppercase;letter-spacing:.05em;font-size:11.5px}table.
 .internal{border:1px solid #d9cdea;background:linear-gradient(180deg,#fbf9fe,#fff)}
 @media(max-width:1080px){.layout{grid-template-columns:minmax(0,1fr)}.side{position:static;height:auto}.pk{height:560px;flex:none}}
 @media(max-width:760px){.wrap{padding:0 12px}.panel{padding:16px}details.panel>summary{padding:16px}details.panel>.pbody{padding:14px 16px 18px}.ph{align-items:flex-start}.actionbar{padding:12px;position:static}.mode .chips{border-radius:14px}.hero h1{font-size:24px}.flow{display:none}.steps{grid-auto-flow:row}.steps li{grid-template-columns:34px 1fr;justify-items:start;text-align:left}.steps li::after{display:none}}
+/* bids and versions */
+.wb-org{font-size:12.5px;font-weight:700;color:#33424e;margin:4px 2px 0;padding-left:2px;border-left:3px solid #cddbe5;padding-left:8px}
+.wb-old{margin:-4px 0 2px 18px}.wb-old>summary{cursor:pointer;font-size:12.5px;color:var(--teal);font-weight:600;padding:2px 0;list-style-position:inside}
+.wb-old .wb-it{background:#f8fafb;border-style:dashed;margin-top:6px}.wb-pill.old{background:#eceff2;color:#55636e}
+.wb-rp label{display:flex;gap:8px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:#fff;cursor:pointer;font-size:14px}
+.wb-rp label input{margin-top:3px;width:auto!important;flex:none}.wb-rp label>span{flex:1;min-width:0}.wb-rp .hint{display:block}
+.supd{border-left:4px solid #8a99a6;background:#f6f8fa}.supd h2{margin-bottom:4px}
+.pk-carried{border-left:3px dashed #b07d2b;background:#fffaf0}.pk-from{display:inline-block;font-size:11.5px;font-weight:700;color:#6b4406;background:#fdf3e1;border:1px solid #ecd6a8;border-radius:999px;padding:1px 8px;margin-bottom:6px}
+.pk-gone{margin:8px 0 0;padding:8px 10px;border-radius:8px;background:#fbeeee;border:1px solid #ecc8c8;font-size:13px}.pk-gone b{display:block;color:#7a1f1f;margin-bottom:2px}.pk-gone ul{margin:0;padding-left:18px}
 </style></head><body>
 <header class="topbar"><span class="brand">''' + parker_logo(26, 'tb') + '''<span class="who">''' + escape(a['name']) + '''</span></span><div class="sp"></div><span class="small" style="color:#9fb8ca">Built on Alice</span></header>
 <main><div class="wrap"><div class="layout"><div class="colmain">
 <div class="workbar" id="workbar"><div class="wb-cur"><span class="wb-k">Working on</span><b id="wb-title">New proposal</b><span id="wb-ref" class="wb-ref" hidden></span><span id="wb-state" class="wb-state"></span><button type="button" id="wb-ver" class="wb-ver" hidden aria-expanded="false" aria-controls="wb-hist" title="Versions: when it changed, who by and from where"></button></div>
-<div class="wb-acts"><button type="button" class="secondary" id="wb-keep" hidden title="Keep the changes you have made to this written proposal as a new proposal in progress">Save as a new version</button><button type="button" class="secondary" id="wb-list" aria-expanded="false" aria-controls="wb-pop">Proposals <span id="wb-n" class="wb-n"></span> ▾</button><button type="button" class="primary" id="wb-new">+ New proposal</button></div>
-<div class="wb-pop" id="wb-hist" hidden role="region" aria-label="Versions"></div><div class="wb-pop" id="wb-pop" hidden><input type="search" id="wb-q" placeholder="Find a proposal by title, client or reference (P-…)" aria-label="Find a proposal"><div id="wb-items"></div></div></div>
+<div class="wb-acts"><button type="button" class="secondary" id="wb-keep" hidden title="Keep the changes you have made to this written proposal as a new proposal in progress">Save as a new version</button><button type="button" class="secondary" id="wb-repl" hidden aria-expanded="false" aria-controls="wb-rp" title="Pick older proposals that this one replaces: they become its earlier versions">Make this replace…</button><button type="button" class="secondary" id="wb-list" aria-expanded="false" aria-controls="wb-pop">Proposals <span id="wb-n" class="wb-n"></span> ▾</button><button type="button" class="primary" id="wb-new">+ New proposal</button></div>
+<div class="wb-pop" id="wb-hist" hidden role="region" aria-label="Versions"></div><div class="wb-pop wb-rp" id="wb-rp" hidden role="region" aria-label="Make this replace other proposals"></div><div class="wb-pop" id="wb-pop" hidden><input type="search" id="wb-q" placeholder="Find a proposal by title, client or reference (P-…)" aria-label="Find a proposal"><div id="wb-items"></div></div></div>
 <section class="hero"><div class="hero-in"><div><div class="ptitle">''' + parker_logo(58, 'hr') + '''<div><p class="eyebrow">Proposal writer \u00b7 bid and proposal studio</p><h1>''' + escape(a['name']) + '''</h1></div></div><p class="lead" id="greeting"></p></div>
 <ol class="flow" aria-label="How it works"><li>Brief</li><li>Draft</li><li>Argus checks</li><li>Word document</li></ol></div></section>
 <section class="card" id="prog" hidden aria-live="polite"><h2 id="prog-title">Working on it</h2><ol class="steps" id="steps"></ol><div class="err" id="perr" hidden></div></section>
@@ -418,7 +427,7 @@ async function fileData(f){if(f.size>15*1024*1024)throw new Error('That file is 
 $('f').onsubmit=async e=>{e.preventDefault();$('ferr').hidden=true;$('go').disabled=true;
  if(mode==='qa'){try{const f=$('qa-file').files[0];if(!f)throw new Error('Choose your proposal document.');const r=await api('/proposals/qa-only','POST',{title:$('title').value,organisation:$('org').value,brief:$('brief').value,name:f.name,data:await fileData(f),qa_model:$('qm').value});
    history.replaceState(null,'','?p='+r.id);follow(r.id);document.querySelector('main').scrollTop=0}catch(err){$('ferr').textContent=err.message;$('ferr').hidden=false;$('go').disabled=A.paused}return}
- try{const r=await api('/proposals','POST',{structure:$('structure').value,title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value,use_memory:$('mem').checked,references:[...picked],template:$('tplsel').value,writer_model:$('wm').value,qa_model:$('qm').value,sections:secEd.value(),rate_card:rateEd.value(),work_id:WORK||''});
+ try{const r=await api('/proposals','POST',{structure:$('structure').value,title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value,use_memory:$('mem').checked,references:[...picked],template:$('tplsel').value,writer_model:$('wm').value,qa_model:$('qm').value,sections:secEd.value(),rate_card:rateEd.value(),work_id:WORK||'',started_from:(!WORK&&OPEN)?OPEN:''});
   clearTimeout(saveT);saveT=null;stashChat();if(WORK&&WORK!==r.id)moveChat(WORK,r.id);else if(!WORK)moveChat(OPEN,r.id,!!OPEN);WORK=null;OPEN=r.id;DIRTY=false;setState('');recent();
   history.replaceState(null,'','?p='+r.id);document.querySelectorAll('details.fold').forEach(d=>d.open=false);follow(r.id);document.querySelector('main').scrollTop=0}
  catch(err){$('ferr').textContent=err.message;$('ferr').hidden=false;$('go').disabled=A.paused}};
@@ -427,11 +436,11 @@ function follow(pid){clearInterval(timer);$('result').replaceChildren();$('prog'
   drawSteps(p.stage,p.status,p.qa);
   if(p.status==='running')return;clearInterval(timer);if(p.id===OPEN){HIST=(p.context||{}).history||[];drawVer()}$('go').disabled=A.paused;if(p.status==='form'){$('prog').hidden=true;return}
   if(p.status==='failed'){$('prog-title').textContent='This proposal could not be finished';$('perr').textContent=p.error;$('perr').hidden=false;recent();return}
-  $('prog').hidden=true;show(p);recent()};
+  $('prog').hidden=true;show(p);if(p.superseded_by)retired(p);recent()};
  tick();timer=setInterval(tick,1500)}
 function table(head,rows,cls){const t=mk('table','','t');const h=document.createElement('tr');for(const x of head)h.append(mk('th',x));t.append(h);for(const r of rows){const tr=document.createElement('tr');if(r.cls)tr.className=r.cls;for(const c of r.cells){const td=document.createElement('td');if(c&&c.node)td.append(c.node);else td.textContent=c??'';if(c&&c.num)td.className='num';tr.append(td)}t.append(tr)}return t}
 const n=(v,num)=>({node:mk('span',v),num});
-function show(p){CUR=p;EDS=null;if(formEmpty()&&!p.inputs.qa_only&&S)setTimeout(()=>loadIntoForm(p,true),0);const box=$('result');box.replaceChildren();const qa=p.qa[p.qa.length-1]||{};
+function show(p){CUR=p;EDS=null;if(formEmpty()&&!p.inputs.qa_only&&S)setTimeout(()=>loadIntoForm(p,true,!!p.superseded_by),0);const box=$('result');box.replaceChildren();const qa=p.qa[p.qa.length-1]||{};
  const top=mk('section','','card');const v=mk('div','','verdict '+(qa.verdict==='client_ready'?'ok':(qa.issues||[]).some(i=>i.severity==='high')?'bad':'warn'));
  const sc=mk('span',qa.score!=null?String(qa.score):'—','score');sc.style.setProperty('--p',qa.score||0);sc.title=qa.score!=null?qa.score+' out of 100':'';v.append(sc);const vt=mk('div');vt.append(mk('strong',qa.verdict==='client_ready'?'Client ready, according to Argus':'Needs your attention before it goes to the client'),mk('div',qa.summary||'','hint'));v.append(vt);
  if(p.document_id){const dl=document.createElement('a');dl.href='/documents/'+p.document_id+'/download';dl.className='dl';dl.textContent='Download Word document';v.append(dl)}top.append(mk('h2',p.title+(p.organisation?' · '+p.organisation:'')),v);
@@ -540,9 +549,14 @@ async function pkSend(text){if(PK.busy||A.paused)return;text=(text||'').trim();i
  catch(e){ty.remove();pkSay('pk-p err',e.message)}
  finally{PK.busy=false;$('pk-send').disabled=A.paused;$('pk-msg').focus()}}
 function pkSuggestions(p){const list=((p.context||{}).model_suggestions||[]).filter(x=>x.state==='pending');
- for(const sg of list){const m=pkSay('pk-p pk-model','');m.append(mk('strong',sg.from+' suggested changes'),mk('div',sg.note||'','pk-mnote'));
+ for(const sg of list){const cf=sg.carried_from,m=pkSay('pk-p pk-model'+(cf?' pk-carried':''),'');
+  if(cf){const f=mk('span','Carried over from '+cf.ref+(cf.version?' (version '+cf.version+')':''),'pk-from');f.title='Written against '+cf.ref+', an earlier version of this bid; checked again against this version';m.append(f)}
+  m.append(mk('strong',sg.from+' suggested changes'),mk('div',sg.note||'','pk-mnote'));
+  if(cf)m.append(mk('div','Written against '+cf.ref+', not this version. Alice checked it again against this one: what still fits is below.','hint'));
   const ch=mk('div','','pk-ch');for(const c of sg.changed||[])ch.append(mk('span',c));m.append(ch);
+  if((sg.no_longer||[]).length){const g=mk('div','','pk-gone');g.append(mk('b','No longer applies here'));const ul=mk('ul');for(const x of sg.no_longer)ul.append(mk('li',x));g.append(ul);m.append(g)}
   const bar=mk('div','','pk-mbar');const ap=mk('button','Apply','primary');const di=mk('button','Dismiss','secondary');ap.type=di.type='button';
+  if(!(sg.changed||[]).length){ap.disabled=true;ap.title='Nothing in it applies to this version: dismiss it'}
   ap.onclick=async()=>{ap.disabled=di.disabled=true;try{if(sg.updates.draft){for(let k=0;k<40&&!(CUR&&CUR.id===p.id);k++)await new Promise(r=>setTimeout(r,250));if(!(CUR&&CUR.id===p.id))throw new Error('The draft is still loading: try Apply again in a moment.')}
     const before=snap();VIA=sg.from;await applyParker(sg.updates);await api('/proposals/'+p.id+'/suggestions/'+sg.id,'POST',{action:'applied'});await reloadVer(p.id);changed();recent();
     const un=mk('button','Undo these changes','pk-undo');un.type='button';un.onclick=async()=>{await restore(before);un.replaceWith(mk('span','Undone.','hint'))};
@@ -597,32 +611,74 @@ async function reloadVer(id){try{const p=await api('/proposals/'+id);if(id===OPE
 $('wb-ver').onclick=e=>{e.stopPropagation();const h=$('wb-hist');h.hidden=!h.hidden;$('wb-ver').setAttribute('aria-expanded',String(!h.hidden));$('wb-pop').hidden=true};
 document.addEventListener('click',e=>{if(!e.target.closest('#wb-hist,#wb-ver'))$('wb-hist').hidden=true});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')$('wb-hist').hidden=true});
-const STATE=x=>x.status==='form'?['In progress','form']:x.status==='running'?['Being written','run']:x.status==='failed'?['Failed','bad']:[(x.verdict==='client_ready'?'Client ready':'Needs attention')+(x.score!=null?' · '+x.score:''),x.verdict==='client_ready'?'ok':'warn'];
-async function recent(){try{const d=await api('/proposals');ITEMS=d.proposals;const sg=ITEMS.filter(x=>x.suggestions).length;const n=$('wb-n');n.textContent=ITEMS.length||'';n.classList.toggle('sug',!!sg);
+const STATE=x=>x.superseded_by?['Superseded by P-'+String(x.superseded_by).slice(0,6).toUpperCase(),'old']:x.status==='form'?['In progress','form']:x.status==='running'?['Being written','run']:x.status==='failed'?['Failed','bad']:[(x.verdict==='client_ready'?'Client ready':'Needs attention')+(x.score!=null?' · '+x.score:''),x.verdict==='client_ready'?'ok':'warn'];
+async function recent(){try{const d=await api('/proposals');ITEMS=d.proposals;BIDS=d.bids||[];const sg=ITEMS.filter(x=>x.suggestions).length;const n=$('wb-n');n.textContent=BIDS.length||'';n.classList.toggle('sug',!!sg);
  n.title=sg?sg+(sg===1?' proposal has':' proposals have')+' suggested changes waiting':'';drawItems();updateBar()}catch{}}
 function pkWaiting(){const w=ITEMS.filter(x=>x.suggestions&&x.id!==OPEN);if(!w.length)return;
  const m=pkSay('pk-p pk-model','');m.append(mk('strong','Suggested changes are waiting'));
  for(const x of w){const d=mk('div','','pk-open');d.append(mk('div',(x.title||'Untitled proposal')+': '+x.suggestions+(x.suggestions===1?' suggestion':' suggestions')+' from '+(x.suggested_by||[]).join(', '),'pk-mnote'));
   const b=mk('button','Open it to apply or dismiss','secondary');b.type='button';b.onclick=()=>openItem(x.id);d.append(b);m.append(d)}}
+const money=v=>'$'+Number(v||0).toFixed(2);
+function itemRow(x,b){const it=mk('div','','wb-it'+(x.id===OPEN?' on':''));it.tabIndex=0;it.setAttribute('role','button');const t=mk('div');
+ const sug=x.activity_kind==='suggestion',multi=(x.bid_versions||1)>1;const ln=mk('span',(x.ref?x.ref+' · ':'')+(multi?'version '+x.bid_version+' of '+x.bid_versions:'v'+(x.version||1))+' · '+(sug?'Suggestion from '+x.activity_from+' ':(x.status==='form'?'Edited ':'Updated '))+when(x.activity_at||x.edited_at||x.updated_at||x.created_at),'hint');if(x.edited_via&&!sug)ln.append(mk('span',x.edited_via,'wb-via'+(isModel(x.edited_via)?' model':'')));
+ ln.title=(multi?'v'+(x.version||1)+' of its own history · ':'')+(x.edited_what||'')+(x.edited_by?' · '+x.edited_by:'');t.append(mk('b',(x.title||'Untitled proposal')+(x.organisation?' · '+x.organisation:'')),ln);
+ const [lab,cls]=STATE(x);const pc=mk('span','','');pc.style.cssText='display:flex;gap:8px;align-items:center';
+ const cost=b&&b.versions>1&&b.ai_cost_total?'AI '+money(b.ai_cost_total)+' in total ('+money(x.ai_cost)+' this version)':x.ai_cost?'AI '+money(x.ai_cost):'';if(b&&b.versions>1&&cost){const cl=mk('span',cost,'wb-cost');cl.style.display='block';t.append(cl)}else pc.append(mk('span',cost,'wb-cost'));
+ if(x.suggestions){const sp=mk('span',x.suggestions+(x.suggestions===1?' suggestion':' suggestions'),'wb-sug');sp.title='Suggested by '+(x.suggested_by||[]).join(', ')+': open it to apply or dismiss';pc.append(sp)}pc.append(mk('span',lab,'wb-pill '+cls));
+ pc.title=cost?(b&&b.versions>1?'What Alice’s AI calls have cost across all '+b.versions+' versions of this bid (writing, Argus and Parker), and for this version alone':'What Alice’s AI calls for this proposal have cost so far (writing, Argus and Parker)'):'';it.append(t,pc);
+ if(x.status==='form'&&!x.superseded_by){const xb=mk('button','×','wb-x');xb.type='button';xb.title='Remove this proposal in progress';xb.setAttribute('aria-label','Remove '+(x.title||'this proposal'));
+  xb.onclick=async e=>{e.stopPropagation();if(!confirm('Remove “'+(x.title||'Untitled proposal')+'” from your proposals in progress?'+(multi?'\n\nThe version it replaced becomes the current version again.':'')))return;try{await api('/work/'+x.id+'/discard','POST',{});if(x.id===OPEN)await openNew();await recent()}catch(err){alertBox(err.message)}};it.append(xb)}else it.append(mk('span'));
+ it.onclick=()=>{$('wb-pop').hidden=true;$('wb-list').setAttribute('aria-expanded','false');openItem(x.id)};it.onkeydown=e=>{if(e.key==='Enter')it.click()};return it}
 function drawItems(){const q=($('wb-q').value||'').toLowerCase(),box=$('wb-items');box.replaceChildren();
- const list=ITEMS.filter(x=>!q||((x.title||'')+' '+(x.organisation||'')+' '+(x.ref||'')).toLowerCase().includes(q)).sort((a,b)=>String(b.activity_at||'').localeCompare(String(a.activity_at||'')));
+ const by=new Map(ITEMS.map(x=>[x.id,x])),hay=x=>((x.title||'')+' '+(x.organisation||'')+' '+(x.ref||'')).toLowerCase();
+ const list=BIDS.map(b=>({b,cur:by.get(b.current),old:(b.earlier||[]).map(i=>by.get(i)).filter(Boolean)})).filter(o=>o.cur&&(!q||hay(o.cur).includes(q)||o.old.some(x=>hay(x).includes(q))))
+  .sort((a,b)=>String(b.cur.activity_at||'').localeCompare(String(a.cur.activity_at||'')));
  if(!list.length){box.append(mk('p',ITEMS.length?'No proposals match.':'No proposals yet. Start one with + New proposal; it saves itself as you work.','hint'));return}
- for(const [g,f] of [['In progress',x=>x.group==='progress'],['Being written',x=>x.group==='running'],['Written',x=>x.group==='written']]){const its=list.filter(f);if(!its.length)continue;box.append(mk('div',g+' ('+its.length+')','wb-g'));
-  for(const x of its){const it=mk('div','','wb-it'+(x.id===OPEN?' on':''));it.tabIndex=0;it.setAttribute('role','button');const t=mk('div');
-   const sug=x.activity_kind==='suggestion';const ln=mk('span',(x.ref?x.ref+' · ':'')+'v'+(x.version||1)+' · '+(sug?'Suggestion from '+x.activity_from+' ':(x.status==='form'?'Edited ':'Updated '))+when(x.activity_at||x.edited_at||x.updated_at||x.created_at),'hint');if(x.edited_via&&!sug)ln.append(mk('span',x.edited_via,'wb-via'+(isModel(x.edited_via)?' model':'')));
-   ln.title=(x.edited_what||'')+(x.edited_by?' · '+x.edited_by:'');t.append(mk('b',(x.title||'Untitled proposal')+(x.organisation?' · '+x.organisation:'')),ln);
-   const [lab,cls]=STATE(x);const pc=mk('span','','');pc.style.cssText='display:flex;gap:8px;align-items:center';pc.append(mk('span',x.ai_cost?'AI $'+Number(x.ai_cost).toFixed(2):'','wb-cost'));if(x.suggestions){const sp=mk('span',x.suggestions+(x.suggestions===1?' suggestion':' suggestions'),'wb-sug');sp.title='Suggested by '+(x.suggested_by||[]).join(', ')+': open it to apply or dismiss';pc.append(sp)}pc.append(mk('span',lab,'wb-pill '+cls));pc.title=x.ai_cost?'What Alice\u2019s AI calls for this proposal have cost so far (writing, Argus and Parker)':'';it.append(t,pc);
-   if(x.status==='form'){const xb=mk('button','×','wb-x');xb.type='button';xb.title='Remove this proposal in progress';xb.setAttribute('aria-label','Remove '+(x.title||'this proposal'));
-    xb.onclick=async e=>{e.stopPropagation();if(!confirm('Remove “'+(x.title||'Untitled proposal')+'” from your proposals in progress?'))return;try{await api('/work/'+x.id+'/discard','POST',{});if(x.id===OPEN)await openNew();await recent()}catch(err){alertBox(err.message)}};it.append(xb)}else it.append(mk('span'));
-   it.onclick=()=>{$('wb-pop').hidden=true;$('wb-list').setAttribute('aria-expanded','false');openItem(x.id)};it.onkeydown=e=>{if(e.key==='Enter')it.click()};box.append(it)}}}
+ for(const [g,f] of [['In progress',x=>x.group==='progress'],['Being written',x=>x.group==='running'],['Written',x=>x.group==='written']]){const its=list.filter(o=>f(o.cur));if(!its.length)continue;box.append(mk('div',g+' ('+its.length+')','wb-g'));
+  const orgs=[...new Set(its.map(o=>o.cur.organisation||''))].sort((a,b)=>!a?1:!b?-1:a.localeCompare(b));      // by client; No client last
+  for(const org of orgs){box.append(mk('div',org||'No client','wb-org'));
+   for(const o of its.filter(o=>(o.cur.organisation||'')===org)){box.append(itemRow(o.cur,o.b));
+    if(o.old.length){const d=document.createElement('details');d.className='wb-old';d.open=o.old.some(x=>x.id===OPEN)||(!!q&&o.old.some(x=>hay(x).includes(q)));
+     d.append(mk('summary',o.old.length+(o.old.length===1?' earlier version':' earlier versions')));for(const x of o.old)d.append(itemRow(x,null));box.append(d)}}}}}
+// ---------- bids and versions: a superseded version is read-only; Make this replace…; Restore as a separate proposal ----------
+let RO=false,BIDS=[];
+function setRO(on){RO=!!on;$('f').inert=RO;$('full').inert=RO;$('pk-msg').disabled=RO||!!A.paused;$('pk-send').disabled=RO||!!A.paused;$('go').disabled=RO||!!A.paused;
+ const m=$('pk-msg');if(!m.dataset.ph)m.dataset.ph=m.placeholder;m.placeholder=RO?'This version is superseded and read-only: open the current version to work with Parker.':m.dataset.ph}
+function retired(p){const b=p.bid||{};setRO(true);const box=$('result');box.querySelector('.supd')?.remove();
+ box.querySelectorAll('.act,.retpl,.fixbar,.fixch,.pdiff').forEach(e=>e.remove());
+ const c=mk('section','','card supd');c.append(mk('h2','Superseded by '+(b.superseded_by_ref||'P-'+String(p.superseded_by).slice(0,6).toUpperCase())));
+ c.append(mk('p','This is version '+(b.version||1)+' of '+((b.versions||[]).length||1)+' of this bid, kept as it was: read-only, so no new Parker edits or Argus checks start on it. Suggestions that were waiting on it moved to the current version.','hint'));
+ const a=mk('div','','act');if(b.current&&b.current!==p.id){const o=mk('button','Open the current version ('+b.current_ref+')','primary');o.type='button';o.onclick=()=>openItem(b.current);a.append(o)}
+ const r=mk('button','Restore as a separate proposal','secondary');r.type='button';r.title='Undo the link: this version (with any versions before it) becomes a proposal of its own again';
+ r.onclick=async()=>{if(!confirm('Restore '+(p.ref||'P-'+p.id.slice(0,6).toUpperCase())+' as a separate proposal?\n\nIt stops being an earlier version of this bid and can be changed again. Suggestions carried over from it that are still waiting go back with it.'))return;
+  r.disabled=true;try{await api('/proposals/'+p.id+'/restore','POST',{});await recent();openItem(p.id)}catch(e){r.disabled=false;alertBox(e.message)}};
+ a.append(r);c.append(a);box.prepend(c);updateBar()}
+function drawReplace(){const box=$('wb-rp');box.replaceChildren();const me=ITEMS.find(i=>i.id===OPEN);if(!me)return;
+ const mine=new Set([me.id,...ITEMS.filter(i=>i.bid_current===me.bid_current).map(i=>i.id)]);
+ const cand=BIDS.filter(b=>!mine.has(b.current)).map(b=>[b,ITEMS.find(i=>i.id===b.current)]).filter(([,x])=>x&&x.status!=='running');
+ const org=(me.organisation||'').toLowerCase(),same=cand.filter(([,x])=>org&&(x.organisation||'').toLowerCase()===org),other=cand.filter(c=>!same.includes(c));
+ box.append(mk('div','Make '+me.ref+' replace…','wb-g'),mk('p','Tick the proposals this one replaces. They become its earlier versions: kept as they are, read-only, with their waiting suggestions moved here. Restore as a separate proposal undoes it.','hint'));
+ if(!cand.length){box.append(mk('p','There are no other proposals to pick.','hint'));return}
+ const picked=new Set();const go=mk('button','Make '+me.ref+' replace the ticked proposals','primary');go.type='button';go.disabled=true;
+ const row=([b,x])=>{const l=document.createElement('label');const cb=document.createElement('input');cb.type='checkbox';cb.onchange=()=>{cb.checked?picked.add(x.id):picked.delete(x.id);go.disabled=!picked.size};
+  const t=mk('span');t.append(mk('b',(x.title||'Untitled proposal')+(x.organisation?' · '+x.organisation:'')),mk('span',x.ref+(b.versions>1?' · current of '+b.versions+' versions':'')+' · '+STATE(x)[0]+' · '+when(x.activity_at||x.updated_at),'hint'));l.append(cb,t);return l};
+ if(same.length){box.append(mk('div','Same client','wb-org'));same.forEach(c=>box.append(row(c)))}
+ if(other.length){box.append(mk('div',same.length?'Other proposals':'Proposals','wb-org'));other.forEach(c=>box.append(row(c)))}
+ go.onclick=async()=>{const ids=[...picked];if(!confirm('Make '+me.ref+' replace '+ids.length+(ids.length===1?' proposal':' proposals')+'?'))return;go.disabled=true;
+  try{const r=await api('/proposals/'+me.id+'/replaces','POST',{replaces:ids});box.hidden=true;await recent();await openItem(me.id);if(r.carried)pkSay('pk-p',r.carried+(r.carried===1?' suggestion was':' suggestions were')+' carried over from the versions it replaces: check each one below.')}
+  catch(e){go.disabled=false;alertBox(e.message)}};
+ const a=mk('div','','act');a.append(go);box.append(a)}
+$('wb-repl').onclick=e=>{e.stopPropagation();const b=$('wb-rp');b.hidden=!b.hidden;$('wb-repl').setAttribute('aria-expanded',String(!b.hidden));$('wb-pop').hidden=$('wb-hist').hidden=true;if(!b.hidden)drawReplace()};
+document.addEventListener('click',e=>{if(!e.target.closest('#wb-rp,#wb-repl'))$('wb-rp').hidden=true});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')$('wb-rp').hidden=true});
 function updateBar(){$('wb-title').textContent=$('title').value.trim()||(OPEN?'Untitled proposal':'New proposal');const rf=$('wb-ref');rf.hidden=!OPEN;rf.textContent=OPEN?'P-'+String(OPEN).slice(0,6).toUpperCase():'';const x=ITEMS.find(i=>i.id===OPEN);
- $('wb-keep').hidden=!(OPEN&&!WORK&&DIRTY);if(!saveT&&!$('wb-state').classList.contains('bad')){const st=$('wb-state');
+ $('wb-keep').hidden=!(OPEN&&!WORK&&DIRTY)||RO;$('wb-repl').hidden=!(OPEN&&x&&!x.superseded_by&&x.status!=='running')||RO;if(!saveT&&!$('wb-state').classList.contains('bad')){const st=$('wb-state');
   if(WORK)st.textContent=st.textContent||'Saved';else if(x&&x.status!=='form'){st.className='wb-state';st.textContent=STATE(x)[0]+(DIRTY?' · changes not saved: write a new version or Save as a new version':'')}else if(!OPEN){st.className='wb-state';st.textContent=DIRTY?'':'Saves itself as you work'}}}
 function setState(t,cls){const st=$('wb-state');st.textContent=t;st.className='wb-state'+(cls?' '+cls:'')}
 let FROM='';
 function formData(){return {via:VIA,started_from:FROM,parker_chat:WORK?[]:PK.history,parker_cost:WORK?0:(PK.cost||0),title:$('title').value,organisation:$('org').value,brief:$('brief').value,notes:$('notes').value,structure:$('structure').value,template:$('tplsel').value,
  sections:secEd.value(),rate_card:rateEd.value(),references:[...picked],writer:$('wm').value,qa:$('qm').value,use_memory:$('mem').checked}}
-function changed(){if(LOADING||mode!=='write'||!S)return;DIRTY=true;
+function changed(){if(LOADING||RO||mode!=='write'||!S)return;DIRTY=true;
  if(!WORK&&OPEN){updateBar();return}                                           // a written proposal: kept as it is unless you save a new version
  clearTimeout(saveT);setState('Saving…');saveT=setTimeout(saveNow,1200)}
 async function saveNow(force){clearTimeout(saveT);saveT=null;const f=formData();
@@ -651,11 +707,11 @@ async function resetForm(){LOADING++;try{clearInterval(timer);$('result').replac
  secEd.set(S.sections);rateEd.set(S.rate_card);picked.clear();drawRefs();$('wm').value=S.writer;$('qm').value=S.qa;$('mem').checked=true;clearTags();
  ['org','title'].forEach(id=>$(id).dispatchEvent(new Event('input',{bubbles:true})));if(window.cost)window.cost();summary()}finally{LOADING--}}
 async function flush(){if(saveT){await saveNow()}}
-async function openNew(){await flush();stashChat();await resetForm();WORK=null;OPEN=null;DIRTY=false;VIA='';FROM='';HIST=[];drawVer();setState('Saves itself as you work');history.replaceState(null,'',location.pathname);restoreChat(null);updateBar();drawItems();pkWaiting();document.querySelector('main').scrollTop=0}
+async function openNew(){await flush();stashChat();setRO(false);await resetForm();WORK=null;OPEN=null;DIRTY=false;VIA='';FROM='';HIST=[];drawVer();setState('Saves itself as you work');history.replaceState(null,'',location.pathname);restoreChat(null);updateBar();drawItems();pkWaiting();document.querySelector('main').scrollTop=0}
 async function openItem(id){await flush();stashChat();let p;try{p=await api('/proposals/'+id)}catch(e){alertBox(e.message);return}
- await resetForm();OPEN=id;DIRTY=false;VIA='';FROM='';HIST=(p.context||{}).history||[];drawVer();history.replaceState(null,'','?p='+id);restoreChat(id,p);setTimeout(()=>pkSuggestions(p),0);
+ setRO(false);await resetForm();OPEN=id;DIRTY=false;VIA='';FROM='';HIST=(p.context||{}).history||[];drawVer();history.replaceState(null,'','?p='+id);restoreChat(id,p);setTimeout(()=>pkSuggestions(p),0);
  if(p.status==='form'){WORK=id;await loadIntoForm(p,true,true);setState('Saved '+new Date(p.updated_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),'ok');
-  if(!PK.history.length)pkSay('pk-p','Back to “'+(p.title||'this proposal')+'”. Everything you had is here. What would you like to change?')}
+  if(p.superseded_by)retired(p);else if(!PK.history.length)pkSay('pk-p','Back to “'+(p.title||'this proposal')+'”. Everything you had is here. What would you like to change?')}
  else{WORK=null;setState('');follow(id)}
  updateBar();drawItems();document.querySelector('main').scrollTop=0}
 load().catch(e=>{$('ferr').textContent=e.message;$('ferr').hidden=false});

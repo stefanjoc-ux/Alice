@@ -218,6 +218,10 @@ NAMES = {'title': 'title', 'organisation': 'client', 'brief': 'brief', 'notes': 
 @agents.tracked(PARKER, trigger='when someone chats with Parker on the Parker page')
 def chat(aid, message, history=(), form=None, organisation='', doc_token='', work_id=''):
     import agents as _ag
+    if work_id:                                  # a superseded version is read-only: Parker does not start new edits on it
+        import proposals, proposal_bids
+        try: proposal_bids.refuse(proposals.get(str(work_id)[:40]), 'changed with Parker')
+        except LookupError: pass
     with _ag.cost_box() as box:
         res = _chat(aid, message, history, form, organisation, doc_token)
     import proposals

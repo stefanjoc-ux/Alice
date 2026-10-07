@@ -37,6 +37,11 @@ with store.db() as c:
         pricing TEXT NOT NULL DEFAULT '{}', context TEXT NOT NULL DEFAULT '{}', document_id TEXT NOT NULL DEFAULT '',
         created_by TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL)''')
     c.execute('CREATE INDEX IF NOT EXISTS proposals_assistant ON proposals(assistant_id, created_at)')
+    # bids and versions (7 Oct 2026): the bid a proposal belongs to (its first version's id; '' = a bid of its own) and the
+    # proposal that superseded it ('' = the current version). See proposal_bids.py.
+    _cols = {r['name'] for r in c.execute('PRAGMA table_info(proposals)')}
+    if 'bid_id' not in _cols: c.execute("ALTER TABLE proposals ADD COLUMN bid_id TEXT NOT NULL DEFAULT ''")
+    if 'superseded_by' not in _cols: c.execute("ALTER TABLE proposals ADD COLUMN superseded_by TEXT NOT NULL DEFAULT ''")
     # a restart stops any job that was running
     c.execute("UPDATE proposals SET status='failed',error='Alice stopped or restarted while this was being written. Start it again.' "
               "WHERE status='running'")
@@ -733,7 +738,7 @@ def add_cost(pid, usd, part='writing'):
 def parker_turn(aid, pid, you, reply, usd=0):
     """Keep Parker's conversation with the proposal (so it follows you to another device) and add the turn's cost."""
     with store.db() as c:
-        r = c.execute("SELECT context FROM proposals WHERE id=? AND assistant_id=? AND status!='discarded'", (str(pid or '')[:40], aid)).fetchone()
+        r = c.execute("SELECT context FROM proposals WHERE id=? AND assistant_id=? AND status!='discarded' AND superseded_by=''", (str(pid or '')[:40], aid)).fetchone()
         if not r: return False
         try: ctx = json.loads(r['context'] or '{}')
         except ValueError: ctx = {}
@@ -803,9 +808,10 @@ def _save(pid, **f):
 
 
 def start(aid, title, organisation, brief, notes='', sections=None, rate_card=None, use_memory=True, writer_model='', qa_model='', references=None,
-          structure='', template=None, work_id=''):
-    """Check the request and start the background job. Returns the proposal id."""
-    import assistants, organisations, rules_engine, rule_packs
+          structure='', template=None, work_id='', started_from=''):
+    """Check the request and start the background job. Returns the proposal id. started_from: the written proposal this is a new
+    version of (it then joins that bid and supersedes its current version)."""
+    import assistants, organisations, rules_engine, rule_packs, proposal_bids
     a = assistants.get(aid)
     if a['kind'] != 'proposal': raise ValueError('This assistant does not write proposals.')
     if a['status'] != 'active': raise ValueError(f'{a["name"]} is paused at the moment.')
@@ -839,6 +845,8 @@ def start(aid, title, organisation, brief, notes='', sections=None, rate_card=No
               'writer': writer, 'qa': qa, 'references': [str(x)[:300] for x in (references or [])][:10], 'structure': structure}
     with store.db() as c:
         w = c.execute("SELECT id FROM proposals WHERE id=? AND assistant_id=? AND status='form'", (str(work_id or '')[:40], aid)).fetchone() if work_id else None
+        if w and c.execute('SELECT superseded_by FROM proposals WHERE id=?', (w['id'],)).fetchone()['superseded_by']:
+            raise ValueError(f'{proposal_bids.ref(w["id"])} was superseded by another version and is kept read-only: open the current version to write it.')
         if w:                                                   # the form you were working on becomes this proposal
             pid = w['id']
             c.execute("UPDATE proposals SET title=?,organisation=?,client=?,brief=?,notes=?,inputs=?,status='running',stage='Starting',error='',"
@@ -848,6 +856,9 @@ def start(aid, title, organisation, brief, notes='', sections=None, rate_card=No
                       'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', (pid, aid, title, org, client, brief, notes, json.dumps(inputs), 'running',
                                                              'Starting', store.actor(), store.now(), store.now()))
         store.audit(c, 'proposal_started', pid, 'human_review', f'{title}' + (f' for {org}' if org else ''))
+    if started_from and not w:                                  # written from a written proposal: a new version of that bid
+        try: proposal_bids.join(aid, pid, started_from, record_new=True, starting=True)
+        except (ValueError, LookupError): pass                  # the proposal is still written; it just stays a bid of its own
     who = store.actor()
     threading.Thread(target=_run, args=(pid, who), daemon=True, name='proposal-' + pid[:6]).start()
     return pid
@@ -1030,6 +1041,8 @@ def _owned(aid, pid):
     p = get(pid)
     if p['assistant_id'] != aid: raise LookupError('No such proposal.')
     if p['status'] == 'running': raise ValueError('This proposal is still being worked on. Wait for it to finish.')
+    import proposal_bids
+    proposal_bids.refuse(p)                          # a superseded version is read-only: no new Parker edits or Argus checks
     return p
 
 
@@ -1275,9 +1288,16 @@ def save_form(aid, form, work_id=''):
     except ValueError: card = None                                                                        # a half-typed number: keep the last good card
     text = '\n'.join([title, org, brief, notes, structure] + [str(x.get('include') or '') + str(x.get('guidance') or '') for x in secs])
     if text.strip(): rules_engine.check_file(text, 'Proposal form')
+    import proposal_bids
+    sf, replaces = _clean(f.get('started_from'), 40), ''
+    if sf and not work_id:                         # Save as a new version: it will supersede the current version of that bid
+        try: replaces = proposal_bids.ref(proposal_bids.current_id(sf))
+        except LookupError: sf = ''
     with store.db() as c:
         row = c.execute("SELECT id,status,inputs FROM proposals WHERE id=? AND assistant_id=?", (str(work_id or '')[:40], aid)).fetchone() if work_id else None
         if row and row['status'] == 'form':
+            if c.execute('SELECT superseded_by FROM proposals WHERE id=?', (row['id'],)).fetchone()['superseded_by']:
+                raise ValueError('This version was superseded and is kept read-only: open the current version to change it.')
             old = json.loads(row['inputs'] or '{}')
         else:
             row, old = None, {}
@@ -1298,7 +1318,10 @@ def save_form(aid, form, work_id=''):
                       "VALUES (?,?,?,?,?,?,?,?,'form','',?,?,?)", (pid, aid, title, org, _client_for(org), brief, notes, json.dumps(inputs),
                                                                   store.actor(), now, now))
             store.audit(c, 'proposal_form_started', pid, 'human_review', (title or 'Untitled proposal') + (f' for {org}' if org else ''))
-            ver = note_version(c, pid, via or 'Parker page', 'Started' + (' as a new version of P-' + _clean(f.get('started_from'), 40)[:6].upper() if f.get('started_from') else ''), 'started')
+            ver = note_version(c, pid, via or 'Parker page', 'Started' + (f' as a new version; replaces {replaces}' if replaces else ''), 'started')
+    if not row and sf:                 # joins that bid and supersedes its current version now
+        try: proposal_bids.join(aid, pid, sf)
+        except (ValueError, LookupError): pass
     if not row:                        # a new form: bring Parker's conversation so far (and its cost) with it
         chat = [{'role': 'parker' if m.get('role') == 'parker' else 'you', 'text': str(m.get('text') or '')[:4000]}
                 for m in (f.get('parker_chat') or [])[-40:] if isinstance(m, dict) and str(m.get('text') or '').strip()]
@@ -1312,7 +1335,13 @@ def save_form(aid, form, work_id=''):
 
 
 def discard_form(aid, pid):
-    """Remove a proposal you were working on from the list (kept in the database as 'discarded'; written proposals are not affected)."""
+    """Remove a proposal you were working on from the list (kept in the database as 'discarded'; written proposals are not affected).
+    Versions it had replaced become current again, with the suggestions that were carried over from them."""
+    import proposal_bids
+    with store.db() as c:
+        if not c.execute("SELECT 1 FROM proposals WHERE id=? AND assistant_id=? AND status='form'", (pid, aid)).fetchone():
+            raise LookupError('No such proposal in progress.')
+    proposal_bids.on_discard(aid, pid)
     with store.db() as c:
         r = c.execute("SELECT title FROM proposals WHERE id=? AND assistant_id=? AND status='form'", (pid, aid)).fetchone()
         if not r: raise LookupError('No such proposal in progress.')
@@ -1332,9 +1361,9 @@ def get(pid, internal=False):
     return d
 
 
-def listing(aid, limit=50):
+def listing(aid, limit=300):
     with store.db() as c:
-        return [dict(r) for r in c.execute("SELECT id,title,organisation,status,stage,document_id,created_by,created_at,updated_at,qa,context FROM proposals WHERE assistant_id=? AND status!='discarded' "
+        return [dict(r) for r in c.execute("SELECT id,title,organisation,status,stage,document_id,created_by,created_at,updated_at,qa,context,superseded_by,bid_id FROM proposals WHERE assistant_id=? AND status!='discarded' "
                                            'ORDER BY updated_at DESC LIMIT ?', (aid, limit))]
 
 

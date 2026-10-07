@@ -21,11 +21,23 @@ def ref(pid):
     return 'P-' + pid[:6].upper()
 
 
-def _rows():
+def _rows(qa_only=False):
     with store.db() as c:
-        return [dict(r) for r in c.execute("SELECT p.*, a.name AS writer_name FROM proposals p JOIN assistants a ON a.id=p.assistant_id "
-                                           "WHERE p.status <> 'discarded' AND coalesce(p.inputs,'') NOT LIKE '%\"qa_only\": true%' "
-                                           "ORDER BY p.updated_at DESC")]
+        rows = [dict(r) for r in c.execute("SELECT p.*, a.name AS writer_name FROM proposals p JOIN assistants a ON a.id=p.assistant_id "
+                                           "WHERE p.status <> 'discarded' ORDER BY p.updated_at DESC")]
+    return rows if qa_only else [r for r in rows if '"qa_only": true' not in (r.get('inputs') or '')]
+
+
+def _bids():
+    """{proposal id: (current id, the bid's members in order)} over every proposal (checks of your own documents included, so a
+    chain through one is not broken)."""
+    import proposal_bids as pb
+    rows = _rows(qa_only=True)
+    out = {}
+    for cur, members in pb.trees(rows).items():
+        ms = pb.ordered(members, cur)
+        for m in ms: out[m['id']] = (cur, ms)
+    return out
 
 
 def _load(r):
@@ -40,10 +52,15 @@ STATUS = {'form': 'in progress (form, not written yet)', 'running': 'being writt
 
 
 def listing(query='', limit=20):
+    """One entry per bid: its current version, with the references of its earlier (superseded) versions."""
     words = [w for w in re.split(r'\s+', (query or '').lower().strip()) if w]
-    out = []
+    out, bids = [], _bids()
     for r in _rows():
-        hay = ' '.join([r['title'] or '', r['organisation'] or '', ref(r['id']).lower(), r['brief'] or '']).lower()
+        if r.get('superseded_by'): continue                  # an earlier version: listed under its bid's current version
+        cur, ms = bids.get(r['id'], (r['id'], [r]))
+        earlier = [m for m in reversed(ms) if m['id'] != r['id']]
+        hay = ' '.join([r['title'] or '', r['organisation'] or '', ref(r['id']).lower(), r['brief'] or '']
+                       + [ref(m['id']).lower() + ' ' + (m.get('title') or '') for m in earlier]).lower()
         if any(w not in hay for w in words): continue
         r = _load(r)
         qa = r['qa'][-1] if r['qa'] else {}
@@ -54,7 +71,10 @@ def listing(query='', limit=20):
                     'sell_total': (r['pricing'] or {}).get('sell') if (r['pricing'] or {}).get('lines') else None,
                     'updated': (r['updated_at'] or '')[:16].replace('T', ' '),
                     'version': (lambda v: f"v{v['version']}" + (f" via {v['edited_via']}" if v['edited_via'] else ''))(proposals_version(r)),
-                    'pending_model_suggestions': len([s for s in (r['context'].get('model_suggestions') or []) if s.get('state') == 'pending'])})
+                    'pending_model_suggestions': len([s for s in (r['context'].get('model_suggestions') or []) if s.get('state') == 'pending']),
+                    'version_in_bid': len(ms), 'versions_in_bid': len(ms),
+                    'earlier_versions': [{'proposal': ref(m['id']), 'title': m.get('title') or 'Untitled proposal', 'organisation': m.get('organisation') or '',
+                                          'version_in_bid': i + 1} for i, m in reversed(list(enumerate(ms[:-1])))]})
         if len(out) >= limit: break
     return out
 
@@ -69,6 +89,7 @@ def find(key):
     else:
         words = [w for w in key.lower().split() if w]
         hits = [r for r in rows if words and all(w in ((r['title'] or '') + ' ' + (r['organisation'] or '')).lower() for w in words)]
+        hits = [r for r in hits if not r.get('superseded_by')] or hits       # versions of one bid share a title: the current one
     if not hits: raise LookupError(f'No proposal matches "{key[:80]}". Use list_proposals to see them.')
     if len(hits) > 1 and not m: raise LookupError('More than one proposal matches: ' + '; '.join(f'{ref(r["id"])} {r["title"]}' for r in hits[:8]) + '. Give the reference.')
     return _load(hits[0])
@@ -121,13 +142,34 @@ def detail(key):
             'page': page_link(p),
             'version': (lambda v: {'number': v['version'], 'edited_at': v['edited_at'], 'edited_via': v['edited_via']})(proposals_version(p)),
             'history': [{k: x.get(k) for k in ('v', 'at', 'via', 'what')} for x in (p['context'] or {}).get('history') or []][-10:],
-            'how_to_change': 'Use propose_proposal_changes: changes wait on the Parker page for the user to apply.'}
+            **_bid_detail(p),
+            'how_to_change': (f'This version is superseded and read-only: suggest changes to the current version, {ref(_current(p))}, instead.'
+                              if p.get('superseded_by') else 'Use propose_proposal_changes: changes wait on the Parker page for the user to apply.')}
+
+
+def _current(p):
+    return _bids().get(p['id'], (p['id'], []))[0]
+
+
+def _bid_detail(p):
+    cur, ms = _bids().get(p['id'], (p['id'], [p]))
+    d = {'bid': {'versions': [{'proposal': ref(m['id']), 'version_in_bid': i + 1, 'current': m['id'] == cur} for i, m in enumerate(ms)],
+                 'current_version': ref(cur)}}
+    if p.get('superseded_by'):
+        d['superseded'] = True
+        d['superseded_by'] = ref(cur)
+        d['superseded_note'] = (f'{ref(p["id"])} is an earlier version: it was superseded and is kept read-only. The current version '
+                                f'of this bid is {ref(cur)}: use get_proposal {ref(cur)} for it.')
+    return d
 
 
 def suggest(key, note, updates, by):
     """A model's proposed changes, kept with the proposal for the user to Apply or Dismiss on the Parker page."""
     import proposals, proposal_starter as ps, rules_engine
     p = find(key)
+    if p.get('superseded_by'):
+        raise ValueError(f'{ref(p["id"])} is an earlier version: it was superseded by {ref(_current(p))} and is read-only. '
+                         f'Suggest the changes to {ref(_current(p))} instead (get_proposal {ref(_current(p))} shows it).')
     if p['status'] == 'running': raise ValueError('This proposal is being written or checked right now: try again when it has finished.')
     note = ' '.join(str(note or '').split())[:1000]
     if not isinstance(updates, dict) or not updates: raise ValueError('Give at least one change in updates.')

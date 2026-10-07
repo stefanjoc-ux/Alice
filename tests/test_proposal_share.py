@@ -129,8 +129,10 @@ t('the same place after a long gap is a new version', w4['version']['v'] == 3)
 row = next(x for x in cl.get(f'/assistant/{aid}/proposals', headers=h).json()['proposals'] if x['id'] == w['id'])
 t('the Proposals list shows version, when and where', row['version'] == 3 and row['edited_via'] == 'Claude' and row['edited_at'])
 k = cl.post(f'/assistant/{aid}/work', json={'form': {'title': 'Copy', 'brief': 'b', 'started_from': pid}}, headers=h).json()
-t('saving a written proposal as a new version says which it came from', k['version']['what'] == 'Started as a new version of ' + ref)
-g = M.get_proposal(ref)
+t('saving a written proposal as a new version says which it replaces', k['version']['what'] == 'Started as a new version; replaces ' + ref)
+cl.post(f'/assistant/{aid}/work/{k["id"]}/discard', headers=h)          # removed again: the written one is current once more
+t('removing that new version makes the written one current again', P.get(pid)['superseded_by'] == '')
+g = M.get_proposal(ref); hist = P.get(pid)['context']['history']
 t('models see the version and recent history', g['version']['number'] == hist[-1]['v'] and g['history'][-1]['v'] == hist[-1]['v']
   and next(x for x in M.list_proposals()['proposals'] if x['proposal'] == ref)['version'].startswith('v'))
 page = cl.get(f'/assistant/{aid}').text
