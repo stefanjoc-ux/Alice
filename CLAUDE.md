@@ -59,7 +59,13 @@ knowledge note "AI Substrate: status summary" through the `alice` connector, or 
    reached from outside goes through `mcp_server.py --external` (port 8002, Entra token on every request), and every
    tool decides what to return with `_who()`: external callers get the external rules and their own provider.
 
-10. **Every automation that calls a model is an agent.** Wrap its entry point with `@agents.tracked('<agent-id>')`
+10. **Safeguards are always applied through `rules_engine` and the Rules page, never hard-coded in a feature** (Stefan, 7 Oct 2026).
+    A feature that filters, blocks or redacts calls the rules engine (`check_outbound`, `check_file`, `check_record`,
+    `check_knowledge`, `check_spend`, `clients.detect`/`allowed` for client separation, `rule_packs.live_check`), so the rule's own
+    settings (on/off, parameters such as the markings list) decide, switching a rule off on the Rules page turns it off everywhere,
+    and every block is logged in one place (`log_block`). Never copy a rule's patterns, keywords or lists into a feature.
+
+11. **Every automation that calls a model is an agent.** Wrap its entry point with `@agents.tracked('<agent-id>')`
     (register the id in `agents.BUILTIN`), record what it reads/writes with `agents.note()` *outside* any write
     transaction, and every external MCP tool must call `_app('<tool>')` first. Paused or stopped agents must not run.
 

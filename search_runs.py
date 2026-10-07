@@ -123,8 +123,9 @@ def _check(org, text):
     text = '\n'.join(line.rstrip() for line in str(text or '').replace('\r\n', '\n').split('\n')).strip()
     if len(text) > MAX_GUIDANCE: raise ValueError(f'Keep the guidance to {MAX_GUIDANCE:,} characters ({len(text):,} now).')
     if text: rules_engine.check_outbound(text, 'research guidance', packs=False)          # secrets and markings never kept
+    if not clients.settings()['enabled']: return text          # Client separation is switched off on the Rules page
     own = proposals._client_for(org)
-    others = [n for n in clients.detect(text) if n.casefold() != (own or org).casefold() and n.casefold() != org.casefold()]
+    others = [n for n in clients.detect(text) if not clients.allowed(n, own or org) and n.casefold() != org.casefold()]
     if others:
         rules_engine.log_block('client_separation', f'research guidance for {org}', 'Names another client')
         raise rules_engine.RuleViolation(f'Not saved: the guidance names another client ({others[0]}). Guidance for {org} may only be about {org}.')

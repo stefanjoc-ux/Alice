@@ -71,6 +71,31 @@ r3 = OP.scan('Example Council')
 t('a scan with no opportunities found is recorded', SR.get(r3['run_id'])['record']['found'] == [] and SR.get(r3['run_id'])['summary'].startswith('0 new'))
 SCAN.update(SCAN_SAVED)
 
+# the rules check on suggestions is the Rules page's own: on = left out and logged as a block, off = not applied here either
+import rules_engine as RE
+SECRET_IDEA = {'title': 'Key rotation help', 'summary': 'Their key sk-ant-api03-' + 'K' * 90 + ' was published.', 'why_now': 'Leak.',
+               'offering': 'Cyber security and compliance', 'confidence': 0.9, 'evidence': [N1]}
+MARKED_IDEA = {'title': 'Records review', 'summary': 'OFFICIAL-SENSITIVE papers mention a records review.', 'why_now': 'Papers.',
+               'offering': 'Data and analytics (Fabric, Power Platform)', 'confidence': 0.9, 'evidence': [N1]}
+SCAN['opportunities'] = SCAN_SAVED['opportunities'] + [SECRET_IDEA, MARKED_IDEA]
+ra = SR.get(OP.scan('Example Council')['run_id'])['record']
+rcodes = {x['title']: x for x in ra['rejected']}
+t('with both rules on, a suggestion holding a secret or a marking is left out as a rules failure', rcodes.get('Key rotation help', {}).get('code') == 'rules'
+  and rcodes.get('Records review', {}).get('code') == 'rules' and 'Secret detection' in rcodes['Key rotation help']['reason'])
+with s.db() as c:
+    blocks = [r_[0] for r_ in c.execute("SELECT target FROM activity WHERE action='rule_blocked' AND target LIKE 'opportunity suggestion%'")]
+t('…and each is logged as a block, like every other rule block', len(blocks) >= 2)
+RE.update_rule('secret_detection', enabled=False); RE.update_rule('protective_marking', enabled=False)
+rb = SR.get(OP.scan('Example Council')['run_id'])['record']
+t('switched off on the Rules page, neither filter applies here either', {'Key rotation help', 'Records review'} <= {x['title'] for x in rb['found']})
+RE.update_rule('protective_marking', enabled=True, new_params={'markings': ['SECRET']})
+with s.db() as c: c.execute("DELETE FROM opportunities WHERE title IN ('Key rotation help','Records review')")
+rc_ = SR.get(OP.scan('Example Council')['run_id'])['record']
+t('the marking check follows the rule\'s own list of markings', 'Records review' in {x['title'] for x in rc_['found']})
+RE.update_rule('secret_detection', enabled=True); RE.update_rule('protective_marking', new_params={'markings': ['OFFICIAL-SENSITIVE', 'SECRET', 'TOP SECRET']})
+with s.db() as c: c.execute("DELETE FROM opportunities WHERE title IN ('Key rotation help','Records review')")
+SCAN.update(SCAN_SAVED)
+
 # ---------------- the record of organisation research ----------------
 rr = cl.post('/admin/api/organisations/research', json={'name': 'Example Council'}, headers=H).json()
 rec = SR.get(rr['run_id'])['record']
@@ -100,6 +125,11 @@ t('guidance holding a secret is refused', cl.put('/admin/api/organisations/guida
 t('guidance holding a protective marking is refused', cl.put('/admin/api/organisations/guidance', json={'org': 'Example Council', 'text': 'OFFICIAL-SENSITIVE notes'}, headers=H).status_code == 400)
 x = cl.put('/admin/api/organisations/guidance', json={'org': 'Example Council', 'text': 'Compare them with Rival Borough.'}, headers=H)
 t('guidance naming another client is refused (client separation)', x.status_code == 400 and 'Rival Borough' in x.json()['detail'])
+t('…for a non-client organisation too', cl.put('/admin/api/organisations/guidance', json={'org': 'Other Trust', 'text': 'Compare them with Rival Borough.'}, headers=H).status_code == 400)
+RE.update_rule('client_separation', enabled=False)
+t('with Client separation switched off on the Rules page, that check is off here too',
+  cl.put('/admin/api/organisations/guidance', json={'org': 'Other Trust', 'text': 'Compare them with Rival Borough.'}, headers=H).status_code == 200)
+RE.update_rule('client_separation', enabled=True)
 t('…its own name and aliases are fine', cl.put('/admin/api/organisations/guidance', json={'org': 'Example Council', 'text': 'Focus on EC digital programmes.'}, headers=H).status_code == 200)
 g = cl.put('/admin/api/organisations/guidance', json={'org': 'Example Council', 'text': 'Focus on the Council Plan digital programmes and Public Contracts Scotland notices.'}, headers=H).json()
 t('Stefan\'s edit is saved as a new version with who and when', g['version'] == 2 and g['history'][0]['created_by'] and g['history'][0]['via'] == 'you')

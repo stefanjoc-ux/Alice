@@ -245,11 +245,11 @@ def _scan(org, trigger):
         if _norm(title) in existing or any(_similar(_norm(title), x) for x in existing):
             dropped.append({'title': title, 'reason': 'Already in the tracker.'})
             rejected.append(search_runs.rejected(title, 'duplicate', 'already in the tracker')); continue
-        blob = ' '.join(str(o.get(k) or '') for k in ('title', 'summary', 'why_now', 'next_step'))
-        hit = (RE.on('secret_detection') and RE.find_secrets(blob)) or (RE.on('protective_marking') and RE.find_markings(blob))
-        if hit:
+        blob = '\n'.join(str(o.get(k) or '') for k in ('title', 'summary', 'why_now', 'next_step'))
+        try: RE.check_outbound(blob, f'opportunity suggestion for {org}', packs=False)     # the Rules page decides: secrets, markings
+        except RE.RuleViolation as e:
             dropped.append({'title': title, 'reason': 'Failed a rules check.'})
-            rejected.append(search_runs.rejected(title, 'rules', ', '.join(hit)[:120])); continue
+            rejected.append(search_runs.rejected(title, 'rules', str(e)[:160])); continue
         try: conf = max(0.0, min(1.0, float(o.get('confidence'))))
         except (TypeError, ValueError): conf = None
         if conf is not None and conf < MIN_CONFIDENCE:
