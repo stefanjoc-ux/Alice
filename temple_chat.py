@@ -191,6 +191,9 @@ def _explain(e):
     """A specific, human reason for a failed analysis."""
     name=type(e).__name__
     if isinstance(e,ValueError) and str(e): return str(e)+' Use Analyse latest to retry.'
+    import provider_errors
+    if provider_errors.is_provider_error(e):   # the provider's own reason (status and message, no keys or content)
+        return provider_errors.message(e,log='Temple chat suggestions')+'. Use Analyse latest to retry.'
     if 'Authentication' in name or 'PermissionDenied' in name: return 'The reviewer API key was rejected. Check it in .env and restart.'
     if 'RateLimit' in name: return 'Rate limit or credit exhausted at the reviewer provider. Try again later or switch Temple\'s reviewer.'
     if 'Timeout' in name: return 'The reviewer took too long to answer. Use Analyse latest to retry.'

@@ -617,7 +617,6 @@ async def chat_events(request):
                             messages.append({"role": "user", "content": results})
                     yield {"type": "error", "message": "Tool limit reached. Try a more specific question."}
     except (APIError, anthropic.APIError) as error:
-        logging.exception("Model request failed")          # full detail in data\\logs\\web.log
         yield {"type": "error", "message": provider.capitalize()+": "+provider_error(error, image_mode)}
     except TimeoutError:
         yield {"type": "error", "message": "Request timed out. Try a narrower question."}
@@ -2533,7 +2532,8 @@ async def assistant_ask(aid: str, q: AssistantQuestion, request: Request):
 def _assistant_error(e):
     if isinstance(e,rules_engine.RuleViolation): return (429 if 'Spending caps' in str(e) else 400),str(e)
     if isinstance(e,agents.AgentBlocked): return 503,str(e)
-    if isinstance(e,(APIError, anthropic.APIError)): return 502,'The AI service did not answer: '+provider_error(e)
+    if isinstance(e,(APIError, anthropic.APIError)):   # the provider's own reason, e.g. 'Anthropic rejected the request (HTTP 400): …'
+        import provider_errors; return 502,provider_errors.message(e,log='Assistant or proposal')+'.'
     if isinstance(e,ValueError): return 400,str(e)
     return 500,'Something went wrong. Try again in a moment.'
 
@@ -2736,25 +2736,23 @@ def temple_review(rid: str):
 
 def provider_error(error, image_mode=False):
     """A specific reason for a failed model request, including the provider's own message (trimmed)."""
+    import provider_errors
     status = getattr(error, "status_code", None)
     name = type(error).__name__
-    body = getattr(error, "body", None)
-    detail = ""
-    if isinstance(body, dict):
-        inner = body.get("error", body)
-        detail = (inner.get("message") if isinstance(inner, dict) else str(inner)) or ""
-    detail = " ".join((detail or getattr(error, "message", "") or str(error)).split())[:220]
+    detail = provider_errors.describe(error)["detail"]       # trimmed; keys and request content removed
     if status == 401: why = "API key rejected. Replace the key (Azure: Key Vault, then restart the app; PC: .env, then restart)."
     elif status == 403: why = "Access denied for this key or account (permissions or region)."
     elif status == 404: why = "Model unavailable to your account."
     elif status == 429: why = "Rate limit or credit exhausted. Check your balance or try again shortly."
-    elif status == 400: why = ("Request rejected. This model or account may not support image generation." if image_mode
-                                else "Request rejected by the provider.")
+    elif status == 400: why = ("Request rejected (HTTP 400). This model or account may not support image generation." if image_mode
+                                else "Request rejected by the provider (HTTP 400).")
     elif status and status >= 500: why = f"The provider had an error (HTTP {status}); usually temporary."
     elif "Timeout" in name: why = "The provider took too long to answer."
     elif "Connection" in name: why = "Could not reach the provider (network problem or outage)."
     else: why = f"Request failed ({name}" + (f", HTTP {status}" if status else "") + ")."
-    return why + (f" Provider said: {detail}" if detail and detail not in why else "")
+    text = why + (f" Provider said: {detail}" if detail and detail not in why else "")
+    provider_errors.LOG.warning("Model request failed: %s", text)      # web.log: status and message, no keys or content
+    return text
 
 
 @app.post('/admin/api/providers/check')
@@ -2769,7 +2767,9 @@ async def check_providers():
         except (APIError, anthropic.APIError) as e:
             results.append({"provider": name, "model": model, "ok": False, "message": provider_error(e)})
         except Exception as e:
-            results.append({"provider": name, "model": model, "ok": False, "message": f"Failed ({type(e).__name__})."})
+            import provider_errors
+            results.append({"provider": name, "model": model, "ok": False,
+                            "message": provider_errors.message(e, log="Provider check") if provider_errors.is_provider_error(e) else f"Failed ({type(e).__name__})."})
     if os.getenv("OPENAI_API_KEY"):
         async def openai_call():
             async with AsyncOpenAI(timeout=45, max_retries=0) as client:

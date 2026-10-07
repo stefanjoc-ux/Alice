@@ -301,8 +301,12 @@ def review_chat(cid, manual=False):
         try:
             raw, provider = _ask(payload)
         except Exception as e:
-            import logging; logging.warning('Temple chat review: provider call failed (%s)', type(e).__name__)
-            msg = str(e) if isinstance(e, ValueError) and 'Missing' in str(e) else 'Temple could not reach the model. Check API credits, key and connectivity, then try again.'
+            import provider_errors
+            if isinstance(e, ValueError) and 'Missing' in str(e): msg = str(e)
+            elif provider_errors.is_provider_error(e): msg = provider_errors.message(e, sent=(payload,), log='Temple chat review') + '. Try again.'
+            else:
+                import logging; logging.warning('Temple chat review: provider call failed (%s)', type(e).__name__)
+                msg = 'Temple could not reach the model (' + type(e).__name__ + '). Check API credits, key and connectivity, then try again.'
             _finish(cid, 'failed', error=msg); return {'status': 'failed', 'message': msg}
         try:
             parsed, invalid = parse_suggestions(raw)

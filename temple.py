@@ -118,10 +118,13 @@ def review_record(rid):
         status,error='complete',''
     except Exception as e:
         report='';status='failed'
-        error=str(e) if isinstance(e,ValueError) else 'Provider request failed. Check API credits, key and connectivity; review again manually.'
+        import provider_errors   # the provider's own reason (status and message, no keys or content)
+        if isinstance(e,ValueError): error=str(e)
+        elif provider_errors.is_provider_error(e): error=provider_errors.message(e,provider,sent=(payload,),log='Temple record review')+'. Review again manually.'
+        else: error='Provider request failed ('+type(e).__name__+'). Check API credits, key and connectivity; review again manually.'
     with store.db() as c:
         c.execute('UPDATE temple_reviews SET status=?,report=?,error=?,finished_at=? WHERE id=?',(status,report,error,store.now(),review_id))
-        store.audit(c,'temple_'+status,rid,'advisory_only','Review '+review_id+'; record status unchanged')
+        store.audit(c,'temple_'+status,rid,'advisory_only','Review '+review_id+'; record status unchanged'+(': '+error[:300] if error else ''))
     return {'id':review_id,'status':status,**({'error':error} if error else {})}
 
 def automatic_review(rid):

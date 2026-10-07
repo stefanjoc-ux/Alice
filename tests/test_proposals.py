@@ -83,6 +83,7 @@ class Msgs:
             client = kw['messages'][0]['content'].split('CLIENT: ')[1].split('\n')[0]
             text = writer_json(want, 'PREVIOUS DRAFT' in kw['messages'][0]['content'], client)
         elif kw['system'].startswith('You are Argus'):
+            if MODE.get('raise'): raise MODE['raise']
             text = json.dumps(MODE['qa'].pop(0) if MODE['qa'] else QA2)
         else:
             text = '{}'
@@ -279,6 +280,19 @@ t('your edits go back to QA and the document is rebuilt', r.status_code == 200 a
 t('no writer run for a re-check', not [c for c in calls if c['system'].startswith('You are the proposal writer')])
 t('every section must come back, titles unchanged', cl.post(f'/assistant/proposal-writer/proposals/{p5["id"]}/recheck', json={'sections': edited[:1]}).status_code == 400)
 t('another assistant cannot re-check it', cl.post(f'/assistant/hr-policy/proposals/{p5["id"]}/recheck', json={'sections': edited}).status_code == 404)
+
+# Argus's call refused by the provider: the provider's own reason is kept and shown, never just the exception name or a key
+import httpx
+KEY = 'sk-ant-api03-' + 'Zx9Yw8Vu7Ts6Rq5Po4Nm3Lk2Ji1'
+MODE['raise'] = anthropic.BadRequestError('Error code: 400', response=httpx.Response(400, request=httpx.Request('POST', 'https://api.anthropic.com/v1/messages')),
+    body={'type': 'error', 'error': {'type': 'invalid_request_error', 'message': f'Your credit balance is too low to access the Anthropic API. Key {KEY}'}})
+cl.post(f'/assistant/proposal-writer/proposals/{p5["id"]}/recheck', json={'sections': edited})
+pf = wait(p5['id']); MODE['raise'] = None
+t('a refused Argus re-check says who refused it and why', pf['status'] == 'done' and pf['error'].startswith('Anthropic rejected the request (HTTP 400): Your credit balance is too low')
+  and 'BadRequestError' not in pf['error'] and KEY not in pf['error'])
+runs = [x for x in A.runs(P.QA)['runs'] if x['status'] == 'failed']
+t('the Argus run keeps the provider message, without the key', runs and 'credit balance is too low' in A.run_detail(runs[0]['id'])['run']['error']
+  and KEY not in A.run_detail(runs[0]['id'])['run']['error'])
 
 mine = D.get(D.create('docx', 'My version', '# Summary\nOur own words for the council: fixed price, January start, governance first. ' * 2
                       + '\n\n# Approach\nThree phases over six weeks with workshops and a roadmap at the end of it all.')['id'])['data']
