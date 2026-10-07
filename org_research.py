@@ -10,6 +10,7 @@ to), then returns short facts for the profile sections that public information c
 - Each run is recorded (sources consulted, facts proposed, facts dropped and why) and is an agent on the Agents page.
 """
 import json
+import logging
 import os
 import re
 import time
@@ -22,6 +23,9 @@ import substrate_store as store
 PUBLIC_SECTIONS = ['identity', 'purpose', 'values', 'structure', 'security', 'technology', 'commercial', 'vocabulary']
 MAX_FACTS = 24
 MAX_SEARCHES = 6
+PROVIDER_NAMES = {'openai': 'OpenAI', 'claude': 'Anthropic'}
+KEYS = {'openai': 'OPENAI_API_KEY', 'claude': 'ANTHROPIC_API_KEY'}
+LOG = logging.getLogger('alice.websearch')          # goes to web.log with the app's other logging
 
 with store.db() as c:
     c.execute('''CREATE TABLE IF NOT EXISTS org_research (id INTEGER PRIMARY KEY AUTOINCREMENT, org TEXT NOT NULL COLLATE NOCASE,
@@ -88,12 +92,19 @@ def _parse(raw):
 
 
 # ---------------- providers (web search) ----------------
+# Checked against the providers' documentation on 7 Oct 2026:
+# - OpenAI Responses API: tool {'type': 'web_search'}, sources via include=['web_search_call.action.sources']. Web search
+#   is not available without reasoning, and GPT-6 Luna's default effort is none, so the effort is set to low (the
+#   lowest that searches); reasoning tokens count towards max_output_tokens, hence the larger limit.
+# - Anthropic Messages API: web_search_20250305 is the basic tool and the one Haiku 4.5 supports (the newer versions add
+#   dynamic filtering for 4.6 and later models). A long search can stop with pause_turn: send the turn back to continue.
 def _ask_openai(prompt, query, workload='Temple organisation research'):
     from openai import OpenAI
     t0 = time.time()
     with OpenAI(timeout=180, max_retries=0) as client:
         r = client.responses.create(model='gpt-6-luna', instructions=prompt, input=query, tools=[{'type': 'web_search'}],
-                                    include=['web_search_call.action.sources'], max_output_tokens=6000, store=False)
+                                    include=['web_search_call.action.sources'], reasoning={'effort': 'low'},
+                                    max_output_tokens=16000, store=False)
     import usage_meter; usage_meter.log(r, 'openai', 'gpt-6-luna', workload, time.time() - t0)
     seen = {}
     for item in getattr(r, 'output', []) or []:
@@ -110,25 +121,101 @@ def _ask_openai(prompt, query, workload='Temple organisation research'):
 def _ask_claude(prompt, query, workload='Temple organisation research'):
     from anthropic import Anthropic
     t0 = time.time()
-    with Anthropic(timeout=180, max_retries=0) as client:
-        r = client.messages.create(model='claude-haiku-4-5-20251001', system=prompt, max_tokens=6000,
-                                   tools=[{'type': 'web_search_20250305', 'name': 'web_search', 'max_uses': MAX_SEARCHES}],
-                                   messages=[{'role': 'user', 'content': query}])
-    import usage_meter; usage_meter.log(r, 'claude', 'claude-haiku-4-5-20251001', workload, time.time() - t0)
+    messages = [{'role': 'user', 'content': query}]
+    tools = [{'type': 'web_search_20250305', 'name': 'web_search', 'max_uses': MAX_SEARCHES}]
     seen, texts = {}, []
-    for b in r.content:
-        if b.type == 'web_search_tool_result':
-            for res in (b.content if isinstance(b.content, list) else []):
-                if getattr(res, 'url', None): seen.setdefault(res.url, getattr(res, 'title', '') or '')
-        elif b.type == 'text':
-            texts.append(b.text)
-            for cte in getattr(b, 'citations', None) or []:
-                if getattr(cte, 'url', None): seen.setdefault(cte.url, getattr(cte, 'title', '') or '')
+    with Anthropic(timeout=180, max_retries=0) as client:
+        for _ in range(4):                 # the first request plus up to three continuations after pause_turn
+            r = client.messages.create(model='claude-haiku-4-5-20251001', system=prompt, max_tokens=6000, tools=tools, messages=messages)
+            import usage_meter; usage_meter.log(r, 'claude', 'claude-haiku-4-5-20251001', workload, time.time() - t0)
+            for b in r.content:
+                if b.type == 'web_search_tool_result':
+                    for res in (b.content if isinstance(b.content, list) else []):
+                        if getattr(res, 'url', None): seen.setdefault(res.url, getattr(res, 'title', '') or '')
+                elif b.type == 'text':
+                    texts.append(b.text)
+                    for cte in getattr(b, 'citations', None) or []:
+                        if getattr(cte, 'url', None): seen.setdefault(cte.url, getattr(cte, 'title', '') or '')
+            if getattr(r, 'stop_reason', '') != 'pause_turn': break
+            messages = [messages[0], {'role': 'assistant', 'content': [b.model_dump(exclude_none=True) for b in r.content]}]
+            t0 = time.time()
     return ''.join(texts), seen          # text blocks are split around citations: join them as written
 
 
 def _ask(prompt, query, provider, workload='Temple organisation research'):
     return _ask_openai(prompt, query, workload) if provider == 'openai' else _ask_claude(prompt, query, workload)
+
+
+_KEYLIKE = re.compile(r'(?i)\b(?:sk|sk-ant|sk-proj|xai|key)-[A-Za-z0-9_\-*.]{6,}|\bBearer\s+\S+|\b[A-Za-z0-9_\-]{40,}\b')
+
+
+def _failure(error, provider, query=''):
+    """What went wrong, from the provider's own error: HTTP status and its message, trimmed. Anything that looks like a
+    key and any echo of what was sent are removed, so this is safe to keep in the run, the activity log and web.log."""
+    import rules_engine
+    status = getattr(error, 'status_code', None)
+    body, detail = getattr(error, 'body', None), ''
+    if isinstance(body, dict):
+        inner = body.get('error', body)
+        detail = (inner.get('message') if isinstance(inner, dict) else str(inner)) or ''
+    if not detail: detail = getattr(error, 'message', '') or ('' if status is None and not isinstance(error, ValueError) else str(error))
+    detail = ' '.join(str(detail).split())
+    for part in {query, *(query.split('\n') if query else [])}:
+        if part and len(part) >= 12 and part in detail: detail = detail.replace(part, '[request]')
+    detail = _KEYLIKE.sub('[removed]', detail)
+    for name, pat in rules_engine.SECRET_PATTERNS: detail = re.sub(pat, '[removed]', detail)
+    if len(detail) > 220: detail = detail[:217].rstrip() + '…'
+    name, kind = PROVIDER_NAMES.get(provider, provider), type(error).__name__
+    if status and 400 <= status < 500:
+        why = {401: f'{name} did not accept the API key', 403: f'{name} refused access for this key or account',
+               404: f'{name} says the model or tool is not available to this account',
+               429: f'{name} rate limit or credit reached'}.get(status, f'{name} rejected the web search request')
+        text = f'{why} (HTTP {status})'
+    elif status: text = f'{name} had an error running the web search (HTTP {status}); usually temporary'
+    elif 'Timeout' in kind: text = f'{name} took too long to answer the web search'
+    elif 'Connection' in kind: text = f'Could not reach {name} for the web search'
+    else: text = f'The {name} web search did not complete ({kind})'
+    return {'provider': provider, 'status': status, 'kind': kind, 'detail': detail,
+            'text': text + (f': {detail}' if detail and detail not in text else '')}
+
+
+class SearchFailed(ValueError):
+    """The web search failed with every provider tried; the message is plain and safe to show."""
+    def __init__(self, failures):
+        self.failures = failures
+        first = failures[0]['text'].rstrip('.') + '.'
+        more = ''.join(f" Tried {PROVIDER_NAMES[f['provider']]} instead: {f['text'].rstrip('.')}." for f in failures[1:])
+        super().__init__(first + more)
+
+
+def search(prompt, query_for, provider, workload='Temple organisation research'):
+    """Web search with the chosen provider; if it refuses the request (HTTP 4xx), try the other provider once, when its
+    key is set. query_for(provider) builds and checks what is sent to that provider (its own provider rules).
+    Returns (raw text, sources seen, provider used, failures before it). Raises SearchFailed."""
+    failures = []
+    for p in [provider] + [x for x in KEYS if x != provider]:
+        if failures:
+            st = failures[-1]['status']
+            if not (st and 400 <= st < 500 and os.getenv(KEYS[p])): break
+            try: query = query_for(p)
+            except ValueError: break           # the other provider may not receive this: keep the first failure
+        else:
+            query = query_for(p)
+        try:
+            raw, seen = _ask(prompt, query, p, workload)
+            if failures: LOG.warning('%s: web search answered by %s after %s', workload, PROVIDER_NAMES[p], failures[-1]['text'])
+            return raw, seen, p, failures
+        except Exception as e:
+            f = _failure(e, p, query)
+            LOG.warning('%s: web search failed with %s: %s', workload, PROVIDER_NAMES.get(p, p), f['text'])
+            failures.append(f)
+    raise SearchFailed(failures)
+
+
+def searched_with(provider, failures):
+    """Which provider produced the result, for the summary on the page."""
+    name = PROVIDER_NAMES.get(provider, provider)
+    return f'searched with {name}' + (f" because {failures[-1]['text']}" if failures else '')
 
 
 # ---------------- research ----------------
@@ -159,15 +246,19 @@ def _research(name, website, provider=''):
     query = ('Research this organisation: ' + (existing or name or '') + (f' (website: {website})' if website else '')).strip()
     rules_engine.check_outbound(query, 'organisation research')          # secrets and markings never leave
     rules_engine.check_spend('chat')
-    provider = provider if provider in ('openai', 'claude') else temple.reviewer()
-    key = 'OPENAI_API_KEY' if provider == 'openai' else 'ANTHROPIC_API_KEY'
+    provider = provider if provider in KEYS else temple.reviewer()
+    key = KEYS[provider]
     if not os.getenv(key): raise ValueError(f'Missing {key} for Temple. Set it in .env and restart.')
     prompt = PROMPT.format(today=date.today().isoformat(), kinds=', '.join(O.KINDS), sections=', '.join(PUBLIC_SECTIONS), max_facts=MAX_FACTS)
+
+    def query_for(p):
+        if p != provider: rules_engine.check_outbound(query, 'organisation research', provider=p)
+        return query
     try:
-        raw, seen = _ask(prompt, query, provider)
-    except Exception as e:
-        _record(existing or name or _domain(website), query, website, provider, 'failed', error=type(e).__name__)
-        raise ValueError('The web search did not complete (' + type(e).__name__ + '). Check the provider and try again.') from None
+        raw, seen, provider, failures = search(prompt, query_for, provider)
+    except SearchFailed as e:
+        _record(existing or name or _domain(website), query, website, e.failures[-1]['provider'], 'failed', error=str(e)[:500])
+        raise ValueError(str(e) + ' Try again, or check the provider on the Agents page.') from None
     data = _parse(raw)
 
     # the organisation: existing, or created from what was found
@@ -218,10 +309,11 @@ def _research(name, website, provider=''):
     sources = [{'url': u, 'title': (used.get(u) or t or _domain(u))[:200], 'cited': u in used} for u, t in seen.items()][:40]
     sources.sort(key=lambda s: not s['cited'])
     summary = f'{proposed} facts proposed from {len(used)} source{"s" if len(used) != 1 else ""}' + (f'; {len(dropped)} dropped' if dropped else '') + \
-              (f'; {duplicates} already known' if duplicates else '')
+              (f'; {duplicates} already known' if duplicates else '') + '; ' + searched_with(provider, failures)
     _record(org, query, site, provider, 'complete', summary, sources, proposed, duplicates, dropped)
     return {'status': 'complete', 'org': org, 'website': site, 'proposed': proposed, 'duplicates': duplicates, 'dropped': dropped,
-            'sources': sources, 'summary': summary, 'ids': ids}
+            'sources': sources, 'summary': summary, 'ids': ids, 'provider': provider, 'provider_name': PROVIDER_NAMES[provider],
+            'fallback_from': [f['text'] for f in failures]}
 
 
 def _clean_url_safe(url):

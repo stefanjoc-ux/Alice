@@ -175,24 +175,29 @@ def _scan(org, trigger):
     key = 'OPENAI_API_KEY' if provider == 'openai' else 'ANTHROPIC_API_KEY'
     if not os.getenv(key): raise ValueError(f'Missing {key} for Temple.')
     rules_engine.check_spend('chat' if trigger == 'you' else 'automation')     # scheduled scans pause at the cap
-    b = O.brief(org, provider=provider)
     with store.db() as c:
         w = c.execute('SELECT website FROM organisations WHERE name=?', (org,)).fetchone()
         tracked = [dict(r) for r in c.execute("SELECT id,title,status,why_now,timing FROM opportunities WHERE org=? AND status<>'dismissed' ORDER BY updated_at DESC LIMIT 30", (org,))]
     site = (w['website'] if w and 'website' in w.keys() else '') or ''
     open_ = [t for t in tracked if t['status'] in OPEN][:15]
     short = {t['id'][:8]: t['id'] for t in open_}
-    query = (f'Organisation: {org}' + (f' (website: {site})' if site else '') + '\n\n' + (b['text'] or 'No approved profile facts yet.') +
-             ('\n\nALREADY KNOWN OPPORTUNITIES (do not repeat): ' + '; '.join(t['title'] for t in tracked) if tracked else '') +
-             ('\n\nOPEN OPPORTUNITIES TO CHECK:\n' + '\n'.join(f"- id {t['id'][:8]}: {t['title']} (why it mattered: {t['why_now'] or '-'}; timing: {t['timing'] or '-'})"
-                                                         for t in open_) if open_ else ''))
-    rules_engine.check_outbound(query, 'opportunity scan')
+
+    def query_for(p):
+        """The profile brief follows each provider's own allow-list, so it is built (and checked) per provider."""
+        b = O.brief(org, provider=p)
+        query = (f'Organisation: {org}' + (f' (website: {site})' if site else '') + '\n\n' + (b['text'] or 'No approved profile facts yet.') +
+                 ('\n\nALREADY KNOWN OPPORTUNITIES (do not repeat): ' + '; '.join(t['title'] for t in tracked) if tracked else '') +
+                 ('\n\nOPEN OPPORTUNITIES TO CHECK:\n' + '\n'.join(f"- id {t['id'][:8]}: {t['title']} (why it mattered: {t['why_now'] or '-'}; timing: {t['timing'] or '-'})"
+                                                             for t in open_) if open_ else ''))
+        rules_engine.check_outbound(query, 'opportunity scan', **({'provider': p} if p != provider else {}))
+        return query
     prompt = PROMPT.format(today=date.today().isoformat(), days=NEWS_DAYS, max_opps=MAX_OPPS, offerings='; '.join(offerings()))
     try:
-        raw, seen = OR._ask(prompt, query, provider, 'Temple opportunity scan')
-    except Exception as e:
-        _finish_watch(org, 'failed', type(e).__name__)
-        raise
+        raw, seen, provider, failures = OR.search(prompt, query_for, provider, 'Temple opportunity scan')
+    except OR.SearchFailed as e:
+        _finish_watch(org, 'failed', str(e))
+        with store.db() as c: store.audit(c, 'opportunity_scan_failed', org, 'approval_required', f'{str(e)[:500]} ({trigger})')
+        raise ValueError(str(e) + ' Try again, or check the provider on the Agents page.') from None
     try:
         data = OR._parse(raw)
     except ValueError as e:
@@ -239,12 +244,13 @@ def _scan(org, trigger):
     for oid in ids: agents.note('wrote', 'opportunity', oid, 'suggested')
     summary = f'{opps_added} new opportunit{"y" if opps_added == 1 else "ies"}, {news_added} news item{"" if news_added == 1 else "s"}' + \
               (f'; {refreshed} open checked' + (f' ({changed} changed, {closed} closed)' if changed or closed else '') if refreshed else '') + \
-              (f'; {len(dropped)} dropped' if dropped else '')
+              (f'; {len(dropped)} dropped' if dropped else '') + '; ' + OR.searched_with(provider, failures)
     _finish_watch(org, 'complete', summary)
     with store.db() as c:
         store.audit(c, 'opportunity_scan', org, 'approval_required', f'{summary} ({trigger})')
     return {'status': 'complete', 'org': org, 'opportunities': opps_added, 'news': news_added, 'dropped': dropped, 'summary': summary,
-            'checked': refreshed, 'changed': changed, 'closed': closed}
+            'checked': refreshed, 'changed': changed, 'closed': closed, 'provider': provider, 'provider_name': OR.PROVIDER_NAMES[provider],
+            'fallback_from': [f['text'] for f in failures]}
 
 
 OPEN = ('suggested', 'tracking', 'pursuing')
