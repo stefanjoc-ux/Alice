@@ -9,6 +9,9 @@
 //      soft delete behind it, and the Container Apps job alice-backup that writes to it at 02:00 UK time with Alice's
 //      managed identity. The job reads the file share through a READ-ONLY mount.
 //   4. Reader for Alice's identity on the vault and the database server, so the Backup page can show their state.
+//   5. The restore drill: its own identity (Contributor on the drill resource group ONLY, read on the off-site copies,
+//      write on the drill-reports container only, pull on the registry), the alice-drill job (manual: the Backup page's
+//      button and the Restore drill workflow start it) and a custom role that lets Alice's identity start that one job.
 // Nothing here reads or changes live data.
 targetScope = 'resourceGroup'
 
@@ -43,6 +46,15 @@ param immutabilityLocked bool = false
 param lockResourceGroup bool = true
 @description('Object ID of the person running the deployment: gets read access to the off-site copies, for restores from Cloud Shell.')
 param deployerObjectId string
+param acrName string
+@description('The restore drill\'s own resource group (created by azure-setup.ps1 -Step backup): throwaway resources only.')
+param drillResourceGroup string
+param webAuthClientId string
+param ownerObjectId string
+param ownerName string
+param mailFrom string = ''
+param publicUrl string = ''
+param backupNotify string = ''
 
 var roles = {
   reader: 'acdd72a7-3b8d-4880-a14c-c6b6b1c4f1e4'
@@ -54,6 +66,7 @@ resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' 
 resource storage 'Microsoft.Storage/storageAccounts@2023-01-01' existing = { name: storageAccountName }
 resource pg 'Microsoft.DBforPostgreSQL/flexibleServers@2022-12-01' existing = { name: pgServerName }
 resource cae 'Microsoft.App/managedEnvironments@2024-03-01' existing = { name: environmentName }
+resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = { name: acrName }
 
 // ---------------- 1. Azure Backup for the file share ----------------
 resource vault 'Microsoft.RecoveryServices/vaults@2023-04-01' = {
@@ -161,10 +174,18 @@ resource offsiteLifecycle 'Microsoft.Storage/storageAccounts/managementPolicies@
           filters: { blobTypes: ['blockBlob'], prefixMatch: ['${offsiteContainer}/'] }
           actions: { baseBlob: { delete: { daysAfterCreationGreaterThan: offsiteKeepDays + 1 } } }
         }
+      }, {
+        name: 'remove-old-drill-reports'
+        enabled: true
+        type: 'Lifecycle'
+        definition: {
+          filters: { blobTypes: ['blockBlob'], prefixMatch: ['drill-reports/'] }
+          actions: { baseBlob: { delete: { daysAfterCreationGreaterThan: 400 } } }
+        }
       }]
     }
   }
-  dependsOn: [offsiteBox]
+  dependsOn: [offsiteBox, drillReports]
 }
 
 resource identityWritesOffsite 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
@@ -236,7 +257,122 @@ resource backupJob 'Microsoft.App/jobs@2024-03-01' = {
   dependsOn: [identityWritesOffsite, offsiteBox]
 }
 
+// ---------------- 5. The restore drill ----------------
+resource drillReports 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-01-01' = {
+  parent: offsiteBlobs
+  name: 'drill-reports'
+  properties: { publicAccess: 'None' }
+}
+
+resource drillIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: '${prefix}-drill-identity'
+  location: location
+}
+
+var acrPull = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
+resource drillReadsCopies 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(offsite.id, drillIdentity.id, roles.blobReader)
+  scope: offsite
+  properties: { roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.blobReader), principalId: drillIdentity.properties.principalId, principalType: 'ServicePrincipal' }
+}
+
+resource drillWritesReports 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(drillReports.id, drillIdentity.id, roles.blobContributor)
+  scope: drillReports
+  properties: { roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.blobContributor), principalId: drillIdentity.properties.principalId, principalType: 'ServicePrincipal' }
+}
+
+// The temporary Alice runs as this identity, so the drill must be allowed to assign it (to that app, in the drill group).
+var identityOperator = 'f1a07417-d97a-45cb-824c-7a7467783830'
+resource drillAssignsItself 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(drillIdentity.id, drillIdentity.id, identityOperator)
+  scope: drillIdentity
+  properties: { roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', identityOperator), principalId: drillIdentity.properties.principalId, principalType: 'ServicePrincipal' }
+}
+
+resource drillPullsImage 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(acr.id, drillIdentity.id, acrPull)
+  scope: acr
+  properties: { roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', acrPull), principalId: drillIdentity.properties.principalId, principalType: 'ServicePrincipal' }
+}
+
+module drillAccess 'drill-access.bicep' = {
+  name: 'alice-drill-access'
+  scope: resourceGroup(drillResourceGroup)
+  params: { principalId: drillIdentity.properties.principalId }
+}
+
+resource drillJob 'Microsoft.App/jobs@2024-03-01' = {
+  name: '${prefix}-drill'
+  location: location
+  identity: { type: 'UserAssigned', userAssignedIdentities: { '${drillIdentity.id}': {} } }
+  properties: {
+    environmentId: cae.id
+    workloadProfileName: 'Consumption'
+    configuration: {
+      triggerType: 'Manual'
+      replicaTimeout: 10800
+      replicaRetryLimit: 0
+      manualTriggerConfig: { parallelism: 1, replicaCompletionCount: 1 }
+      registries: [{ server: acr.properties.loginServer, identity: drillIdentity.id }]
+    }
+    template: {
+      containers: [{
+        name: 'drill'
+        image: image
+        resources: { cpu: json('0.5'), memory: '1Gi' }
+        // No database address and no API keys: the drill never touches Alice's live database or share.
+        env: [
+          { name: 'ALICE_ROLE', value: 'drill' }
+          { name: 'AISUBSTRATE_DATA_DIR', value: '/tmp/alice-drill' }
+          { name: 'ALICE_NO_SCHEDULER', value: '1' }
+          { name: 'ALICE_DRILL_SUBSCRIPTION', value: subscription().subscriptionId }
+          { name: 'ALICE_DRILL_RG', value: drillResourceGroup }
+          { name: 'ALICE_DRILL_LIVE_RG', value: resourceGroup().name }
+          { name: 'ALICE_DRILL_LOCATION', value: location }
+          { name: 'ALICE_BACKUP_ACCOUNT', value: offsite.name }
+          { name: 'ALICE_BACKUP_CONTAINER', value: offsiteContainer }
+          { name: 'ALICE_DRILL_REPORTS', value: drillReports.name }
+          { name: 'ALICE_FILES_ACCOUNT', value: storage.name }
+          { name: 'ALICE_DRILL_IDENTITY_ID', value: drillIdentity.id }
+          { name: 'ALICE_IDENTITY_CLIENT_ID', value: drillIdentity.properties.clientId }
+          { name: 'ALICE_ACR_SERVER', value: acr.properties.loginServer }
+          { name: 'ALICE_DRILL_IMAGE', value: image }
+          { name: 'ALICE_DRILL_AUTH_CLIENT_ID', value: webAuthClientId }
+          { name: 'ALICE_TENANT_ID', value: tenant().tenantId }
+          { name: 'ALICE_OWNER_OBJECT_ID', value: ownerObjectId }
+          { name: 'ALICE_OWNER_NAME', value: ownerName }
+          { name: 'ALICE_BACKUP_NOTIFY', value: backupNotify }
+          { name: 'ALICE_MAIL_FROM', value: mailFrom }
+          { name: 'ALICE_PUBLIC_URL', value: publicUrl }
+          { name: 'ALICE_DRILL_RTO_HOURS', value: '4' }
+        ]
+      }]
+    }
+  }
+  dependsOn: [drillPullsImage, drillReadsCopies, drillWritesReports, drillAccess, drillAssignsItself]
+}
+
+// Alice's own identity may start this one job (the Backup page's button) and see its runs; nothing else.
+resource drillStarter 'Microsoft.Authorization/roleDefinitions@2022-04-01' = {
+  name: guid(resourceGroup().id, 'alice-drill-starter')
+  properties: {
+    roleName: 'Alice restore drill starter (${resourceGroup().name})'
+    description: 'Start the alice-drill job and read its runs. Nothing else.'
+    type: 'CustomRole'
+    permissions: [{ actions: ['Microsoft.App/jobs/read', 'Microsoft.App/jobs/start/action', 'Microsoft.App/jobs/executions/read'], notActions: [] }]
+    assignableScopes: [resourceGroup().id]
+  }
+}
+
+resource identityStartsDrill 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(drillJob.id, identity.id, 'alice-drill-starter')
+  scope: drillJob
+  properties: { roleDefinitionId: drillStarter.id, principalId: identity.properties.principalId, principalType: 'ServicePrincipal' }
+}
+
 output vaultId string = vault.id
+output drillIdentityPrincipalId string = drillIdentity.properties.principalId
 output offsiteAccount string = offsite.name
 output offsiteContainer string = offsiteContainer
 output backupJob string = backupJob.name

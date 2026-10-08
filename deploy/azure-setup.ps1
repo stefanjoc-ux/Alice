@@ -33,6 +33,12 @@ Steps (all by default, or one with -Step):
              -Step backup [-BackupNotify you@yourdomain] [-FilesBackupDays 30] [-OffsiteKeepDays 35] [-OffsiteSoftDeleteDays 35]
                           [-PgBackupDays 35] [-NoLock] [-LockImmutability] [-PgGeoBackup]
            Lift the lock deliberately: az lock delete --name alice-do-not-delete --resource-group <rg>, then -Step backup -NoLock.
+           Also sets up the restore drill: its own resource group (<rg>-drill, throwaway resources only), identity and the
+           alice-drill job (Admin > Backups > Run a restore drill now, or the Restore drill workflow).
+  recover  (run on its own, in a NEW resource group from a fresh clone; docs/restore.md part C) loads a nightly off-site copy
+           into this new, empty Alice before its apps start: -Step recover -RecoverFrom <offsite account> [-RecoverCopy yyyy/mm/dd]
+  -DatabaseHost <server address>  (any step; remembered) after a point-in-time restore into a new server (docs/restore.md part B),
+           so redeploys keep database-url pointing at it. -DatabaseHost '' goes back to this template's own server.
 Nothing here reads .env: keys are typed in once and live only in Key Vault.
 #>
 param(
@@ -59,7 +65,10 @@ param(
   [switch]$NoLock,                    # -Step backup: no CanNotDelete lock on the resource group (it is on unless you say so)
   [switch]$LockImmutability,          # -Step backup: lock the off-site immutability policy for good (asks you to confirm)
   [switch]$PgGeoBackup,               # -Step backup: geo-redundant database backups (only if the server was created with them)
-  [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github', 'connector', 'demo', 'copilot', 'mail', 'backup')][string]$Step = 'all'
+  [string]$RecoverFrom = '',          # -Step recover: the off-site storage account holding the copies
+  [string]$RecoverCopy = '',          # -Step recover: which night (yyyy/mm/dd); default the newest copy
+  [string]$DatabaseHost = '',         # after a point-in-time restore: the server Alice uses (remembered; '' = the template's own)
+  [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github', 'connector', 'demo', 'copilot', 'mail', 'backup', 'recover')][string]$Step = 'all'
 )
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
@@ -69,7 +78,7 @@ $StateFile = Join-Path $PSScriptRoot 'azure-state.json'
 function Say($text) { Write-Host "`n== $text" -ForegroundColor Cyan }
 function AzCli { $out = & az @args; if ($LASTEXITCODE -ne 0) { throw "az $($args -join ' ') failed" }; return $out }   # not named Az: PowerShell names ignore case, so it would call itself
 function AzTry { $ErrorActionPreference = 'Continue'; & az @args 2>$null }   # may fail (e.g. "does it exist?"): Windows PowerShell 5.1 otherwise turns az's error text into a stop
-function Want($name) { return (($Step -eq 'all' -and $name -notin @('connector', 'demo', 'copilot', 'mail', 'backup')) -or $Step -eq $name) }
+function Want($name) { return (($Step -eq 'all' -and $name -notin @('connector', 'demo', 'copilot', 'mail', 'backup', 'recover')) -or $Step -eq $name) }
 function Public-Url { if ($State.customDomain) { return "https://$($State.customDomain)" } else { return "$($State.webUrl)" } }
 function Audiences { return (@($State.extAudiences | Where-Object { $_ }) -join ',') }   # Copilot's SSO audiences, kept on every redeploy
 function Add-AlsoAllow {
@@ -104,6 +113,7 @@ AzCli account set --subscription $SubscriptionId | Out-Null
 $Me = AzCli ad signed-in-user show --query id -o tsv
 $Tenant = AzCli account show --query tenantId -o tsv
 $State = Load-State
+if ($PSBoundParameters.ContainsKey('DatabaseHost')) { Set-Prop $State 'databaseHost' $DatabaseHost.Trim(); Save-State $State }   # '' clears it
 Write-Host "Subscription $SubscriptionId, tenant $Tenant, resource group $ResourceGroup ($Location), you: $Me"
 
 function Deploy($stage, $extra) {
@@ -114,6 +124,7 @@ function Deploy($stage, $extra) {
   # Backups (-Step backup) are remembered, so every step that redeploys keeps them exactly as they are
   foreach ($k in 'pgBackupRetentionDays', 'filesBackupDays', 'offsiteKeepDays', 'offsiteSoftDeleteDays') { if ($State.$k) { $values[$k] = [int]$State.$k } }
   if ($State.pgGeoBackup) { $values['pgGeoRedundantBackup'] = $true }
+  if ($State.databaseHost) { $values['databaseHost'] = "$($State.databaseHost)" }
   if ($State.backup) {
     $values['backup'] = $true; $values['backupNotify'] = "$($State.backupNotify)"
     $values['lockResourceGroup'] = -not $State.noLock; $values['offsiteImmutabilityLocked'] = [bool]$State.offsiteImmutabilityLocked
@@ -133,6 +144,20 @@ function Deploy($stage, $extra) {
   if (-not (Kv-Has $State.keyVault 'pg-admin-password')) { Kv-Set $State.keyVault 'pg-admin-password' $pw }
   if ($State.pendingPassword) { $State.PSObject.Properties.Remove('pendingPassword') }
   Save-State $State
+}
+
+function Grant-MailSend($principalId, $label) {
+  # Microsoft Graph application permission Mail.Send for a managed identity (no password or secret)
+  $graphSp = AzCli ad sp show --id '00000003-0000-0000-c000-000000000000' --query id -o tsv
+  $mailSend = 'b633e1c5-b582-4048-a93e-9f11b44c7e96'
+  $have = AzCli rest --method GET --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$principalId/appRoleAssignments" -o json | ConvertFrom-Json
+  if (@($have.value) | Where-Object { $_.appRoleId -eq $mailSend -and $_.resourceId -eq $graphSp }) { Write-Host "$label already has Mail.Send."; return }
+  $tmp = New-TemporaryFile
+  try {
+    [IO.File]::WriteAllText($tmp, (ConvertTo-Json -InputObject @{ principalId = $principalId; resourceId = $graphSp; appRoleId = $mailSend } -Compress))
+    AzCli rest --method POST --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$principalId/appRoleAssignments" --headers 'Content-Type=application/json' --body "@$tmp" | Out-Null
+  } finally { Remove-Item $tmp -Force -ErrorAction SilentlyContinue }
+  Write-Host "$label can now send mail (Microsoft Graph Mail.Send)."
 }
 
 function Image-Ref {
@@ -454,17 +479,9 @@ if (Want 'mail') {
   if (-not ($State.mailFrom -match '^[^@\s]+@[^@\s]+\.[^@\s]+$')) { throw 'Give -MailFrom: the mailbox Alice sends from, e.g. alice@yourdomain (a shared mailbox is fine).' }
   if (-not (AzTry ad user show --id $State.mailFrom --query id -o tsv)) { Write-Host "Note: $($State.mailFrom) was not found as a user; make sure the mailbox (or shared mailbox) exists before Alice sends." -ForegroundColor Yellow }
   $mi = AzCli identity show -g $ResourceGroup -n 'alice-identity' -o json | ConvertFrom-Json
-  $graphSp = AzCli ad sp show --id '00000003-0000-0000-c000-000000000000' --query id -o tsv
-  $mailSend = 'b633e1c5-b582-4048-a93e-9f11b44c7e96'      # Microsoft Graph application permission Mail.Send
-  $have = AzCli rest --method GET --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$($mi.principalId)/appRoleAssignments" -o json | ConvertFrom-Json
-  if (-not (@($have.value) | Where-Object { $_.appRoleId -eq $mailSend -and $_.resourceId -eq $graphSp })) {
-    $tmp = New-TemporaryFile
-    try {
-      [IO.File]::WriteAllText($tmp, (ConvertTo-Json -InputObject @{ principalId = $mi.principalId; resourceId = $graphSp; appRoleId = $mailSend } -Compress))
-      AzCli rest --method POST --uri "https://graph.microsoft.com/v1.0/servicePrincipals/$($mi.principalId)/appRoleAssignments" --headers 'Content-Type=application/json' --body "@$tmp" | Out-Null
-    } finally { Remove-Item $tmp -Force -ErrorAction SilentlyContinue }
-    Write-Host "Alice's managed identity can now send mail (Microsoft Graph Mail.Send)."
-  } else { Write-Host 'Mail.Send already granted.' }
+  Grant-MailSend $mi.principalId "Alice's managed identity"
+  $drillMi = AzTry identity show -g $ResourceGroup -n 'alice-drill-identity' --query principalId -o tsv
+  if ($drillMi) { Grant-MailSend "$drillMi".Trim() "The restore drill's identity" }
   Save-State $State
   Write-Host 'Updating alice-web and alice-mcp (do not run this while a test-and-deploy run is in progress)...'
   $also = @($State.alsoAllow | Where-Object { $_ })
@@ -509,6 +526,8 @@ if (Want 'backup') {
   Set-Prop $State 'backup' $true
   Save-State $State
   if (-not $State.mailFrom) { Write-Host 'Note: email is not set up yet (-Step mail), so a failed backup shows on Home and the Backup page but is not emailed.' -ForegroundColor Yellow }
+  # The restore drill's own resource group: throwaway resources only, never this one, and no lock on it
+  AzCli group create -n "$ResourceGroup-drill" -l $Location --tags purpose=alice-restore-drill --output none | Out-Null
   Write-Host 'Deploying (do not run this while a test-and-deploy run is in progress)...'
   $also = @($State.alsoAllow | Where-Object { $_ })
   $users = (@($Me) + $also | Select-Object -Unique) -join ','
@@ -531,6 +550,10 @@ if (Want 'backup') {
       Write-Host 'Immutability policy locked. (The Backup page shows it as locked after the next setup step.)'
     } else { Write-Host 'Not locked.' }
   }
+  if ($State.mailFrom) {
+    $drillMi = AzTry identity show -g $ResourceGroup -n 'alice-drill-identity' --query principalId -o tsv
+    if ($drillMi) { Grant-MailSend "$drillMi".Trim() "The restore drill's identity" }
+  }
   Write-Host 'Taking the first off-site copy now (a few minutes)...'
   $st = Run-Job 'alice-backup'
   if ($st -eq 'Succeeded') { Write-Host 'First off-site copy done.' -ForegroundColor Green } else { Write-Host 'The first off-site copy did not succeed: see the Backup page in Alice and the job''s log (above).' -ForegroundColor Yellow }
@@ -540,7 +563,32 @@ if (Want 'backup') {
   Write-Host "Off-site copy: storage account $($State.offsiteAccount) (UK West), every night at 02:00 UK time; failures emailed to $($State.backupNotify)" -ForegroundColor Green
   if ($State.noLock) { Write-Host 'Resource group lock: off (-NoLock).' -ForegroundColor Yellow }
   else { Write-Host "Resource group lock: alice-do-not-delete. To lift it deliberately: az lock delete --name alice-do-not-delete --resource-group $ResourceGroup   then -Step backup -NoLock" -ForegroundColor Green }
+  Write-Host "Restore drill: resource group $ResourceGroup-drill (throwaway resources only). Start one from the Backup page, or the Restore drill workflow." -ForegroundColor Green
   Write-Host "Backup page: $(Public-Url)/admin/backup"
+}
+
+if (Want 'recover') {
+  Say 'Recovery: load a nightly off-site copy into this NEW, EMPTY Alice (docs/restore.md part C)'
+  if ($State.backup) { throw "-Step recover only runs in a new resource group: $ResourceGroup has backups switched on, so it is a live Alice. Use a fresh clone and a new -ResourceGroup." }
+  if (-not $State.keyVault -or -not $State.image) { throw 'Run -Step infra, -Step secrets and -Step image for this new resource group first.' }
+  if ($State.webUrl) { Write-Host 'Note: the apps already ran here, so the database may hold tables; the restore refuses a database that is not empty.' -ForegroundColor Yellow }
+  if (-not $RecoverFrom) { throw 'Give -RecoverFrom: the off-site storage account (its name ends in offsite).' }
+  $acct = $RecoverFrom.Trim().ToLower()
+  $acctId = AzCli storage account list --query "[?name=='$acct'].id | [0]" -o tsv
+  if (-not $acctId) { throw "No storage account $acct in this subscription." }
+  $prefix = if ($RecoverCopy) { $RecoverCopy.Trim().Trim('/') + '/' } else { '' }
+  $names = @(AzCli storage blob list --account-name $acct -c alice-offsite --auth-mode login --prefix $prefix --query "[?ends_with(name,'-manifest.json')].name" -o tsv)
+  $manifest = ($names | Where-Object { $_ } | Sort-Object | Select-Object -Last 1)
+  if (-not $manifest) { throw "No off-site copy found in $acct/alice-offsite$(if ($prefix) { " under $prefix" })." }
+  Write-Host "Restoring the copy $manifest"
+  $mi = AzCli identity show -g $ResourceGroup -n 'alice-identity' --query principalId -o tsv
+  $has = AzTry role assignment list --assignee "$mi".Trim() --role 'Storage Blob Data Reader' --scope $acctId --query '[0].id' -o tsv
+  if (-not $has) { AzCli role assignment create --assignee-object-id "$mi".Trim() --assignee-principal-type ServicePrincipal --role 'Storage Blob Data Reader' --scope $acctId --output none | Out-Null; Start-Sleep -Seconds 60 }
+  Deploy 'migrate' @{ image = (Image-Ref); recoverFrom = @{ account = $acct; container = 'alice-offsite'; manifest = "$manifest" } }
+  $st = Run-Job 'alice-recover'
+  if ($st -ne 'Succeeded') { throw 'The recovery did not succeed. Nothing was switched on. Read the job''s log (portal > alice-recover > Execution history), fix the cause and run this step again on a NEW resource group.' }
+  Write-Host 'Recovered: the database and files are loaded, and the counts match the copy.' -ForegroundColor Green
+  Write-Host 'Next: -Step signin, then -Step apps -ExtAppId <Alice API app id> -ExtCallers "<as before>", then -Step backup.' -ForegroundColor Green
 }
 
 if (Want 'github') {

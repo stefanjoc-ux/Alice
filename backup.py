@@ -13,8 +13,6 @@ Each run is recorded (backup_runs) and logged with its size, duration and result
 to Stefan (notify.py). The Backup page (Admin, owner only) reads the vault and the database server's backup state from
 Azure with the same identity (Reader on those two resources only).
 """
-import base64
-import hashlib
 import io
 import json
 import os
@@ -25,20 +23,15 @@ import tarfile
 import tempfile
 import threading
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
+import azure_io
 import substrate_store as store
+from azure_io import arm_get as _arm
 
-BLOCK = 8 * 1024 * 1024          # one Put Block request: 8 MiB (50,000 blocks = 390 GiB per blob)
-STORAGE_VERSION = '2023-11-03'
-ARM = 'https://management.azure.com'
 COUNTED = [('memories', 'records'), ('knowledge items', 'knowledge_meta'), ('proposals', 'proposals'), ('files', 'files')]
 STALE_HOURS = 26                 # no good off-site copy for this long = a warning on Home
-_token = {}
 _cache = {'at': 0.0, 'value': None}
 _lock = threading.Lock()
 
@@ -134,142 +127,11 @@ def owner_ok(headers):
     return bool(owner) and oid == owner
 
 
-# ---------------- talking to Azure (managed identity; replaced in tests) ----------------
-def _http(method, url, data=None, headers=None, timeout=60):
-    req = urllib.request.Request(url, data=data, headers=headers or {}, method=method)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return r.status, dict(r.headers), r.read()
-    except urllib.error.HTTPError as e:
-        return e.code, dict(e.headers or {}), e.read() or b''
-
-
-HTTP = _http
-
-
-def _token_for(resource):
-    now = time.time()
-    hit = _token.get(resource)
-    if hit and now < hit[1] - 120: return hit[0]
-    if not (os.environ.get('IDENTITY_ENDPOINT') and os.environ.get('IDENTITY_HEADER')):
-        raise RuntimeError('no managed identity here (IDENTITY_ENDPOINT is not set): this runs in Azure only')
-    q = {'resource': resource, 'api-version': '2019-08-01'}
-    cid = os.environ.get('ALICE_IDENTITY_CLIENT_ID', '')
-    if cid: q['client_id'] = cid
-    status, _, body = HTTP('GET', os.environ['IDENTITY_ENDPOINT'] + '?' + urllib.parse.urlencode(q), None,
-                           {'X-IDENTITY-HEADER': os.environ['IDENTITY_HEADER']}, 15)
-    if status != 200: raise RuntimeError(f'the managed identity endpoint answered {status}')
-    d = json.loads(body.decode('utf-8'))
-    _token[resource] = (d['access_token'], float(d.get('expires_on') or now + 3000))
-    return d['access_token']
-
-
-def _azure_message(status, body):
-    """What Azure said, briefly, without echoing anything sent."""
-    text = (body or b'').decode('utf-8', 'replace')
-    m = re.search(r'<Message>(.*?)</Message>', text, re.S) or re.search(r'"message"\s*:\s*"([^"]{0,300})', text)
-    msg = ' '.join((m.group(1) if m else '').split())[:220]
-    return f'HTTP {status}' + (f': {msg}' if msg else '')
-
-
-class OffsiteBlob:
-    """Writes blobs to the off-site account only. Each blob is new (If-None-Match: *), so nothing is ever overwritten."""
-
-    def __init__(self, cfg):
-        acct = cfg['account']
-        if not re.fullmatch(r'[a-z0-9]{3,24}', acct or ''):
-            raise RuntimeError('the off-site storage account is not set (ALICE_BACKUP_ACCOUNT): run azure-setup.ps1 -Step backup')
-        if cfg['live_account'] and acct == cfg['live_account']:
-            raise RuntimeError('the off-site account is the live file share\'s account: refusing to write backups there')
-        if not re.fullmatch(r'[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])', cfg['container']):
-            raise RuntimeError('the off-site container name is not valid')
-        self.host = f'{acct}.blob.core.windows.net'
-        self.base = f'https://{self.host}/{cfg["container"]}/'
-
-    def _headers(self, extra=None):
-        h = {'Authorization': 'Bearer ' + _token_for('https://storage.azure.com/'), 'x-ms-version': STORAGE_VERSION,
-             'x-ms-date': datetime.now(timezone.utc).strftime('%a, %d %b %Y %H:%M:%S GMT')}
-        h.update(extra or {})
-        return h
-
-    def _url(self, name, query=''):
-        return self.base + urllib.parse.quote(name) + query
-
-    def put_block(self, name, block_id, data):
-        for attempt in range(3):
-            try:
-                status, _, body = HTTP('PUT', self._url(name, '?comp=block&blockid=' + urllib.parse.quote(block_id)), data,
-                                       self._headers({'Content-Length': str(len(data))}), 300)
-            except OSError as e:
-                status, body = 0, str(e).encode()
-            if status == 201: return
-            if attempt == 2: raise RuntimeError(f'the off-site account refused a block of {name} ({_azure_message(status, body)})')
-            time.sleep(2 * (attempt + 1))
-
-    def commit(self, name, block_ids, content_type):
-        xml = ('<?xml version="1.0" encoding="utf-8"?><BlockList>' + ''.join(f'<Latest>{b}</Latest>' for b in block_ids)
-               + '</BlockList>').encode('utf-8')
-        status, _, body = HTTP('PUT', self._url(name, '?comp=blocklist'), xml,
-                               self._headers({'Content-Type': 'application/xml', 'Content-Length': str(len(xml)),
-                                              'x-ms-blob-content-type': content_type, 'If-None-Match': '*'}), 120)
-        if status != 201: raise RuntimeError(f'the off-site account refused to save {name} ({_azure_message(status, body)})')
-
-    def writer(self, name, content_type='application/octet-stream'):
-        return _BlockWriter(self, name, content_type)
-
-    def put(self, name, data, content_type):
-        w = self.writer(name, content_type); w.write(data); w.close()
-        return w.size, w.sha256
-
-
-class _BlockWriter(io.RawIOBase):
-    """A write-only file that streams to one blob in 8 MiB blocks (nothing is written to local disk)."""
-
-    def __init__(self, blob, name, content_type):
-        super().__init__()
-        self.blob, self.name, self.content_type = blob, name, content_type
-        self.buf = bytearray(); self.ids = []; self.size = 0; self._h = hashlib.sha256(); self.sha256 = ''; self.done = False
-
-    def writable(self): return True
-
-    def write(self, b):
-        b = bytes(b); self.buf += b; self.size += len(b); self._h.update(b)
-        while len(self.buf) >= BLOCK:
-            self._send(bytes(self.buf[:BLOCK])); del self.buf[:BLOCK]
-        return len(b)
-
-    def _send(self, data):
-        bid = base64.b64encode(f'{len(self.ids):08d}'.encode()).decode()
-        self.blob.put_block(self.name, bid, data); self.ids.append(bid)
-
-    def close(self):
-        if self.done: return super().close()
-        self.done = True
-        if self.buf: self._send(bytes(self.buf)); self.buf = bytearray()
-        self.blob.commit(self.name, self.ids, self.content_type)
-        self.sha256 = self._h.hexdigest()
-        return super().close()
-
-
 # ---------------- the database: pg_dump, streamed ----------------
 def pg_args(url):
     """pg_dump's arguments and environment for ALICE_DATABASE_URL (a libpq keyword string or a postgresql:// address).
     The password goes in PGPASSWORD, never on the command line."""
-    url = (url or '').strip()
-    parts = {}
-    if url.startswith(('postgres://', 'postgresql://')):
-        u = urllib.parse.urlsplit(url)
-        parts = {'host': u.hostname or '', 'port': str(u.port or ''), 'dbname': (u.path or '/').lstrip('/'),
-                 'user': urllib.parse.unquote(u.username or ''), 'password': urllib.parse.unquote(u.password or '')}
-        for k, v in urllib.parse.parse_qsl(u.query): parts[k] = v
-    else:
-        for item in url.split():
-            if '=' in item:
-                k, v = item.split('=', 1); parts[k.strip()] = v.strip().strip("'")
-    if not parts.get('host') or not parts.get('dbname'): raise RuntimeError('ALICE_DATABASE_URL is not a PostgreSQL address')
-    password = parts.pop('password', '')
-    keep = {k: v for k, v in parts.items() if k in ('host', 'port', 'dbname', 'user', 'sslmode') and v}
-    conninfo = ' '.join(f'{k}={v}' for k, v in keep.items())
+    conninfo, password = azure_io.pg_conninfo(url)
     env = dict(os.environ); env['PGPASSWORD'] = password; env.pop('ALICE_DATABASE_URL', None)
     return ['pg_dump', '--format=custom', '--compress=6', '--no-owner', '--no-privileges', '--dbname', conninfo], env, password
 
@@ -425,7 +287,8 @@ def run(trigger='schedule', now=None, force=False):
     stamp = now.strftime('%Y%m%dT%H%MZ'); prefix = now.strftime('%Y/%m/%d/') + stamp
     detail = {'account': cfg['account'], 'container': cfg['container'], 'region': cfg['region'], 'keep_days': cfg['keep_days']}
     try:
-        blob = OffsiteBlob(cfg)
+        if not cfg['account']: raise RuntimeError('the off-site storage account is not set (ALICE_BACKUP_ACCOUNT): run azure-setup.ps1 -Step backup')
+        blob = azure_io.Blobs(cfg['account'], cfg['container'], refuse=[cfg['live_account']])
         url = database_url()
         if not url: raise RuntimeError('ALICE_DATABASE_URL is not set: the off-site copy runs in Azure only')
         w = blob.writer(prefix + '-database.dump')
@@ -500,13 +363,6 @@ def home_status(now=None):
     return None
 
 
-def _arm(path, api):
-    status, _, body = HTTP('GET', ARM + path + ('&' if '?' in path else '?') + 'api-version=' + api, None,
-                           {'Authorization': 'Bearer ' + _token_for(ARM + '/')}, 20)
-    if status != 200: raise RuntimeError('Azure answered ' + _azure_message(status, body))
-    return json.loads(body.decode('utf-8') or '{}')
-
-
 def _files_state(cfg):
     out = {'where': '', 'keep_days': cfg['files_days'], 'schedule': f'Every day at {cfg["files_time"]} UK time', 'last': None, 'error': ''}
     if not cfg['vault_id']: out['error'] = 'Not set up yet: run azure-setup.ps1 -Step backup.'; return out
@@ -560,6 +416,102 @@ def _database_state(cfg):
     return out
 
 
+# ---------------- the restore drill (drill.py) and the targets ----------------
+RPO_FILES_HOURS = 24          # recovery point for files: at most a day's changes lost (daily snapshot and nightly copy)
+RTO_HOURS = 4                 # recovery time: Alice back within 4 hours
+RUNBOOK = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'docs', 'restore.md')
+
+
+def drill_config():
+    e = os.environ.get
+    return {'job': (e('ALICE_DRILL_JOB_ID', '') or '').strip(), 'reports': (e('ALICE_DRILL_REPORTS', '') or 'drill-reports').strip(),
+            'rg': e('ALICE_DRILL_RG', '') or ''}
+
+
+def _drill_summary(r):
+    mins = round((r.get('recovery_s') or 0) / 60)
+    return (f"Restore drill {'passed' if r.get('result') == 'passed' else 'failed'}"
+            + (f': Alice back in {mins} min' if r.get('recovery_s') is not None else '')
+            + (f"; {r['error']}" if r.get('error') else '')
+            + ('; throwaway resources removed' if not (r.get('cleanup') or {}).get('left') else '; some throwaway resources were NOT removed'))[:500]
+
+
+def _ingest(r):
+    """Record a finished drill once (backup_runs, kind drill) and log it."""
+    if not r.get('id') or r.get('result') not in ('passed', 'failed'): return
+    with store.db() as c:
+        if c.execute('SELECT 1 FROM backup_runs WHERE id=?', ('drill-' + r['id'],)).fetchone(): return
+        c.execute('INSERT INTO backup_runs(id,kind,trigger,status,started_at,finished_at,duration_s,size_bytes,detail,error) VALUES (?,?,?,?,?,?,?,?,?,?)',
+                  ('drill-' + r['id'], 'drill', r.get('trigger', ''), 'ok' if r['result'] == 'passed' else 'failed', r.get('started_at', store.now()),
+                   r.get('finished_at'), r.get('total_s'), 0, json.dumps(r)[:200000], (r.get('error') or '')[:500]))
+        store.audit(c, 'restore_drill_passed' if r['result'] == 'passed' else 'restore_drill_failed', 'drill', 'backup', _drill_summary(r))
+
+
+def drills(limit=6):
+    """The latest drill reports from the off-site account (newest first), each recorded once in Alice."""
+    cfg, dc = config(), drill_config()
+    if not cfg['account']: return []
+    box = azure_io.Blobs(cfg['account'], dc['reports'])
+    names = sorted((n for n in box.list() if n.endswith('/report.json')), reverse=True)[:limit]
+    out = []
+    for n in names:
+        try: r = json.loads(box.get(n).decode('utf-8'))
+        except Exception: continue
+        out.append(r)
+        try: _ingest(r)
+        except Exception as e: print(f'Could not record drill {r.get("id")}: {type(e).__name__}', file=sys.stderr)
+    return out
+
+
+def drill_running():
+    """A drill in progress (from the job's executions), or None."""
+    job = drill_config()['job']
+    if not job: return None
+    for x in _arm(job + '/executions', '2024-03-01').get('value', []):
+        p = x.get('properties') or {}
+        if p.get('status') in ('Running', 'Processing'): return {'since': p.get('startTime', ''), 'execution': x.get('name', '')}
+    return None
+
+
+def start_drill():
+    """Start the alice-drill job (the same job the Restore drill workflow starts). Refused while one is running."""
+    job = drill_config()['job']
+    if not job: raise ValueError('The restore drill is not set up yet: run azure-setup.ps1 -Step backup.')
+    if drill_running(): raise ValueError('A restore drill is already running. It takes about 30 to 60 minutes.')
+    _, _, d = azure_io.arm('POST', job + '/start', '2024-03-01', {})
+    with store.db() as c:
+        store.audit(c, 'restore_drill_started', 'drill', 'backup', 'Restore drill started from the Backup page (throwaway resources only; live data is not touched)')
+    with _lock: _cache.update(at=0.0, value=None)
+    return {'started': True, 'execution': d.get('name', '')}
+
+
+def targets(o, now=None):
+    """Recovery point and recovery time targets against what the backups and the last drill show."""
+    now = now or datetime.now(timezone.utc)
+    def age_h(iso):
+        try: return (now - datetime.fromisoformat(str(iso).replace('Z', '+00:00'))).total_seconds() / 3600
+        except Exception: return None
+    newest = [x for x in (age_h((o['files'].get('last') or {}).get('time')), age_h((o['offsite'].get('last_ok') or {}).get('started_at'))) if x is not None]
+    files_age = min(newest) if newest else None
+    last_drill = next((d for d in o['drill']['recent'] if d.get('result') in ('passed', 'failed')), None)
+    rec = last_drill.get('recovery_s') if last_drill else None
+    return {
+        'rpo_database': {'target': 'Minutes (point-in-time restore to any moment in the last ' + str(o['database'].get('keep_days') or 35) + ' days)',
+                         'met': bool(o['database'].get('earliest_restore')), 'actual': 'Continuous' if o['database'].get('earliest_restore') else 'Not known yet'},
+        'rpo_files': {'target': f'{RPO_FILES_HOURS} hours (daily snapshot and the nightly off-site copy)', 'hours': round(files_age, 1) if files_age is not None else None,
+                      'met': files_age is not None and files_age <= RPO_FILES_HOURS + 2},
+        'rto': {'target': f'Alice back within {RTO_HOURS} hours', 'hours': round(rec / 3600, 2) if rec is not None else None,
+                'met': rec is not None and rec <= RTO_HOURS * 3600, 'drill_at': last_drill.get('started_at') if last_drill else ''},
+    }
+
+
+def runbook():
+    try:
+        with open(RUNBOOK, encoding='utf-8') as f: return f.read()
+    except OSError:
+        return ''
+
+
 def overview(fresh=False):
     """The Backup page: each kind's last backup (time, size, status), how long it is kept, where, and the next run."""
     now = time.time()
@@ -578,8 +530,17 @@ def overview(fresh=False):
         'schedule': 'Every night at 02:00 UK time', 'next_run': next_at(datetime.now(timezone.utc)).isoformat() if cfg['account'] else '',
         'last': rs[0] if rs else None, 'last_ok': ok, 'recent': rs,
     }
+    dc = drill_config()
+    drill = {'configured': bool(dc['job']), 'rg': dc['rg'], 'recent': [], 'running': None, 'error': ''}
+    if cfg['account']:
+        try: drill['recent'] = drills()
+        except Exception as e: drill['error'] = 'Could not read the drill reports: ' + _scrub(str(e))
+    if dc['job']:
+        try: drill['running'] = drill_running()
+        except Exception as e: drill['error'] = (drill['error'] + ' ' if drill['error'] else '') + 'Could not see whether a drill is running: ' + _scrub(str(e))
     value = {'configured': configured(), 'offsite': offsite, 'files': _files_state(cfg), 'database': _database_state(cfg),
-             'lock': {'on': bool(cfg['lock']), 'name': cfg['lock']}, 'home': home_status()}
+             'lock': {'on': bool(cfg['lock']), 'name': cfg['lock']}, 'home': home_status(), 'drill': drill}
+    value['targets'] = targets(value)
     with _lock: _cache.update(at=now, value=value)
     return value
 

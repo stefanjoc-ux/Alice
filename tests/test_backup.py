@@ -69,7 +69,8 @@ def fake_http(method, url, data=None, headers=None, timeout=60):
         return 404, {}, b'{"error":{"message":"not found"}}'
     raise AssertionError('unexpected call to ' + url)
 
-B.HTTP = fake_http
+import azure_io
+azure_io.HTTP = fake_http
 notify.HTTP = lambda url, data=None, headers=None, timeout=15: (MAIL.append((url, json.loads(data) if data else None)) or (202, {})) if 'graph.microsoft.com/v1.0' in url else (200, {'access_token': 'g', 'expires_on': '9999999999'})
 
 src = tempfile.mkdtemp(prefix='alice-test-share-')
@@ -81,7 +82,7 @@ os.environ.update({'IDENTITY_ENDPOINT': 'http://identity/msi/token', 'IDENTITY_H
                    'ALICE_BACKUP_NOTIFY': 'stefan@example.org', 'ALICE_MAIL_FROM': 'alice@example.org'})
 DUMP = b'PGDMP' + os.urandom(3000)
 B.dump_chunks = lambda url: iter([DUMP[:1000], DUMP[1000:]])
-B.BLOCK = 1024                                     # small blocks, so the files go up in several
+azure_io.BLOCK = 1024                                     # small blocks, so the files go up in several
 store.propose('Fictional memory', 'A fact for the backup test.', 'Test')
 
 # The job reads the live database's address (in Azure); here only the stand-in pg_dump receives it.
@@ -214,7 +215,7 @@ t('the job: 01:00 and 02:00 UTC (02:00 UK kept in code), role backup', "cronExpr
 t('file share: Recovery Services vault with a daily policy kept 30 days', 'Microsoft.RecoveryServices/vaults@' in bk and "scheduleRunFrequency: 'Daily'" in bk and 'param filesBackupDays int = 30' in main and 'AzureFileShareProtectedItem' in bk)
 t('resource group lock: CanNotDelete, on by default, with how to lift it', "level: 'CanNotDelete'" in bk and 'param lockResourceGroup bool = true' in main and 'az lock delete --name alice-do-not-delete' in bk)
 t('database: 35 days by default; geo-redundant a parameter, off', 'param pgBackupRetentionDays int = 35' in main and 'backupRetentionDays: pgBackupRetentionDays' in main and 'param pgGeoRedundantBackup bool = false' in main)
-t('setup: -Step backup exists, and every later step keeps backups on', "'backup')][string]$Step" in setup and "if ($State.backup) {" in setup and "Run-Job 'alice-backup'" in setup)
+t('setup: -Step backup exists, and every later step keeps backups on', re.search(r"ValidateSet\([^)]*'backup'[^)]*\)\]\[string\]\$Step", setup) and "if ($State.backup) {" in setup and "Run-Job 'alice-backup'" in setup)
 t('the image has pg_dump', 'postgresql-client' in read('Dockerfile'))
 t('the pipeline moves the backup job to each new image', 'alice-backup' in read('deploy', 'github', 'deploy.yml'))
 
