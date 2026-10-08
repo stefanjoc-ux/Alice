@@ -47,6 +47,11 @@ class RateEntry(BaseModel):
     unpriced: bool = False
 
 
+class EstimateIn(BaseModel):
+    refs: list[str] = Field(default_factory=list, max_length=500)
+    note: str = Field('', max_length=1000)
+
+
 class RatesDecisionIn(BaseModel):
     entries: list[RateEntry] = Field(max_length=500)
     save_to_library: bool = True
@@ -188,6 +193,11 @@ def teams_job_page(jid: str = FPath(pattern=HEX)):
 @router.post('/admin/api/teams/jobs/{jid}/rates')
 def teams_job_rates(d: RatesDecisionIn, jid: str = FPath(pattern=HEX)):
     return _do(team_qs.decide_rates, jid, [e.model_dump() for e in d.entries], d.save_to_library, d.go_on)
+
+
+@router.post('/admin/api/teams/jobs/{jid}/estimate')
+def teams_job_estimate(d: EstimateIn, jid: str = FPath(pattern=HEX)):
+    return _do(team_qs.ask_estimates, jid, d.refs, d.note)
 
 
 @router.post('/admin/api/teams/jobs/{jid}/resume')

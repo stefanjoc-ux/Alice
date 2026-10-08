@@ -56,6 +56,13 @@ BUILTIN = [
     ('commercial_caution', 'organisation', 'Commercial caution', 'guidance', '', True, {},
      'Do not state prices, discounts, rates or Insight commitments unless they come from a saved file or approved '
      'memory, and cite that source.', False),
+    ('rate_sources', 'organisation', 'Where digital teams\' rates come from', 'enforced',
+     'Which sources a digital team\'s Cost Surveyor may price an item from, and in what order: a published rate (a cited page and its date), '
+     'your rate library, a built-up rate (worked out by Alice from cited published rates for its parts, working shown) or a team estimate '
+     '(the Cost Surveyor\'s judgement, with its reasoning, the assumptions it made and any comparable rates it found, cited). An item no '
+     'allowed source can price is left unpriced. Estimates can also be allowed for chosen items on one job (Ask the team to estimate these). '
+     'Estimates are always badged and listed as assumptions. Switched off, every source may be used, in the order set here.', True,
+     {'order': ['published', 'library', 'built_up', 'estimate'], 'allowed': ['published', 'library', 'built_up']}, '', False),
     ('ai_disclosure', 'organisation', 'AI disclosure', 'guidance', '', True, {},
      'When drafting material that will go to a client, remind me once that AI assisted so I can declare it if required.',
      False),
@@ -86,6 +93,17 @@ BUILTIN = [
     ('uk_conventions', 'personal', 'UK conventions', 'guidance', '', True, {},
      'Use UK English spelling and show amounts in GBP unless I ask otherwise.', False),
 ]
+
+
+# Where a digital team's rates may come from (rule rate_sources). 'Unpriced' is not a source: it is always last.
+RATE_SOURCES = {'published': 'Published rate', 'library': 'Your rate library', 'built_up': 'Built-up rate', 'estimate': 'Team estimate'}
+
+
+def rate_sources():
+    """The rate-source rule as features use it: {'on', 'order', 'allowed'} (switched off: every source, in the order set)."""
+    r = rule('rate_sources') or {'enabled': True, 'params': {}}
+    p = _clean_params('rate_sources', r['params'] or {'order': list(RATE_SOURCES), 'allowed': ['published', 'library', 'built_up']})
+    return {'on': bool(r['enabled']), 'order': p['order'], 'allowed': p['allowed'] if r['enabled'] else list(p['order'])}
 
 
 class RuleViolation(ValueError):
@@ -225,6 +243,11 @@ def _clean_params(rid, p):
         try: months = int(p.get('review_months', 12))
         except (TypeError, ValueError): months = 12
         return {'review_months': max(1, min(24, months))}
+    if rid == 'rate_sources':
+        order = [k for k in dict.fromkeys(p.get('order') or []) if k in RATE_SOURCES]
+        order += [k for k in RATE_SOURCES if k not in order]
+        allowed = [k for k in order if k in set(p.get('allowed') or [])]
+        return {'order': order, 'allowed': allowed}
     if rid == 'external_scope':
         return {'allowed_categories': [str(x).strip() for x in p.get('allowed_categories', []) if str(x).strip()][:50]}
     return {}
@@ -609,5 +632,6 @@ def overview():
             'effective_guidance': effective_guidance(base['guidance']), 'spend': spend_status(),
             'requests': rule_requests(), 'blocks': recent_blocks(),
             'categories': [c['name'] for c in store.list_categories()['categories']], 'providers': PROVIDERS,
+            'rate_source_names': RATE_SOURCES,
             'counts': {'enforced': sum(1 for r in rules if r['enabled'] and r['kind'] == 'enforced'),
                        'guidance': sum(1 for r in rules if r['enabled'] and r['kind'] == 'guidance')}}
