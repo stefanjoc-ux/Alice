@@ -769,7 +769,7 @@ def live_check(text, provider, target='chat message', redact_text=True, packs=No
                 notes.append(f'{PACKS[pid]["name"]} pack · {f["name"]}: {f["message"]}')
     out, removed = (redact(text, labels) if redact_text and labels else (text, []))
     if removed: notes.insert(0, 'Rule packs removed before sending: ' + ', '.join(removed) + '.')
-    if notes:
+    if notes and not rules_engine.PREVIEW.get():
         with store.db() as c:
             store.audit(c, 'rule_pack_applied_to', target[:200], 'rule_pack', ' | '.join(notes)[:500])
     return {'text': out, 'notes': notes, 'removed': removed}
