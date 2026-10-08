@@ -1,0 +1,51 @@
+# The restore drill: Actions > "Restore drill" > Run workflow (and on the 1st of each month at 03:17 UTC, after the nightly copy).
+# Copy to .github/workflows/restore-drill.yml (Stefan; like deploy.yml). It starts the same Container Apps job as the
+# "Run a restore drill now" button on Alice's Backup page (alice-drill, drill.py) and waits for it:
+#   last night's off-site copy -> throwaway database, file share and temporary Alice in the drill resource group ->
+#   checks it starts and the counts match -> ALWAYS deletes the throwaway resources -> reports on the Backup page and by email.
+# It never touches live data. This workflow only starts the job and reads its status (Azure sign-in is OIDC, no secrets).
+name: Restore drill
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 1 * *'
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: alice-restore-drill
+  cancel-in-progress: false
+
+jobs:
+  drill:
+    if: ${{ vars.AZURE_CLIENT_ID != '' }}
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 200
+    steps:
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Run the restore drill
+        env:
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+        run: |
+          az extension add --name containerapp --upgrade --only-show-errors
+          if az containerapp job execution list -n alice-drill -g "$RG" --query "[?properties.status=='Running'].name" -o tsv | grep -q .; then
+            echo "A restore drill is already running; not starting another." | tee -a "$GITHUB_STEP_SUMMARY"; exit 1
+          fi
+          EXEC=$(az containerapp job start -n alice-drill -g "$RG" --query name -o tsv)
+          echo "Started $EXEC (about 30 to 60 minutes)."
+          for i in $(seq 1 180); do
+            sleep 60
+            ST=$(az containerapp job execution show -n alice-drill -g "$RG" --job-execution-name "$EXEC" --query properties.status -o tsv)
+            case "$ST" in Succeeded|Failed|Stopped|Degraded) break ;; esac
+          done
+          echo "### Restore drill: $ST" >> "$GITHUB_STEP_SUMMARY"
+          echo "The full report (counts, measured time, clean-up) is on Alice's Backup page and in your email." >> "$GITHUB_STEP_SUMMARY"
+          [ "$ST" = "Succeeded" ] || { echo "The drill did not pass ($ST). See Alice > Admin > Backups, or the job's log in the portal (alice-drill > Execution history)."; exit 1; }

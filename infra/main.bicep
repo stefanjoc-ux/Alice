@@ -73,8 +73,14 @@ param offsiteLocation string = 'ukwest'
 param offsiteImmutabilityLocked bool = false
 @description('A CanNotDelete lock on the whole resource group (on by default with backups).')
 param lockResourceGroup bool = true
+@description('The database server Alice uses, when it is not this template\'s own server (after a point-in-time restore into a new server; docs/restore.md part B). Empty = the server below.')
+param databaseHost string = ''
 @description('Who is emailed when a nightly backup fails (needs -Step mail for sending).')
 param backupNotify string = ''
+@description('The restore drill\'s own resource group (throwaway resources only; never this one).')
+param drillResourceGroup string = '${resourceGroup().name}-drill'
+@description('Recovery (azure-setup.ps1 -Step recover, docs/restore.md part C): {account, container, manifest} of the off-site copy to load into THIS new, empty Alice. Empty = no recovery job.')
+param recoverFrom object = {}
 
 var suffix = take(uniqueString(resourceGroup().id), 6)
 var acrName = '${prefix}${suffix}acr'
@@ -190,7 +196,7 @@ resource dbUrlSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: kv
   name: 'database-url'
   properties: {
-    value: 'host=${pg.properties.fullyQualifiedDomainName} port=5432 dbname=alice user=${pgAdminLogin} password=${pgAdminPassword} sslmode=require'
+    value: 'host=${empty(databaseHost) ? pg.properties.fullyQualifiedDomainName : databaseHost} port=5432 dbname=alice user=${pgAdminLogin} password=${pgAdminPassword} sslmode=require'
   }
 }
 
@@ -298,6 +304,9 @@ var backupEnv = !backup ? [] : [
   { name: 'ALICE_PG_BACKUP_DAYS', value: string(pgBackupRetentionDays) }
   { name: 'ALICE_PG_GEO_BACKUP', value: pgGeoRedundantBackup ? '1' : '0' }
   { name: 'ALICE_BACKUP_LOCK', value: lockResourceGroup ? 'alice-do-not-delete' : '' }
+  { name: 'ALICE_DRILL_JOB_ID', value: resourceId('Microsoft.App/jobs', '${prefix}-drill') }
+  { name: 'ALICE_DRILL_REPORTS', value: 'drill-reports' }
+  { name: 'ALICE_DRILL_RG', value: drillResourceGroup }
 ]
 var commonEnv = concat(
   [
@@ -352,6 +361,33 @@ resource migrateApply 'Microsoft.App/jobs@2024-03-01' = if (withJobs) {
     configuration: { triggerType: 'Manual', replicaTimeout: 1800, replicaRetryLimit: 0, manualTriggerConfig: { parallelism: 1, replicaCompletionCount: 1 }, registries: registries, secrets: secrets }
     template: {
       containers: [{ name: 'migrate', image: image, resources: { cpu: json('0.5'), memory: '1Gi' }, env: concat(commonEnv, [{ name: 'ALICE_ROLE', value: 'migrate' }, { name: 'MIGRATE_APPLY', value: '1' }, { name: 'MIGRATE_SOURCE', value: '/mnt/alice/migrate/substrate.db' }]), volumeMounts: mounts }]
+      volumes: volumes
+    }
+  }
+  dependsOn: [identityAcrPull, identityKvRead, dbUrlSecret, pgDatabase]
+}
+
+// ---------------- recovery (stage migrate, -Step recover): load an off-site copy into this NEW, EMPTY Alice ----------------
+// restore.py refuses a database that holds tables and a share that holds files, so this can never overwrite a live Alice.
+resource recoverJob 'Microsoft.App/jobs@2024-03-01' = if (withJobs && !empty(recoverFrom)) {
+  name: '${prefix}-recover'
+  location: location
+  identity: { type: 'UserAssigned', userAssignedIdentities: { '${identity.id}': {} } }
+  properties: {
+    environmentId: env.id
+    workloadProfileName: 'Consumption'
+    configuration: { triggerType: 'Manual', replicaTimeout: 10800, replicaRetryLimit: 0, manualTriggerConfig: { parallelism: 1, replicaCompletionCount: 1 }, registries: registries, secrets: secrets }
+    template: {
+      containers: [{ name: 'recover', image: image, resources: { cpu: json('1.0'), memory: '2Gi' }, env: [
+        { name: 'ALICE_ROLE', value: 'restore' }
+        { name: 'ALICE_RESTORE_ACCOUNT', value: recoverFrom.?account ?? '' }
+        { name: 'ALICE_RESTORE_CONTAINER', value: recoverFrom.?container ?? 'alice-offsite' }
+        { name: 'ALICE_RESTORE_MANIFEST', value: recoverFrom.?manifest ?? '' }
+        { name: 'ALICE_RESTORE_TARGET_URL', secretRef: 'database-url' }
+        { name: 'ALICE_RESTORE_FILES_DIR', value: '/mnt/alice' }
+        { name: 'ALICE_IDENTITY_CLIENT_ID', value: identity.properties.clientId }
+        { name: 'AISUBSTRATE_DATA_DIR', value: '/tmp/alice-restore' }
+      ], volumeMounts: mounts }]
       volumes: volumes
     }
   }
@@ -502,6 +538,14 @@ module backups 'backup.bicep' = if (withBackup) {
     immutabilityLocked: offsiteImmutabilityLocked
     lockResourceGroup: lockResourceGroup
     deployerObjectId: deployerObjectId
+    acrName: acr.name
+    drillResourceGroup: drillResourceGroup
+    webAuthClientId: webAuthClientId
+    ownerObjectId: ownerObjectId
+    ownerName: ownerName
+    mailFrom: mailFrom
+    publicUrl: publicUrl
+    backupNotify: backupNotify
   }
   dependsOn: [identityAcrPull, identityKvRead, dbUrlSecret, envFiles]
 }

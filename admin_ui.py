@@ -35,7 +35,12 @@ SECTIONS = {
 'backup': r'''<section><div class="mem-head"><h2>Backups now</h2><button type="button" id="bk-refresh" class="secondary">Check again</button></div>
 <div id="bk-alert"></div><div id="bk-tiles" class="mi-tiles"></div><p class="small muted" id="bk-note"></p></section>
 <div id="bk-kinds" class="bk-grid"></div>
-<section><div class="mem-head"><h2>Recent off-site copies</h2><span class="small muted">The nightly copy, newest first</span></div><div class="table-wrap"><table id="bk-runs" class="mem-table"></table></div></section>''',
+<section><div class="mem-head"><h2>Recent off-site copies</h2><span class="small muted">The nightly copy, newest first</span></div><div class="table-wrap"><table id="bk-runs" class="mem-table"></table></div></section>
+<section><div class="mem-head"><h2>Recovery targets</h2><span class="small muted">What a restore would lose, and how long it would take</span></div><div id="bk-targets" class="bk-grid bk-targets"></div></section>
+<section id="drill"><div class="mem-head"><h2>Restore drill</h2><button type="button" id="bk-drill">Run a restore drill now</button></div>
+<p class="small muted">Restores last night's off-site copy into throwaway resources in a resource group of their own, starts a temporary Alice with sign-in locked to you, checks it starts and that the memories, knowledge items, proposals and files match, then deletes everything it built. It never touches your live data. About 30 to 60 minutes and a few pence; it also runs on the 1st of each month.</p>
+<div id="bk-drill-now"></div><div class="table-wrap"><table id="bk-drills" class="mem-table"></table></div></section>
+<section id="runbook"><div class="mem-head"><h2>Restore runbook</h2><span class="small muted">The same steps as docs/restore.md in the repository</span></div><div id="bk-runbook" class="bk-runbook"></div></section>''',
 'speed': r'''<section><div class="mem-head"><h2>Overview</h2><label class="small">Period <select id="sp-days"><option value="1">Today</option><option value="7" selected>Last 7 days</option><option value="30">Last 30 days</option></select></label></div>
 <div id="sp-tiles" class="mi-tiles"></div><p class="small muted" id="sp-note"></p></section>
 <section><div class="mem-head"><h2>Pages in your browser</h2><span class="small muted">Until the page and its data are on screen, average and slowest</span></div><div class="table-wrap"><table id="sp-pages" class="mem-table"></table></div></section>
@@ -591,7 +596,8 @@ a.av-tile:hover{border-color:var(--teal)}.av-tile b{font-size:28px;line-height:1
 .act-dec-cat input[type=email]{max-width:340px}.act-dec-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.act-dec-row select,.act-dec-row input{width:auto;min-width:220px}
 @media(max-width:700px){.act-dec-cat{grid-template-columns:1fr}}.act-switch{display:inline-flex;align-items:center;gap:6px;margin:0;white-space:nowrap}.act-switch input{width:auto;margin:0}
 .act-info{background:#f7fafc}.mi-top{display:flex;gap:14px;align-items:center;flex-wrap:wrap}.mi-top input,.mi-top select{margin:0;width:auto}.mi-file input{display:none}.mi-file .primary-btn{display:inline-block;background:#075e79;color:#fff;border-radius:8px;padding:9px 16px;font-weight:600;cursor:pointer}
-.bk-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin:0 0 18px}.bk-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;min-width:0}.bk-card h3{margin:0 0 4px;font-size:16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}.bk-card .bk-what{margin:0 0 10px;font-size:13px;color:#5d7385}.bk-card dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0;font-size:13px}.bk-card dt{color:#5d7385}.bk-card dd{margin:0;overflow-wrap:anywhere}.bk-err{margin:8px 0 0;font-size:13px;color:#7a1f1f}.bk-alert{border:1px solid #e0aaaa;background:#fbeaea;color:#7a1f1f;border-radius:10px;padding:10px 14px;margin:10px 0}.bk-alert.warn{border-color:#e2bf85;background:#fdf3e1;color:#6b4406}.hm-alert{display:block;border:1px solid #e0aaaa;background:#fbeaea;color:#7a1f1f;border-radius:10px;padding:10px 14px;margin:0 0 14px;text-decoration:none}.hm-alert.warn{border-color:#e2bf85;background:#fdf3e1;color:#6b4406}
+.bk-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin:0 0 18px}.bk-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;min-width:0}.bk-card h3{margin:0 0 4px;font-size:16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}.bk-card .bk-what{margin:0 0 10px;font-size:13px;color:#5d7385}.bk-card dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0;font-size:13px}.bk-card dt{color:#5d7385}.bk-card dd{margin:0;overflow-wrap:anywhere}.bk-err{margin:8px 0 0;font-size:13px;color:#7a1f1f}.bk-alert{border:1px solid #e0aaaa;background:#fbeaea;color:#7a1f1f;border-radius:10px;padding:10px 14px;margin:10px 0}.bk-alert.warn{border-color:#e2bf85;background:#fdf3e1;color:#6b4406}.bk-target{border-left:4px solid #9fcfaf}.bk-target.miss{border-left-color:#e0aaaa}.bk-target.unknown{border-left-color:#c1cbd3}.bk-target b{font-size:20px;display:block;margin:4px 0}.bk-drill-box{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:8px 0 12px;background:var(--panel)}.bk-drill-box h3{margin:0 0 6px;font-size:15px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}.bk-runbook details{border:1px solid var(--line);border-radius:10px;padding:8px 14px;margin:8px 0;background:var(--panel)}.bk-runbook summary{cursor:pointer;font-weight:600}.bk-runbook pre{background:#0f2433;color:#e6eef4;border-radius:8px;padding:10px 12px;overflow-x:auto;font-size:12.5px;white-space:pre}.bk-runbook code{background:#eef3f7;border-radius:4px;padding:0 4px;font-size:12.5px}.bk-runbook pre code{background:none;padding:0;color:inherit}.bk-runbook li{margin:4px 0}
+.hm-alert{display:block;border:1px solid #e0aaaa;background:#fbeaea;color:#7a1f1f;border-radius:10px;padding:10px 14px;margin:0 0 14px;text-decoration:none}.hm-alert.warn{border-color:#e2bf85;background:#fdf3e1;color:#6b4406}
 .mi-tiles{display:flex;gap:12px;flex-wrap:wrap;margin-top:14px}.mi-tile{background:#f4f7fa;border:1px solid #d3dee6;border-radius:10px;padding:10px 16px;min-width:120px}.mi-tile strong{display:block;font-size:20px;color:#102b40}.mi-tile span{font-size:12px;color:#5d7385}.mi-tile.mi-biz{background:#e6f0f8;border-color:#9cc0db}.mi-biz{color:#1d6fa5;font-weight:600}
 .mi-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 12px;margin:6px 0 10px;background:#f4f7fa;border:1px solid #d3dee6;border-radius:8px}.mi-form input,.mi-form select{margin:0;width:auto;flex:1 1 180px}.mi-form .mi-pc{flex:0 0 100px}.mi-form [hidden]{display:none!important}
 :root{--mi-bus:#1679a3;--mi-per:#eb6834;--mi-grid:#e3eaef}
@@ -1956,10 +1962,58 @@ if(PAGE==='backup'){
    card('Database backups','PostgreSQL\'s own backups: put the database back to any moment in the restore window.',dState,[
     ['Restore from',db.earliest_restore?at(db.earliest_restore)+' to now':''],['Last full backup',db.last?at(db.last.time):''],['Kept',db.keep_days+' days'],
     ['Copy in another region',db.geo?'Yes (UK West)':'No (Azure only allows it when the server is created)'],['Where',db.where],['Schedule',db.schedule]],db.error));
+  targets(d.targets);drills(d.drill||{recent:[]});
   const t=$('bk-runs');t.replaceChildren();const th=document.createElement('thead'),hr=document.createElement('tr');for(const h of ['When','Result','Database','Files','Took','Note']){const c=el('th',h);c.scope='col';hr.append(c)}th.append(hr);t.append(th);
   const b=document.createElement('tbody');if(!o.recent.length){const tr=document.createElement('tr'),td=el('td','No off-site copies yet.','muted');td.colSpan=6;tr.append(td);b.append(tr)}
   for(const r of o.recent){const tr=document.createElement('tr');const x=r.detail||{};
    for(const v of [at(r.started_at),r.status==='ok'?badge(true,'Complete'):r.status==='running'?badge('run','Running'):badge(false,'Failed'),x.database?size(x.database.bytes):'–',x.files?size(x.files.bytes):'–',r.duration_s!=null?took(r.duration_s):'–',r.error||((x.files||{}).skipped||[]).length?(r.error||x.files.skipped.length+' file(s) could not be read'):'']){const td=document.createElement('td');if(v instanceof Node)td.append(v);else td.textContent=v;tr.append(td)}b.append(tr)}t.append(b)}
+ function targets(t){const box=$('bk-targets');box.replaceChildren();if(!t)return;
+  const card=(title,target,actual,met,note)=>{const c=el('section','','bk-card bk-target'+(met===true?'':met===false?' miss':' unknown'));c.append(el('h3',title),el('p','Target: '+target,'bk-what'),el('b',actual),el('p',note||'','small muted'));return c};
+  box.append(card('Database: recovery point',t.rpo_database.target,t.rpo_database.actual,t.rpo_database.met||null,'Point-in-time restore: lose at most the last few minutes.'),
+   card('Files: recovery point',t.rpo_files.target,t.rpo_files.hours==null?'Not known yet':'Newest copy '+t.rpo_files.hours+' h old',t.rpo_files.hours==null?null:t.rpo_files.met,'From the daily snapshot or the nightly off-site copy, whichever is newer.'),
+   card('Recovery time',t.rto.target,t.rto.hours==null?'No drill measured yet':'Last drill: '+(t.rto.hours<1?Math.round(t.rto.hours*60)+' minutes':t.rto.hours+' hours'),t.rto.hours==null?null:t.rto.met,t.rto.drill_at?'Measured by the restore drill on '+at(t.rto.drill_at):'Run a restore drill to measure it.'))}
+ function drills(dr){const now=$('bk-drill-now');now.replaceChildren();const btn=$('bk-drill');btn.disabled=!dr.configured||!!dr.running;
+  btn.title=!dr.configured?'Set up by azure-setup.ps1 -Step backup':dr.running?'A drill is running':'';
+  if(dr.error)now.append(el('p',dr.error,'bk-err'));
+  if(!dr.configured)now.append(el('p','The restore drill is not set up yet: run azure-setup.ps1 -Step backup (see the pull request).','small muted'));
+  if(dr.running){const b=el('div','','bk-drill-box');b.append(el('h3','A drill is running'),el('p','Started '+at(dr.running.since)+'. The result appears here and in your email when it finishes.','small'));now.append(b)}
+  const last=dr.recent[0];
+  if(last&&last.result){const b=el('div','','bk-drill-box');const h=el('h3','Last drill');h.append(badge(last.result==='passed',last.result==='passed'?'Passed':'Failed'));b.append(h);
+   const rows=[['When',at(last.started_at)],['Copy restored',last.backup?(last.backup.taken_at?at(last.backup.taken_at):'')+(last.backup.version?' · release '+last.backup.version:''):''],
+    ['Alice back in',last.recovery_s!=null?took(last.recovery_s)+' (target '+(last.rto_hours||4)+' hours'+(last.within_rto?', met':', NOT met')+')':'not reached'],['Whole drill',last.total_s!=null?took(last.total_s):''],
+    ['Throwaway resources',(last.cleanup&&last.cleanup.left&&last.cleanup.left.length)?'NOT all removed: '+last.cleanup.left.join(', '):'All removed']];
+   const card=el('div','','bk-card');const d2=document.createElement('dl');for(const [k,v] of rows){if(!v)continue;d2.append(el('dt',k),el('dd',v))}card.append(d2);b.append(card);
+   if(last.error)b.append(el('p','What went wrong: '+last.error,'bk-err'));
+   if(last.counts&&last.counts.length){const t=document.createElement('table');t.className='mem-table';const hr=document.createElement('tr');for(const x of ['What','In the copy (live, when taken)','Restored','']){const th=el('th',x);th.scope='col';hr.append(th)}const th_=document.createElement('thead');th_.append(hr);t.append(th_);const tb=document.createElement('tbody');
+    for(const c of last.counts){const tr=document.createElement('tr');for(const v of [c.what,c.expected==null?'–':Number(c.expected).toLocaleString('en-GB'),c.restored==null?'–':Number(c.restored).toLocaleString('en-GB'),badge(!!c.ok,c.ok?'Match':'Differs')]){const td=document.createElement('td');if(v instanceof Node)td.append(v);else td.textContent=v;tr.append(td)}tb.append(tr)}t.append(tb);const w=el('div','','table-wrap');w.append(t);b.append(w)}
+   now.append(b)}
+  const t=$('bk-drills');t.replaceChildren();const th=document.createElement('thead'),hr=document.createElement('tr');for(const h of ['When','Result','Alice back in','Whole drill','Started by']){const c=el('th',h);c.scope='col';hr.append(c)}th.append(hr);t.append(th);
+  const b=document.createElement('tbody');if(!dr.recent.length){const tr=document.createElement('tr'),td=el('td','No drills yet.','muted');td.colSpan=5;tr.append(td);b.append(tr)}
+  for(const r of dr.recent){const tr=document.createElement('tr');for(const v of [at(r.started_at),badge(r.result==='passed',r.result==='passed'?'Passed':'Failed'),r.recovery_s!=null?took(r.recovery_s):'–',r.total_s!=null?took(r.total_s):'–',r.trigger||'']){const td=document.createElement('td');if(v instanceof Node)td.append(v);else td.textContent=v;tr.append(td)}b.append(tr)}t.append(b)}
+ // The runbook: docs/restore.md drawn safely (text only: headings, lists, code blocks, `code` and **bold**)
+ function inline(text){const out=document.createDocumentFragment();for(const part of text.split(/(`[^`]+`|\*\*[^*]+\*\*)/)){if(!part)continue;
+   if(part.startsWith('`')&&part.endsWith('`'))out.append(el('code',part.slice(1,-1)));else if(part.startsWith('**')&&part.endsWith('**'))out.append(el('strong',part.slice(2,-2)));else out.append(document.createTextNode(part))}return out}
+ function runbook(md){const box=$('bk-runbook');box.replaceChildren();if(!md){box.append(el('p','The runbook is in docs/restore.md in the repository.','muted small'));return}
+  const lines=md.split('\n');let sec=box,list=null,code=null,indent=0,para=null;
+  for(const raw of lines){
+   if(code){if(raw.trim().startsWith('```')){code=null;continue}code.textContent+=(code.textContent?'\n':'')+raw.slice(Math.min(indent,raw.length-raw.trimStart().length));continue}
+   const line=raw.trim(),ind=raw.length-raw.trimStart().length;
+   if(line.startsWith('```')){indent=ind;const pre=document.createElement('pre');code=document.createElement('code');pre.append(code);(ind>0&&list&&list.lastChild?list.lastChild:sec).append(pre);para=null;continue}
+   if(raw.startsWith('# ')){list=null;para=null;continue}
+   if(raw.startsWith('## ')){const d=document.createElement('details');const sm=el('summary','');sm.append(inline(raw.slice(3)));d.append(sm);box.append(d);sec=d;list=null;para=null;continue}
+   if(!line){para=null;continue}
+   const m=raw.match(/^(\s*)(\d+\.|-)\s+(.*)$/);
+   if(m){const ordered=m[2]!=='-',deeper=list&&m[1].length>(list.dataset.indent|0);
+    if(!list||deeper||list.tagName!==(ordered?'OL':'UL')){const nl=document.createElement(ordered?'ol':'ul');nl.dataset.indent=m[1].length;if(ordered)nl.start=parseInt(m[2]);
+     if(deeper&&list.lastChild){nl.parent=list;list.lastChild.append(nl)}else{while(list&&list.parent&&m[1].length<(list.dataset.indent|0))list=list.parent;sec.append(nl)}list=nl}
+    const li=document.createElement('li');li.append(inline(m[3]));list.append(li);para=li;continue}
+   if(ind>0&&list&&list.lastChild){if(para&&(para===list.lastChild||para.parentNode===list.lastChild))para.append(document.createTextNode(' '),inline(line));else{const p=el('p','');p.append(inline(line));list.lastChild.append(p);para=p}continue}
+   if(para&&para.tagName==='P'&&para.parentNode===sec){para.append(document.createTextNode(' '),inline(line));continue}
+   list=null;const p=el('p','');p.append(inline(line));sec.append(p);para=p}
+  const first=box.querySelector('details');if(first)first.open=true}
+ $('bk-drill').onclick=()=>{if(!confirm('Start a restore drill now? It builds throwaway resources from last night\'s copy in their own resource group, checks them and deletes them. About 30 to 60 minutes and a few pence; your live data is not touched.'))return;
+  run(async()=>{await api('/admin/api/backup/drill','POST',{});$('notice').textContent='Restore drill started. The result appears here and in your email in about 30 to 60 minutes.';await load(true)})};
+ run(async()=>{try{const r=await api('/admin/api/backup/runbook');runbook(r.text)}catch(e){runbook('')}});
  $('bk-refresh').onclick=()=>run(()=>load(true));run(()=>load(false));
 }
 if(PAGE==='speed'){

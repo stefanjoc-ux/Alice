@@ -1003,6 +1003,19 @@ def admin_backup(request: Request, fresh: int = 0):
     if not backup.owner_ok(request.headers): raise HTTPException(403, 'Backups are shown to the owner only.')
     return backup.overview(fresh=bool(fresh))
 
+@app.get('/admin/api/backup/runbook')
+def admin_backup_runbook(request: Request):
+    if not backup.owner_ok(request.headers): raise HTTPException(403, 'Backups are shown to the owner only.')
+    return {'text': backup.runbook()}
+
+@app.post('/admin/api/backup/drill')
+def admin_backup_drill(request: Request):
+    """Start a restore drill: the alice-drill job builds throwaway resources from last night's copy, checks them and removes them."""
+    if not backup.owner_ok(request.headers): raise HTTPException(403, 'Only the owner can start a restore drill.')
+    try: return backup.start_drill()
+    except ValueError as e: raise HTTPException(400, str(e)) from None
+    except RuntimeError as e: raise HTTPException(502, 'Azure did not start the drill: ' + backup._scrub(str(e))) from None
+
 @app.get('/admin/api/signins')
 def admin_signins(request: Request):
     return signins.listing(request.headers)

@@ -36,6 +36,15 @@ case "${ALICE_ROLE:-web}" in
     # compressed, to the separate off-site storage account. Scheduled at 01:00 and 02:00 UTC; only the one at 02:00 UK time runs.
     exec python backup.py run
     ;;
+  restore)
+    # Load an off-site copy into NEW, EMPTY resources (restore.py refuses a database with tables or a folder with files):
+    # the init container of the restore drill's temporary Alice, and azure-setup -Step recover.
+    exec python restore.py
+    ;;
+  drill)
+    # The restore drill (drill.py): throwaway resources in the drill resource group only, always removed afterwards.
+    exec python drill.py
+    ;;
   *)
-    echo "Unknown ALICE_ROLE: $ALICE_ROLE (use web, mcp, migrate, test or backup)" >&2; exit 2 ;;
+    echo "Unknown ALICE_ROLE: $ALICE_ROLE (use web, mcp, migrate, test, backup, restore or drill)" >&2; exit 2 ;;
 esac
