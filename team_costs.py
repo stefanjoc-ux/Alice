@@ -212,8 +212,9 @@ def _before(c, tid, began, jid=''):
 def by_team(days=30, now=None):
     """Each team's tracked cost over the last `days` days (USD, Decimal), for the All teams page."""
     now = now or datetime.now(timezone.utc)
+    vc, va = store.viewer_clause('team_job', 'team_costs.job_id')     # a person without the Owner role: their own jobs' costs only
     with store.db() as c:
-        rows = c.execute('SELECT team_id, usd FROM team_costs WHERE at>=? AND at<=?', ((now - timedelta(days=days)).isoformat(), now.isoformat())).fetchall()
+        rows = c.execute('SELECT team_id, usd FROM team_costs WHERE at>=? AND at<=?' + vc, ((now - timedelta(days=days)).isoformat(), now.isoformat(), *va)).fetchall()
     out = {}
     for r in rows: out[r[0]] = out.get(r[0], Decimal('0')) + _d(r[1])
     return out
@@ -250,12 +251,14 @@ def team(tid, now=None):
     now = now or datetime.now(timezone.utc)
     f, began = fx(), since()
     ps = periods(now)
+    vc, va = store.viewer_clause('team_job', 'team_costs.job_id')     # a person without the Owner role: their own jobs' costs only
+    mine = store.restricted() is not None
     with store.db() as c:
-        rows = [dict(r) for r in c.execute('SELECT member_id, role, job_id, at, usd FROM team_costs WHERE team_id=? AND at<=?', (tid, now.isoformat()))]
-        before = _before(c, tid, began)
-        jb = {r[0]: _d(r[1]) for r in c.execute('SELECT s.job_id, sum(s.cost_usd) FROM team_steps s JOIN team_jobs j ON j.id=s.job_id '
-                                                 'WHERE j.team_id=? AND s.created_at<? GROUP BY s.job_id', (tid, began))}
-        for r in c.execute('SELECT job_id, sum(cost_usd) FROM team_messages WHERE team_id=? AND job_id<>? AND created_at<? GROUP BY job_id', (tid, '', began)):
+        rows = [dict(r) for r in c.execute('SELECT member_id, role, job_id, at, usd FROM team_costs WHERE team_id=? AND at<=?' + vc, (tid, now.isoformat(), *va))]
+        before = Decimal('0') if mine else _before(c, tid, began)
+        jb = {} if mine else {r[0]: _d(r[1]) for r in c.execute('SELECT s.job_id, sum(s.cost_usd) FROM team_steps s JOIN team_jobs j ON j.id=s.job_id '
+                                                                 'WHERE j.team_id=? AND s.created_at<? GROUP BY s.job_id', (tid, began))}
+        for r in ([] if mine else c.execute('SELECT job_id, sum(cost_usd) FROM team_messages WHERE team_id=? AND job_id<>? AND created_at<? GROUP BY job_id', (tid, '', began))):
             jb[r[0]] = jb.get(r[0], Decimal('0')) + _d(r[1])
     current = {m['id']: m['role'] for m in t['members']}
     order = [m['id'] for m in t['members']]

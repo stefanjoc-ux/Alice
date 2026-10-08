@@ -133,6 +133,12 @@ def _touch(sid, email, iat, device, addr):
 
 
 # ---------------- the page ----------------
+def _mine_only():
+    """Other people's sessions are shown (and signed out) by Admins and Owners only (permissions.py); everyone else sees their own."""
+    v = store.viewer()
+    return None if v is None or v.full or v.role == 'admin' else (v.email or '-').lower()
+
+
 def listing(headers):
     """Every session seen in the last 30 days, newest first: active, expired or signed out; which one is this device."""
     email, iat = principal(headers)
@@ -140,6 +146,8 @@ def listing(headers):
     cut, _ = _state()
     with store.db() as c:
         rows = [dict(r) for r in c.execute('SELECT * FROM signin_sessions ORDER BY last_seen DESC')]
+    only = _mine_only()
+    if only is not None: rows = [r for r in rows if r['email'] == only]
     expire = (datetime.now(timezone.utc) - timedelta(hours=SESSION_HOURS)).isoformat()
     for r in rows:
         if r['signed_out_at']: r['state'] = 'signed_out'
@@ -156,8 +164,9 @@ def listing(headers):
 def sign_out(sid):
     """Sign out one device: its session is turned away from its next request."""
     with store.db() as c:
-        r = c.execute('SELECT device, address, signed_out_at FROM signin_sessions WHERE id=?', (sid,)).fetchone()
-        if not r: raise ValueError('No such session.')
+        r = c.execute('SELECT device, address, signed_out_at, email FROM signin_sessions WHERE id=?', (sid,)).fetchone()
+        only = _mine_only()
+        if not r or (only is not None and r['email'] != only): raise ValueError('No such session.')
         if r['signed_out_at']: return {'ok': True, 'already': True}
         c.execute("UPDATE signin_sessions SET signed_out_at=?, signed_out_how='this device' WHERE id=?", (store.now(), sid))
         store.audit(c, 'signed_out_device', 'sign-in', 'human_control', f'Signed out {r["device"]}' + (f' ({r["address"]})' if r['address'] else ''))

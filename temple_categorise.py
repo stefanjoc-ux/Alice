@@ -103,4 +103,4 @@ def schedule(ids):
             import temple_tags
             temple_tags.run(ids)
         except Exception: pass
-    threading.Thread(target=work, daemon=True).start()
+    store.spawn(work)

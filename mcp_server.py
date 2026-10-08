@@ -48,9 +48,63 @@ def _who():
     return None
 
 
+# What each tool needs from the person behind the call (permissions.py). A tool a person may use through a chat app needs
+# Chat (Use) or the section's own level; organisations are an Owner's until Spaces; health is the owner's alone. A tool not
+# listed here is for an Owner only (test_users_permissions checks every tool is listed).
+TOOL_SECTIONS = {
+    'list_files': ('knowledge', 'view'), 'read_file': ('knowledge', 'view'), 'search_files': ('knowledge', 'view'),
+    'search_records': ('memories', 'view'), 'propose_record': ('memories', 'use'), 'propose_decision': ('memories', 'use'),
+    'propose_knowledge': ('knowledge', 'use'), 'save_conversation': ('archive', 'use'), 'append_conversation': ('archive', 'use'),
+    'list_proposals': ('proposals', 'use'), 'get_proposal': ('proposals', 'use'), 'propose_proposal_changes': ('proposals', 'use'),
+    'get_organisation': ('full', ''), 'list_organisations': ('full', ''), 'search_opportunities': ('full', ''), 'propose_org_fact': ('full', ''),
+    'get_health_context': ('owner', ''), 'propose_health_note': ('owner', ''),
+}
+
+
+def _viewer():
+    """Who the call is for: the signed-in caller's own object ID on the external endpoint; on the internal endpoint the person
+    the web chat names (x-alice-viewer; it listens on 127.0.0.1 only and trusts its caller, rule 9); else the owner."""
+    import users
+    if EXTERNAL is not None:
+        from fastmcp.server.dependencies import get_access_token
+        token = get_access_token()
+        if token is None: raise ValueError('Not signed in.')
+        try: return users.connector_viewer(str(token.claims.get('oid') or ''))
+        except users.Refused as e: raise ValueError(str(e)) from None
+    if CLIENT: return None                                   # Claude Desktop / Claude Code on the owner's own computer (stdio)
+    from fastmcp.server.dependencies import get_http_headers
+    named = (get_http_headers() or {}).get('x-alice-viewer', '').strip().lower()
+    if not named: return None
+    return users.viewer_for(named) if named != '-' else store.Viewer('-', '', '', 'member', False)
+
+
+def _allowed(tool, v):
+    """'' if this person may use the tool, else why not."""
+    import permissions
+    section, need = TOOL_SECTIONS.get(tool, ('full', ''))
+    if section == 'owner': return '' if permissions.is_owner_person(v) or (v is None and EXTERNAL is None) else 'This belongs to the owner of Alice only.'
+    if permissions.full(v): return ''
+    if section == 'full': return permissions.FULL_ONLY_REASON
+    if permissions.level(v, 'chat') >= permissions.USE: return ''          # using Alice through a chat app counts as Chat
+    if section == 'proposals':
+        import assistants
+        ok = any(permissions.level(v, 'assistant', a['id']) >= permissions.USE for a in assistants.listing()['assistants'] if a.get('kind') == 'proposal')
+        return '' if ok else 'You do not have access to the proposal writer.'
+    return '' if permissions.level(v, section) >= permissions.RANK[need] else f'You do not have permission to use {tool}.'
+
+
 def _app(tool):
-    """External callers only: the app's own permissions on the Agents page (paused, tools, read-only, daily calls).
-    Returns (agent, run_id) for recording what the call touched; (None, None) for Alice's own web chat."""
+    """Every tool calls this first. Who the call is for (their own permissions: users.py, permissions.py; anyone without the
+    Owner role sees only their own items), then, for external callers, the app's own permissions on the Agents page (paused,
+    tools, read-only, daily calls). Returns (agent, run_id) for recording what the call touched; (None, None) for Alice's own
+    web chat."""
+    import permissions
+    v = _viewer()
+    store.VIEWER.set(v)
+    why = _allowed(tool, v)
+    if why:
+        permissions.log_refusal(v, 'MCP', tool, why)
+        raise ValueError(why)
     who = _who()
     if not who: return None, None
     try: return agents.app_call(who.label, tool)
@@ -139,10 +193,11 @@ def list_files(offset: Annotated[int, Field(ge=0)] = 0,
     agent, _run = _app('list_files')
     connection = database()
     try:
-        total = connection.execute('SELECT count(*) FROM files').fetchone()[0]
+        vc, va = store.viewer_clause('file', 'files.id')          # a person without the Owner role: only their own
+        total = connection.execute('SELECT count(*) FROM files WHERE 1=1' + vc, va).fetchone()[0]
         rows = connection.execute(
-            'SELECT id,name,size,summary,created_at,text FROM files ORDER BY created_at DESC,id LIMIT ? OFFSET ?',
-            (limit, offset)).fetchall()
+            'SELECT id,name,size,summary,created_at,text FROM files WHERE 1=1' + vc + 'ORDER BY created_at DESC,id LIMIT ? OFFSET ?',
+            (*va, limit, offset)).fetchall()
         files = []
         who = _who()
         metas = knowledge.meta([row['id'] for row in rows])
@@ -185,6 +240,7 @@ def read_file(file_id: str,
         row = connection.execute('SELECT name,text,summary FROM files WHERE id=?', (file_id,)).fetchone()
     finally:
         connection.close()
+    if row is not None and not store.can_see('file', file_id): row = None      # someone else's: as if it did not exist
     if row is None:
         raise ValueError('File not found. Call list_files to obtain a current ID.')
     who = _who()
@@ -240,10 +296,11 @@ def search_files(query: Annotated[str, Field(min_length=1, max_length=200)],
     connection = database()
     matches, total = [], 0
     try:
+        vc, va = store.viewer_clause('file', 'files.id')          # a person without the Owner role: only their own
         if file_id:
-            rows = connection.execute('SELECT id,name,text FROM files WHERE id=?', (file_id,))
+            rows = connection.execute('SELECT id,name,text FROM files WHERE id=?' + vc, (file_id, *va))
         else:
-            rows = connection.execute('SELECT id,name,text FROM files ORDER BY created_at DESC,id')
+            rows = connection.execute('SELECT id,name,text FROM files WHERE 1=1' + vc + 'ORDER BY created_at DESC,id', va)
         found_file = False
         withheld = retired = 0
         who = _who()

@@ -35,6 +35,14 @@ Steps (all by default, or one with -Step):
            Lift the lock deliberately: az lock delete --name alice-do-not-delete --resource-group <rg>, then -Step backup -NoLock.
            Also sets up the restore drill: its own resource group (<rg>-drill, throwaway resources only), identity and the
            alice-drill job (Admin > Backups > Run a restore drill now, or the Restore drill workflow).
+  users    (run on its own) people and roles: adds the app roles Alice.Owner, Alice.Admin and Alice.Member to the "Alice web
+           sign-in" app registration (and the "Alice connector sign-in" one if it exists), sets "Assignment required" on the web
+           sign-in's enterprise application, and assigns you (and the accounts in -AlsoAllow) the Owner role. It does NOT switch
+           Alice over: until you run -Step users -UseAppRoles on and then -Step apps, Entra still lets in only the accounts it does
+           today (allowedPrincipals), so nobody is locked out. Adding a person afterwards = assigning them a role in Entra
+           (Enterprise applications > Alice web sign-in > Users and groups); they start with the default Member profile.
+             -Step users                      roles, Assignment required, you as Owner (safe to run again)
+             -Step users -UseAppRoles on      remember the switch; then -Step apps puts it live (off = back to allowedPrincipals)
   recover  (run on its own, in a NEW resource group from a fresh clone; docs/restore.md part C) loads a nightly off-site copy
            into this new, empty Alice before its apps start: -Step recover -RecoverFrom <offsite account> [-RecoverCopy yyyy/mm/dd]
   -DatabaseHost <server address>  (any step; remembered) after a point-in-time restore into a new server (docs/restore.md part B),
@@ -68,7 +76,8 @@ param(
   [string]$RecoverFrom = '',          # -Step recover: the off-site storage account holding the copies
   [string]$RecoverCopy = '',          # -Step recover: which night (yyyy/mm/dd); default the newest copy
   [string]$DatabaseHost = '',         # after a point-in-time restore: the server Alice uses (remembered; '' = the template's own)
-  [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github', 'connector', 'demo', 'copilot', 'mail', 'backup', 'recover')][string]$Step = 'all'
+  [ValidateSet('', 'on', 'off')][string]$UseAppRoles = '',   # -Step users: switch who gets in to Entra app roles (on) or back (off); remembered
+  [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github', 'connector', 'demo', 'copilot', 'mail', 'backup', 'recover', 'users')][string]$Step = 'all'
 )
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
@@ -78,7 +87,7 @@ $StateFile = Join-Path $PSScriptRoot 'azure-state.json'
 function Say($text) { Write-Host "`n== $text" -ForegroundColor Cyan }
 function AzCli { $out = & az @args; if ($LASTEXITCODE -ne 0) { throw "az $($args -join ' ') failed" }; return $out }   # not named Az: PowerShell names ignore case, so it would call itself
 function AzTry { $ErrorActionPreference = 'Continue'; & az @args 2>$null }   # may fail (e.g. "does it exist?"): Windows PowerShell 5.1 otherwise turns az's error text into a stop
-function Want($name) { return (($Step -eq 'all' -and $name -notin @('connector', 'demo', 'copilot', 'mail', 'backup', 'recover')) -or $Step -eq $name) }
+function Want($name) { return (($Step -eq 'all' -and $name -notin @('connector', 'demo', 'copilot', 'mail', 'backup', 'recover', 'users')) -or $Step -eq $name) }
 function Public-Url { if ($State.customDomain) { return "https://$($State.customDomain)" } else { return "$($State.webUrl)" } }
 function Audiences { return (@($State.extAudiences | Where-Object { $_ }) -join ',') }   # Copilot's SSO audiences, kept on every redeploy
 function Add-AlsoAllow {
@@ -125,6 +134,7 @@ function Deploy($stage, $extra) {
   foreach ($k in 'pgBackupRetentionDays', 'filesBackupDays', 'offsiteKeepDays', 'offsiteSoftDeleteDays') { if ($State.$k) { $values[$k] = [int]$State.$k } }
   if ($State.pgGeoBackup) { $values['pgGeoRedundantBackup'] = $true }
   if ($State.databaseHost) { $values['databaseHost'] = "$($State.databaseHost)" }
+  if ($State.useAppRoles) { $values['useAppRoles'] = $true }     # -Step users -UseAppRoles on: kept by every later step
   if ($State.backup) {
     $values['backup'] = $true; $values['backupNotify'] = "$($State.backupNotify)"
     $values['lockResourceGroup'] = -not $State.noLock; $values['offsiteImmutabilityLocked'] = [bool]$State.offsiteImmutabilityLocked
@@ -310,6 +320,63 @@ if (Want 'apps') {
   if ($State.customDomain) { Write-Host "Also at: https://$($State.customDomain)" }
   Write-Host "Web:  $($State.webUrl)"
   Write-Host "MCP:  $($State.mcpUrl)/mcp   (the Base URL for Copilot's sign-on registration; then -Step copilot)"
+}
+
+if (Want 'users') {
+  Say 'People and roles: Alice.Owner, Alice.Admin, Alice.Member'
+  if (-not $State.webAuthClientId) { throw 'Run -Step signin first (the web sign-in app registration).' }
+  function Retry($what, [scriptblock]$do) {
+    for ($i = 1; $i -le 12; $i++) { try { return (& $do) } catch { if ($i -eq 12) { throw "$what failed: $_" }; Start-Sleep -Seconds 10 } }
+  }
+  # Fixed IDs, so running this again changes nothing and the roles never get new IDs (Alice reads the role NAMES).
+  $roles = @(
+    @{ id = '388aff1f-7b8b-4bcf-bde1-0df23a400f6e'; value = 'Alice.Owner'; displayName = 'Alice Owner'; description = 'Everything in Alice, including everyone''s items. The owner (ownerObjectId) is always an Owner.' },
+    @{ id = '5fc72aad-c175-48b3-89ef-0d7f38675c1c'; value = 'Alice.Admin'; displayName = 'Alice Admin'; description = 'Their permission profile, plus Users and permissions, Rules and Rule packs. Never Health, Trading, Mileage or Backups.' },
+    @{ id = '63e492a6-c40b-4485-b412-3ed386f849d6'; value = 'Alice.Member'; displayName = 'Alice Member'; description = 'Their permission profile only (by default: Chat and their own saved chats).' }
+  )
+  function Add-Roles($appId, $label) {
+    $have = @(AzCli ad app show --id $appId --query 'appRoles' -o json | ConvertFrom-Json)
+    $merged = @($have | Where-Object { $_.value -notin $roles.value })      # any other roles on the app are kept
+    foreach ($r in $roles) {
+      $merged += [pscustomobject]@{ allowedMemberTypes = @('User'); description = $r.description; displayName = $r.displayName
+                                    id = $r.id; isEnabled = $true; value = $r.value }
+    }
+    $tmp = New-TemporaryFile
+    try { [IO.File]::WriteAllText($tmp, (ConvertTo-Json -InputObject @($merged) -Depth 5 -Compress)); AzCli ad app update --id $appId --app-roles "@$tmp" | Out-Null }
+    finally { Remove-Item $tmp -ErrorAction SilentlyContinue }
+    Write-Host "$label`: roles Alice.Owner, Alice.Admin, Alice.Member"
+  }
+  Add-Roles $State.webAuthClientId 'Alice web sign-in'
+  if ($State.connectorClientId) { Add-Roles $State.connectorClientId 'Alice connector sign-in' }
+  # The web sign-in's enterprise application (service principal)
+  $sp = AzTry ad sp show --id $State.webAuthClientId --query id -o tsv
+  if (-not $sp) { $sp = Retry 'Creating the web sign-in service principal' { AzCli ad sp create --id $State.webAuthClientId --query id -o tsv } }
+  # You (and the accounts you allowed before) as Owner, first, so nobody who gets in today is locked out by Assignment required or the switch.
+  $owners = @($Me) + @($State.alsoAllow | Where-Object { $_ }) | Select-Object -Unique
+  foreach ($o in $owners) {
+    $has = AzCli rest --method GET --url "https://graph.microsoft.com/v1.0/servicePrincipals/$sp/appRoleAssignedTo" `
+             --query "length(value[?principalId=='$o' && appRoleId=='$($roles[0].id)'])" -o tsv
+    if ([int]$has -gt 0) { Write-Host "Already an Owner: $o"; continue }
+    $body = @{ principalId = $o; resourceId = $sp; appRoleId = $roles[0].id } | ConvertTo-Json -Compress
+    $tmp = New-TemporaryFile
+    try {
+      [IO.File]::WriteAllText($tmp, $body)
+      Retry "Assigning $o as Owner" { AzCli rest --method POST --url "https://graph.microsoft.com/v1.0/servicePrincipals/$sp/appRoleAssignedTo" --headers 'Content-Type=application/json' --body "@$tmp" --output none | Out-Null }
+    } finally { Remove-Item $tmp -ErrorAction SilentlyContinue }
+    Write-Host "Assigned Owner: $o"
+  }
+  # Assignment required on the web sign-in's enterprise application: Entra itself refuses anyone without a role.
+  Retry 'Setting Assignment required' { AzCli ad sp update --id $State.webAuthClientId --set appRoleAssignmentRequired=true | Out-Null }
+  Write-Host 'Alice web sign-in: Assignment required (Entra refuses anyone without an Alice role).'
+  if ($UseAppRoles) {
+    Set-Prop $State 'useAppRoles' ($UseAppRoles -eq 'on'); Save-State $State
+    if ($UseAppRoles -eq 'on') { Write-Host 'Remembered: app roles decide who gets in. Now run -Step apps to put it live.' -ForegroundColor Green }
+    else { Write-Host 'Remembered: back to allowedPrincipals (only you and -AlsoAllow). Now run -Step apps to put it live.' -ForegroundColor Green }
+  } elseif (-not $State.useAppRoles) {
+    Write-Host 'Not switched yet: Entra still lets in only the accounts it does today. When ready: -Step users -UseAppRoles on, then -Step apps.' -ForegroundColor Yellow
+  }
+  Write-Host 'Add a person: Entra admin centre > Enterprise applications > Alice web sign-in > Users and groups > Add user/group > a role.'
+  Write-Host 'They start with the default Member profile (Chat and their own saved chats); change it on Admin > Users and permissions.'
 }
 
 if (Want 'connector') {

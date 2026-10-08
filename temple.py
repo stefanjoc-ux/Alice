@@ -63,8 +63,16 @@ def expire(c):
     cutoff=(datetime.now(timezone.utc)-timedelta(minutes=3)).isoformat()
     c.execute("UPDATE temple_reviews SET status='failed',error='Review interrupted or expired. Review again manually.',finished_at=? WHERE status='running' AND created_at<?",(store.now(),cutoff))
 
-@agents.tracked('temple-review', subject=lambda rid: ('memory', rid))
 def review_record(rid):
+    """Temple's review of a proposed memory, compared only with what the memory's author may see (users.py): the owner's
+    own memories are never shown to a review of someone else's."""
+    v = store.viewer()
+    eyes = store.author_viewer('record', rid) if v is None or v.full else v
+    with store.as_viewer(eyes): return _review_record(rid)
+
+
+@agents.tracked('temple-review', subject=lambda rid: ('memory', rid))
+def _review_record(rid):
     import rules_engine
     rules_engine.check_spend('automation')   # raises RuleViolation (a ValueError) when paused
     config=settings();provider=reviewer();model='gpt-6-luna' if provider=='openai' else 'claude-haiku-4-5-20251001'
@@ -79,7 +87,8 @@ def review_record(rid):
         if record['status']!='proposed': raise ValueError('Only proposed records can be reviewed.')
         if c.execute("SELECT 1 FROM temple_reviews WHERE record_id=? AND status='running'",(rid,)).fetchone():
             return {'status':'running','message':'A review is already running.'}
-        candidates=[dict(r) for r in c.execute("SELECT id,title,content,source FROM records WHERE status='approved' AND NOT EXISTS (SELECT 1 FROM memory_archive WHERE record_id=records.id) ORDER BY created_at DESC,id")]
+        vc,va=store.viewer_clause('record','records.id')
+        candidates=[dict(r) for r in c.execute("SELECT id,title,content,source FROM records WHERE status='approved' AND NOT EXISTS (SELECT 1 FROM memory_archive WHERE record_id=records.id)"+vc+"ORDER BY created_at DESC,id",va)]
         terms=set(re.findall(r'\w{3,}',record['title'].lower()+' '+record['content'].lower()))
         candidates.sort(key=lambda r:len(terms & set(re.findall(r'\w{3,}',r['title'].lower()+' '+r['content'].lower()))),reverse=True)
         chosen=[];budget=30000
@@ -151,7 +160,7 @@ def automatic_review(rid):
             except Exception: pass   # no review entry = Not reviewed; manual review remains available
             try: autoapprove.after_review(rid)   # automatic approval unless Temple found a clash (held for the owner)
             except Exception: pass
-        threading.Thread(target=work,daemon=True).start()
+        store.spawn(work)
         return {'status':'running','message':'Temple review started.'}
     try: autoapprove.after_review(rid,reviewed=False)
     except Exception: pass
@@ -260,7 +269,7 @@ def review_batch(ids):
             except Exception: pass
             try: autoapprove.after_review(rid)
             except Exception: pass
-    threading.Thread(target=work, daemon=True).start()
+    store.spawn(work)
     return {'started': len(ids)}
 
 

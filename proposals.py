@@ -375,7 +375,7 @@ def gather(a, title, brief, org, client, use_memory=True, providers=None):
     def ok(text):
         try: rules_engine.check_outbound(text, 'Proposal writer', packs=False); return True
         except rules_engine.RuleViolation: return False
-    if org:
+    if org and store.restricted() is None:           # organisations are an Owner's until shared Spaces arrive
         try:
             b = organisations.brief(org, provider=fam)
             for other in fams[1:]:                                            # the stricter of the two models' rules
@@ -746,6 +746,7 @@ def add_cost(pid, usd, part='writing'):
 
 def parker_turn(aid, pid, you, reply, usd=0):
     """Keep Parker's conversation with the proposal (so it follows you to another device) and add the turn's cost."""
+    if not store.can_see('proposal', str(pid or '')[:40]): return False
     with store.db() as c:
         r = c.execute("SELECT context FROM proposals WHERE id=? AND assistant_id=? AND status!='discarded' AND superseded_by=''", (str(pid or '')[:40], aid)).fetchone()
         if not r: return False
@@ -861,6 +862,7 @@ def start(aid, title, organisation, brief, notes='', sections=None, rate_card=No
               'writer': writer, 'qa': qa, 'references': [str(x)[:300] for x in (references or [])][:10]}
     with store.db() as c:
         w = c.execute("SELECT id FROM proposals WHERE id=? AND assistant_id=? AND status='form'", (str(work_id or '')[:40], aid)).fetchone() if work_id else None
+        if w and not store.can_see('proposal', w['id']): raise LookupError('No such proposal.')
         if w and c.execute('SELECT superseded_by FROM proposals WHERE id=?', (w['id'],)).fetchone()['superseded_by']:
             raise ValueError(f'{proposal_bids.ref(w["id"])} was superseded by another version and is kept read-only: open the current version to write it.')
         if w:                                                   # the form you were working on becomes this proposal
@@ -872,16 +874,24 @@ def start(aid, title, organisation, brief, notes='', sections=None, rate_card=No
                       'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', (pid, aid, title, org, client, brief, notes, json.dumps(inputs), 'running',
                                                              'Starting', store.actor(), store.now(), store.now()))
         store.audit(c, 'proposal_started', pid, 'human_review', f'{title}' + (f' for {org}' if org else ''))
+    if not w: store.stamp('proposal', pid)
     if started_from and not w:                                  # written from a written proposal: a new version of that bid
         try: proposal_bids.join(aid, pid, started_from, record_new=True, starting=True)
         except (ValueError, LookupError): pass                  # the proposal is still written; it just stays a bid of its own
     who = store.actor()
-    threading.Thread(target=_run, args=(pid, who), daemon=True, name='proposal-' + pid[:6]).start()
+    store.spawn(_run, pid, who, name='proposal-' + pid[:6])
     return pid
 
 
+def _eyes(pid):
+    """Background work on a proposal reads with its author's eyes (users.py): an Owner rechecking someone's proposal never
+    brings the owner's own memories or knowledge into it."""
+    v = store.viewer()
+    return store.author_viewer('proposal', pid) if v is None or v.full else v
+
+
 def _run(pid, who):
-    with store.acting(who), agents.cost_box() as box:
+    with store.as_viewer(_eyes(pid)), store.acting(who), agents.cost_box() as box:
         try:
             _job(pid)
         except Exception as e:
@@ -1045,8 +1055,9 @@ def _ai_failed(e, where):
 
 def _background(pid, fn, *args):
     who = store.actor()
+    eyes = _eyes(pid)
     def go():
-        with store.acting(who), agents.cost_box() as box:
+        with store.as_viewer(eyes), store.acting(who), agents.cost_box() as box:
             try:
                 fn(pid, *args)
             except Exception as e:
@@ -1057,7 +1068,7 @@ def _background(pid, fn, *args):
                       error=(str(e) if known else _ai_failed(e, 'Proposal re-check failed'))[:500])
             finally:
                 add_cost(pid, box.usd, 'writing')
-    threading.Thread(target=go, daemon=True, name='proposal-recheck-' + pid[:6]).start()
+    store.spawn(go, name='proposal-recheck-' + pid[:6])
 
 
 def _owned(aid, pid):
@@ -1467,6 +1478,7 @@ def qa_only(aid, title, organisation, brief, name, raw, qa_model=''):
                   'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', (pid, aid, title, org, _client_for(org), brief, '', json.dumps(inputs), 'running',
                                                          f'Argus is checking {name}', store.actor(), store.now(), store.now()))
         store.audit(c, 'proposal_started', pid, 'human_review', f'QA only: {title}' + (f' for {org}' if org else ''))
+    store.stamp('proposal', pid)
     _background(pid, _upload_job, secs, name)
     return pid
 
@@ -1492,6 +1504,7 @@ def save_form(aid, form, work_id=''):
         except LookupError: sf = ''
     with store.db() as c:
         row = c.execute("SELECT id,status,inputs FROM proposals WHERE id=? AND assistant_id=?", (str(work_id or '')[:40], aid)).fetchone() if work_id else None
+        if row and not store.can_see('proposal', row['id']): raise LookupError('No such proposal.')
         if row and row['status'] == 'form':
             if c.execute('SELECT superseded_by FROM proposals WHERE id=?', (row['id'],)).fetchone()['superseded_by']:
                 raise ValueError('This version was superseded and is kept read-only: open the current version to change it.')
@@ -1518,6 +1531,7 @@ def save_form(aid, form, work_id=''):
                                                                   store.actor(), now, now))
             store.audit(c, 'proposal_form_started', pid, 'human_review', (title or 'Untitled proposal') + (f' for {org}' if org else ''))
             ver = note_version(c, pid, via or 'Parker page', 'Started' + (f' as a new version; replaces {replaces}' if replaces else ''), 'started')
+    if not row: store.stamp('proposal', pid)
     if not row and sf:                 # joins that bid and supersedes its current version now
         try: proposal_bids.join(aid, pid, sf)
         except (ValueError, LookupError): pass
@@ -1561,9 +1575,10 @@ def get(pid, internal=False):
 
 
 def listing(aid, limit=300):
+    vc, va = store.viewer_clause('proposal', 'proposals.id')        # a person without the Owner role: only their own
     with store.db() as c:
         return [dict(r) for r in c.execute("SELECT id,title,organisation,status,stage,document_id,created_by,created_at,updated_at,qa,context,superseded_by,bid_id FROM proposals WHERE assistant_id=? AND status!='discarded' "
-                                           'ORDER BY updated_at DESC LIMIT ?', (aid, limit))]
+                                           + vc + 'ORDER BY updated_at DESC LIMIT ?', (aid, *va, limit))]
 
 
 def summary_row(r):

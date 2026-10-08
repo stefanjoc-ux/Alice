@@ -56,6 +56,7 @@ r = mcp_server.get_health_context()
 t('Claude through the connector reads the context', any(x['marker'] == 'Ferritin' for x in r['results']))
 mcp_server.CLIENT = ''
 mcp_server.EXTERNAL = object()
+mcp_server._viewer = lambda: None        # the owner's own signed-in connector (users.connector_viewer)
 import types
 mcp_server._who = lambda: external_auth.Caller('Microsoft Copilot', 'copilot')
 try: mcp_server.get_health_context(); t('Copilot is refused', False)

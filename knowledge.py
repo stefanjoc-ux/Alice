@@ -60,10 +60,12 @@ def _default(row):
 
 
 def meta(ids=None):
-    """file_id -> metadata (defaults filled in). ids=None returns every file."""
+    """file_id -> metadata (defaults filled in). ids=None returns every file this viewer may see (a person without the
+    Owner role: only their own)."""
     with store.db() as c:
         if ids is None:
-            files = c.execute('SELECT id,name,created_at FROM files').fetchall()
+            vc, va = store.viewer_clause('file', 'files.id')
+            files = c.execute('SELECT id,name,created_at FROM files WHERE 1=1' + vc, va).fetchall()
         else:
             ids = list(ids)
             if not ids: return {}
@@ -159,6 +161,8 @@ def create(kind, title, content, source, added_by, status='active', label='gener
     digest = hashlib.sha256(raw).hexdigest()
     with store.db() as c:
         existing = c.execute('SELECT id FROM files WHERE sha256=?', (digest,)).fetchone()
+        if existing and not store.can_see('file', existing[0]):     # held for someone else: never handed over
+            return {'id': '', 'duplicate': True, 'status': 'hidden'}
         if existing: return {'id': existing[0], 'duplicate': True, 'status': meta([existing[0]])[existing[0]]['status']}
         cat = ''
         if category:
@@ -174,6 +178,7 @@ def create(kind, title, content, source, added_by, status='active', label='gener
                    cat, ('human' if added_by == 'you' else 'model') if cat else '', store.now(), store.now() if status == 'active' else None, hint))
         store.audit(c, 'knowledge_' + ('added' if status == 'active' else 'proposed'), fid, 'approval_required' if status == 'draft' else 'human_review',
                     f'{KINDS[kind]} "{title}" by {added_by}')
+    store.stamp('file', fid)
     if client:
         try:
             clients.tag('file', [fid], client, client_by)
@@ -562,7 +567,7 @@ def schedule_background(new_ids=None):
             try:
                 import temple_supersede; temple_supersede.check(new_ids)
             except Exception: pass
-    threading.Thread(target=work, daemon=True).start()
+    store.spawn(work)
 
 
 # ---------------- meeting extracts ----------------

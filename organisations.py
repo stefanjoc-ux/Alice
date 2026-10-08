@@ -108,6 +108,7 @@ def canonical(name):
     import clients
     name = _clean(name, 60)
     if not name: raise ValueError('Name the organisation.')
+    if store.restricted() is not None: raise ValueError(f'No organisation called "{name}" that you can use.')
     with store.db() as c:
         row = c.execute('SELECT name FROM organisations WHERE name=?', (name,)).fetchone()
         if row: return row[0]
@@ -119,6 +120,7 @@ def canonical(name):
 
 
 def create(name, kind='other', description='', client=False, aliases=()):
+    if store.restricted() is not None: raise ValueError('Organisations are kept by an Owner of Alice until shared Spaces arrive.')
     import clients
     name, description = _clean(name, 60), _clean(description, 500)
     if not name: raise ValueError('Enter a name.')
@@ -174,6 +176,9 @@ def update(name, kind=None, description=None, website=None, account_manager=None
 
 def listing():
     import clients
+    if store.restricted() is not None:        # organisations are an Owner's until shared Spaces arrive (users.py)
+        return {'organisations': [], 'sections': [{'key': k, 'name': n, 'hint': h} for k, n, h in SECTIONS], 'kinds': KINDS,
+                'review_months': _review_months(), 'managers': [], 'demo': store.demo_active()}
     today = _today()
     with store.db() as c:
         orgs = {r['name'].lower(): dict(r) for r in c.execute('SELECT * FROM organisations')}
@@ -198,6 +203,7 @@ def listing():
 # ---------------- facts ----------------
 def propose_fact(org, section, statement, source_system, source_ref='', as_of='', review_by='', label='general', by='you'):
     """Models propose (status 'proposed'); facts you add yourself on the Organisations page are approved at once."""
+    if store.restricted() is not None: raise ValueError('Organisations are kept by an Owner of Alice until shared Spaces arrive.')
     import rules_engine
     org = canonical(org)
     if section not in SECTION_NAMES: raise ValueError('Section must be one of: ' + ', '.join(SECTION_NAMES) + '.')
