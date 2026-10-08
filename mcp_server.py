@@ -337,26 +337,30 @@ def propose_record(title: Annotated[str, Field(min_length=1, max_length=200)],
                    content: Annotated[str, Field(min_length=1, max_length=8000)],
                    source: Annotated[str, Field(min_length=1, max_length=2000)],
                    category: Annotated[str, Field(max_length=40)] = '') -> dict:
-    """Propose a fact or decision worth remembering when the user requests it.
+    """Propose a fact or preference worth remembering when the user asks (for a decision, use propose_decision).
     Include a source description: user statement/quote or filename and location.
     The source is a claim for human review, not independently verified provenance.
     Optionally give a category only if it is one of the user's existing categories; unknown
-    names are ignored and Temple assigns a category instead. The admin can always change it.
-    Alice approves it automatically once Temple has checked it does not clash with an existing memory; one that clashes,
-    or one from an outside app the user has not switched on for memories, waits for the user. Pass on the message returned.
+    names are ignored and Temple assigns a category instead. The user can always change it.
+    Temple checks every memory. Alice approves it automatically after those checks unless it clashes with, or would replace,
+    a memory she already holds, or Temple recommends against it; those wait for the user on the Actions page. A memory from an
+    outside app is checked the same way only if the user has ticked that app under "Memories from outside apps"; otherwise it
+    waits for the user. Pass on the message returned.
     """
     who = _who()
     agent, run = _app('propose_record')
     if who:
         source = (source.strip() + f' [via {who.label}]')[:2000]
+    waits = False
     try:
         with autoapprove.from_outside(who.label if who and EXTERNAL is not None else '', who.provider if who and EXTERNAL is not None else ''):
             result = store.propose(title, content, source, category)
+            waits = bool(who and EXTERNAL is not None and autoapprove.outside_memory_waits())
     except rules_engine.RuleViolation as e:
         raise ValueError(str(e) + ' Tell the user why the memory was not proposed.') from None
     if not result.get('duplicate'):
-        result['message'] = ('Waiting for the user: memories proposed through this outside connector are approved by them on the Actions page.'
-                             if who and EXTERNAL is not None else
+        result['message'] = ('Waiting for the user: memories from this app are approved by them on the Actions page (this app is not ticked '
+                             'under "Memories from outside apps").' if waits else
                              'Alice approves it automatically once Temple has checked it does not clash with what she already holds; '
                              'if it clashes, it waits for the user on the Actions page.')
     if who and not result.get('duplicate'): _captured('memory', result.get('id')); agents.app_note(run, 'wrote', 'memory', result.get('id'), 'proposed')
@@ -374,7 +378,10 @@ def propose_decision(title: Annotated[str, Field(min_length=1, max_length=200)],
                      revisit_date: Annotated[str, Field(max_length=10)] = '',
                      decided_on: Annotated[str, Field(max_length=10)] = '',
                      category: Annotated[str, Field(max_length=40)] = '') -> dict:
-    """Propose a DECISION the user made, as a memory awaiting their approval.
+    """Propose a DECISION the user made. Temple checks it and Alice records it as made, with who made it and through which app,
+    and Temple's impact rating; a clash with an earlier decision is noted on it, never held. It waits for the user's approval (and
+    its owner is emailed) only when their decision policy holds it: a category that always needs approval, or an impact at or above
+    a level (with the policy switched off, every decision waits). Pass on the message returned.
     decision: what was chosen. rationale: why. options_considered: the alternatives weighed.
     revisit_when: the conditions that would reopen it; revisit_date (YYYY-MM-DD) if a date was set.
     source: the user's words or the meeting/document it came from. Use existing category names only.

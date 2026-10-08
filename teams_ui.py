@@ -117,6 +117,15 @@ SECTION = r'''<style>
 .tm-tbl{border-collapse:collapse;width:100%;font-size:12.5px;margin:6px 0}.tm-tbl th,.tm-tbl td{border-bottom:1px solid #dbe3ea;padding:5px 8px;text-align:left;vertical-align:top}
 .tm-docs{display:grid;gap:6px}.tm-doc{display:flex;gap:8px;align-items:center;flex-wrap:wrap;border:1px solid #d3dee6;border-radius:8px;padding:6px 10px;font-size:13px}.tm-doc span{flex:1}
 .tm-out{display:flex;flex-wrap:wrap;gap:12px;margin:10px 0 0;font-size:13.5px}.tm-empty{color:var(--muted);font-size:14px;margin:6px 0}
+.tm-cost{font-variant-numeric:tabular-nums}.tm-cost td.n,.tm-cost th.n{text-align:right;white-space:nowrap}.tm-cost tfoot td{font-weight:700;border-top:2px solid #c9d5de}
+.tm-fx{font-size:12px;color:var(--muted);margin:4px 0 0}.tm-fx button{margin-left:6px;padding:1px 8px;font-size:12px}.tm-est{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;border:1px solid #c9b8e3;background:#f6f2fb;color:#4b2f73;border-radius:999px;padding:0 7px;margin-left:6px}
+.tm-yours{font-size:12px;color:#3d5566}.tm-yours b{color:#16384d}.tm-ver{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:6px}.tm-ver li{border:1px solid #dbe3ea;border-radius:8px;padding:7px 10px;font-size:13px;display:grid;gap:2px}
+.tm-ver li.cur{border-color:#7fb3c8;background:#f3f9fb}.tm-ver .h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.tm-ver .h b{font-size:13.5px}.tm-ver .h .c{margin-left:auto;font-variant-numeric:tabular-nums}
+.tm-so{font-size:11px;font-weight:700;border-radius:999px;padding:0 7px;background:#e7f4ea;border:1px solid #9ccfaa;color:#1d5a2c}.tm-rerun{border-left:4px solid #7fb3c8;background:#f3f9fb;border-radius:8px;padding:10px 12px;margin:0 0 12px;font-size:13.5px}
+.tm-rp{border:1px solid #c9d5de;border-radius:12px;padding:14px 16px;margin:0 0 14px;background:#fff}.tm-rp h3{margin:0 0 4px}.tm-rp .items{display:grid;gap:2px;max-height:300px;overflow:auto;border:1px solid #eef3f6;border-radius:8px;padding:6px 8px;margin:8px 0}
+.tm-rp .items label{display:flex;gap:8px;align-items:flex-start;font-size:13px;font-weight:400}.tm-rp .opts{display:grid;gap:6px;margin:8px 0}.tm-rp .opts label{display:flex;gap:8px;align-items:center;font-weight:400;font-size:13.5px}
+.tm-order{list-style:none;margin:4px 0;padding:0;display:grid;gap:4px}.tm-order li{display:flex;gap:6px;align-items:center;font-size:13px}.tm-order li button{padding:0 8px}.tm-order li.off span{color:var(--muted);text-decoration:line-through}
+.tm-rp textarea{width:100%;min-height:54px}.tm-sortl{display:flex;gap:6px;align-items:center;font-size:13px}
 @media(max-width:1100px){.tm-cols{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:900px){.tm-split{grid-template-columns:minmax(0,1fr)}.tm-nav{position:static}.tm-nav ul{display:flex;flex-wrap:wrap;gap:6px}.tm-nav li a{border:1px solid var(--line);border-radius:999px;padding:4px 10px}.tm-nav h4{margin:8px 0 4px}}
 @media(max-width:640px){.tm-nrow{grid-template-columns:auto minmax(0,1fr);align-items:start}.tm-nrow time{grid-column:2}.tm-nrow button{grid-column:2;justify-self:start}.tm-grid{grid-template-columns:minmax(0,1fr)}.tm-head h2,.tm-thead h2{font-size:19px}}
@@ -131,6 +140,7 @@ SECTION = r'''<style>
   <input type="search" id="tb-q" placeholder="Find a team, member role or job" aria-label="Find a team, member role or job" maxlength="80">
   <div class="rl-chips" id="tb-chips" role="group" aria-label="Show"></div>
   <label>Group by <select id="tb-group" aria-label="Group teams by"></select></label>
+  <label class="tm-sortl">Sort by <select id="tb-sort" aria-label="Sort teams by"><option value="needs">Needs you first</option><option value="name">Name</option><option value="cost">Cost, last 30 days</option></select></label>
   <div class="tm-seg" role="group" aria-label="View"><button type="button" class="ghost" id="tb-cards" aria-pressed="true">Cards</button><button type="button" class="ghost" id="tb-list" aria-pressed="false">List</button></div>
  </div>
  <div id="tb-groups" aria-live="polite"></div>
@@ -169,6 +179,10 @@ if(PAGE==='teams'){
  const keepScroll=fn=>{const sc=scroller(),y=sc?sc.scrollTop:0,wy=window.scrollY;fn();if(sc)sc.scrollTop=y;window.scrollTo(0,wy)};
  const whereLine=w=>h('div',{class:'tm-where'+(/^Waiting for|^Stopped/.test(w)?' w':'')},w);
  function setIconsFrom(d){if(d&&d.icons)for(const [k,v] of Object.entries(d.icons))V.icons[k]=typeof v==='string'?v:v.svg}
+ // ---------- costs: figures come from the server (team_costs.py) with the rate they are shown at ----------
+ const money=(m,fx)=>m?h('span',{class:'tm-money',title:m.note||(fx&&fx.note)||''},m.text):h('span',{class:'muted'},'—');
+ function fxLine(fx,label){const p=h('p',{class:'tm-fx'},(label||'Costs')+' '+fx.note+'.');const b=btn(fx.rate?'Change rate':'Set a rate',async()=>{const v=prompt('Pounds per US dollar, e.g. 0.79 (your own rate: Alice never looks one up). Leave empty to show US dollars.',fx.rate||'');if(v===null)return;
+   await api('/admin/api/teams/costs/rate','PUT',{rate:v.trim()===''?null:Number(v)});$('notice').textContent=v.trim()===''?'Team costs are shown in US dollars.':'Team costs are shown in pounds at $1 = £'+Number(v)+'.';await reload()},'secondary');p.append(b);return p}
  // ---------- Needs you rows (all teams, and a team's own) ----------
  function needsBox(items,title){if(!items.length)return null;const box=h('section',{class:'tm-needs','aria-labelledby':'tm-needs-h'});
   box.append(h('h3',{id:'tm-needs-h'},title||'Needs you',h('span',{class:'n'},String(items.length))));
@@ -180,10 +194,12 @@ if(PAGE==='teams'){
   return box}
  async function reload(){if(V.jid)await loadJob();else if(V.tid)await loadTeam();else await loadBoard()}
  // ---------- Screen 1: all teams ----------
- const B={status:store.get('status','all'),group:store.get('group','discipline'),view:store.get('view','cards'),q:''};
+ const B={status:store.get('status','all'),group:store.get('group','discipline'),view:store.get('view','cards'),sort:store.get('sort','needs'),q:''};
  async function loadBoard(){const d=await api('/admin/api/teams/board');V.d=d;setIconsFrom(d);drawBoard()}
  function drawBoard(){const d=V.d,s=d.summary;$('tv-board').hidden=false;
   $('tb-sum').textContent=[plural(s.teams,'team'),plural(s.members,'member'),plural(s.running,'job')+' running',(s.needs_you?s.needs_you+' need'+(s.needs_you===1?'s':'')+' you':'nothing needs you')].join(' · ');
+  if(d.costs){const c=d.costs;$('tb-sum').append(h('br'),'AI cost, '+c.label.toLowerCase()+(c.since?' ('+c.since+')':'')+': ',h('b',null,c.total.text),' ',fxLine(c.fx,''))}
+  $('tb-sort').value=B.sort;
   $('tb-needs').replaceChildren(...[needsBox(d.needs)].filter(Boolean));
   const counts={all:d.teams.length,needs:d.teams.filter(t=>t.needs_you).length,running:d.teams.filter(t=>t.status==='running').length,idle:d.teams.filter(t=>t.status==='idle').length,draft:d.teams.filter(t=>t.status==='draft').length};
   filterChips($('tb-chips'),[['all','All',counts.all],['needs','Needs you',counts.needs],['running','Running',counts.running],['idle','Idle',counts.idle],['draft','Drafts',counts.draft]],B.status,k=>{B.status=k;store.set('status',k);drawBoard()});
@@ -199,7 +215,8 @@ if(PAGE==='teams'){
   const key=t=>B.group==='discipline'?(t.discipline||'No discipline yet'):B.group==='status'?t.status_label:'';
   const groups=new Map();for(const t of list){const k=key(t);if(!groups.has(k))groups.set(k,[]);groups.get(k).push(t)}
   let names=[...groups.keys()];if(B.group==='status')names.sort((a,b)=>SORD.indexOf(groups.get(a)[0].status)-SORD.indexOf(groups.get(b)[0].status));else names.sort((a,b)=>(a==='No discipline yet')-(b==='No discipline yet')||a.localeCompare(b));
-  for(const g of names){const ts=groups.get(g).sort((a,b)=>(b.needs_you-a.needs_you)||a.name.localeCompare(b.name));const sec=h('section',{class:'tm-group','aria-label':g||'Teams'});
+  const cost=t=>t.cost?t.cost.usd:0;const SORTS={needs:(a,b)=>(b.needs_you-a.needs_you)||a.name.localeCompare(b.name),name:(a,b)=>a.name.localeCompare(b.name),cost:(a,b)=>(cost(b)-cost(a))||a.name.localeCompare(b.name)};
+  for(const g of names){const ts=groups.get(g).sort(SORTS[B.sort]||SORTS.needs);const sec=h('section',{class:'tm-group','aria-label':g||'Teams'});
    if(g)sec.append(h('h3',null,g,h('span',{class:'c'},plural(ts.length,'team'))));
    sec.append(B.view==='list'?teamTable(ts):h('div',{class:'tm-grid'},ts.map(teamCard)));box.append(sec)}}
  function teamCard(t){const c=h('article',{class:'tm-card'+(t.status==='draft'?' draft':'')});
@@ -208,11 +225,11 @@ if(PAGE==='teams'){
   if(t.members.length)c.append(h('div',{class:'tm-avs'},t.members.map(m=>avatar(m.initials,m.role,m.lead,t.hex))));
   if(t.status==='draft')c.append(h('div',{class:'missing'},h('b',null,'Not ready to run: '),t.missing.join(' · ')));
   if(t.job){c.append(h('div',{class:'live'},progBar(t.job.progress),h('a',{href:t.job.href},t.job.ref+' '+t.job.title),whereLine(t.job.where)))}
-  c.append(h('div',{class:'foot'},h('span',null,plural(t.running,'job')+' running · '+t.done+' done'),t.last_activity?h('span',null,'Last activity ',tm(t.last_activity)):null));return c}
+  c.append(h('div',{class:'foot'},h('span',null,plural(t.running,'job')+' running · '+t.done+' done'),t.cost?h('span',{title:'AI cost over the last 30 days, '+t.cost.note},t.cost.text+' in 30 days'):null,t.last_activity?h('span',null,'Last activity ',tm(t.last_activity)):null));return c}
  function teamTable(ts){const wrap=h('div',{class:'table-wrap'});const tb=h('table',{class:'tm-list'});
-  tb.append(h('thead',null,h('tr',null,['Team','Members','Autonomy','Status','Live job','Last activity'].map(x=>h('th',{scope:'col'},x)))));const body=h('tbody');
+  tb.append(h('thead',null,h('tr',null,['Team','Members','Autonomy','Status','Live job','AI cost, 30 days','Last activity'].map(x=>h('th',{scope:'col',class:x.startsWith('AI cost')?'num':null},x)))));const body=h('tbody');
   for(const t of ts)body.append(h('tr',null,h('td',null,h('div',{class:'tn'},mark(t.hex,t.icon,'sm'),h('a',{href:t.href},t.name))),h('td',null,String(t.members.length)),h('td',null,t.autonomy_label),
-   h('td',null,pill(t.status,t.status_label)),h('td',null,t.job?h('a',{href:t.job.href},t.job.ref):'—'),h('td',null,t.last_activity?tm(t.last_activity):'')));
+   h('td',null,pill(t.status,t.status_label)),h('td',null,t.job?h('a',{href:t.job.href},t.job.ref):'—'),h('td',{class:'num'},money(t.cost)),h('td',null,t.last_activity?tm(t.last_activity):'')));
   tb.append(body);wrap.append(tb);return wrap}
  // ---------- new team (blank or from a template), and editing a team's name, mark and discipline ----------
  function swatches(name,legend,opts,cur){const fs=h('fieldset',null,h('legend',null,legend));const row=h('div',{class:'tm-swatches'});
@@ -287,7 +304,22 @@ if(PAGE==='teams'){
   const jp=h('section',{class:'tm-panel','aria-labelledby':'tm-jobs-h'},h('h3',{id:'tm-jobs-h'},'Jobs',d.jobs.length?h('a',{href:'#jobs',onclick:e=>{e.preventDefault();setTab('jobs')}},'See all'):null));
   const hot=d.jobs.find(j=>j.pending.length||j.status==='blocked');
   if(hot)jp.append(jobRow(hot,true));for(const j of d.jobs.filter(j=>j!==hot).slice(0,5))jp.append(jobRow(j,false));
-  if(!d.jobs.length)jp.append(h('p',{class:'tm-empty'},'No jobs yet.'));side.append(jp,rulesPanel(false))}
+  if(!d.jobs.length)jp.append(h('p',{class:'tm-empty'},'No jobs yet.'));side.append(jp,rulesPanel(false));p.append(costCard())}
+ function costCard(){const d=V.d,C=d.costs,t=d.team;const s=h('section',{class:'tm-panel','aria-labelledby':'tm-cost-h'},h('h3',{id:'tm-cost-h'},'Running cost'));
+  s.append(h('p',{class:'small muted'},'What each member’s AI calls cost, from the same figures as Usage and the Agents page. Tracking began '+C.since_text+'.'));
+  const wrap=h('div',{class:'table-wrap'}),tb=h('table',{class:'tm-tbl tm-cost'});const P=C.periods;
+  tb.append(h('thead',null,h('tr',null,h('th',{scope:'col'},'Member'),...P.map(p=>h('th',{scope:'col',class:'n'},p.label,p.since?h('div',{class:'small muted'},p.since):null)),h('th',{scope:'col',class:'n'},'AI per job'))));
+  const body=h('tbody');for(const m of C.members){const yf=m.your_figures;const setYf=m.current?btn(yf?'Change':'Add',async()=>{const r=prompt('Your day rate for a person doing the '+m.role+' role, in pounds (leave empty to remove your figures):',yf?yf.day_rate:'');if(r===null)return;
+    if(r.trim()===''){await api('/admin/api/teams/'+enc(t.id)+'/staff/'+enc(m.id),'PUT',{on:false});$('notice').textContent='Your figures for '+m.role+' removed.';await loadTeam();return}
+    const n=prompt('Days a person would take for one job:',yf?yf.days:'');if(n===null||n.trim()==='')return;await api('/admin/api/teams/'+enc(t.id)+'/staff/'+enc(m.id),'PUT',{on:true,day_rate:Number(r),days:Number(n)});$('notice').textContent='Your figures for '+m.role+' saved.';await loadTeam()},'secondary'):null;
+   if(setYf){setYf.textContent=yf?'Change your figures':'Add your figures';setYf.style.cssText='padding:1px 8px;font-size:12px;margin-top:3px'}
+   body.append(h('tr',null,h('th',{scope:'row'},m.role+(m.current?'':' (no longer in the team)'),h('div',{class:'tm-yours'},yf?[h('b',null,yf.label+': '),yf.text+'. ',yf.note?h('span',{class:'muted'},yf.note+' '):null]:null,setYf)),
+    ...P.map(p=>h('td',{class:'n'},money(m.costs[p.key]))),h('td',{class:'n',title:m.jobs?'Average over '+plural(m.jobs,'job')+' in the last 12 months':''},m.per_job?money(m.per_job):'—')))}
+  tb.append(body,h('tfoot',null,h('tr',null,h('td',null,'Team total'),...P.map(p=>h('td',{class:'n'},money(C.total[p.key]))),h('td'))));wrap.append(tb);s.append(wrap);
+  const rr=C.run_rate;s.append(h('p',{class:'small'},h('b',null,'Annual run rate: '),rr.value?[money(rr.value),h('span',{class:'tm-est'},rr.label),' '+rr.basis+'.']:[h('span',{class:'tm-est'},rr.label),' '+rr.basis]));
+  if(C.before_tracking)s.append(h('p',{class:'small muted'},C.before_text+': ',money(C.before_tracking),'. Not split by member or period.'));
+  s.append(h('p',{class:'small muted'},'Your figures are your own day rates and days for the human role, off unless you add them; Alice never supplies a market rate.'));
+  s.append(fxLine(C.fx));return s}
  function jobRow(j,hl){const r=h('div',{class:'tm-jrow'+(hl?' hl':'')});const st=j.pending.length||j.status==='blocked'?['needs_you',j.status==='blocked'?'Stopped':'Needs you']:j.status==='done'?['done','Signed off']:j.status==='stopped'?['stopped','Stopped']:['running','Running'];
   r.append(h('div',{class:'l'},h('a',{href:'/admin/teams/'+enc(j.team_id)+'/jobs/'+j.id},j.ref+' '+j.title),pill(st[0],st[1])));
   if(!['done','stopped'].includes(j.status))r.append(progBar(j.progress),whereLine(j.where));else r.append(h('div',{class:'small muted'},j.job_type_name+' · '+when(j.updated_at)));
@@ -303,8 +335,8 @@ if(PAGE==='teams'){
   else{const wrap=h('div',{class:'table-wrap'}),tb=h('table',{class:'tm-list'});tb.append(h('thead',null,h('tr',null,['Job','Status','Where it is','Started','AI cost'].map(x=>h('th',{scope:'col'},x)))));const body=h('tbody');
    for(const j of d.jobs){const st=j.pending.length?['needs_you','Needs you']:j.status==='blocked'?['blocked','Stopped']:j.status==='done'?['done','Signed off']:j.status==='stopped'?['stopped','Stopped']:['running','Running'];
     body.append(h('tr',null,h('td',null,h('a',{href:'/admin/teams/'+enc(t.id)+'/jobs/'+j.id},j.ref+' '+j.title),h('div',{class:'small muted'},j.job_type_name+' · team v'+j.team_version)),h('td',null,pill(st[0],st[1])),
-     h('td',{style:'min-width:200px'},['done','stopped'].includes(j.status)?j.where:[progBar(j.progress),whereLine(j.where)]),h('td',null,when(j.created_at)),h('td',{class:'num'},'$'+(j.ai_cost||0).toFixed(2))))}
-   tb.append(body);wrap.append(tb);list.append(wrap)}p.append(list)}
+     h('td',{style:'min-width:200px'},['done','stopped'].includes(j.status)?j.where:[progBar(j.progress),whereLine(j.where)]),h('td',null,when(j.created_at)),h('td',{class:'num'},money(d.costs.jobs[j.id]||{text:(d.costs.fx.rate?'£':'$')+'0.00',note:d.costs.fx.note}))))}
+   tb.append(body);wrap.append(tb);list.append(wrap,fxLine(d.costs.fx,'AI costs'))}p.append(list)}
  function startForm(){const d=V.d,t=d.team;const f=h('div',{class:'tm-form'});if(!t.job_types.length){f.append(h('p',{class:'tm-empty'},'Add a job type on the Rules and autonomy tab first.'));return f}
   const jt=h('select');for(const x of t.job_types)jt.append(h('option',{value:x.id},x.name+(x.description?' · '+x.description:'')));
   const title=h('input',{type:'text',maxlength:'150',placeholder:'e.g. New community hall, early cost estimate'}),brief=h('textarea',{maxlength:'20000',rows:'4',placeholder:'What is wanted, in a few sentences.'});
@@ -407,7 +439,7 @@ if(PAGE==='teams'){
   form.onsubmit=e=>{e.preventDefault();const msg=ta.value.trim();if(!msg||send.disabled)return;send.disabled=true;ta.value='';const wait=h('div',{class:'tm-msg lead'},'Writing…');log.append(wait);
    run(async()=>{try{const r=await api('/admin/api/teams/'+enc(tid)+'/talk','POST',{message:msg,job:jid||''});show(r.messages);if(r.routed_to&&jid)await loadJob()}catch(err){wait.remove();ta.value=msg;throw err}finally{send.disabled=false}})};return box}
  // ---------- Screen 3: a job ----------
- const J={src:'all'};
+ const J={src:'all',panel:'',sel:null,els:null,est:false,trends:false,order:null,note:'',client:null,title:''};
  async function loadJob(){const d=await api('/admin/api/teams/jobs/'+V.jid+'/page');V.d=d;setIconsFrom(d.nav);if(d.team_id!==V.tid){location.replace(d.url);return}drawJob();clearTimeout(V.timer);if(d.status==='running')V.timer=setTimeout(()=>run(loadJob),2500)}
  function briefCard(){const d=V.d;openCard({ref:d.ref,kind_label:'Digital team · Brief and files',title:d.title,subtitle:d.team.name+' · '+d.job_type_name,
   sections:[{key:'what',title:'Brief',text:d.brief},{key:'what',title:'Documents',rows:d.documents.length?d.documents.map(x=>[d.doc_kinds[x.kind]||x.kind,x.source==='library'?x.name+' (document source: '+x.path+')':x.name]):null,text:d.documents.length?'':'No documents.'},
@@ -419,6 +451,8 @@ if(PAGE==='teams'){
   const acts=h('div',{class:'tm-acts'});const brief=h('button',{type:'button',class:'secondary'},'Brief and files');brief.onclick=briefCard;acts.append(brief);
   const pp=d.part_progress,failedPart=d.status==='blocked'&&pp&&pp.failed;
   if(d.status==='blocked'||(d.status==='running'&&!d.busy&&(Date.now()-new Date(d.updated_at))>10*60000))acts.append(btn(failedPart?'Try again':'Resume',async()=>{await api('/admin/api/teams/jobs/'+d.id+'/resume','POST',{});$('notice').textContent=failedPart?'Trying '+pp.failed.label+' again; the parts already done are kept.':'Resumed.';await loadJob()}));
+  const toggle=(k,label)=>{const b=h('button',{type:'button',class:J.panel===k?'':'secondary','aria-expanded':String(J.panel===k)},label);b.onclick=()=>{J.panel=J.panel===k?'':k;drawJob();const x=$('tm-rp');if(x)x.scrollIntoView({block:'nearest'})};return b};
+  if(d.can.reprice)acts.append(toggle('reprice','Re-price'));if(d.can.remeasure)acts.append(toggle('remeasure','Re-measure'));acts.append(toggle('copy','Copy as a new job'));
   if(!['done','stopped'].includes(d.status))acts.append(btn('Stop job',async()=>{if(!confirm('Stop '+d.ref+'? Its work so far is kept.'))return;await api('/admin/api/teams/jobs/'+d.id+'/stop','POST',{});await loadJob()},'secondary'));
   const desc=[plural(d.documents.length,'document')+' provided',d.location||null,'started '+when(d.created_at)+(d.created_by?' by '+d.created_by:'')].filter(Boolean).join(' · ');
   main.append(h('div',{class:'tm-thead'},mark(d.identity.hex,d.identity.icon,'lg'),h('div',{class:'nm'},h('p',{class:'tm-label'+(d.is_demo?'':' plain')},(d.is_demo?'Demo · fictional · ':'')+d.job_type_name+' · '+d.ref),h('h2',null,d.title),h('p',null,desc)),acts));
@@ -427,12 +461,58 @@ if(PAGE==='teams'){
   if(pp&&!['done','stopped'].includes(d.status))main.append(h('p',{class:'tm-partprog',role:'status'},pp.text+(failedPart?' · stopped at '+pp.failed.label:'')));
   if(d.error)main.append(h('div',{class:'tm-err',role:'alert'},h('strong',null,'Stopped: '),d.error,failedPart?h('div',{class:'small'},'Try again redoes only '+pp.failed.label+(pp.kept?'; the '+plural(pp.kept,'part')+' already done '+(pp.kept===1?'is':'are')+' kept.':'.')):null));
   const cols=h('div',{class:'tm-cols'});const left=h('div'),side=h('div',{class:'tm-side'});cols.append(left,side);main.append(cols);
+  if(J.panel)left.append(rerunPanel(J.panel));
+  if(d.rerun)left.append(h('div',{class:'tm-rerun',role:'status'},h('b',null,'v'+d.rerun.version+' in progress: '),(d.versions.versions.find(x=>x.current)||{}).what||'',d.rerun.by?' Asked by '+d.rerun.by+'.':''));
+  if(d.copied_from)left.append(h('p',{class:'small muted'},'Copied from ',h('a',{href:'/admin/teams/'+enc(d.team_id)+'/jobs/'+d.copied_from.job},d.copied_from.ref+' v'+d.copied_from.version),': documents, plan and settings kept; the client was chosen again.'));
   for(const c of (d.view&&d.view.conflicts)||[])left.append(h('div',{class:'tm-conflict',role:'note'},h('strong',null,(d.view.lead||'The lead')+': '),c.text,h('div',{style:'margin-top:6px'},...(c.links||[]).map(l=>h('a',{href:l.href},l.label+' ↗')))));
   if(d.view&&d.view.decision)left.append(decisionPanel(d.view.decision));for(const s of d.pending)left.append(pendingBox(s));
   left.append(outputPanel());
   const tl=h('section',{class:'tm-panel','aria-labelledby':'tm-tl-h'},h('h3',{id:'tm-tl-h'},'What the team did'));tl.append(timeline());side.append(tl);
   side.append(h('section',{class:'tm-panel','aria-labelledby':'tm-talk-h'},h('h3',{id:'tm-talk-h'},'Talk to the team'),h('p',{class:'small muted'},'Messages go to '+(d.lead.role||'the lead')+', who answers and passes them to whoever should act.'),talkPanel(d.team_id,d.id)));
-  side.append(h('section',{class:'tm-panel'},h('h3',null,'This job'),h('dl',{class:'tm-kv'},h('dt',null,'AI cost'),h('dd',null,'$'+(d.ai_cost||0).toFixed(2)+' so far'),h('dt',null,'Autonomy'),h('dd',null,d.autonomy_label),h('dt',null,'Team version'),h('dd',null,'v'+d.team_version),h('dt',null,'Client'),h('dd',null,d.client||'None'))))}
+  side.append(thisJob())}
+ function thisJob(){const d=V.d,C=d.costs,Vs=d.versions;const s=h('section',{class:'tm-panel','aria-labelledby':'tm-this-h'},h('h3',{id:'tm-this-h'},'This job'));
+  s.append(h('dl',{class:'tm-kv'},h('dt',null,'AI cost'),h('dd',null,h('b',null,money(C.total)),d.status==='done'?'':' so far'),h('dt',null,'Version'),h('dd',null,'v'+(d.version||1)),h('dt',null,'Autonomy'),h('dd',null,d.autonomy_label),h('dt',null,'Team version'),h('dd',null,'v'+d.team_version),h('dt',null,'Client'),h('dd',null,d.client||'None')));
+  if(C.members.length){const ul=h('ul',{class:'tm-ver','aria-label':'Each member’s share'});for(const m of C.members)ul.append(h('li',null,h('div',{class:'h'},h('b',null,m.role),h('span',{class:'small muted'},m.share_pct+'%'),h('span',{class:'c'},money(m.cost))),m.your_figures?h('div',{class:'tm-yours'},h('b',null,m.your_figures.label+': '),m.your_figures.text,m.your_figures.note?' '+m.your_figures.note:''):null));s.append(h('h4',{style:'margin:10px 0 0'},'Each member’s share'),ul)}
+  if(C.before_tracking)s.append(h('p',{class:'small muted'},C.before_text+': ',money(C.before_tracking),' (not split by member or version).'));
+  const vl=h('ul',{class:'tm-ver','aria-label':'Versions'});for(const v of Vs.versions.slice().reverse()){
+   const view=!v.current&&v.readable?h('button',{type:'button',class:'secondary',style:'padding:1px 9px;font-size:12px'},'Open v'+v.version):null;if(view)view.onclick=()=>run(()=>openVersion(v.version));
+   const li=h('li',{class:v.current?'cur':null},h('div',{class:'h'},h('b',null,v.label),h('span',null,v.kind_label),v.signed_off?h('span',{class:'tm-so',title:'Signed off by '+v.signed_off_by+' '+when(v.signed_off_at)},'Signed off'):null,v.current?h('span',{class:'small muted'},'current'):null,h('span',{class:'c'},money(v.cost))),
+    h('div',{class:'small'},v.what),v.note?h('div',{class:'small muted'},'Note: '+v.note):null,h('div',{class:'small muted'},(v.asked_by?'Asked by '+v.asked_by+' · ':'')+when(v.started_at)),view);vl.append(li)}
+  s.append(h('h4',{style:'margin:10px 0 0'},'Versions'),vl,fxLine(C.fx));return s}
+ async function openVersion(v){const d=V.d;const x=await api('/admin/api/teams/jobs/'+d.id+'/versions/'+v);const pl=x.plan;const secs=[{key:'what',title:x.version.kind_label+' · '+x.version.label,text:x.version.what+(x.version.note?'\n\nNote: '+x.version.note:'')+(x.summary?'\n\n'+x.summary:'')}];
+  if(pl){secs.push({key:'what',title:pl.stage==='measure'?'Measured (not priced)':'The cost plan in '+x.version.label,rows:pl.rows.map(r=>[r.ref+' '+r.description,qty(r.quantity)+' '+r.unit+(r.rate==null?'':' × '+gbp(r.rate))+(r.amount==null?'':' = '+gbp(r.amount))+' · '+r.source_label])});
+   if(pl.totals)secs.push({key:'what',title:'Totals in '+x.version.label,rows:[['Construction',gbp(pl.totals.construction)],['Preliminaries',gbp(pl.totals.prelims)],['Contingency',gbp(pl.totals.contingency)],['Fees',gbp(pl.totals.fees)],['Total excluding VAT',gbp(pl.totals.total)]]})}
+  else if(x.text)secs.push({key:'what',title:x.text.stage,text:x.text.text});
+  secs.push({key:'when',title:'When',rows:[['Started',{time:x.version.started_at}]].concat(x.version.signed_off?[['Signed off by '+x.version.signed_off_by,{time:x.version.signed_off_at}]]:[])});
+  secs.push({key:'who',title:'Who',text:'Asked by '+(x.version.asked_by||'you')+'. Cost of this version: '+x.version.cost.text+' ('+x.version.cost.note+').'});
+  openCard({ref:d.ref+' '+x.version.label,kind_label:'Digital team · Earlier version (read only)',title:d.title,subtitle:d.team.name,badge:x.version.signed_off?'Signed off':'Superseded',tone:'',sections:secs,actions:x.documents.map(doc=>({label:'Download '+doc.kind+': '+doc.name,href:'/documents/'+doc.id+'/download'}))})}
+ function rerunPanel(kind){const d=V.d;const s=h('section',{class:'tm-rp',id:'tm-rp','aria-labelledby':'tm-rp-h'});const close=h('button',{type:'button',class:'secondary'},'Cancel');close.onclick=()=>{J.panel='';drawJob()};
+  if(kind==='copy'){if(J.client===null)J.client=d.client||'';if(!J.title)J.title=d.title+' (copy)';const cl=h('input',{type:'text',maxlength:'80',value:J.client,placeholder:'An organisation marked Client, or leave empty for no client','aria-label':'Client for the new job'}),ti=h('input',{type:'text',maxlength:'150',value:J.title,'aria-label':'Title of the new job'});
+   cl.oninput=()=>{J.client=cl.value};ti.oninput=()=>{J.title=ti.value};
+   s.append(h('h3',{id:'tm-rp-h'},'Copy as a new job'),h('p',{class:'small muted'},'The new job keeps this job’s documents, '+((d.outputs.plan)?'the Lead’s plan (so it starts at measuring) ':'')+'and settings (job type, location, team v'+d.team_version+'). Choose the client again: client separation decides from the Rules page whether this job’s material may be used for it.'),
+    h('div',{class:'tm-form'},h('label',null,'Title',ti),h('label',null,'Client',cl)));
+   const go=btn('Copy and start',async()=>{const j=await api('/admin/api/teams/jobs/'+d.id+'/copy','POST',{client:cl.value,title:ti.value});J.panel='';J.client=null;J.title='';location.href='/admin/teams/'+enc(j.team_id)+'/jobs/'+j.id});
+   s.append(h('div',{class:'tm-acts',style:'margin-top:10px'},go,close));return s}
+  const rs=d.rate_sources;if(!J.order)J.order=rs.order.slice();
+  const rows=(d.view&&d.view.plan&&d.view.plan.rows)||[];
+  if(kind==='reprice'&&!J.sel)J.sel=rows.filter(r=>r.source==='unpriced'||r.source==='estimate').map(r=>r.ref);
+  if(kind==='remeasure'&&!J.els)J.els=[];
+  s.append(h('h3',{id:'tm-rp-h'},kind==='reprice'?'Re-price':'Re-measure'),h('p',{class:'small muted'},kind==='reprice'?'Only the Cost Surveyor works again, on the items you tick; the measured quantities and every other price are kept. The Lead QS then reassembles the cost plan and it comes back for your sign-off as v'+((d.version||1)+1)+'.':'The Measurement Surveyor takes off the elements you tick again; the other elements are kept as measured. Only the items measured again are priced, then the cost plan is reassembled and comes back for your sign-off as v'+((d.version||1)+1)+'.'));
+  const box=h('div',{class:'items',role:'group','aria-label':kind==='reprice'?'Items to re-price':'Elements to re-measure'});
+  if(kind==='reprice'){for(const r of rows){const c=h('input',{type:'checkbox'});c.checked=J.sel.includes(r.ref);c.onchange=()=>{J.sel=c.checked?[...new Set([...J.sel,r.ref])]:J.sel.filter(x=>x!==r.ref);cnt.textContent=plural(J.sel.length,'item')+' chosen'};
+    box.append(h('label',null,c,h('span',null,h('b',null,r.ref+' '),r.description+' ',h('span',{class:'tm-src '+r.source},r.source_label),r.rate!=null?' '+gbp(r.rate)+' per '+r.unit:'')))}}
+  else{for(const e of d.elements){const c=h('input',{type:'checkbox'});c.checked=J.els.includes(e);c.onchange=()=>{J.els=c.checked?[...new Set([...J.els,e])]:J.els.filter(x=>x!==e);cnt.textContent=plural(J.els.length,'element')+' chosen'};box.append(h('label',null,c,e))}}
+  const cnt=h('span',{class:'small muted'},kind==='reprice'?plural(J.sel.length,'item')+' chosen':plural(J.els.length,'element')+' chosen');
+  const est=h('input',{type:'checkbox'});est.checked=J.est;est.onchange=()=>{J.est=est.checked};const tr=h('input',{type:'checkbox'});tr.checked=J.trends;tr.onchange=()=>{J.trends=tr.checked};
+  const ol=h('ol',{class:'tm-order','aria-label':'Order of the rate sources for this re-run'});const drawOrder=()=>{ol.replaceChildren(...J.order.map((k,i)=>{const up=h('button',{type:'button',class:'secondary','aria-label':'Move '+rs.names[k]+' up',disabled:i===0},'↑'),dn=h('button',{type:'button',class:'secondary','aria-label':'Move '+rs.names[k]+' down',disabled:i===J.order.length-1},'↓');
+   up.onclick=()=>{J.order.splice(i-1,0,J.order.splice(i,1)[0]);drawOrder()};dn.onclick=()=>{J.order.splice(i+1,0,J.order.splice(i,1)[0]);drawOrder()};const ok=rs.allowed.includes(k);return h('li',{class:ok?null:'off'},up,dn,h('span',null,rs.names[k]),ok?null:h('span',{class:'small muted'},' not allowed by the rule'+(k==='estimate'?' (tick “Allow team estimates” for these items)':'')))}))};drawOrder();
+  const note=h('textarea',{maxlength:'1000',placeholder:'A note for the team (optional), e.g. look for a regional rate for Perth','aria-label':'Note for the team'});note.value=J.note;note.oninput=()=>{J.note=note.value};
+  s.append(box,cnt,h('div',{class:'opts'},h('label',null,est,'Allow team estimates on '+(kind==='reprice'?'these items':'the items measured again')+', on this re-run only'),h('label',null,tr,'Run Market Trends again (otherwise its report and the market adjustment decision are kept)')),
+   h('details',null,h('summary',{class:'small'},'Rate-source order for this re-run'),h('p',{class:'small muted'},'What may be used stays the rule’s: ',h('a',{href:rs.href},'Where digital teams’ rates come from'),'. Unpriced is always last.'),ol),note);
+  const go=btn(kind==='reprice'?'Re-price':'Re-measure',async()=>{const same=J.order.join()===rs.order.join();const body={estimates:J.est,trends:J.trends,note:J.note,order:same?[]:J.order};
+   if(kind==='reprice'){if(!J.sel.length)throw Error('Tick at least one item to re-price.');body.refs=J.sel}else{if(!J.els.length)throw Error('Tick at least one element to re-measure.');body.elements=J.els}
+   await api('/admin/api/teams/jobs/'+d.id+'/'+kind,'POST',body);Object.assign(J,{panel:'',sel:null,els:null,est:false,trends:false,order:null,note:''});$('notice').textContent='v'+((d.version||1)+1)+' started: the team is working on it. v'+(d.version||1)+' stays readable under This job.';await loadJob()});
+  s.append(h('div',{class:'tm-acts',style:'margin-top:10px'},go,close));return s}
  function decisionPanel(x){const d=V.d;const s=h('section',{class:'tm-dec','aria-labelledby':'tm-dec-h'},h('h3',{id:'tm-dec-h'},x.title),h('p',{class:'small'},x.why));
   const wrap=h('div',{class:'table-wrap'}),tb=h('table',{class:'tm-plan'});tb.append(h('thead',null,h('tr',null,h('th',{scope:'col'},'Item'),h('th',{scope:'col',class:'n'},'Qty'),h('th',{scope:'col'},'Unit'),h('th',{scope:'col'},'Your rate (£ per unit)'),h('th',{scope:'col'},'Leave unpriced'))));
   const body=h('tbody'),rows=[];for(const i of x.items){const rate=h('input',{type:'number',min:'0.01',step:'0.01',inputmode:'decimal','aria-label':'Rate for '+i.ref+' '+i.description+' in pounds per '+i.unit}),lv=h('input',{type:'checkbox','aria-label':'Leave '+i.ref+' unpriced'});
@@ -489,7 +569,7 @@ if(PAGE==='teams'){
  else if(!V.tid&&qp.get('team'))location.replace('/admin/teams/'+enc(qp.get('team'))+(location.hash||''));
  else if(V.jid)run(loadJob);
  else if(V.tid){run(async()=>{await loadTeam();api('/admin/api/teams/'+enc(V.tid)+'/seen','POST',{}).catch(()=>{})});window.addEventListener('hashchange',()=>{const k=location.hash.slice(1);if(TABS.some(x=>x[0]===k)&&k!==tab){tab=k;if(V.d)drawTeam()}})}
- else{run(loadBoard);$('tb-q').oninput=()=>{B.q=$('tb-q').value;drawTeams()};$('tb-group').onchange=()=>{B.group=$('tb-group').value;store.set('group',B.group);drawTeams()};
+ else{run(loadBoard);$('tb-q').oninput=()=>{B.q=$('tb-q').value;drawTeams()};$('tb-group').onchange=()=>{B.group=$('tb-group').value;store.set('group',B.group);drawTeams()};$('tb-sort').onchange=()=>{B.sort=$('tb-sort').value;store.set('sort',B.sort);drawTeams()};
   $('tb-cards').onclick=()=>{B.view='cards';store.set('view','cards');drawBoard()};$('tb-list').onclick=()=>{B.view='list';store.set('view','list');drawBoard()};
   $('tb-new').onclick=()=>newTeamPanel(false);$('tb-templates').onclick=()=>newTeamPanel(true)}
 }

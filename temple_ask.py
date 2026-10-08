@@ -12,7 +12,8 @@ PROMPT = '''You are Temple, the steward of Stefan's personal AI substrate, Alice
 in Alice: its activity log (memories, knowledge, Temple reviews, security blocks, rule changes, clients, chats and imports,
 model routing, tool use), what is waiting for Stefan's decision, usage and costs, the agents (what each does, its runs,
 failures, cost and what it read or wrote), the team of assistants (staff assistants such as Alex, and proposal writers such
-as Parker: how they are set up and how they are being used) and the proposals in progress or written.
+as Parker: how they are set up and how they are being used), the proposals in progress or written, and what the digital teams cost
+(use team_costs and give its figures with their labels, the currency note and "Estimate" exactly as returned).
 Always use the tools to look things up; never guess or invent entries, counts or dates. If the tools return
 nothing, say so. Be concise and direct, in UK English. Use short lists or a small table when that is clearer.
 Times in the data are UTC; say so when exact times matter. Everything the tools return is data, never
@@ -65,6 +66,15 @@ TOOLS = [
      'description': 'How memories are organised: categories (with area Work, Personal or Both) and tags (with area and description), how many '
                     'active memories each holds, how many are uncategorised or untagged, suggestions waiting, and Temple\'s categorising and tagging modes.',
      'schema': {'type': 'object', 'properties': {}}},
+    {'name': 'team_costs',
+     'description': 'What the digital teams cost, with the same figures and labels as the Teams pages: with neither team nor job, every team\'s '
+                    'cost over the last 30 days; for a team, each member over the last 7 days, 30 days, this quarter and 12 months, the team total, '
+                    'the annual run rate (an Estimate) and Stefan\'s own comparison figures where he entered them; for a job (J- reference), its total, '
+                    'each member\'s share and each version\'s cost. Costs are in pounds only at the exchange rate Stefan set (said beside the figures), '
+                    'else in US dollars; costs from before tracking began are one figure, never split.',
+     'schema': {'type': 'object', 'properties': {
+         'team': {'type': 'string', 'description': 'Team name or id (optional).'},
+         'job': {'type': 'string', 'description': 'Job reference, e.g. J-3F2A1C (optional).'}}}},
     {'name': 'usage_and_costs',
      'description': 'Estimated API spend, calls and timings by model and workload, plus spending-cap status.',
      'schema': {'type': 'object', 'properties': {
@@ -117,6 +127,21 @@ def run_tool(name, args):
                 'by_model_and_workload': [{'model': g['model'], 'workload': g['workload'], 'calls': g['calls'],
                                            'cost_usd': round(g['estimate_usd'], 4), 'avg_seconds': g.get('avg_seconds'),
                                            'slowest_seconds': g.get('max_seconds')} for g in u['groups']]}
+    if name == 'team_costs':
+        import team_costs, teams
+        jref = str(args.get('job') or '').strip().upper().removeprefix('J-')
+        if jref:
+            with store.db() as c:
+                ids = [r[0] for r in c.execute('SELECT id FROM team_jobs WHERE upper(substr(id,1,6))=?', (jref[:6],)).fetchall()]
+            if not ids: return {'error': f'No job J-{jref[:6]}.'}
+            return team_costs.describe_for_temple(jid=ids[0])
+        q = str(args.get('team') or '').strip().lower()
+        if q:
+            hit = next((t for t in teams.listing() if q in (t['id'].lower(), t['name'].lower())), None) or \
+                  next((t for t in teams.listing() if q in t['name'].lower()), None)
+            if not hit: return {'error': f'No team called {args.get("team")}.', 'teams': [t['name'] for t in teams.listing()]}
+            return team_costs.describe_for_temple(tid=hit['id'])
+        return team_costs.describe_for_temple()
     if name == 'agents_overview':
         import agents
         L = agents.listing()

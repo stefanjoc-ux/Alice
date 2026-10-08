@@ -15,6 +15,7 @@ come with the Azure step.
 import contextvars
 import functools
 import json
+import logging
 import re
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -782,6 +783,9 @@ def model_label(provider, model):
     return f'{name} ({org})' if org else name
 
 
+COST_HOOKS = []              # function(usd, provider, model, run_id) called for every model call (team_costs records a digital team's calls)
+
+
 def add_cost(usd, provider='', model=''):
     """Called by usage_meter for every model call: the cost lands on the agent run in progress, if any, and the run
     records which model it called (for 'Sent to' on Data touched)."""
@@ -789,6 +793,9 @@ def add_cost(usd, provider='', model=''):
     if box is not None:
         box.usd += float(usd or 0); box.calls.append((provider, model, float(usd or 0)))
     rid = _current.get()
+    for hook in COST_HOOKS:
+        try: hook(usd, provider, model, rid or '')
+        except Exception: logging.getLogger('alice.agents').exception('A cost record could not be saved')
     if not rid: return
     with store.db() as c:
         c.execute('UPDATE agent_runs SET cost_usd=cost_usd+?,calls=calls+1 WHERE id=?', (float(usd or 0), rid))
