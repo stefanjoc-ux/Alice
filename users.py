@@ -1,0 +1,379 @@
+"""People who use Alice: who is signed in, their role, their permission profile and whether they are suspended.
+
+Roles (highest first): Owner, Admin, Member. In Azure the signed-in person comes from Container Apps sign-in
+(X-MS-CLIENT-PRINCIPAL*, trusted only with ALICE_TRUST_EASYAUTH=1). On the PC there is no sign-in: whoever is at this
+computer is the owner and sees everything, exactly as before.
+
+Two ways in, switched by ALICE_USE_APP_ROLES (Bicep useAppRoles):
+  off (as today)  Entra's allowedPrincipals list (the owner plus the accounts in allowedUserObjectIds) decides who gets in,
+                  and everyone it lets in is the owner's own account: Owner, unless the Users page has set them lower.
+  on              the web sign-in app's roles decide: Alice.Owner, Alice.Admin or Alice.Member, assigned in Entra (the
+                  enterprise application has "Assignment required"). Someone with none of them is refused.
+The role Alice uses is the LOWER of the Entra role (a ceiling: take it away in Entra and they drop at once) and the role
+set on the Users and permissions page (which starts at the Entra role on first sign-in). The owner (ALICE_OWNER_OBJECT_ID)
+is always Owner, cannot be demoted, suspended or removed, and there is always at least one active Owner.
+
+A permission profile is a named set of levels per section (permissions.py). Owners see and manage everything; Admins and
+Members get their profile (Admins also Users and permissions, Rules and Rule packs). A new person gets the default Member
+profile: Chat and their own saved chats, nothing else. Adding a person never shares anything by itself.
+"""
+import base64
+import json
+import os
+import re
+import threading
+import time
+import uuid
+
+import substrate_store as store
+
+ROLES = ('member', 'admin', 'owner')                    # lowest first
+RANK = {r: i for i, r in enumerate(ROLES)}
+ROLE_LABEL = {'owner': 'Owner', 'admin': 'Admin', 'member': 'Member'}
+ENTRA_ROLES = {'Alice.Owner': 'owner', 'Alice.Admin': 'admin', 'Alice.Member': 'member'}
+STATUSES = ('active', 'suspended')
+DEFAULT_PROFILE = 'member'          # the default profile id for anyone new
+CACHE_S = 15                        # a change on the Users page reaches every request within this (same process: at once)
+TOUCH_S = 300                       # last seen is written at most every 5 minutes per person
+OID = re.compile(r'^[0-9a-z][0-9a-z-]{0,63}$')       # Entra object IDs are GUIDs; anything else odd is refused
+PROFILE_ID = re.compile(r'^[a-z0-9][a-z0-9-]{1,39}$')
+
+
+class Refused(Exception):
+    """This person may not use Alice (no role, suspended, or not identifiable). The message is shown to them."""
+    def __init__(self, message, reason):
+        super().__init__(message)
+        self.reason = reason
+
+
+def _schema(c):
+    c.execute("CREATE TABLE IF NOT EXISTS users (oid TEXT PRIMARY KEY, email TEXT NOT NULL DEFAULT '', name TEXT NOT NULL DEFAULT '', "
+              "role TEXT NOT NULL DEFAULT 'member', profile TEXT NOT NULL DEFAULT 'member', status TEXT NOT NULL DEFAULT 'active', "
+              "entra_role TEXT NOT NULL DEFAULT '', first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, "
+              "updated_at TEXT NOT NULL DEFAULT '', updated_by TEXT NOT NULL DEFAULT '')")
+    c.execute("CREATE TABLE IF NOT EXISTS permission_profiles (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', "
+              "levels TEXT NOT NULL DEFAULT '{}', builtin INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL, updated_by TEXT NOT NULL DEFAULT '')")
+
+
+with store.db() as _c: _schema(_c)
+
+
+def _seed():
+    import permissions
+    with store.db() as c:
+        if not c.execute('SELECT 1 FROM permission_profiles WHERE id=?', (DEFAULT_PROFILE,)).fetchone():
+            c.execute('INSERT INTO permission_profiles(id,name,description,levels,builtin,updated_at) VALUES (?,?,?,?,1,?)',
+                      (DEFAULT_PROFILE, 'Member (default)', 'Chat and their own saved chats. Nothing of anyone else\'s.',
+                       json.dumps(permissions.default_levels()), store.now()))
+
+
+# ---------------- settings from the environment ----------------
+def trusted():
+    return os.environ.get('ALICE_TRUST_EASYAUTH') == '1'
+
+
+def use_app_roles():
+    return os.environ.get('ALICE_USE_APP_ROLES') == '1'
+
+
+def owner_oid():
+    return (os.environ.get('ALICE_OWNER_OBJECT_ID') or '').strip().lower()
+
+
+def local_owner():
+    """The owner at this computer (no sign-in): sees everything."""
+    return store.Viewer('', '', store.owner_name(), 'owner', True)
+
+
+# ---------------- the sign-in headers ----------------
+def principal(headers):
+    """{oid, email, name, roles} from Container Apps sign-in headers ({} when not behind trusted sign-in)."""
+    if not trusted(): return {}
+    email = ' '.join((headers.get('x-ms-client-principal-name') or '').split())[:200].lower()
+    oid = (headers.get('x-ms-client-principal-id') or '').strip().lower()
+    name, roles = '', []
+    try:
+        p = json.loads(base64.b64decode((headers.get('x-ms-client-principal') or '') + '==').decode('utf-8'))
+        role_typ = p.get('role_typ') or 'roles'
+        for c in p.get('claims') or []:
+            typ, val = str(c.get('typ', '')), str(c.get('val', ''))
+            if typ == 'name' and not name: name = val
+            elif typ in (role_typ, 'roles', 'http://schemas.microsoft.com/ws/2008/06/identity/claims/role'): roles.append(val)
+            elif typ in ('http://schemas.microsoft.com/identity/claims/objectidentifier', 'oid') and not oid: oid = val.strip().lower()
+            elif typ in ('preferred_username', 'email') and not email: email = ' '.join(val.split())[:200].lower()
+    except Exception:
+        pass
+    if oid and not OID.fullmatch(oid): oid = ''
+    return {'oid': oid, 'email': email, 'name': ' '.join(str(name).split())[:120], 'roles': roles}
+
+
+def entra_ceiling(p):
+    """The highest Alice role Entra gives this person ('' = none)."""
+    if p.get('oid') and p['oid'] == owner_oid(): return 'owner'
+    if not use_app_roles(): return 'owner'                 # allowedPrincipals mode: Entra let in only the owner's own accounts
+    got = [ENTRA_ROLES[r] for r in p.get('roles', []) if r in ENTRA_ROLES]
+    return max(got, key=RANK.get) if got else ''
+
+
+# ---------------- people (cached briefly; this process sees its own changes at once) ----------------
+_lock = threading.Lock()
+_cache = {}          # oid -> (time read, row dict or None)
+_touched = {}
+
+
+def _forget(oid=None):
+    with _lock:
+        if oid: _cache.pop(oid, None)
+        else: _cache.clear()
+
+
+def _row(oid):
+    now = time.time()
+    with _lock:
+        hit = _cache.get(oid)
+        if hit and now - hit[0] < CACHE_S: return hit[1]
+    with store.db() as c:
+        r = c.execute('SELECT * FROM users WHERE oid=?', (oid,)).fetchone()
+    row = dict(r) if r else None
+    with _lock: _cache[oid] = (now, row)
+    return row
+
+
+def profile_levels(pid):
+    import permissions
+    with store.db() as c:
+        r = c.execute('SELECT levels FROM permission_profiles WHERE id=?', (pid or DEFAULT_PROFILE,)).fetchone()
+        if not r and pid != DEFAULT_PROFILE:
+            r = c.execute('SELECT levels FROM permission_profiles WHERE id=?', (DEFAULT_PROFILE,)).fetchone()
+    try: return permissions.clean_levels(json.loads(r[0]) if r else {})
+    except ValueError: return permissions.clean_levels({})
+
+
+def effective_role(row, ceiling):
+    if row and row['oid'] == owner_oid(): return 'owner'
+    stored = (row or {}).get('role') or 'member'
+    if stored not in RANK: stored = 'member'
+    if not ceiling: return ''
+    return min(stored, ceiling, key=RANK.get)
+
+
+def _viewer(row, role):
+    return store.Viewer(row['oid'], row.get('email', ''), row.get('name', ''), role, role == 'owner')
+
+
+def identify(headers):
+    """The signed-in person as a store.Viewer, recording them on first sight. Raises Refused when they may not use Alice."""
+    if not trusted(): return local_owner()
+    p = principal(headers)
+    if not p.get('oid'):
+        if not use_app_roles() and not owner_oid():
+            # Behind sign-in with no object ID and no owner configured (allowedPrincipals mode, as before roles): the owner.
+            return store.Viewer('', p.get('email', ''), p.get('name', ''), 'owner', True)
+        raise Refused('Alice could not tell who you are from your sign-in. Sign out and sign in again; if this keeps happening, '
+                      'ask the owner of Alice to check your account.', 'no_object_id')
+    ceiling = entra_ceiling(p)
+    row = _row(p['oid'])
+    is_owner = p['oid'] == owner_oid()
+    if row is None:
+        if not ceiling:
+            raise Refused('You do not have access to Alice. Ask its owner to give you a role (Alice Member, Admin or Owner).', 'no_role')
+        row = _first_sight(p, ceiling)
+    else:
+        _touch(row, p, ceiling)
+    if row['status'] == 'suspended' and not is_owner:
+        raise Refused('Your access to Alice is suspended. Ask its owner if you think this is wrong.', 'suspended')
+    role = effective_role(row, ceiling)
+    if not role:
+        raise Refused('You do not have access to Alice. Ask its owner to give you a role (Alice Member, Admin or Owner).', 'no_role')
+    return _viewer(row, role)
+
+
+def _first_sight(p, ceiling):
+    t = store.now()
+    role = 'owner' if p['oid'] == owner_oid() else ceiling
+    with store.db() as c:
+        c.execute('INSERT INTO users(oid,email,name,role,profile,status,entra_role,first_seen,last_seen) VALUES (?,?,?,?,?,?,?,?,?) '
+                  'ON CONFLICT(oid) DO NOTHING', (p['oid'], p.get('email', ''), p.get('name', ''), role, DEFAULT_PROFILE, 'active', ceiling, t, t))
+        store.audit(c, 'user_first_signin', p['oid'], 'users', f"{p.get('email') or p['oid']} signed in for the first time as {ROLE_LABEL[role]} "
+                    f"(profile {DEFAULT_PROFILE}); nothing is shared with them until someone decides to")
+    _touched[p['oid']] = time.time()
+    _forget(p['oid'])
+    return _row(p['oid'])
+
+
+def _touch(row, p, ceiling):
+    now = time.time()
+    changed = (p.get('email') and p['email'] != row['email']) or (p.get('name') and p['name'] != row['name']) or ceiling != row['entra_role']
+    if not changed and now - _touched.get(row['oid'], 0) < TOUCH_S: return
+    _touched[row['oid']] = now
+    try:
+        with store.db() as c:
+            c.execute('UPDATE users SET email=?,name=?,entra_role=?,last_seen=? WHERE oid=?',
+                      (p.get('email') or row['email'], p.get('name') or row['name'], ceiling, store.now(), row['oid']))
+        _forget(row['oid'])
+    except Exception:
+        pass
+
+
+def viewer_for(oid):
+    """The viewer for a known person (background work on their items; the external connector's caller). The owner's
+    object ID is always the owner. Unknown or suspended people get a viewer that sees nothing of anyone else's."""
+    oid = (oid or '').strip().lower()
+    if not oid: return None
+    if oid == owner_oid(): return store.Viewer(oid, '', store.owner_name(), 'owner', True)
+    row = _row(oid)
+    if not row or row['status'] != 'active':
+        return store.Viewer(oid, '', '', 'member', False)
+    ceiling = row['entra_role'] if use_app_roles() else 'owner'
+    role = effective_role(row, ceiling) or 'member'
+    return _viewer(row, role)
+
+
+def connector_viewer(oid):
+    """The viewer for a signed-in connector call (the external MCP endpoint, which has its own allowed-users list too).
+    Suspended people are refused. Someone Alice has not seen yet: in allowedPrincipals mode the endpoint's own list admits only
+    the owner's accounts, so they are the owner; with app roles they must sign in to Alice on the web once first."""
+    oid = (oid or '').strip().lower()
+    if not oid: raise Refused('Alice could not tell who you are from this sign-in.', 'no_object_id')
+    if oid == owner_oid(): return store.Viewer(oid, '', store.owner_name(), 'owner', True)
+    row = _row(oid)
+    if row is None:
+        if not use_app_roles(): return store.Viewer(oid, '', '', 'owner', True)
+        raise Refused('Sign in to Alice on the web once, so the owner can set up your access, then try again.', 'unknown_person')
+    if row['status'] != 'active': raise Refused('Your access to Alice is suspended.', 'suspended')
+    return viewer_for(oid)
+
+
+def person(oid):
+    """The users row for an object ID (or None)."""
+    return _row((oid or '').strip().lower())
+
+
+# ---------------- the Users and permissions page ----------------
+def _actor_viewer():
+    return store.VIEWER.get() or local_owner()
+
+
+def listing():
+    with store.db() as c:
+        rows = [dict(r) for r in c.execute('SELECT * FROM users ORDER BY CASE role WHEN \'owner\' THEN 0 WHEN \'admin\' THEN 1 ELSE 2 END, lower(name), lower(email)')]
+        profiles = {r['id']: r['name'] for r in c.execute('SELECT id,name FROM permission_profiles')}
+    ow = owner_oid()
+    for r in rows:
+        ceiling = r['entra_role'] if use_app_roles() else 'owner'
+        r['effective_role'] = effective_role(r, ceiling) if r['oid'] != ow else 'owner'
+        r['is_owner'] = r['oid'] == ow
+        r['profile_name'] = profiles.get(r['profile'], profiles.get(DEFAULT_PROFILE, 'Member (default)'))
+        r['limited_by_entra'] = bool(ceiling) and RANK.get(r['role'], 0) > RANK.get(ceiling, 0)
+    return {'users': rows, 'profiles': profiles_list(), 'app_roles': use_app_roles(), 'owner_configured': bool(ow),
+            'roles': [{'id': r, 'label': ROLE_LABEL[r]} for r in reversed(ROLES)], 'me': _actor_viewer().oid}
+
+
+def _active_owners(c, exclude=''):
+    return [r[0] for r in c.execute("SELECT oid FROM users WHERE role='owner' AND status='active' AND oid<>?", (exclude,))]
+
+
+def _who():
+    v = _actor_viewer()
+    return v.email or v.name or store.actor()
+
+
+def _check_can_change(actor, target):
+    """Owners change anyone (except the owner's own record); Admins change Members and Admins but not Owners, and never
+    themselves (no raising your own access)."""
+    if target['oid'] == owner_oid():
+        raise PermissionError('The owner of Alice always has full access: their role, profile and status cannot be changed here.')
+    if actor.role == 'owner': return
+    if actor.role != 'admin': raise PermissionError('Only an Owner or an Admin can change people.')
+    if target['oid'] == actor.oid: raise PermissionError('You cannot change your own role, profile or status. Ask an Owner.')
+    if target['role'] == 'owner': raise PermissionError('Only an Owner can change another Owner.')
+
+
+def update(oid, role=None, profile=None, status=None):
+    """Set a person's role, profile or status (suspend/restore). Logged with who did it."""
+    actor = _actor_viewer()
+    oid = (oid or '').strip().lower()
+    target = person(oid)
+    if not target: raise LookupError('No such person. They appear here after their first sign-in.')
+    _check_can_change(actor, target)
+    changes = []
+    with store.db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        if role is not None:
+            if role not in RANK: raise ValueError('Role must be Owner, Admin or Member.')
+            if role == 'owner' and actor.role != 'owner': raise PermissionError('Only an Owner can make someone an Owner.')
+            if target['role'] == 'owner' and role != 'owner' and not _active_owners(c, exclude=oid) and not owner_oid():
+                raise ValueError('There must always be at least one Owner.')
+            if role != target['role']: changes.append(f"role {ROLE_LABEL.get(target['role'], target['role'])} → {ROLE_LABEL[role]}")
+        if profile is not None:
+            if not c.execute('SELECT 1 FROM permission_profiles WHERE id=?', (profile,)).fetchone(): raise ValueError('No such permission profile.')
+            if profile != target['profile']: changes.append(f"profile {target['profile']} → {profile}")
+        if status is not None:
+            if status not in STATUSES: raise ValueError('Status must be active or suspended.')
+            if status == 'suspended' and target['role'] == 'owner' and not _active_owners(c, exclude=oid) and not owner_oid():
+                raise ValueError('There must always be at least one active Owner.')
+            if status != target['status']: changes.append('suspended' if status == 'suspended' else 'access restored')
+        if not changes: return {'changed': False, 'user': person(oid)}
+        c.execute('UPDATE users SET role=coalesce(?,role),profile=coalesce(?,profile),status=coalesce(?,status),updated_at=?,updated_by=? WHERE oid=?',
+                  (role, profile, status, store.now(), _who(), oid))
+        store.audit(c, 'user_changed', oid, 'users', f"{target['email'] or oid}: " + '; '.join(changes))
+    _forget(oid)
+    return {'changed': True, 'user': person(oid)}
+
+
+# ---------------- permission profiles ----------------
+def profiles_list():
+    with store.db() as c:
+        rows = [dict(r) for r in c.execute('SELECT * FROM permission_profiles ORDER BY builtin DESC, lower(name)')]
+        used = {r[0]: r[1] for r in c.execute('SELECT profile,count(*) FROM users GROUP BY profile')}
+    for r in rows:
+        r['levels'] = json.loads(r['levels'] or '{}')
+        r['people'] = used.get(r['id'], 0)
+    return rows
+
+
+def save_profile(pid, name, levels, description=''):
+    """Create (pid '') or change a profile. Owner and Admin only (the route checks); Admins cannot change the profile they use."""
+    import permissions
+    actor = _actor_viewer()
+    name = ' '.join((name or '').split())[:60]
+    if len(name) < 2: raise ValueError('Give the profile a name.')
+    description = ' '.join((description or '').split())[:300]
+    clean = permissions.clean_levels(levels)
+    with store.db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        if pid:
+            old = c.execute('SELECT * FROM permission_profiles WHERE id=?', (pid,)).fetchone()
+            if not old: raise LookupError('No such profile.')
+            if actor.role != 'owner':
+                mine = c.execute('SELECT profile FROM users WHERE oid=?', (actor.oid,)).fetchone()
+                if mine and mine[0] == pid: raise PermissionError('You cannot change the profile you use yourself. Ask an Owner.')
+            c.execute('UPDATE permission_profiles SET name=?,description=?,levels=?,updated_at=?,updated_by=? WHERE id=?',
+                      (name, description, json.dumps(clean), store.now(), _who(), pid))
+            what = 'changed'
+        else:
+            base = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')[:30] or 'profile'
+            pid = base if PROFILE_ID.fullmatch(base) and not c.execute('SELECT 1 FROM permission_profiles WHERE id=?', (base,)).fetchone() \
+                else base[:24] + '-' + uuid.uuid4().hex[:6]
+            c.execute('INSERT INTO permission_profiles(id,name,description,levels,builtin,updated_at,updated_by) VALUES (?,?,?,?,0,?,?)',
+                      (pid, name, description, json.dumps(clean), store.now(), _who()))
+            what = 'created'
+        store.audit(c, 'permission_profile_' + what, pid, 'users', f'{name}: ' + permissions.describe(clean))
+    _forget()
+    return {'id': pid, 'name': name, 'levels': clean}
+
+
+def delete_profile(pid):
+    with store.db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        r = c.execute('SELECT * FROM permission_profiles WHERE id=?', (pid,)).fetchone()
+        if not r: raise LookupError('No such profile.')
+        if r['builtin']: raise ValueError('The default Member profile cannot be deleted.')
+        n = c.execute('SELECT count(*) FROM users WHERE profile=?', (pid,)).fetchone()[0]
+        if n: raise ValueError(f'{n} {"person uses" if n == 1 else "people use"} this profile: give them another one first.')
+        c.execute('DELETE FROM permission_profiles WHERE id=?', (pid,))
+        store.audit(c, 'permission_profile_deleted', pid, 'users', r['name'])
+    return {'deleted': pid}
+
+
+_seed()

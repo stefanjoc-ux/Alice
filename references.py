@@ -41,7 +41,8 @@ def _pointing():
 
 def listing():
     """Every document in the sources that could be a reference, with its summary status and client tag."""
-    import doc_library
+    import doc_library, permissions
+    if not permissions.library_ok(): return []          # the document sources need the Documents section (users.py profiles)
     pts, out = _pointing(), []
     for src in doc_library.sources():
         try: files = doc_library.files(src['id'], summaries=False)     # its own pointers come from _pointing()
@@ -114,7 +115,10 @@ Reply with JSON only: {"summary": "150 to 300 words: what it is, who published i
 
 @agents.tracked(SUMMARISER, trigger='when someone uploads a reference document')
 def save_and_summarise(aid, token, folder, title='', tag='general', client='', category='', new_folder=''):
-    import assistants, clients, doc_library, knowledge, proposals, rules_engine
+    import assistants, clients, doc_library, knowledge, proposals, rules_engine, permissions
+    v = store.viewer()
+    if not permissions.full(v) and permissions.level(v, 'documents') < permissions.USE:
+        raise ValueError('Saving into the document sources needs the Documents section (Use). Ask an Admin or Owner of Alice.')
     with _lock: up = _pending.get(token)
     if not up: raise ValueError('That upload has expired. Choose the file again.')
     a = assistants.get(aid)
@@ -174,6 +178,8 @@ def context(paths, brief, client, providers):
     fams = list(dict.fromkeys(assistants.family(p) for p in providers))
     pts, parts, used, skipped, size = _pointing(), [], [], [], 0
     keep, rule_id = clients.item_filter(client, client_facing=True)       # the rule 'Client-facing documents…' decides
+    import permissions
+    if not permissions.library_ok(): paths = []                             # the document sources need the Documents section
     for rel in list(dict.fromkeys(paths or []))[:10]:
         p = doc_library.resolve(rel)
         if not p: skipped.append(f'{rel}: not found in the document sources'); continue

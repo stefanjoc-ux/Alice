@@ -784,7 +784,8 @@ def history(job, member):
     keep, rule_id = teams.client_rule(job)                    # client-facing: 'Client-facing documents…'; else Client separation
     withheld = 0
     with store.db() as c:
-        rows = [dict(r) for r in c.execute("SELECT id, title, client, outputs, updated_at, knowledge_id FROM team_jobs WHERE status='done' AND id<>?", (job['id'],))]
+        vc, va = store.viewer_clause('team_job', 'team_jobs.id')    # past rates only from jobs this job's person may see
+        rows = [dict(r) for r in c.execute("SELECT id, title, client, outputs, updated_at, knowledge_id FROM team_jobs WHERE status='done' AND id<>?" + vc, (job['id'], *va))]
     for r in rows:
         if not keep(r['client'] or ''): withheld += 1; continue
         seen_k.add(r['knowledge_id'])

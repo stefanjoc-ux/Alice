@@ -27,6 +27,8 @@ param ownerName string = 'Stefan'
 param ownerObjectId string = ''
 @description('Other Entra object IDs allowed to sign in (e.g. your everyday account in the same tenant). The owner is always allowed.')
 param allowedUserObjectIds array = []
+@description('Who gets in: false (as before) = only ownerObjectId and allowedUserObjectIds (allowedPrincipals); true = anyone assigned an Alice role (Alice.Owner, Alice.Admin, Alice.Member) on the web sign-in app, whose enterprise application has Assignment required (azure-setup.ps1 -Step users). Switch on only after -Step users has assigned you Owner.')
+param useAppRoles bool = false
 @description('Ask for your sign-in (not just reuse the browser\'s Microsoft session) at every new Alice session.')
 param askEverySignIn bool = true
 @description('Custom domain for alice-web (e.g. alice.northants.it), already bound once with a managed certificate; empty = none.')
@@ -323,6 +325,8 @@ var commonEnv = concat(
     { name: 'ALICE_PUBLIC_URL', value: publicUrl }
     // backup.py: the Backup page is for the owner only (their Entra object ID), and shows these backups
     { name: 'ALICE_OWNER_OBJECT_ID', value: ownerObjectId }
+    // users.py: with app roles, the role in the sign-in (Alice.Owner/Admin/Member) decides; without, everyone let in is the owner's account
+    { name: 'ALICE_USE_APP_ROLES', value: useAppRoles ? '1' : '0' }
   ],
   backupEnv,
   map(keySecretNames, s => { name: s.env, secretRef: s.name })
@@ -429,7 +433,7 @@ resource web 'Microsoft.App/containerApps@2024-03-01' = if (withApps) {
   dependsOn: [identityAcrPull, identityKvRead, dbUrlSecret, pgDatabase]
 }
 
-// Entra sign-in in front of the web app: only you get in. /healthz stays open for the platform's probe; /signed-out is the
+// Entra sign-in in front of the web app: only you get in (or, with useAppRoles, only people assigned an Alice role). /healthz stays open for the platform's probe; /signed-out is the
 // static page after 'Sign out of Alice' (no data), outside sign-in so it doesn't sign you straight back in.
 // /hooks/tradingview: TradingView alerts (Stefan's decision, 4 Oct 2026); it only records a signal and checks its own token,
 // size, rate and TradingView's sending addresses (trading.webhook).
@@ -449,7 +453,8 @@ resource webAuth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (with
         }
         validation: {
           allowedAudiences: [webAuthClientId, 'api://${webAuthClientId}']
-          defaultAuthorizationPolicy: { allowedPrincipals: { identities: union([ownerObjectId], allowedUserObjectIds) } }
+          // useAppRoles: Entra decides (Assignment required on the enterprise application, a role per person), Alice checks the role.
+          defaultAuthorizationPolicy: useAppRoles ? {} : { allowedPrincipals: { identities: union([ownerObjectId], allowedUserObjectIds) } }
         }
         // Ask who you are at every new Alice session (password, Windows Hello or passkey, plus MFA), even when the browser
         // is still signed in to Microsoft. Without it, after 'Sign out of Alice' anyone at the device could sign straight back in.

@@ -588,5 +588,5 @@ def maybe_review():
     def work():
         try: review()
         except Exception: pass
-    threading.Thread(target=work, daemon=True).start()
+    store.spawn(work)
     return True

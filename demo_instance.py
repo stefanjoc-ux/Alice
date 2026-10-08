@@ -137,7 +137,7 @@ def generate(org, website='', notes=''):
     with store.db() as c:
         c.execute('INSERT INTO demo_scenarios(id,created_at,org,website,notes,status,progress) VALUES (?,?,?,?,?,?,?)',
                   (sid, store.now(), org, str(website or '')[:200], str(notes or '')[:1000], 'working', 'Researching public information…'))
-    threading.Thread(target=_generate_safe, args=(sid,), daemon=True).start()
+    store.spawn(_generate_safe, sid)
     return {'id': sid}
 
 
@@ -307,7 +307,7 @@ def load(sid):
             _set(sid, status='failed', error=_failed(e))
         finally:
             _lock.release()
-    threading.Thread(target=work, daemon=True).start()
+    store.spawn(work)
     return {'id': sid, 'status': 'loading'}
 
 
@@ -445,7 +445,7 @@ def _load(s, plan, content, facts):
             import temple_taxonomy
             temple_taxonomy.review(manual=True)
         except Exception: pass
-    threading.Thread(target=tidy, daemon=True).start()
+    store.spawn(tidy)
     cur = {'id': s['id'], 'org': facts['org']['name'], 'loaded_at': store.now(), 'team': len(plan['team']), **counts}
     with store.db() as c:
         c.execute("INSERT INTO settings(key,value) VALUES ('demo_loaded',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (json.dumps(cur),))

@@ -96,7 +96,8 @@ def analyse(cid,tid):
             current=c.execute('SELECT rowid FROM chat_turns WHERE id=?',(tid,)).fetchone()
             if not current:return
             rows=[dict(r) for r in c.execute("SELECT id,user_text,reply FROM chat_turns WHERE chat_id=? AND status='complete' AND rowid<=? ORDER BY rowid DESC LIMIT 4",(cid,current[0]))]
-            memories=[dict(r) for r in c.execute("SELECT id,title,content FROM records WHERE status='approved' AND NOT EXISTS (SELECT 1 FROM memory_archive WHERE record_id=records.id) ORDER BY created_at DESC LIMIT 10")]
+            vc,va=store.viewer_clause('record','records.id')    # only what this chat's person may see
+            memories=[dict(r) for r in c.execute("SELECT id,title,content FROM records WHERE status='approved' AND NOT EXISTS (SELECT 1 FROM memory_archive WHERE record_id=records.id)"+vc+"ORDER BY created_at DESC LIMIT 10",va)]
             existing=[dict(r) for r in c.execute('SELECT kind,title,content FROM temple_suggestions WHERE chat_id=? ORDER BY created_at DESC LIMIT 20',(cid,))]
         # Complete user messages; assistant text bounded. Newest context wins.
         turns=[];budget=24000
@@ -234,9 +235,11 @@ def act(sid,action,content):
             text=r['title']+'\n\n'+content+'\n\nSource: '+source
             raw=text.encode('utf-8');digest=hashlib.sha256(raw).hexdigest()
             existing=c.execute('SELECT id FROM files WHERE sha256=?',(digest,)).fetchone()
+            if existing and not store.can_see('file',existing[0]):raise ValueError('This note cannot be saved.')
             if existing:target=existing[0]
             else:c.execute('INSERT INTO files VALUES (?,?,?,?,?,?,?,?)',(target,name,digest,raw,'FILE: '+name+'\n'+text,'User-reviewed knowledge note from a chat. Original assertions not independently verified.',store.now(),len(raw)))
         elif r['kind']=='guidance':
+            if store.restricted() is not None:raise ValueError('Response guidance applies to everyone in Alice, so only an Owner can change it.')
             prior=c.execute("SELECT value FROM settings WHERE key='guidance'").fetchone()[0]
             updated=prior+'\n'+content
             if len(updated)>8000:raise ValueError('Response guidance would exceed 8,000 characters. Edit it in Rules first.')
@@ -244,6 +247,9 @@ def act(sid,action,content):
         else:target='implementation_requested_not_enforced'
         c.execute("UPDATE temple_suggestions SET status='accepted',target=?,content=? WHERE id=?",(target,content,sid))
         store.audit(c,'temple_suggestion_accepted',sid,'human_review',r['kind']+' → '+target)
+    author=store.author_of('chat',r['chat_id'])        # what comes from someone's chat is theirs ('' = the owner's)
+    if r['kind']=='memory':store.stamp('record',target,oid=author)
+    elif r['kind']=='knowledge':store.stamp('file',target,oid=author)
     if review_target:
         try:temple.automatic_review(review_target)
         except Exception:pass

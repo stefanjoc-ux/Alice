@@ -2909,6 +2909,89 @@ NAV_ICONS = {
  'backup': _I('<ellipse cx="12" cy="6" rx="7" ry="2.8"/><path d="M5 6v6c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8V6"/><path d="M5 12v6c0 1.5 3.1 2.8 7 2.8"/><path d="M15.5 17.5l2 2 3.5-4"/>'),
  'signins': _I('<rect x="3" y="5" width="18" height="11" rx="2"/><path d="M2 19h20"/><rect x="9.5" y="9" width="5" height="4" rx="1"/><path d="M10.5 9V8a1.5 1.5 0 0 1 3 0v1"/>'),
 }
+# ---- Users and permissions (users.py, permissions.py): people, roles, permission profiles ----
+PAGES['users'] = ('Users and permissions', 'Who can use Alice and what each person may see and do. Adding someone in Entra never shares anything by itself: '
+                  'they start with the default Member profile (Chat and their own saved chats). Until shared Spaces arrive, everyone but an Owner '
+                  'sees only what they created themselves. Health, Trading, Mileage and Backups are always the owner\'s alone.')
+SECTIONS['users'] = r'''<section><div class="mem-head"><h2>People</h2><span class="small muted" id="us-mode"></span></div>
+<div id="us-tiles" class="mi-tiles"></div><div class="table-wrap"><table id="us-people" class="mem-table"></table></div>
+<p class="small muted">A person appears here after their first sign-in. Their role is the lower of their Entra role and the role set here; the owner of Alice always has full access.</p></section>
+<section><div class="mem-head"><h2>Permission profiles</h2><button type="button" id="us-new">New profile</button></div>
+<div id="us-profiles" class="us-profiles"></div></section>
+<section id="us-edit" hidden><div class="mem-head"><h2 id="us-edit-title">Profile</h2><button type="button" id="us-cancel" class="secondary">Close</button></div>
+<form id="us-form" class="us-form"><label>Name <input id="us-name" maxlength="60" required></label><label>What it is for <input id="us-desc" maxlength="300"></label>
+<h3>Sections</h3><div id="us-secs" class="us-grid"></div>
+<h3>Assistants</h3><p class="small muted">Use = may use that assistant's own page.</p><div id="us-asst" class="us-grid"></div>
+<h3>Digital teams</h3><p class="small muted">View = see the team and their own jobs; Use = talk to it; Manage = change the team. The ticks add running jobs, re-pricing, seeing costs and managing pricing templates.</p><div id="us-teams" class="us-grid"></div>
+<h3>Apps</h3><div id="us-apps" class="us-grid"></div>
+<p class="small muted" id="us-fixed"></p>
+<button type="submit">Save profile</button> <button type="button" id="us-delete" class="secondary">Delete profile</button></form></section>'''
+NAV_GROUPS[-1][1].insert(NAV_GROUPS[-1][1].index('signins'), 'users')
+NAV_ICONS['users'] = _I('<circle cx="9" cy="8" r="3.2"/><path d="M3 20c.6-3.6 3-5.5 6-5.5s5.4 1.9 6 5.5"/><path d="M16 4.5a3 3 0 0 1 0 6"/><path d="M18 14.8c1.6.7 2.7 2.4 3 5.2"/>')
+CSS += r'''
+.us-profiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}.us-card{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:#fff}
+.us-card h3{margin:0 0 4px;font-size:15px}.us-card p{margin:4px 0;font-size:13px}.us-form label{display:block;margin:8px 0;font-size:14px}.us-form input[type=text],.us-form input:not([type]){width:min(480px,100%)}
+.us-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px 16px}.us-grid .us-row{display:flex;gap:8px;align-items:center;justify-content:space-between;font-size:14px;flex-wrap:wrap}
+.us-row select{min-width:96px}.us-caps{display:flex;gap:8px;flex-wrap:wrap;font-size:12px;width:100%}.us-badge{font-size:11px;padding:1px 6px;border-radius:4px;background:#eef3f6;margin-left:6px}
+#us-edit[hidden],#us-delete[hidden]{display:none!important}#us-people td{vertical-align:middle}#us-people select{font-size:13px}
+'''
+SCRIPT += r"""
+if(PAGE==='users'){
+ let D=null,C=null,editing=null;
+ const when=iso=>iso?new Date(iso).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'–';
+ const sel=(opts,val,label)=>{const s=document.createElement('select');s.setAttribute('aria-label',label);for(const [v,t] of opts){const o=el('option',t);o.value=v;s.append(o)}s.value=val;return s};
+ const LV=[['none','None'],['view','View'],['use','Use'],['manage','Manage']];
+ async function load(){[D,C]=await Promise.all([api('/admin/api/users'),api('/admin/api/permissions/catalogue')]);draw()}
+ function draw(){
+  $('us-mode').textContent=D.app_roles?'Entra app roles decide who gets in (Alice.Owner, Alice.Admin, Alice.Member).':'Entra\'s allowed accounts decide who gets in (app roles not switched on yet).';
+  const tile=(v,l)=>{const x=el('div','','mi-tile');x.append(el('strong',String(v)),el('span',l));return x};
+  const n=r=>D.users.filter(u=>u.effective_role===r&&u.status==='active').length;
+  $('us-tiles').replaceChildren(tile(n('owner'),'Owners'),tile(n('admin'),'Admins'),tile(n('member'),'Members'),tile(D.users.filter(u=>u.status==='suspended').length,'suspended'));
+  const t=$('us-people');t.replaceChildren();const hr=document.createElement('tr');for(const h of ['Person','Role','Profile','Status','First signed in','Last seen'])hr.append(el('th',h));t.append(hr);
+  const profs=D.profiles.map(p=>[p.id,p.name]);
+  for(const u of D.users){const tr=document.createElement('tr');const who=el('td','');who.append(el('b',u.name||u.email||u.oid));if(u.is_owner)who.append(el('span','Owner of Alice','us-badge'));if(u.oid===D.me)who.append(el('span','You','us-badge'));who.append(el('div',u.email,'small muted'));
+   const role=sel(D.roles.map(r=>[r.id,r.label]),u.role,'Role for '+(u.email||u.oid)),prof=sel(profs,u.profile,'Profile for '+(u.email||u.oid));
+   const fixed=u.is_owner;role.disabled=prof.disabled=fixed;
+   role.onchange=()=>run(async()=>{try{await api('/admin/api/users/'+u.oid,'PUT',{role:role.value});$('notice').textContent='Role changed.'}finally{await load()}});
+   prof.onchange=()=>run(async()=>{try{await api('/admin/api/users/'+u.oid,'PUT',{profile:prof.value});$('notice').textContent='Profile changed.'}finally{await load()}});
+   const rc=el('td','');rc.append(role);if(u.limited_by_entra)rc.append(el('div','Entra limits this to '+(u.entra_role||'no role'),'small muted'));else if(u.effective_role!==u.role)rc.append(el('div','In effect: '+u.effective_role,'small muted'));
+   const pc=el('td','');pc.append(prof);if(u.effective_role==='owner')pc.append(el('div','Owners see everything','small muted'));
+   const st=el('td','');const b=el('button',u.status==='active'?'Suspend':'Restore access','secondary');b.type='button';b.disabled=fixed;
+   b.onclick=()=>{if(u.status==='active'&&!confirm('Suspend '+(u.name||u.email)+'? They are refused at once, everywhere in Alice.'))return;run(async()=>{try{await api('/admin/api/users/'+u.oid,'PUT',{status:u.status==='active'?'suspended':'active'})}finally{await load()}})};
+   st.append(el('span',u.status==='active'?'Active ':'Suspended ','badge '+(u.status==='active'?'v-ok':'v-bad')),b);
+   tr.append(who,rc,pc,st,el('td',when(u.first_seen)),el('td',when(u.last_seen)));t.append(tr)}
+  if(!D.users.length){const tr=document.createElement('tr');const td=el('td',D.owner_configured?'Nobody has signed in yet.':'Alice is running on this computer only: there is no sign-in, so whoever is here is the owner.');td.colSpan=6;tr.append(td);t.append(tr)}
+  $('us-profiles').replaceChildren(...D.profiles.map(p=>{const c=el('div','','us-card');c.append(el('h3',p.name),el('p',p.description||'','muted'),el('p',summary(p.levels),'small'),el('p',p.people+(p.people===1?' person':' people'),'small muted'));
+   const e=el('button','Edit','secondary');e.type='button';e.onclick=()=>edit(p);c.append(e);return c}))}
+ function summary(L){const on=Object.entries(L.sections||{}).filter(([k,v])=>v!=='none').map(([k,v])=>(C.sections.find(s=>s.key===k)||{label:k}).label+': '+v);
+  const a=Object.entries(L.assistants||{}).filter(([k,v])=>v!=='none').length,tm=Object.entries(L.teams||{}).filter(([k,v])=>v.level!=='none').length;
+  return (on.join(' · ')||'Nothing')+(a?' · '+a+' assistant(s)':'')+(tm?' · '+tm+' team(s)':'')}
+ function edit(p){editing=p;$('us-edit').hidden=false;$('us-edit-title').textContent=p?'Profile: '+p.name:'New profile';$('us-name').value=p?p.name:'';$('us-desc').value=p?p.description:'';
+  const L=p?p.levels:{sections:{},assistants:{},teams:{},apps:{}};$('us-delete').hidden=!p||p.builtin;
+  $('us-secs').replaceChildren(...C.sections.map(s=>{const r=el('label','','us-row');r.append(el('span',s.label));const x=sel(LV.filter(([v])=>s.levels.includes(v)),(L.sections||{})[s.key]||'none',s.label);x.dataset.sec=s.key;r.append(x);return r}));
+  const items=(list,group,blank)=>list.length?list.map(a=>{const r=el('label','','us-row');r.append(el('span',a.name));const x=sel(group==='apps'?LV.slice(0,3):LV,(L[group]||{})[a.id]||'none',a.name);x.dataset[group]=a.id;r.append(x);return r}):[el('p',blank,'small muted')];
+  $('us-asst').replaceChildren(...items(C.assistants,'assistants','No assistants yet.'));
+  $('us-apps').replaceChildren(...items(C.apps.filter(a=>!a.owner_only),'apps','The apps so far (Health, Trading, Mileage) are the owner\'s alone.'));
+  $('us-teams').replaceChildren(...(C.teams.length?C.teams.map(tm=>{const cur=(L.teams||{})[tm.id]||{level:'none'};const r=el('div','','us-row');r.append(el('span',tm.name));const x=sel(LV,cur.level,tm.name);x.dataset.team=tm.id;r.append(x);
+   const caps=el('div','','us-caps');for(const c of C.team_caps){const l=el('label','');const cb=document.createElement('input');cb.type='checkbox';cb.checked=!!cur[c.key];cb.dataset.team=tm.id;cb.dataset.cap=c.key;l.append(cb,document.createTextNode(' '+c.label));caps.append(l)}r.append(caps);return r}):[el('p','No digital teams yet.','small muted')]));
+  $('us-fixed').textContent='Not set by a profile: '+Object.values(C.role_sections).join(', ')+' (Admins and Owners), and '+Object.values(C.owner_only).join(', ')+' (the owner only). '+(C.full_only||[]).length+' parts of Alice show everyone\'s material and stay with Owners until shared Spaces arrive.';
+  $('us-edit').scrollIntoView({behavior:'smooth',block:'start'});$('us-name').focus({preventScroll:true})}
+ function collect(){const L={sections:{},assistants:{},teams:{},apps:{}};
+  for(const s of document.querySelectorAll('#us-secs select'))L.sections[s.dataset.sec]=s.value;
+  for(const s of document.querySelectorAll('#us-asst select'))L.assistants[s.dataset.assistants]=s.value;
+  for(const s of document.querySelectorAll('#us-apps select'))L.apps[s.dataset.apps]=s.value;
+  for(const s of document.querySelectorAll('#us-teams select'))L.teams[s.dataset.team]={level:s.value};
+  for(const cb of document.querySelectorAll('#us-teams input[type=checkbox]'))L.teams[cb.dataset.team][cb.dataset.cap]=cb.checked;
+  return L}
+ $('us-form').onsubmit=e=>{e.preventDefault();run(async()=>{const body={name:$('us-name').value,description:$('us-desc').value,levels:collect()};
+  if(editing)await api('/admin/api/permission-profiles/'+editing.id,'PUT',body);else await api('/admin/api/permission-profiles','POST',body);
+  $('notice').textContent='Profile saved.';$('us-edit').hidden=true;await load()})};
+ $('us-new').onclick=()=>edit(null);$('us-cancel').onclick=()=>{$('us-edit').hidden=true};
+ $('us-delete').onclick=()=>{if(!editing||!confirm('Delete the profile '+editing.name+'?'))return;run(async()=>{await api('/admin/api/permission-profiles/'+editing.id,'DELETE');$('us-edit').hidden=true;await load()})};
+ run(load);
+}
+"""
+
 NAV_ICON_DEFAULT = _I('<circle cx="12" cy="12" r="7"/>')
 NAV_COLLAPSE = _I('<rect x="3.5" y="4" width="17" height="16" rx="3"/><path d="M9 4v16"/><path d="M15.5 10l-2 2 2 2"/>')
 
@@ -2926,6 +3009,9 @@ def render_admin(page, token):
     nav_groups = [(n, [k for k in ks if k not in hidden]) for n, ks in NAV_GROUPS] + ([('Client demo', ['demo'])] if demo_instance.ON else [])
     listed = [k for _, keys in nav_groups for k in keys] + sorted(apps.PAGES) + sorted(hidden)
     groups = nav_groups + ([('More', [k for k in PAGES if k not in listed])] if any(k not in listed for k in PAGES) else [])
+    import permissions, substrate_store
+    viewer = substrate_store.viewer()            # the menu shows only what this person may open (the server checks every request too)
+    groups = [(n, [k for k in ks if permissions.page_allowed(viewer, k)]) for n, ks in groups]
     def item(k):
         return ('<a href="' + href(k) + '" data-page="' + k + '"' + (' aria-current="page"' if k == current else '') + ' title="' + escape(PAGES[k][0]) + '">'
                 + NAV_ICONS.get(k, NAV_ICON_DEFAULT) + '<span class="nav-label">' + escape(PAGES[k][0]) + '</span></a>')

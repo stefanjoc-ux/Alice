@@ -76,11 +76,14 @@ LABELS = {
     'team_job_reprice': ('teams', 'Team job re-priced (new version)'), 'team_job_remeasure': ('teams', 'Team job re-measured (new version)'),
     'team_job_copied': ('teams', 'Team job copied as a new job'), 'team_costs_rate_set': ('teams', 'Exchange rate for team costs set'),
     'team_staff_figures': ('teams', 'Your figures for a team member changed'),
+    'access_refused': ('blocks', 'Access refused (permissions)'), 'user_first_signin': ('rules', 'Person signed in for the first time'),
+    'user_changed': ('rules', 'Person\'s role, profile or status changed'), 'permission_profile_created': ('rules', 'Permission profile created'),
+    'permission_profile_changed': ('rules', 'Permission profile changed'), 'permission_profile_deleted': ('rules', 'Permission profile deleted'),
 }
 RULE_NAMES = {'secret_detection': 'Secret detection', 'protective_marking': 'Protective marking guard', 'pii': 'Personal identifiers',
               'provider_allow': 'Provider allow-list', 'external_scope': 'External client scope', 'client_separation': 'Client separation', 'client_documents': 'Client-facing documents',
               'quality': 'Quality check', 'duplicates': 'Duplicate block', 'spend_cap': 'Spending caps', 'retention': 'Chat retention',
-              'purview_labels': 'Purview sensitivity labels'}
+              'purview_labels': 'Purview sensitivity labels', 'permissions': 'Users and permissions', 'users': 'Users and permissions'}
 HEX = re.compile(r'^[0-9a-f]{32}$')
 
 
@@ -95,6 +98,8 @@ def _codes_for(kind, actions):
 
 def _where(since, until, q, actions_all):
     clauses, args = [], []
+    if store.restricted() is not None:             # a person without the Owner role: only what they did themselves (users.py)
+        clauses.append('actor=?'); args.append(store.actor())
     if since: clauses.append('created_at>=?'); args.append(since)
     if until: clauses.append('created_at<?'); args.append(until)
     if q:
@@ -147,7 +152,8 @@ def query(kind='', preset='7d', start='', end='', q='', offset=0, limit=100, eve
     with store.db() as c:
         actions_all = [r[0] for r in c.execute('SELECT DISTINCT action FROM activity')]
         m = REF.match(q or '')
-        if m: where, args = ' WHERE id=?', [int(m.group(1))]
+        if m and store.restricted() is not None: where, args = ' WHERE id=? AND actor=?', [int(m.group(1)), store.actor()]
+        elif m: where, args = ' WHERE id=?', [int(m.group(1))]
         else: where, args = _where(since, until, q.strip(), actions_all)
         counts = {}
         for action, n in c.execute('SELECT action,count(*) FROM activity' + where + ' GROUP BY action', args):

@@ -42,6 +42,7 @@ def _aliases(values, name):
 
 
 def list_clients():
+    if store.restricted() is not None: return []     # clients are organisations: an Owner's until shared Spaces arrive
     with store.db() as c:
         rows = [dict(r) for r in c.execute('SELECT * FROM clients ORDER BY lower(name)')]
         for r in rows:
@@ -53,6 +54,7 @@ def list_clients():
 
 
 def names():
+    if store.restricted() is not None: return []
     with store.db() as c: return [r[0] for r in c.execute('SELECT name FROM clients ORDER BY lower(name)')]
 
 
@@ -442,7 +444,7 @@ def schedule_tagging():
     def work():
         try: run_tagging()
         except Exception: pass
-    threading.Thread(target=work, daemon=True).start()
+    store.spawn(work)
 
 
 # ---------------- listing for client tagging (Organisations page) ----------------

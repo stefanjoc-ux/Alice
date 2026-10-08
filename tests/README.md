@@ -61,6 +61,7 @@ Run after every update, before relaunching. Exit code 0 means every check passed
 | rule_packs | HR and council social care packs: CHI and identifier detection, outcomes per sample and service, switches, locked audit rule, sandbox |
 | dbcompat | PostgreSQL layer: SQL translation always; with a test server, rows, errors, rollback, read-only sessions, the write lock |
 | agents | Agent register, runs and data touched, cost attribution, automatic pause (failures, budget), versions, app permissions on every tool call |
+| users_permissions | Users, roles and section permissions: every route and connector tool declares its section; the owner unchanged; no role = refused; a new Member gets Chat and their own chats only; every other route refused; owner-only areas refused to Admins; at least one Owner; suspended refused; nothing of the owner's through search, Temple, teams, Parker or the connectors; the app-roles switch, the setup step and the demo Alice |
 | supersede | Retiring replaced knowledge, the proposer's `supersedes`, Temple's replacement suggestions, what models see, memory replacements |
 
 Not covered (needs a real Windows desktop or a person): the tray app, the hotkey and window resizing

@@ -32,7 +32,7 @@ import autoapprove
 import mileage
 import apps
 import speed
-from admin_ui import render_admin, PAGES, PERSONAL_PAGES, OWNER_PAGES
+from admin_ui import render_admin, PAGES, PERSONAL_PAGES, OWNER_PAGES, NAV_GROUPS
 from ui_theme import SHARED_CSS, SIGNIN_CSS, SIGNIN_JS, brand_html, FETCH_JS, FETCH_CSS
 import secrets
 import asyncio
@@ -134,7 +134,7 @@ def link_files(chat_id, file_ids):
     if not chat_id or not file_ids: return
     with connect_db() as connection:
         if not connection.execute("SELECT 1 FROM chats WHERE id=?", (chat_id,)).fetchone(): return
-        for file_id in file_ids:
+        for file_id in store.visible_ids('file', list(file_ids)):     # only files this person may see
             if connection.execute("SELECT 1 FROM files WHERE id=?", (file_id,)).fetchone():
                 connection.execute("INSERT OR IGNORE INTO chat_files VALUES (?,?,?)",
                                    (chat_id, file_id, datetime.now(timezone.utc).isoformat()))
@@ -283,9 +283,10 @@ def extract_text(name, raw):
 
 # Storage functions can later be exposed through MCP without changing the UI.
 def list_saved_files():
+    vc, va = store.viewer_clause('file', 'files.id')
     with connect_db() as connection:
         rows = [dict(row) for row in connection.execute(
-            "SELECT id,name,size,summary,created_at FROM files ORDER BY created_at DESC")]
+            "SELECT id,name,size,summary,created_at FROM files WHERE 1=1" + vc + "ORDER BY created_at DESC", va)]
     hidden = knowledge.hidden_from_chat_library()   # drafts and rejected items stay in the Knowledge page
     return [r for r in rows if r["id"] not in hidden]
 
@@ -317,6 +318,8 @@ def save_file(upload: Upload):
         with connect_db() as connection:
             existing = connection.execute("SELECT id FROM files WHERE sha256=?", (digest,)).fetchone()
         if existing:
+            if not store.can_see('file', existing["id"]):     # the same file is held for someone else: never handed over
+                raise ValueError("This file cannot be added. If you need it, ask the person who shared it with you.")
             link_files(upload.chat_id, [existing["id"]])
             return {"id": existing["id"], "duplicate": True}
         text, summary = extract_text(name, raw)
@@ -333,6 +336,8 @@ def save_file(upload: Upload):
             file_id, name, digest, raw, text, summary,
             datetime.now(timezone.utc).isoformat(), len(raw)))
         stored = connection.execute("SELECT id FROM files WHERE sha256=?", (digest,)).fetchone()
+    if stored["id"] == file_id: store.stamp('file', file_id)
+    elif not store.can_see('file', stored["id"]): raise HTTPException(400, "This file cannot be added.")
     link_files(upload.chat_id, [stored["id"]])
     owner = clients.chat_client(upload.chat_id) if upload.chat_id else ""
     if owner: clients.tag('file', [stored["id"]], owner, 'chat')
@@ -412,6 +417,14 @@ IMAGE_TOOL = {"type": "image_generation"}
 IMAGE_NOTE = "[An image was generated and shown to the user in the chat.]"
 
 
+def _mcp_transport():
+    """The internal MCP server for this chat. A person without the Owner role is named in a header, so the tools return
+    only what they may see (the internal server listens on 127.0.0.1 only and trusts its caller: rule 9)."""
+    from fastmcp.client.transports import StreamableHttpTransport
+    v = store.viewer()
+    return StreamableHttpTransport(MCP_URL, headers={'x-alice-viewer': v.oid or '-'} if v is not None and not v.full else None)
+
+
 async def chat_events(request):
     """Run bounded tool rounds; file content reaches models only through MCP."""
     selection = request.provider
@@ -430,7 +443,7 @@ async def chat_events(request):
         yield {"type": "error", "message": f"Set {key} in .env and restart."}
         return
     messages = [message.model_dump() for message in request.messages]
-    chat_owner = clients.chat_client(request.chat_id) if request.chat_id else ""
+    chat_owner = clients.chat_client(request.chat_id) if request.chat_id and store.restricted() is None else ""
     image_rule = (" Image generation is enabled for this message: use the image_generation tool when the user "
         "asks for a picture. Generated images are shown to the user automatically, so never include links, "
         "file paths or Markdown image syntax for them; describe briefly what you made."
@@ -473,7 +486,7 @@ async def chat_events(request):
     stage = "mcp"
     try:
         async with asyncio.timeout(240):
-            async with Client(MCP_URL, timeout=90) as mcp:
+            async with Client(_mcp_transport(), timeout=90) as mcp:
                 discovered = await mcp.list_tools()
                 definitions = [tool for tool in discovered if tool.name in ALLOWED_TOOLS]
                 if {tool.name for tool in definitions} != ALLOWED_TOOLS:
@@ -486,7 +499,7 @@ async def chat_events(request):
                 tools += ([{"type": "function", "name": "create_document", "description": documents.TOOL_DESCRIPTION,
                             "parameters": documents.TOOL_SCHEMA, "strict": False}] if provider != "claude" else
                           [{"name": "create_document", "description": documents.TOOL_DESCRIPTION, "input_schema": documents.TOOL_SCHEMA}])
-                health_ok = health.allowed(provider) and not demo_instance.ON      # only providers Stefan allows (never Grok); never on the demo Alice
+                health_ok = health.allowed(provider) and not demo_instance.ON and permissions.is_owner_person(store.viewer())      # only providers Stefan allows (never Grok); never on the demo Alice
                 if health_ok:
                     tools += ([{"type": "function", "name": "health_context", "description": HEALTH_TOOL_DESCRIPTION, "parameters": HEALTH_TOOL_SCHEMA, "strict": False}]
                               if provider != "claude" else [{"name": "health_context", "description": HEALTH_TOOL_DESCRIPTION, "input_schema": HEALTH_TOOL_SCHEMA}])
@@ -674,7 +687,9 @@ def spend(): return rules_engine.spend_status()
 def chats(): return store.active_chats()   # inactive chats live on the Archive screen
 
 @app.get('/clients-list')
-def clients_list(): return clients.names()
+def clients_list():
+    if store.restricted() is not None: return []      # clients are organisations: everyone's, so an Owner's only until Spaces
+    return clients.names()
 
 class ChatClient(BaseModel):
     client: str = Field(default='',max_length=60)
@@ -682,6 +697,8 @@ class ChatClient(BaseModel):
 
 @app.put('/chats/{cid}/client')
 def chat_set_client(cid: str, change: ChatClient):
+    if change.client and store.restricted() is not None:
+        raise HTTPException(403, 'Clients are organisations, which only an Owner can use until shared Spaces arrive.')
     try: return clients.set_chat_client(cid,change.client,change.force)
     except ValueError as e: raise HTTPException(400,str(e)) from None
 
@@ -712,10 +729,11 @@ def delete_chat(cid: str):
 
 @app.get('/chats/{cid}/files')
 def chat_files(cid: str):
+    vc, va = store.viewer_clause('file', 'f.id')
     with connect_db() as connection:
         return [dict(r) for r in connection.execute(
             "SELECT f.id,f.name,f.size,f.summary,f.created_at,l.added_at FROM chat_files l JOIN files f ON f.id=l.file_id "
-            "WHERE l.chat_id=? ORDER BY l.added_at DESC", (cid,))]
+            "WHERE l.chat_id=?" + vc + "ORDER BY l.added_at DESC", (cid, *va))]
 
 @app.post('/chats/{cid}/files/{fid}')
 def add_chat_file(cid: str, fid: str):
@@ -838,6 +856,8 @@ def generated_image(cid: str, name: str):
 @app.post('/chat')
 async def chat(request: SavedChatRequest):
     if not request.text.strip(): raise HTTPException(400,'Enter a message.')
+    if not store.can_see('chat', request.chat_id): raise HTTPException(403,'That chat is not yours.')
+    request.file_ids=store.visible_ids('file', request.file_ids)        # only files this person may see
     try:
         rules_engine.check_outbound(request.text,'chat message',packs=False)   # before it is saved, routed or sent
         import rule_packs
@@ -1100,6 +1120,9 @@ class SuggestionAction(BulkIds):
 def admin_categories():
     d=store.list_categories();areas=memory_tags.category_areas()
     for c in d['categories']: c['area']=areas.get(c['name'],'')
+    if store.restricted() is not None:          # only the categories on this person's own memories, counted over theirs
+        own={x['category']:x['count'] for x in store.organised_records('all','','','newest',0,1)['categories'] if x['category']}
+        d['categories']=[c|{'active':own[c['name']],'total':own[c['name']]} for c in d['categories'] if c['name'] in own]
     return d
 
 @app.post('/admin/api/categories')
@@ -1157,7 +1180,13 @@ def _tag_in_background():
         temple_tags.schedule()
 
 @app.get('/admin/api/tags')
-def admin_tags(): return memory_tags.list_tags()
+def admin_tags():
+    d=memory_tags.list_tags()
+    if store.restricted() is not None:          # only the tags on this person's own memories
+        ids=[r['id'] for r in store.organised_records('all','','','newest',0,100000)['records']]
+        mine={t['name'] for v in memory_tags.tags_for(ids).values() for t in v.get('tags',[])}
+        d['tags']=[t for t in d['tags'] if t['name'] in mine]
+    return d
 
 @app.post('/admin/api/tags')
 def admin_create_tag(tag: TagIn):
@@ -3198,6 +3227,128 @@ def admin_section(page: str, request: Request):
     if (page == 'demo') != demo_instance.ON and (page == 'demo' or page in PERSONAL_PAGES):
         raise HTTPException(404,'Admin page not found.')        # the demo page only on the demo Alice; your own apps never there
     return render_admin(page,ADMIN_TOKEN)
+
+# ---- people and permissions (users.py, permissions.py): who is signed in, and what they may do ----
+import users, permissions
+from starlette.routing import Match
+
+
+class AccessIn(BaseModel):
+    role: Literal['owner','admin','member'] | None = None
+    profile: str | None = Field(default=None, pattern=r'^[a-z0-9][a-z0-9-]{1,39}$')
+    status: Literal['active','suspended'] | None = None
+
+class ProfileIn(BaseModel):
+    name: str = Field(min_length=2, max_length=60)
+    description: str = Field(default='', max_length=300)
+    levels: dict = Field(default_factory=dict)
+
+def _people(fn, *a):
+    try:
+        out = fn(*a)
+        users._forget()
+        return out
+    except PermissionError as e: raise HTTPException(403, str(e)) from None
+    except LookupError as e: raise HTTPException(404, str(e)) from None
+    except ValueError as e: raise HTTPException(400, str(e)) from None
+
+@app.get('/admin/api/users')
+def admin_users(): return users.listing()
+
+@app.put('/admin/api/users/{oid}')
+def admin_user_set(q: AccessIn, oid: str = FPath(pattern=r'^[0-9a-z][0-9a-z-]{0,63}$')):
+    return _people(users.update, oid, q.role, q.profile, q.status)
+
+@app.post('/admin/api/permission-profiles')
+def admin_profile_add(q: ProfileIn): return _people(users.save_profile, '', q.name, q.levels, q.description)
+
+@app.put('/admin/api/permission-profiles/{pid}')
+def admin_profile_set(q: ProfileIn, pid: str = FPath(pattern=r'^[a-z0-9][a-z0-9-]{1,39}$')):
+    return _people(users.save_profile, pid, q.name, q.levels, q.description)
+
+@app.delete('/admin/api/permission-profiles/{pid}')
+def admin_profile_delete(pid: str = FPath(pattern=r'^[a-z0-9][a-z0-9-]{1,39}$')): return _people(users.delete_profile, pid)
+
+@app.get('/admin/api/permissions/catalogue')
+def admin_permissions_catalogue(): return permissions.catalogue()
+
+@app.get('/admin/api/my-access')
+def admin_my_access(): return permissions.my_access(store.viewer(), list(PAGES))
+
+
+def all_routes():
+    """Every route, with included routers (Digital teams) flattened, in the order FastAPI tries them."""
+    out = []
+    for r in app.router.routes:
+        inner = getattr(r, 'original_router', None)
+        out += list(inner.routes) if inner is not None else [r]
+    return out
+
+
+def _route_for(scope):
+    """The route a request will reach (its path template and path parameters), or (None, {})."""
+    for r in all_routes():
+        m, child = r.matches(scope)
+        if m == Match.FULL: return r, child.get('path_params', {})
+    return None, {}
+
+
+def _refused_page(title, reason, viewer=None, status=403):
+    import html as _h
+    links = ''
+    if viewer is not None:
+        to = permissions.first_page(viewer, [k for _, ks in NAV_GROUPS for k in ks])
+        if to: links = f'<p><a href="{_h.escape(to)}">Go to what you can use</a></p>'
+    return HTMLResponse('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+                        f'<title>{_h.escape(title)} · Alice</title><style>body{{font-family:system-ui,sans-serif;margin:40px auto;max-width:560px;padding:0 16px;color:#14324a}}'
+                        'a{color:#075e79}</style></head><body><h1>' + _h.escape(title) + '</h1><p>' + _h.escape(reason) + '</p>' + links
+                        + '<p><a href="/signout">Sign out of Alice</a></p></body></html>', status_code=status, headers={'Cache-Control': 'no-store'})
+
+
+def _wants_page(request, path):
+    """A page a person opened in the browser (answered with a plain page), rather than a call from a page (JSON)."""
+    return request.method in ('GET', 'HEAD') and (path in ('/', '/admin') or (path.startswith('/admin/') and not path.startswith('/admin/api'))
+                                                 or re.fullmatch(r'/assistant/[A-Za-z0-9_-]+', path) is not None)
+
+
+@app.middleware("http")
+async def people_and_permissions(request: Request, call_next):
+    """Who is signed in (users.identify) and whether they may reach this route (permissions.ROUTES), before any route runs.
+    Refused: no Alice role, suspended, or the section, level or item is not theirs. Every refusal is logged."""
+    path = request.url.path
+    route, params = _route_for(request.scope)
+    method = 'GET' if request.method == 'HEAD' else request.method
+    spec = permissions.ROUTES.get(f'{method} {route.path}') if route is not None else None
+    if spec == 'open' or route is None:
+        return await call_next(request)
+    who = ' '.join(request.headers.get('x-ms-client-principal-name', '').split())[:120] if users.trusted() else ''
+    acting = store.ACTOR.set(who) if who else None          # refusals below are logged as this person, never the owner
+    try:
+        viewer = await asyncio.to_thread(users.identify, request.headers)
+    except users.Refused as e:
+        permissions.log_refusal(None, method, path, f'{e.reason}: {who}')
+        if acting is not None: store.ACTOR.reset(acting)
+        if _wants_page(request, path): return _refused_page('No access to Alice', str(e))
+        return JSONResponse({'detail': str(e)}, status_code=403)
+    token = store.VIEWER.set(viewer)
+    try:
+        if spec is None:
+            reason = None if viewer.full else 'This part of Alice has no permission set yet, so only an Owner can use it.'
+        else:
+            reason = await asyncio.to_thread(permissions.check, viewer, spec, params, dict(request.query_params))
+        if reason:
+            permissions.log_refusal(viewer, method, route.path, reason)
+            if _wants_page(request, path):
+                if path in ('/', '/admin') and not viewer.full:
+                    to = permissions.first_page(viewer, [k for _, ks in NAV_GROUPS for k in ks])
+                    if to and to != path: return RedirectResponse(to, status_code=303)
+                return _refused_page('Not available to you', reason, viewer)
+            return JSONResponse({'detail': reason}, status_code=403)
+        return await call_next(request)
+    finally:
+        store.VIEWER.reset(token)
+        if acting is not None: store.ACTOR.reset(acting)
+
 
 @app.get("/", response_class=HTMLResponse)
 def home():

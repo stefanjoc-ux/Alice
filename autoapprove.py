@@ -219,7 +219,7 @@ def review_then_decide(rid):
         except Exception: pass
         try: after_review(rid)
         except Exception: pass
-    threading.Thread(target=work, daemon=True).start()
+    store.spawn(work)
 
 
 # ---------------- knowledge drafts and organisation facts ----------------
@@ -553,7 +553,7 @@ def propose_decision(*args, **kwargs):
                 if managed:
                     try: decide_decision(rid, reviewed=reviewing)
                     except Exception: pass
-            threading.Thread(target=work, daemon=True).start()
+            store.spawn(work)
     return result
 
 

@@ -253,10 +253,21 @@ def get(tid, version=None):
     return out
 
 
-def listing():
+def listing(everyone=False):
+    """Active teams (for a person without the Owner role: the teams their profile lets them see, unless everyone=True)."""
     with store.db() as c:
         rows = [dict(r) for r in c.execute("SELECT id, name, version, updated_at FROM teams WHERE status='active' ORDER BY name")]
-    return rows
+    return rows if everyone else [r for r in rows if _may_see(r['id'])]
+
+
+def _may_see(tid):
+    import permissions
+    return permissions.can(store.viewer(), 'team', permissions.VIEW, tid)
+
+
+def _cap(tid, cap):
+    import permissions
+    return permissions.team_cap(store.viewer(), tid, cap)
 
 
 def _save(tid, d, what, new=False):
@@ -544,6 +555,8 @@ def start_job(tid, job_type, title, brief, location='', client='', uploads=(), l
         if not text.strip(): raise ValueError(f'{name}: no text found in it.')
         rules_engine.check_file(text, name)                   # secrets and protective markings never get in
         docs.append((name, kind, 'upload', '', text))
+    import permissions
+    if library and not permissions.library_ok(): raise ValueError('You do not have access to the document sources: upload the documents instead.')
     for l in list(library)[:12]:
         p = doc_library.resolve(l.get('path') or '')
         if not p: raise ValueError(f'{l.get("path")}: not found in the document sources.')
@@ -565,6 +578,7 @@ def start_job(tid, job_type, title, brief, location='', client='', uploads=(), l
         store.audit(c, 'team_job_started', jid, 'human_review', f'{ref(jid)} {title} · {team["name"]} v{team["version"]} · {len(docs)} document(s)'
                     + (f' · pricing template {tpath.rsplit("/", 1)[-1]}' if tpath else '') + (' · team estimates allowed' if estimates else '')
                     + (f' · {AUTONOMY[autonomy].lower()}' if autonomy else ''))
+    store.stamp('team_job', jid)          # who started it (users.py): the job is theirs, and the team reads with their eyes
     kick(jid)
     return job(jid)
 
@@ -660,12 +674,20 @@ _ACTIVE, _AGAIN, _LOCK = set(), set(), threading.Lock()
 def kick(jid):
     """Run the job until it needs Stefan or is finished (in the background unless BACKGROUND is off)."""
     if BACKGROUND:
-        threading.Thread(target=_advance_safe, args=(jid,), daemon=True, name='team-job-' + jid[:6]).start()
+        store.spawn(_advance_safe, jid, name='team-job-' + jid[:6])
     else:
         _advance_safe(jid)
 
 
 def _advance_safe(jid):
+    """The team works with the eyes of the person who started the job (users.py): an Owner approving someone's hand-off never
+    brings the owner's own knowledge or past jobs into it."""
+    v = store.viewer()
+    with store.as_viewer(store.author_viewer('team_job', jid) if v is None or v.full else v):
+        return _advance_loop(jid)
+
+
+def _advance_loop(jid):
     while True:
         try:
             if not _advance(jid): return           # another run has it; it will go round again (_AGAIN)
@@ -1336,6 +1358,9 @@ def job_versions(jid):
                     'asked_by': r['asked_by'], 'note': r['note'], 'started_at': r['started_at'], 'current': v == cur,
                     'signed_off': bool(when_), 'signed_off_at': when_, 'signed_off_by': who or '',
                     'readable': v == cur or bool(r.get('kept')), 'cost': costs['versions'].get(v) or team_costs.money(0, costs['fx'])})
+    if not _cap(j['team_id'], 'costs'):              # costs only with "see costs" (users.py profiles)
+        for o in out: o['cost'] = None
+        return {'versions': out, 'current': cur, 'fx': costs['fx'], 'before_tracking': None, 'before_text': ''}
     return {'versions': out, 'current': cur, 'fx': costs['fx'], 'before_tracking': costs['before_tracking'], 'before_text': costs['before_text']}
 
 
@@ -1409,6 +1434,7 @@ def copy_job(jid, client='', title=''):
                       (uuid.uuid4().hex, nid, d['name'], d['kind'], d['source'], d['path'], d['text'], store.now()))
         store.audit(c, 'team_job_copied', nid, 'human_review', f'{ref(nid)} {title}: copied from {ref(jid)} v{j.get("version") or 1}'
                     f' · client {new_client or "none"} · {len(docs)} document(s)' + (' · plan kept' if keep_plan else ''))
+    store.stamp('team_job', nid)
     _add_step(nid, 'note', first['key'] if first else '', 'stefan', status='done',
               note=f'Copied from {ref(jid)} {j["title"]} (v{j.get("version") or 1}): {len(docs)} document{"s" if len(docs) != 1 else ""}'
                    + (', the plan' if keep_plan else '') + f' and the settings kept; client {new_client or "none"}.')
@@ -1443,12 +1469,13 @@ def job_detail(jid):
             'outputs': {k: v for k, v in j['outputs'].items() if not k.startswith('_')}, 'steps': steps, 'documents': docs,
             'pending': pending, 'busy': jid in _ACTIVE, 'progress': progress(j, jt['stages'], pending, members),
             'part_progress': part_progress(j, jt['stages']),
-            'where': where(j, pending, members), 'is_demo': _is_demo(j, docs)}
+            'where': where(j, pending, members), 'is_demo': _is_demo(j, docs)} | ({} if _cap(j['team_id'], 'costs') else {'ai_cost': None})
 
 
 def jobs(tid, limit=50):
+    vc, va = store.viewer_clause('team_job', 'team_jobs.id')        # a person without the Owner role: only the jobs they started
     with store.db() as c:
-        ids = [r[0] for r in c.execute('SELECT id FROM team_jobs WHERE team_id=? ORDER BY created_at DESC LIMIT ?', (tid, limit))]
+        ids = [r[0] for r in c.execute('SELECT id FROM team_jobs WHERE team_id=?' + vc + 'ORDER BY created_at DESC LIMIT ?', (tid, *va, limit))]
     out = []
     for i in ids:
         try: out.append(job_detail(i))
@@ -1460,7 +1487,8 @@ def overview(tid):
     import assistants, rule_packs
     t = get(tid)
     with store.db() as c:
-        pend = [dict(r) for r in c.execute("SELECT * FROM team_suggestions WHERE team_id=? AND status='pending' ORDER BY created_at DESC", (tid,))]
+        pend = [dict(r) for r in c.execute("SELECT * FROM team_suggestions WHERE team_id=? AND status='pending' ORDER BY created_at DESC", (tid,))] \
+            if store.restricted() is None else []
         rates = c.execute('SELECT count(*) FROM team_rates WHERE team_id=?', (tid,)).fetchone()[0]
         batches = [dict(r) for r in c.execute('SELECT batch, batch_name, count(*) AS n, max(added_at) AS added_at FROM team_rates WHERE team_id=? '
                                               'GROUP BY batch, batch_name ORDER BY max(added_at) DESC', (tid,))]
@@ -1804,6 +1832,7 @@ def _defs():
         rows = [dict(r) for r in c.execute("SELECT id, definition, version, updated_at FROM teams WHERE status='active' ORDER BY name")]
     out = []
     for r in rows:
+        if not _may_see(r['id']): continue          # only the teams this person's profile lets them see
         d = json.loads(r['definition'])
         d.update({'id': r['id'], 'version': r['version'], 'current_version': r['version'], 'updated_at': r['updated_at']})
         out.append(d)
@@ -1820,15 +1849,18 @@ def _paused():
 def _scan():
     """What the pages need about all teams, in a few queries: definitions, unfinished jobs, job counts, pending steps, suggestions."""
     defs = _defs()
+    vc, va = store.viewer_clause('team_job', 'team_jobs.id')        # a person without the Owner role: only the jobs they started
+    jc, ja = store.viewer_clause('team_job', 'j.id')
     with store.db() as c:
         live = [dict(r) for r in c.execute("SELECT id, team_id, job_type, team_version, title, status, stage, holder, error, outputs, ai_cost, "
-                                           "created_at, updated_at FROM team_jobs WHERE status NOT IN ('done','stopped') ORDER BY created_at DESC")]
-        counts = [dict(r) for r in c.execute('SELECT team_id, status, count(*) AS n, max(updated_at) AS last FROM team_jobs GROUP BY team_id, status')]
-        titles = [dict(r) for r in c.execute('SELECT team_id, title FROM team_jobs ORDER BY created_at DESC LIMIT 600')]
+                                           "created_at, updated_at FROM team_jobs WHERE status NOT IN ('done','stopped')" + vc + "ORDER BY created_at DESC", va)]
+        counts = [dict(r) for r in c.execute('SELECT team_id, status, count(*) AS n, max(updated_at) AS last FROM team_jobs WHERE 1=1' + vc + 'GROUP BY team_id, status', va)]
+        titles = [dict(r) for r in c.execute('SELECT team_id, title FROM team_jobs WHERE 1=1' + vc + 'ORDER BY created_at DESC LIMIT 600', va)]
         pend = [dict(r) for r in c.execute("SELECT s.id, s.job_id, s.kind, s.stage, s.member, s.to_member, s.note, s.content, s.created_at "
                                            "FROM team_steps s JOIN team_jobs j ON j.id=s.job_id WHERE s.status='pending' "
-                                           "AND j.status NOT IN ('done','stopped') ORDER BY s.created_at")]
-        sugg = [dict(r) for r in c.execute("SELECT id, team_id, member, reason, created_at FROM team_suggestions WHERE status='pending' ORDER BY created_at")]
+                                           "AND j.status NOT IN ('done','stopped')" + jc + "ORDER BY s.created_at", ja)]
+        sugg = [dict(r) for r in c.execute("SELECT id, team_id, member, reason, created_at FROM team_suggestions WHERE status='pending' ORDER BY created_at")] \
+            if store.restricted() is None else []          # Temple's suggestions on a team's set-up: for an Owner
     for j in live: j['outputs'] = json.loads(j['outputs'] or '{}')
     for p in pend: p['content'] = json.loads(p['content'] or '{}')
     return defs, live, counts, titles, pend, sugg
@@ -1930,7 +1962,7 @@ def board():
             'missing': r['missing'], 'job': job, 'running': len(jl), 'done': (cs.get('done') or {}).get('n', 0), 'last_activity': last,
             'search': ' '.join([d['name'], d.get('description', ''), d.get('discipline', '')] + [m['role'] for m in d.get('members') or []]
                                + [x['title'] for x in titles if x['team_id'] == d['id']][:30]).lower()})
-    costs = team_costs.board([t['id'] for t in out])
+    costs = team_costs.board([t['id'] for t in out if _cap(t['id'], 'costs')])        # costs only with "see costs"
     for t in out: t['cost'] = costs['teams'].get(t['id'])
     discs = sorted({t['discipline'] for t in out if t['discipline']} | set(DISCIPLINES))
     tmpl = []
@@ -2055,7 +2087,7 @@ def page(tid):
               'needs': [i for i in b['needs'] if i['team_id'] == tid], 'status': me.get('status', 'idle'), 'status_label': me.get('status_label', ''),
               'colours': b['colours'], 'icons': b['icons'], 'disciplines': b['disciplines'], 'paused': b['paused'], 'templates': b['templates'],
               'filing': filing(t), 'tool_names': TOOLS, 'tool_switches': {m['id']: tool_switches(t, m) for m in t['members']},
-              'costs': team_costs.team(tid)})
+              'costs': team_costs.team(tid) if _cap(tid, 'costs') else None})
     return o
 
 
@@ -2135,7 +2167,7 @@ def job_page(jid):
            'remeasure': idle and 'qs_measure' in handlers and bool((raw.get('measure') or {}).get('items')) and bool((raw.get('plan') or {}).get('elements')),
            'copy': True}
     return {**d, 'identity': identity(now), 'team': {'id': now['id'], 'name': now['name'], 'href': team_url(now['id'])},
-            'costs': team_costs.job(jid), 'versions': job_versions(jid), 'can': can, 'elements': (raw.get('plan') or {}).get('elements') or [],
+            'costs': team_costs.job(jid) if _cap(d['team_id'], 'costs') else None, 'versions': job_versions(jid), 'can': can, 'elements': (raw.get('plan') or {}).get('elements') or [],
             'rerun': {k: rr.get(k) for k in ('kind', 'version', 'from_version', 'refs', 'elements', 'by', 'note', 'order', 'estimates', 'trends')} if rr else None,
             'copied_from': raw.get('_copied_from'), 'rate_sources': _rate_sources(), 'staff_on': bool(figs),
             'pricing_template': _job_template(raw_job), 'estimates_all': bool((raw.get('_estimates') or {}).get('all')),
@@ -2161,6 +2193,7 @@ TALK_RULES = {}              # stage handler -> function(team, job) -> {rule id:
 
 
 def messages(tid, jid=''):
+    if store.restricted() is not None and (not jid or not store.can_see('team_job', jid)): return []    # their own jobs' talk only
     with store.db() as c:
         rows = [dict(r) for r in c.execute('SELECT id, role, member, content, routed_to, note, created_by, created_at FROM team_messages '
                                            'WHERE team_id=? AND job_id=? ORDER BY created_at', (tid, jid or ''))]
@@ -2182,6 +2215,8 @@ def _talk(tid, jid, message):
     message = _block(message, 4000)
     if not message: raise ValueError('Write a message to the team first.')
     rules_engine.check_outbound(message, 'Digital team: Talk to the team', packs=False)
+    if store.restricted() is not None and (not jid or not store.can_see('team_job', jid)):
+        raise ValueError('Talk to the team about one of your own jobs: open the job first.')
     if jid:
         j = _row(jid)
         if j['team_id'] != tid: raise ValueError('This job belongs to another team.')

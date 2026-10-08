@@ -27,8 +27,9 @@ def ref(pid): return 'P-' + (pid or '')[:6].upper()
 
 
 def _rows(c, aid):
+    vc, va = store.viewer_clause('proposal', 'proposals.id')        # a person without the Owner role: only their own
     return [dict(r) for r in c.execute("SELECT id,assistant_id,title,organisation,client,status,superseded_by,bid_id,created_at "
-                                       "FROM proposals WHERE assistant_id=? AND status!='discarded'", (aid,))]
+                                       "FROM proposals WHERE assistant_id=? AND status!='discarded'" + vc, (aid, *va))]
 
 
 def trees(rows):
@@ -210,8 +211,9 @@ def link(aid, pid, olds, via='Parker page', record_new=True, starting=False):
         cur_me, members, _ = _bid_rows(c, pid)
     mine = {m['id'] for m in members}
     for o in olds:
-        try: x = P.get(o)
-        except LookupError: raise LookupError(f'No proposal {ref(o)}.') from None
+        try: x = P.get(o) if store.can_see('proposal', o) else None
+        except LookupError: x = None
+        if x is None: raise LookupError(f'No proposal {ref(o)}.')
         if x['assistant_id'] != aid or x['status'] == 'discarded': raise LookupError(f'No proposal {ref(o)}.')
         if o in mine: raise ValueError(f'{ref(o)} is already a version of this bid.')
         if x.get('superseded_by'): raise ValueError(f'{ref(o)} is already superseded by {ref(current_id(o))}: pick the current version of that bid.')
@@ -235,7 +237,7 @@ def join(aid, pid, started_from, via='Parker page', record_new=False, starting=F
     """A new version started from another proposal (Save as a new version, or writing from a written proposal): it supersedes the
     current version of that bid. Returns the reference it replaced, or ''."""
     sf = str(started_from or '').strip()[:40]
-    if not sf or sf == pid: return ''
+    if not sf or sf == pid or not store.can_see('proposal', sf): return ''
     try: x = P.get(sf)
     except LookupError: return ''
     if x['assistant_id'] != aid or x['status'] == 'discarded': return ''

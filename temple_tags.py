@@ -110,4 +110,4 @@ def schedule(ids=None):
     def work():
         try: run(ids)
         except Exception: pass
-    threading.Thread(target=work, daemon=True).start()
+    store.spawn(work)

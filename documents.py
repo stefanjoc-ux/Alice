@@ -369,6 +369,7 @@ def keep(fmt, name, data, text, chat_id=''):
         c.execute('INSERT INTO generated_documents(id,chat_id,name,format,size,original,text,created_at) VALUES (?,?,?,?,?,?,?,?)',
                   (did, chat_id or '', name, fmt, len(data), data, text[:MAX_TEXT], store.now()))
         store.audit(c, 'document_created', did, 'human_review', f'{FORMATS[fmt][0]}: {name} ({len(data):,} bytes)')
+    store.stamp('document', did)
     return {'id': did, 'name': name, 'format': fmt, 'kind': FORMATS[fmt][0], 'size': len(data)}
 
 

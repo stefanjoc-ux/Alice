@@ -23,8 +23,9 @@ def ref(pid):
 
 def _rows(qa_only=False):
     with store.db() as c:
+        vc, va = store.viewer_clause('proposal', 'p.id')        # a person without the Owner role: only their own
         rows = [dict(r) for r in c.execute("SELECT p.*, a.name AS writer_name FROM proposals p JOIN assistants a ON a.id=p.assistant_id "
-                                           "WHERE p.status <> 'discarded' ORDER BY p.updated_at DESC")]
+                                           "WHERE p.status <> 'discarded'" + vc + "ORDER BY p.updated_at DESC", va)]
     return rows if qa_only else [r for r in rows if '"qa_only": true' not in (r.get('inputs') or '')]
 
 

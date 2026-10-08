@@ -53,8 +53,9 @@ def _org_defaults(orgs):
 def typical(tid, job_type):
     """This team's finished jobs of this type: the typical (median) time to reach your sign-off and AI cost. None when there are none."""
     import team_costs
+    vc, va = store.viewer_clause('team_job', 'team_jobs.id')        # a person without the Owner role: from their own jobs only
     with store.db() as c:
-        jobs = [dict(r) for r in c.execute("SELECT id, created_at, ai_cost FROM team_jobs WHERE team_id=? AND job_type=? AND status='done'", (tid, job_type))]
+        jobs = [dict(r) for r in c.execute("SELECT id, created_at, ai_cost FROM team_jobs WHERE team_id=? AND job_type=? AND status='done'" + vc, (tid, job_type, *va))]
         firsts = {r[0]: r[1] for r in c.execute("SELECT job_id, min(created_at) FROM team_steps WHERE kind='signoff' AND job_id IN "
                                                 "(SELECT id FROM team_jobs WHERE team_id=? AND job_type=? AND status='done') GROUP BY job_id", (tid, job_type))}
     secs, costs = [], []
@@ -69,7 +70,8 @@ def typical(tid, job_type):
         m = statistics.median(secs)
         n, unit = ((max(1, round(m / 60)), 'minute') if m < 5400 else (round(m / 3600, 1), 'hour') if m < 172800 else (round(m / 86400), 'day'))
         out['run_time'] = f'about {n:g} {unit}{"" if n == 1 else "s"}'
-    if costs: out['ai_cost'] = team_costs.money(statistics.median(costs))
+    import permissions
+    if costs and permissions.team_cap(store.viewer(), tid, 'costs'): out['ai_cost'] = team_costs.money(statistics.median(costs))
     return out
 
 

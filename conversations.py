@@ -89,7 +89,7 @@ def append_external(cid, app_name, turns, final=True):
     pairs = _check_turns(turns)
     with store.db() as c:
         row = c.execute('SELECT source,summary FROM chats WHERE id=?', (cid,)).fetchone()
-    if not row or row['source'] == 'alice': raise ValueError('Conversation not found. Use the id returned by save_conversation.')
+    if not row or row['source'] == 'alice' or not store.can_see('chat', cid): raise ValueError('Conversation not found. Use the id returned by save_conversation.')
     n = _store_turns(cid, pairs, app_name)
     rec = json.loads(row['summary'] or '{}')
     rec['transcript_turns'] = rec.get('transcript_turns', 0) + n
@@ -114,14 +114,16 @@ def save_external(app_name, title, summary, key_points=(), decisions=(), remembe
     rules_engine.check_knowledge(title, blob)          # secrets, markings, personal identifiers: nothing is stored
     pairs = _check_turns(transcript)                   # checked before anything is written
     with store.db() as c:
-        dup = c.execute("SELECT id FROM chats WHERE source=? AND title=? AND summary LIKE ?",
-                        (app_name, title, '%' + json.dumps(record['summary'][:200])[1:-1] + '%')).fetchone()
+        vc, va = store.viewer_clause('chat', 'chats.id')
+        dup = c.execute("SELECT id FROM chats WHERE source=? AND title=? AND summary LIKE ?" + vc,
+                        (app_name, title, '%' + json.dumps(record['summary'][:200])[1:-1] + '%', *va)).fetchone()
     if dup: return {'id': dup[0], 'duplicate': True}
     cid = uuid.uuid4().hex
     with store.db() as c:
         c.execute('INSERT INTO chats(id,title,created_at,updated_at,provider,file_ids,source,summary) VALUES (?,?,?,?,?,?,?,?)',
                   (cid, title, store.now(), store.now(), app_name, '[]', app_name, json.dumps(record)))
         store.audit(c, 'conversation_saved', cid, 'external_capture', f'{title} from {app_name}')
+    store.stamp('chat', cid)
     owner = ''
     if client:
         try: owner = clients.canonical(client)
@@ -280,6 +282,13 @@ def _finish(cid, status, n=0, error='', provider=''):
 
 @agents.tracked('temple-chat-review', subject=lambda cid, manual=False: ('chat', cid))
 def review_chat(cid, manual=False):
+    """Temple's whole-chat review, with the eyes of the person whose chat it is (users.py): what it proposes is theirs."""
+    v = store.viewer()
+    with store.as_viewer(store.author_viewer('chat', cid) if v is None or v.full else v):
+        return _review_chat(cid, manual)
+
+
+def _review_chat(cid, manual=False):
     import rules_engine
     with _lock:
         if cid in _running: return {'status': 'running'}
@@ -347,7 +356,7 @@ def review_chat(cid, manual=False):
 
 
 def schedule_review(cid, manual=False):
-    threading.Thread(target=lambda: _safe(cid, manual), daemon=True).start()
+    store.spawn(_safe, cid, manual)
 
 
 def _safe(cid, manual):
@@ -360,7 +369,7 @@ def review_many(ids):
     ids = list(dict.fromkeys(ids))[:50]
     def work():
         for cid in ids: _safe(cid, True)
-    threading.Thread(target=work, daemon=True).start()
+    store.spawn(work)
     return {'started': len(ids)}
 
 
@@ -446,7 +455,8 @@ def import_claude_export(raw, since='', progress=None):
             rules_engine.log_block('protective_marking' if 'marking' in reason else 'secret_detection', title, 'Claude export: conversation skipped')
             continue
         with store.db() as c:
-            row = c.execute('SELECT id,summary FROM chats WHERE external_id=? AND source=?', (ext, EXPORT_SOURCE)).fetchone()
+            vc, va = store.viewer_clause('chat', 'chats.id')     # only this person's own earlier import is updated
+            row = c.execute('SELECT id,summary FROM chats WHERE external_id=? AND source=?' + vc, (ext, EXPORT_SOURCE, *va)).fetchone()
         if row:
             prev = json.loads(row['summary'] or '{}').get('messages', 0)
             if prev >= len(pairs): result['unchanged'] += 1; continue
@@ -460,6 +470,7 @@ def import_claude_export(raw, since='', progress=None):
             with store.db() as c:
                 c.execute('INSERT INTO chats(id,title,created_at,updated_at,provider,file_ids,source,summary,external_id) VALUES (?,?,?,?,?,?,?,?,?)',
                           (cid, title, created, updated, 'Claude', '[]', EXPORT_SOURCE, '{}', ext))
+            store.stamp('chat', cid)
             result['imported'] += 1
             hits = clients.detect(title + '\n' + blob[:6000])
             if len(hits) == 1: clients.set_chat_client(cid, hits[0], force=True)
@@ -499,7 +510,7 @@ def start_import(raw, since=''):
         except Exception:
             IMPORT_JOB.update({'status': 'failed', 'error': 'The import stopped unexpectedly. Anything already imported is kept; run it again to continue.',
                                'finished': store.now()})
-    threading.Thread(target=work, daemon=True).start()
+    store.spawn(work)
     return dict(IMPORT_JOB)
 
 
@@ -604,7 +615,7 @@ def start_manifest_import(urls, since=''):
         if not any(folder.iterdir()): total['saved_to'] = ''     # nothing downloaded, so nothing saved
         IMPORT_JOB.update({'status': 'complete', 'result': total, 'done': checked, 'total': checked, 'finished': store.now(),
                            'label': f'Finished: {len(urls)} batches, {checked} conversations checked.', 'pct': 100})
-    threading.Thread(target=work, daemon=True).start()
+    store.spawn(work)
     return dict(IMPORT_JOB)
 
 

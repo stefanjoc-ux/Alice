@@ -450,9 +450,10 @@ def check_record(title, content, source, exclude_id=None, stage='proposal'):
     if on('duplicates') and stage == 'proposal':
         threshold = params('duplicates').get('threshold', 0.9)
         target = _norm(title + ' ' + content)
+        vc, va = store.viewer_clause('record', 'r.id')    # compared only with what the proposer may see (never names someone else's)
         with store.db() as c:   # read everything first; logging while a read is open would lock the database
             rows = c.execute("SELECT r.id,r.title,r.content FROM records r LEFT JOIN memory_archive a ON a.record_id=r.id "
-                             "WHERE coalesce(a.state,r.status) IN ('approved','proposed') AND r.id<>?", (exclude_id or '',)).fetchall()
+                             "WHERE coalesce(a.state,r.status) IN ('approved','proposed') AND r.id<>?" + vc, (exclude_id or '', *va)).fetchall()
         for r in rows:
             if SequenceMatcher(None, target, _norm(r['title'] + ' ' + r['content'])).ratio() >= threshold:
                 log_block('duplicates', title, f'duplicate of {r["id"]}')

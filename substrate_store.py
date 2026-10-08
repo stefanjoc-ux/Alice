@@ -129,6 +129,7 @@ def propose(title, content, source):
             c.execute('INSERT INTO records VALUES (?,?,?,?,?,?,NULL)',(rid,*values,'proposed',now()))
             audit(c,'record_proposed',rid,'approval_required','Awaiting human review; source description is unverified')
     if blocked: raise ValueError('New record proposals are disabled by the substrate rule.')
+    stamp('record', rid)          # who proposed it (users.py): before Temple's review, which reads with its author's eyes
     # The proposal is committed before the advisory API call; failures cannot undo it.
     try:
         import temple
@@ -147,8 +148,9 @@ def review(rid, decision):
 
 def records(status='all',query='',offset=0,limit=30):
     source="FROM records r LEFT JOIN memory_archive a ON a.record_id=r.id "
-    where="WHERE (?='all' OR coalesce(a.state,r.status)=?) AND (instr(lower(r.title),lower(?))>0 OR instr(lower(r.content),lower(?))>0)"
-    args=(status,status,query,query)
+    vc,va=viewer_clause('record','r.id')
+    where="WHERE (?='all' OR coalesce(a.state,r.status)=?) AND (instr(lower(r.title),lower(?))>0 OR instr(lower(r.content),lower(?))>0)"+vc
+    args=(status,status,query,query,*va)
     with db() as c:
         total=c.execute('SELECT count(*) '+source+where,args).fetchone()[0]
         rows=c.execute('SELECT r.*,a.state AS archived_status,a.reason AS archive_reason,a.changed_at,a.replaced_by '+source+where+' ORDER BY r.created_at DESC,r.id LIMIT ? OFFSET ?',args+(limit,offset)).fetchall()
@@ -237,10 +239,12 @@ def recover_chats():
 def create_chat():
     cid=uuid.uuid4().hex
     with db() as c: c.execute('INSERT INTO chats(id,title,created_at,updated_at) VALUES (?,?,?,?)',(cid,'New chat',now(),now()))
+    stamp('chat', cid)
     return {'id':cid}
 
 def list_chats():
-    with db() as c: return [dict(r) for r in c.execute('SELECT * FROM chats ORDER BY updated_at DESC,id')]
+    vc, va = viewer_clause('chat', 'chats.id')
+    with db() as c: return [dict(r) for r in c.execute('SELECT * FROM chats WHERE 1=1' + vc + 'ORDER BY updated_at DESC,id', va)]
 
 def get_chat(cid):
     with db() as c:
@@ -452,9 +456,10 @@ def resolve_suggestions(ids, action):
 
 def temple_candidates(ids=None, include_checked=False, limit=40):
     """Uncategorised active/proposed memories with no human or pending suggestion. Temple never overrides."""
+    vc, va = viewer_clause('record', 'r.id')
     where = (f"WHERE {ACTIVE_FOR_TEMPLE} AND coalesce(m.category,'')='' AND coalesce(m.suggestion,'')='' "
-             + ('' if include_checked else 'AND m.temple_checked_at IS NULL '))
-    args = []
+             + ('' if include_checked else 'AND m.temple_checked_at IS NULL ') + vc)
+    args = list(va)
     if ids:
         where += f"AND r.id IN ({','.join('?' * len(ids))}) "; args += list(ids)
     with db() as c:
@@ -496,8 +501,10 @@ def organised_records(status='approved', query='', category='', sort='newest', o
              "OR instr(lower(r.content),lower(?))>0 OR instr(lower(r.source),lower(?))>0) "
              "AND (?='' OR (?='__none__' AND coalesce(m.category,'')='') OR (?='__suggested__' AND coalesce(m.suggestion,'')<>'') "
              "OR (?='__expired__' AND m.review_by IS NOT NULL AND m.review_by<?) OR coalesce(m.category,'')=?)")
+    vc, va = viewer_clause('record', 'r.id')          # a person without the Owner role: only their own
+    where += vc
     today = datetime.now(timezone.utc).date().isoformat()
-    args = (status, status, query, query, query, query, category, category, category, category, today, category)
+    args = (status, status, query, query, query, query, category, category, category, category, today, category, *va)
     with db() as c:
         total = c.execute('SELECT count(*) ' + source + where, args).fetchone()[0]
         rows = c.execute('SELECT r.*,coalesce(a.state,r.status) AS status,a.reason AS archive_reason,a.changed_at,'
@@ -507,18 +514,19 @@ def organised_records(status='approved', query='', category='', sort='newest', o
                          "(SELECT client FROM client_tags ct WHERE ct.item_type='memory' AND ct.item_id=r.id) AS client "
                          + source + where + ' ORDER BY ' + SORTS[sort] + ' LIMIT ? OFFSET ?', args + (limit, offset)).fetchall()
         statuses = dict(c.execute('SELECT coalesce(a.state,r.status),count(*) FROM records r '
-                                  'LEFT JOIN memory_archive a ON a.record_id=r.id GROUP BY 1').fetchall())
+                                  'LEFT JOIN memory_archive a ON a.record_id=r.id WHERE 1=1' + vc + 'GROUP BY 1', va).fetchall())
         categories = [{'category': r[0], 'count': r[1]} for r in c.execute(
             "SELECT coalesce(m.category,''),count(*) FROM records r LEFT JOIN memory_archive a ON a.record_id=r.id "
-            "LEFT JOIN record_meta m ON m.record_id=r.id WHERE (?='all' OR coalesce(a.state,r.status)=?) "
-            "GROUP BY 1 ORDER BY coalesce(m.category,'')='', 1", (status, status))]
+            "LEFT JOIN record_meta m ON m.record_id=r.id WHERE (?='all' OR coalesce(a.state,r.status)=?) " + vc +
+            "GROUP BY 1 ORDER BY coalesce(m.category,'')='', 1", (status, status, *va))]
         suggested = c.execute("SELECT count(*) FROM records r LEFT JOIN memory_archive a ON a.record_id=r.id "
                               "JOIN record_meta m ON m.record_id=r.id WHERE (?='all' OR coalesce(a.state,r.status)=?) "
-                              "AND m.suggestion<>''", (status, status)).fetchone()[0]
+                              "AND m.suggestion<>''" + vc, (status, status, *va)).fetchone()[0]
         known = [r[0] for r in c.execute('SELECT name FROM categories ORDER BY lower(name)')]
+        if va: known = sorted({x['category'] for x in categories if x['category']}, key=str.lower)   # only the names on their own memories
         try:
             expired = c.execute("SELECT count(*) FROM records r LEFT JOIN memory_archive a ON a.record_id=r.id JOIN record_meta m ON m.record_id=r.id "
-                                "WHERE (?='all' OR coalesce(a.state,r.status)=?) AND m.review_by IS NOT NULL AND m.review_by<?", (status, status, today)).fetchone()[0]
+                                "WHERE (?='all' OR coalesce(a.state,r.status)=?) AND m.review_by IS NOT NULL AND m.review_by<?" + vc, (status, status, today, *va)).fetchone()[0]
         except sqlite3.OperationalError:
             expired = 0
     return {'records': [dict(r) for r in rows], 'total': total,
@@ -575,8 +583,9 @@ with db() as c:   # chats saved from other apps (Claude Desktop, Claude Code) ca
 def active_chats():
     """The chat sidebar: your own Alice chats with recent activity."""
     with db() as c:
+        vc, va = viewer_clause('chat', 'ch.id')
         return [dict(r) for r in c.execute("SELECT ch.*,(SELECT count(*) FROM chat_turns t WHERE t.chat_id=ch.id) AS turns FROM chats ch "
-                                           "WHERE ch.updated_at>=? AND ch.source='alice' ORDER BY ch.updated_at DESC,ch.id", (archive_cutoff(),))]
+                                           "WHERE ch.updated_at>=? AND ch.source='alice'" + vc + "ORDER BY ch.updated_at DESC,ch.id", (archive_cutoff(), *va))]
 
 
 def _captures(c, cid):
@@ -602,12 +611,13 @@ def _captures(c, cid):
 
 def archived_chats(query='', only_uncaptured=False, sort='recent', offset=0, limit=50, source=''):
     order = {'recent': 'updated_at DESC', 'oldest': 'updated_at ASC', 'created': 'created_at DESC', 'title': 'lower(title)'}.get(sort, 'updated_at DESC')
+    vc, va = viewer_clause('chat', 'ch.id')
     with db() as c:
         rows = [dict(r) for r in c.execute(
             'SELECT ch.id,ch.title,ch.created_at,ch.updated_at,ch.provider,ch.source,ch.client,'
             "(SELECT count(*) FROM chat_turns t WHERE t.chat_id=ch.id AND t.status='complete') AS exchanges "
-            "FROM chats ch WHERE (ch.updated_at<? OR ch.source<>'alice') AND (?='' OR instr(lower(ch.title),lower(?))>0) ORDER BY " + order,
-            (archive_cutoff(), query, query))]
+            "FROM chats ch WHERE (ch.updated_at<? OR ch.source<>'alice') AND (?='' OR instr(lower(ch.title),lower(?))>0)" + vc + " ORDER BY " + order,
+            (archive_cutoff(), query, query, *va))]
         try:
             reviews = {r['chat_id']: dict(r) for r in c.execute('SELECT * FROM chat_reviews')}
         except sqlite3.OperationalError:
@@ -633,7 +643,8 @@ def restore_chat(cid):
 
 def archive_count():
     with db() as c:
-        return c.execute("SELECT count(*) FROM chats WHERE updated_at<? OR source<>'alice'", (archive_cutoff(),)).fetchone()[0]
+        vc, va = viewer_clause('chat', 'chats.id')
+        return c.execute("SELECT count(*) FROM chats WHERE (updated_at<? OR source<>'alice')" + vc, (archive_cutoff(), *va)).fetchone()[0]
 
 
 # ---- Rule enforcement hooks (rules_engine). Imported lazily to avoid a circular import.
@@ -744,9 +755,10 @@ def propose_decision(title, decision, source, rationale='', options=(), revisit=
         threshold = rules_engine.params('duplicates').get('threshold', 0.9)
         norm = lambda t: ' '.join(_re.sub(r'[^a-z0-9 ]', ' ', (t or '').lower()).split())
         with db() as c:
+            vc, va = viewer_clause('record', 'r.id')     # compared only with what the proposer may see
             rows = c.execute("SELECT r.id,r.title,m.decision FROM record_meta m JOIN records r ON r.id=m.record_id "
                              "LEFT JOIN memory_archive a ON a.record_id=r.id WHERE m.kind='decision' "
-                             "AND coalesce(a.state,r.status) IN ('approved','proposed')").fetchall()
+                             "AND coalesce(a.state,r.status) IN ('approved','proposed')" + vc, va).fetchall()
         for r in rows:
             existing = json.loads(r['decision'] or '{}').get('decision', '')
             if existing and SequenceMatcher(None, norm(decision), norm(existing)).ratio() >= threshold:
@@ -790,9 +802,10 @@ def organised_records(status='approved', query='', category='', sort='newest', o
         k = kinds.get(r['id'], {})
         r['kind'] = k.get('kind') or 'fact'
         r['decision'] = k.get('decision')
+    vc, va = viewer_clause('record', 'r.id')
     with db() as c:
         d['decisions'] = c.execute("SELECT count(*) FROM record_meta m JOIN records r ON r.id=m.record_id LEFT JOIN memory_archive a ON a.record_id=r.id "
-                                   "WHERE m.kind='decision' AND (?='all' OR coalesce(a.state,r.status)=?)", (status, status)).fetchone()[0]
+                                   "WHERE m.kind='decision' AND (?='all' OR coalesce(a.state,r.status)=?)" + vc, (status, status, *va)).fetchone()[0]
     return d
 
 
@@ -923,6 +936,7 @@ def set_owner(ids, owner):
 
 def owners():
     """Names already used as owners (memories and knowledge), for suggestions."""
+    if restricted() is not None: return []          # people's names on everyone's items: not for a restricted viewer
     names = set()
     with db() as c:
         names |= {r[0] for r in c.execute("SELECT DISTINCT owner FROM record_meta WHERE owner<>''")}
@@ -957,3 +971,108 @@ def organised_records(status='approved', query='', category='', sort='newest', o
         r['decided'] = dec.get(r['id'])
     d['owners'] = owners()
     return d
+
+
+# ---- Who may see what (users.py, permissions.py). VIEWER is set per request by app.py's people middleware (and by the
+# MCP servers for each call): the signed-in person. None means the system or the owner on this computer: everything, as
+# before. A RESTRICTED viewer (anyone without the Owner role) sees only the items they created themselves, until Spaces
+# arrive. Who created an item is kept in item_authors (one row per item; items made before this have none and belong to
+# the owner). Every list or search that a restricted person can reach adds viewer_clause(); a single item is checked
+# with can_see(). Background work started from a request keeps its viewer: start threads with spawn(), never Thread().
+import threading as _threading
+from collections import namedtuple as _namedtuple
+
+Viewer = _namedtuple('Viewer', 'oid email name role full')
+VIEWER = contextvars.ContextVar('alice_viewer', default=None)
+ITEM_TYPES = ('record', 'file', 'organisation', 'proposal', 'team_job', 'chat', 'document')
+
+with db() as _c:
+    _c.execute("CREATE TABLE IF NOT EXISTS item_authors (item_type TEXT NOT NULL, item_id TEXT NOT NULL COLLATE NOCASE, "
+               "author_oid TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY (item_type, item_id))")
+    _c.execute('CREATE INDEX IF NOT EXISTS item_authors_by_author ON item_authors(author_oid, item_type)')
+
+
+def viewer():
+    return VIEWER.get()
+
+
+def restricted():
+    """The object ID of a viewer who sees only their own items, or None (sees everything)."""
+    v = VIEWER.get()
+    return None if v is None or v.full else (v.oid or '-')
+
+
+@contextmanager
+def as_viewer(v):
+    """Run as this viewer (None = the system, everything). Used by background work for the person it is for."""
+    token = VIEWER.set(v)
+    try: yield
+    finally: VIEWER.reset(token)
+
+
+def viewer_clause(item_type, id_expr):
+    """SQL to add to a WHERE: (' ', []) for a viewer who sees everything, else only items this person created."""
+    oid = restricted()
+    if oid is None: return ' ', []          # a space, so it can sit between two pieces of SQL either way
+    return (f' AND EXISTS (SELECT 1 FROM item_authors ia WHERE ia.item_type=? AND ia.item_id={id_expr} AND ia.author_oid=?) ',
+            [item_type, oid])
+
+
+def stamp(item_type, item_id, oid=None):
+    """Record who created an item (the current viewer unless given). Items made by the system or on this computer get
+    no row and belong to the owner. Never changes an existing author."""
+    if item_type not in ITEM_TYPES or not item_id: return
+    if oid is None:
+        v = VIEWER.get()
+        oid = v.oid if v is not None else ''
+    if not oid: return
+    with db() as c:
+        c.execute('INSERT OR IGNORE INTO item_authors(item_type,item_id,author_oid,created_at) VALUES (?,?,?,?)',
+                  (item_type, str(item_id), oid, now()))
+
+
+def author_of(item_type, item_id):
+    """The object ID of whoever created the item; '' for the owner's (and older) items."""
+    with db() as c:
+        r = c.execute('SELECT author_oid FROM item_authors WHERE item_type=? AND item_id=?', (item_type, str(item_id))).fetchone()
+    return r[0] if r else ''
+
+
+def can_see(item_type, item_id):
+    oid = restricted()
+    if oid is None: return True
+    return bool(item_id) and author_of(item_type, item_id) == oid
+
+
+def visible_ids(item_type, ids):
+    """The subset of ids this viewer may see, in order."""
+    ids = [i for i in ids if i]
+    oid = restricted()
+    if oid is None or not ids: return list(ids) if oid is None else []
+    seen = set()
+    with db() as c:
+        for i in range(0, len(ids), 500):
+            chunk = [str(x) for x in ids[i:i + 500]]
+            seen |= {r[0] for r in c.execute(f"SELECT item_id FROM item_authors WHERE item_type=? AND author_oid=? AND item_id IN ({','.join('?' * len(chunk))})",
+                                             [item_type, oid] + chunk)}
+    return [i for i in ids if str(i) in seen]
+
+
+def author_viewer(item_type, item_id):
+    """The viewer whose eyes background work on this item should use: its author's (restricted), or None for the owner's
+    own items. Temple, teams and connectors working on someone's item draw only on what that person may see."""
+    oid = author_of(item_type, item_id)
+    if not oid: return None
+    try:
+        import users
+        return users.viewer_for(oid)
+    except Exception:
+        return Viewer(oid, '', '', 'member', False)
+
+
+def spawn(target, *args, name=None, **kwargs):
+    """Start a background thread that keeps the caller's context (who is acting and who is viewing)."""
+    ctx = contextvars.copy_context()
+    t = _threading.Thread(target=lambda: ctx.run(target, *args, **kwargs), daemon=True, name=name)
+    t.start()
+    return t
