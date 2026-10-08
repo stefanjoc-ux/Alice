@@ -25,6 +25,7 @@ PUBLIC_SECTIONS = ['identity', 'purpose', 'values', 'structure', 'security', 'te
 MAX_FACTS = 24
 MAX_SEARCHES = 6
 PROVIDER_NAMES = {'openai': 'OpenAI', 'claude': 'Anthropic'}
+MODELS = {'openai': ('GPT-6 Luna', 'gpt-6-luna'), 'claude': ('Claude Haiku 4.5', 'claude-haiku-4-5-20251001')}   # the model each provider's web search uses
 KEYS = {'openai': 'OPENAI_API_KEY', 'claude': 'ANTHROPIC_API_KEY'}
 LOG = logging.getLogger('alice.websearch')          # goes to web.log with the app's other logging
 _QUERIES = contextvars.ContextVar('alice_web_queries', default=None)    # the searches the provider says it ran (search_runs record)
@@ -115,10 +116,10 @@ def _ask_openai(prompt, query, workload='Temple organisation research'):
     from openai import OpenAI
     t0 = time.time()
     with OpenAI(timeout=180, max_retries=0) as client:
-        r = client.responses.create(model='gpt-6-luna', instructions=prompt, input=query, tools=[{'type': 'web_search'}],
+        r = client.responses.create(model=MODELS['openai'][1], instructions=prompt, input=query, tools=[{'type': 'web_search'}],
                                     include=['web_search_call.action.sources'], reasoning={'effort': 'low'},
                                     max_output_tokens=16000, store=False)
-    import usage_meter; usage_meter.log(r, 'openai', 'gpt-6-luna', workload, time.time() - t0)
+    import usage_meter; usage_meter.log(r, 'openai', MODELS['openai'][1], workload, time.time() - t0)
     seen = {}
     for item in getattr(r, 'output', []) or []:
         action = getattr(item, 'action', None)
@@ -140,8 +141,8 @@ def _ask_claude(prompt, query, workload='Temple organisation research'):
     seen, texts = {}, []
     with Anthropic(timeout=180, max_retries=0) as client:
         for _ in range(4):                 # the first request plus up to three continuations after pause_turn
-            r = client.messages.create(model='claude-haiku-4-5-20251001', system=prompt, max_tokens=6000, tools=tools, messages=messages)
-            import usage_meter; usage_meter.log(r, 'claude', 'claude-haiku-4-5-20251001', workload, time.time() - t0)
+            r = client.messages.create(model=MODELS['claude'][1], system=prompt, max_tokens=6000, tools=tools, messages=messages)
+            import usage_meter; usage_meter.log(r, 'claude', MODELS['claude'][1], workload, time.time() - t0)
             for b in r.content:
                 if b.type == 'server_tool_use' and isinstance(getattr(b, 'input', None), dict): _ran(b.input.get('query'))
                 if b.type == 'web_search_tool_result':
@@ -221,39 +222,47 @@ def research(name='', website='', provider=''):
     return _research(name, website, provider)
 
 
+def add(name, website='', aliases=(), kind='other', client=False, watch=False, guidance=''):
+    """Add an organisation from the page's Add form: details, other names (a client's), Client, Watch for opportunities and the
+    guidance for its first research. Everything is checked before anything is saved; then saved in that order, so research
+    started afterwards uses the guidance."""
+    import search_runs, opportunities
+    name = O._clean(name, 60)
+    if not name: raise ValueError('Enter a name.')
+    if kind not in O.KINDS: raise ValueError('Choose a type: ' + ', '.join(O.KINDS) + '.')
+    site = _clean_url(website) if (website or '').strip() else ''
+    aliases = [a for a in (O._clean(x, 60) for x in aliases or []) if a]
+    text = search_runs._check(name, guidance) if (guidance or '').strip() else ''
+    O.create(name, kind, '', client, aliases if client else ())
+    if site: O.update(name, website=site)
+    if text: search_runs.set_guidance(name, text)
+    if watch: opportunities.set_frequency(name, 'weekly')
+    elif client: opportunities.set_frequency(name, 'off')       # clients are watched weekly unless you say otherwise
+    return {'name': name, 'website': site, 'client': bool(client), 'watch': bool(watch), 'guidance_version': search_runs.current(name)[1] if text else 0}
+
+
 @agents.tracked('temple-org-research', trigger='When you ask', subject=lambda name='', website='', **k: _subject(name, website))
 def _research(name, website, provider=''):
-    import rules_engine, temple
+    import rules_engine, temple, research_context
     from datetime import date
-    existing = None
-    if name:
-        try: existing = O.canonical(name)
-        except ValueError: existing = None
-    if existing and not website:
-        with store.db() as c:
-            row = c.execute('SELECT website FROM organisations WHERE name=?', (existing,)).fetchone()
-        website = (row['website'] if row and 'website' in row.keys() else '') or ''
-    query = ('Research this organisation: ' + (existing or name or '') + (f' (website: {website})' if website else '')).strip()
-    rules_engine.check_outbound(query, 'organisation research')          # secrets and markings never leave
+    ctx = research_context.build('research', name=name, website=website)     # the same context the page shows
+    existing, website, query = ctx.org or None, ctx.website, ctx.checked(ctx.provider)    # secrets and markings never leave
     rules_engine.check_spend('chat')
     provider = provider if provider in KEYS else temple.reviewer()
     key = KEYS[provider]
     if not os.getenv(key): raise ValueError(f'Missing {key} for Temple. Set it in .env and restart.')
-    prompt = PROMPT.format(today=date.today().isoformat(), kinds=', '.join(O.KINDS), sections=', '.join(PUBLIC_SECTIONS), max_facts=MAX_FACTS)
+    prompt, gver = ctx.prompt, ctx.guidance_version
     import search_runs
-    gtext, gver = search_runs.prompt_block(existing) if existing else ('', 0)
-    prompt += gtext + ('\n\nAlso return "searches": ["the searches you ran"] in the JSON.')
 
     def query_for(p):
-        if p != provider: rules_engine.check_outbound(query, 'organisation research', provider=p)
-        return query
+        return ctx.checked(p, first=False) if p != provider else query
     try:
         raw, seen, provider, failures = search(prompt, query_for, provider)
     except SearchFailed as e:
         _record(existing or name or _domain(website), query, website, e.failures[-1]['provider'], 'failed', error=str(e)[:500])
         search_runs.record(existing or name or _domain(website), 'research', 'failed', 'you', e.failures[-1]['provider'],
                            queries=[{'sent': query, 'provider': PROVIDER_NAMES.get(e.failures[-1]['provider'], ''), 'searches': last_queries()}],
-                           error=str(e), guidance_version=gver)
+                           error=str(e), guidance_version=gver, instructions=ctx.instructions(query))
         raise ValueError(str(e) + ' Try again, or check the provider on the Agents page.') from None
     data = _parse(raw)
 
@@ -317,7 +326,8 @@ def _research(name, website, provider=''):
     reported = [_clean_q(x) for x in data.get('searches') or [] if _clean_q(x)]
     run_id = search_runs.record(org, 'research', 'complete', 'you', provider,
                                 queries=[{'sent': query, 'provider': PROVIDER_NAMES[provider], 'searches': last_queries() or reported[:12]}],
-                                sources=sources, found=found, rejected_=rejected, summary=summary, guidance_version=gver)
+                                sources=sources, found=found, rejected_=rejected, summary=summary, guidance_version=gver,
+                                instructions=ctx.instructions(query))
     return {'status': 'complete', 'org': org, 'run_id': run_id, 'guidance_version': gver, 'website': site, 'proposed': proposed, 'duplicates': duplicates, 'dropped': dropped,
             'sources': sources, 'summary': summary, 'ids': ids, 'provider': provider, 'provider_name': PROVIDER_NAMES[provider],
             'fallback_from': [f['text'] for f in failures]}

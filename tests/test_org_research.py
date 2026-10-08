@@ -103,5 +103,5 @@ class FakeOpenAI:
 import openai; openai.OpenAI = FakeOpenAI
 raw, seen = OR._ask_openai('p', 'q')
 t('OpenAI web search: sources and citations collected', set(seen) == {PAGE1, PAGE2})
-t('page renders the research controls', 'id="o-r-go"' in cl.get('/admin/organisations').text)
+t('page renders the research controls', 'id="o-n-research"' in cl.get('/admin/organisations').text)
 t('typing mistakes are not counted as failed runs (agent stays active)', A.get('temple-org-research')['status'] == 'active')

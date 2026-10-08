@@ -5,6 +5,7 @@ ENFORCED (checked in Python at the points where data moves; no model can bypass 
 GUIDANCE (compiled into the instructions models receive; advisory by nature).
 Findings never echo the sensitive value itself.
 """
+import contextvars
 import json
 import re
 from datetime import datetime, timezone
@@ -150,7 +151,12 @@ def params(rid):
     return r['params'] if r else {}
 
 
+# A preview (research_context.preview) runs the same checks as the real thing but must save nothing: no block lines.
+PREVIEW = contextvars.ContextVar('alice_rules_preview', default=False)
+
+
 def log_block(rid, target, detail):
+    if PREVIEW.get(): return
     with store.db() as c:
         store.audit(c, 'rule_blocked', target[:200], rid, detail[:500])
 

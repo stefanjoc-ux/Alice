@@ -923,7 +923,7 @@ async def chat(request: SavedChatRequest):
 ADMIN_TOKEN = secrets.token_urlsafe(32)
 
 DEMO_PATHS = ('/admin/api/organisations', '/admin/api/opportunities')
-DEMO_REFUSED = {'/admin/api/organisations/research', '/admin/api/opportunities/scan'}
+DEMO_REFUSED = {'/admin/api/organisations/research', '/admin/api/opportunities/scan', '/admin/api/organisations/context'}
 
 @app.middleware("http")
 async def demo_dataset(request: Request, call_next):
@@ -1946,6 +1946,47 @@ async def admin_org_research(r: OrgResearch):
     import org_research
     try: return await asyncio.to_thread(org_research.research, r.name, r.website)
     except ValueError as e: raise HTTPException(400,str(e)) from None
+
+# What Temple starts from (research_context.py): the preview the page shows is built by the same function the run uses; saves nothing
+class OrgContextIn(BaseModel):
+    org: str = Field(default='',max_length=60)
+    name: str = Field(default='',max_length=60)
+    website: str = Field(default='',max_length=300)
+    aliases: list[str] = Field(default_factory=list,max_length=20)
+    kind: str = Field(default='',max_length=20)
+    client: bool = False
+    guidance: str|None = Field(default=None,max_length=4000)
+
+@app.post('/admin/api/organisations/context')
+def admin_org_context(q: OrgContextIn):
+    """Read only: what research and scans would start from, and the exact instructions. Nothing is saved or logged."""
+    import research_context
+    try: return research_context.preview(q.org,q.name,q.website,q.aliases,q.kind,q.client,q.guidance)
+    except ValueError as e: raise HTTPException(404 if q.org else 400,str(e)) from None
+
+class OrgAddIn(BaseModel):
+    name: str = Field(min_length=1,max_length=60)
+    website: str = Field(default='',max_length=300)
+    aliases: list[str] = Field(default_factory=list,max_length=20)
+    kind: str = Field(default='other',max_length=20)
+    client: bool = False
+    watch: bool = False
+    guidance: str = Field(default='',max_length=4000)
+    research: bool = False
+
+@app.post('/admin/api/organisations/add')
+async def admin_org_add(a: OrgAddIn):
+    """Add an organisation with its website, other names, Client, Watch and first guidance; with research, save all that first,
+    then start the research (which then uses the guidance)."""
+    if a.research and store.DATASET.get() == 'demo':
+        raise HTTPException(400,'Research is switched off with demo data, because it would call real AI services. Use Add only.')
+    import org_research
+    try:
+        added = await asyncio.to_thread(org_research.add, a.name, a.website, a.aliases, a.kind, a.client, a.watch, a.guidance)
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+    if not a.research: return added
+    try: return {**added, 'research': await asyncio.to_thread(org_research.research, added['name'], added['website'])}
+    except ValueError as e: return {**added, 'research_error': str(e)}      # added and saved; only the research failed
 
 @app.get('/admin/api/organisations/research')
 def admin_org_research_history(org: str=Query(min_length=1,max_length=60)):

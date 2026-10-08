@@ -343,8 +343,9 @@ def _visible(fact, provider=None, external=False):
     return True
 
 
-def brief(org, provider=None, external=False, section='', budget=BRIEF_CHARS):
-    """A compact, deterministic profile from approved facts: same facts, same text (so it caches well)."""
+def brief(org, provider=None, external=False, section='', budget=BRIEF_CHARS, keep=None):
+    """A compact, deterministic profile from approved facts: same facts, same text (so it caches well).
+    keep: an extra test each fact must pass (research_context leaves out facts naming another client)."""
     import clients
     org = canonical(org)
     if external and org.lower() in client_names():
@@ -353,7 +354,7 @@ def brief(org, provider=None, external=False, section='', budget=BRIEF_CHARS):
             return {'org': org, 'text': '', 'facts': 0, 'withheld': 'Client organisations are not shared with external apps (Client separation).'}
     with store.db() as c:
         meta = c.execute('SELECT kind,description FROM organisations WHERE name=?', (org,)).fetchone()
-    rows = [f for f in facts(org, 'approved', section) if _visible(f, provider, external)]
+    rows = [f for f in facts(org, 'approved', section) if _visible(f, provider, external) and (keep is None or keep(f))]
     if not rows: return {'org': org, 'text': '', 'facts': 0}
     head = f'ORGANISATION PROFILE: {org}' + (f" ({meta['kind']})" if meta and meta['kind'] != 'other' else '') + \
         (' · client' if org.lower() in client_names() else '') + '\n' + \

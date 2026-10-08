@@ -171,15 +171,23 @@ SECTIONS = {
 </aside>
 <div class="o-main">
  <section id="o-add" hidden><div class="mem-head"><h2>Add an organisation</h2><button id="o-add-close" type="button" class="secondary mini-act">Close</button></div>
-  <div class="o-research-new"><h3>Research it online</h3><p class="muted small">Type a name, a website, or both. Temple searches the public web and proposes facts for each section, every one citing the page it came from. Nothing is approved until you approve it.</p>
-  <div class="k-meta-row"><label>Name<input id="o-r-name" maxlength="60" placeholder="e.g. Perth and Kinross Council"></label><label>Website<input id="o-r-web" maxlength="300" placeholder="e.g. https://www.pkc.gov.uk"></label></div>
-  <button id="o-r-go" type="button">Research online</button> <span id="o-r-status" class="muted small" role="status"></span></div>
-  <details><summary>Or add it without research</summary><div class="k-meta-row"><label>Name<input id="o-new-name" maxlength="60"></label><label>Type<select id="o-new-kind"></select></label><label>Description<input id="o-new-desc" maxlength="500"></label></div><label class="r-check"><input id="o-new-client" type="checkbox"> Client (keep its material apart from other clients)</label><button id="o-new-save" type="button">Add organisation</button></details></section>
+  <div class="o-add-grid"><form id="o-add-form" class="o-add-form" novalidate>
+   <label>Name<input id="o-n-name" maxlength="60" required autocomplete="off" placeholder="e.g. Perth and Kinross Council"></label>
+   <label>Website<input id="o-n-web" maxlength="300" inputmode="url" autocomplete="off" placeholder="e.g. https://www.pkc.gov.uk"></label>
+   <label>Other names (comma separated)<input id="o-n-aliases" maxlength="400" autocomplete="off" placeholder="e.g. PKC"></label>
+   <label>Type<select id="o-n-kind"></select></label>
+   <label class="r-check"><input id="o-n-client" type="checkbox"> Client: keep its material apart from other clients'</label>
+   <label class="r-check"><input id="o-n-watch" type="checkbox"> Watch for news and opportunities (weekly)</label>
+   <label>Guidance for the first research (optional)<textarea id="o-n-guide" rows="3" maxlength="1000" placeholder="e.g. Focus on the digital and data programmes in the Council Plan; leave out school-level news."></textarea></label>
+   <p class="muted small">Facts Temple finds are proposals, each citing the page it came from. Nothing is approved until it passes the checks.</p>
+   <div class="arc-actions"><button id="o-n-add" type="button" class="secondary">Add only</button><button id="o-n-research" type="button">Add and research now</button><span id="o-n-status" class="muted small" role="status"></span></div>
+  </form>
+  <aside class="o-add-ctx" aria-labelledby="o-n-ctx-h"><h3 id="o-n-ctx-h">What Temple will start from</h3><p class="muted small">Built by Alice from this form, exactly as the research run builds it. It updates as you type; nothing is saved.</p><div id="o-n-ctx" aria-live="polite"></div></aside></div></section>
  <section id="o-empty" class="o-empty"><h2>Organisations</h2><p class="muted">Summaries, not documents: each fact is a sentence or two with its source and a review-by date. Facts you add are approved; facts from models wait for your approval. Organisational information and roles only, not people.</p><p class="muted">Choose an organisation on the left, or add one.</p></section>
  <div id="o-detail" hidden>
   <section class="o-head"><div class="o-head-top"><div><h2 id="o-title"></h2><div id="o-meta" class="o-meta"></div></div>
-   <div class="o-head-act"><button id="o-research" type="button">Research online</button><button id="o-opp-scan" type="button" class="secondary">Scan for opportunities</button><button id="o-opp-view" type="button" class="secondary">Open tracker</button></div></div>
-   <p id="o-research-status" class="muted small" role="status"></p><p id="o-opp-status" class="muted small" role="status"></p></section>
+   <div class="o-head-act"><button id="o-research" type="button" title="Uses everything under Searches and guidance">Research online</button><button id="o-opp-scan" type="button" class="secondary" title="Uses everything under Searches and guidance">Scan for opportunities</button><button id="o-opp-view" type="button" class="secondary">Open tracker</button></div></div>
+   <p class="muted small o-uses">Research online and Scan for opportunities use everything under <a href="#o-sec-research" id="o-uses-link">Searches and guidance</a>: what Temple starts from, your guidance and the rules.</p><p id="o-research-status" class="muted small" role="status"></p><p id="o-opp-status" class="muted small" role="status"></p></section>
   <details class="o-sec" data-sec="details"><summary><span>Details</span><span id="o-sum-details" class="o-sum"></span></summary><div class="o-sec-body">
    <div class="k-meta-row"><label>Type<select id="o-kind"></select></label><label>Account manager<input id="o-mgr" list="o-mgr-list" maxlength="80" placeholder="e.g. Morven Hay"><datalist id="o-mgr-list"></datalist></label></div>
    <div class="k-meta-row"><label>Description<input id="o-desc" maxlength="500"></label><label>Website<input id="o-web" maxlength="300" placeholder="https://"></label></div>
@@ -192,14 +200,18 @@ SECTIONS = {
   <details class="o-sec" data-sec="opps"><summary><span>Opportunities</span><span id="o-sum-opps" class="o-sum"></span></summary><div class="o-sec-body">
    <div class="arc-actions o-watch"><label class="act-switch"><input id="o-watch" type="checkbox"> <strong>Watch for news and opportunities</strong></label><select id="o-opp-freq" aria-label="How often"><option value="weekly">weekly</option><option value="fortnightly">fortnightly</option><option value="monthly">monthly</option></select><span id="o-watch-note" class="muted small"></span></div><div id="o-opp-mini"></div></div></details>
   <details class="o-sec" data-sec="tagged" id="o-tagged-sec"><summary><span>Tagged material</span><span id="o-sum-tagged" class="o-sum"></span></summary><div class="o-sec-body"><p id="o-tagged-text" class="small"></p><button id="o-tagged-show" type="button" class="secondary">Show and change tags</button></div></details>
-  <details class="o-sec" data-sec="research"><summary><span>Searches and guidance</span><span id="o-sum-research" class="o-sum"></span></summary><div class="o-sec-body">
-   <div class="o-guide" id="o-guide"></div><h3 class="o-runs-h">Research runs and opportunity scans <span class="muted small">(kept 90 days)</span></h3><div id="o-research-box"></div></div></details>
+  <details class="o-sec" data-sec="research" id="o-sec-research"><summary><span>Searches and guidance</span><span id="o-sum-research" class="o-sum"></span></summary><div class="o-sec-body">
+   <ol class="o-steps">
+    <li class="o-step"><h3 class="o-step-h"><span class="o-stepn" aria-hidden="true">1</span>What Temple starts from <span class="o-ro">Built by Alice · read only</span></h3><div id="o-ctx" aria-live="polite"></div></li>
+    <li class="o-step"><h3 class="o-step-h"><span class="o-stepn" aria-hidden="true">2</span>Your guidance</h3><div class="o-guide" id="o-guide"></div></li>
+    <li class="o-step"><h3 class="o-step-h"><span class="o-stepn" aria-hidden="true">3</span>Runs <span class="muted small">(kept 90 days)</span></h3><div id="o-research-box"></div></li>
+   </ol></div></details>
   <details class="o-sec" data-sec="add"><summary><span>Add a fact</span></summary><div class="o-sec-body">
    <div class="k-meta-row"><label>Section<select id="f-section"></select></label><label>Security label<select id="f-label"></select></label></div><p id="f-hint" class="muted small"></p>
    <label>Fact: a summary in a sentence or two<textarea id="f-statement" rows="3" maxlength="400"></textarea></label><span id="f-count" class="muted small"></span>
    <div class="k-meta-row"><label>Source system<input id="f-system" maxlength="80" placeholder="e.g. Council Plan (public website), SharePoint, Dataverse"></label><label>Source reference<input id="f-ref" maxlength="500" placeholder="URL, record ID or document name"></label></div>
    <div class="k-meta-row"><label>As of<input id="f-asof" type="date"></label><label>Review by (blank = default)<input id="f-review" type="date"></label></div><button id="f-save" type="button">Add fact</button></div></details>
-  <details class="o-sec" data-sec="brief"><summary><span>Brief models receive</span></summary><div class="o-sec-body"><div class="arc-actions"><label>For <select id="b-provider"></select></label><label class="r-check"><input id="b-external" type="checkbox"> As an external app (Claude Desktop, Copilot)</label><button id="b-show" type="button" class="secondary">Show brief</button></div><pre id="b-text" class="k-text"></pre></div></details>
+  <details class="o-sec" data-sec="brief"><summary><span>Brief models receive</span></summary><div class="o-sec-body"><div class="arc-actions"><label>For <select id="b-provider"></select></label><label class="r-check"><input id="b-external" type="checkbox"> As an external app (Claude Desktop, Copilot)</label><button id="b-show" type="button" class="secondary" aria-expanded="false" aria-controls="b-text">Show brief</button></div><pre id="b-text" class="k-text"></pre></div></details>
  </div>
  <details class="o-sec o-erase" data-sec="erase"><summary><span>Remove facts from a source</span><span class="o-sum">Erasure requests and withdrawn sources</span></summary><div class="o-sec-body"><p class="muted small">Across all organisations: retires every approved fact and rejects every proposal whose source matches. History is kept as retired.</p>
  <div class="k-meta-row"><label>Source system<input id="r-system" maxlength="80"></label><label>Source reference (optional)<input id="r-ref" maxlength="500"></label><label>Reason<input id="r-reason" maxlength="500" placeholder="e.g. erasure request"></label></div><div class="arc-actions"><button id="r-check" type="button" class="secondary">Check what matches</button><button id="r-go" type="button" class="secondary">Remove</button><span id="r-result" class="small" role="status"></span></div></div></details>
@@ -699,6 +711,22 @@ table.as-tbl{width:100%;border-collapse:collapse;background:var(--panel);border:
 .o-srun>summary .k{font-weight:600}.o-srun .body{padding:0 12px 12px}.o-srun .nums{display:flex;flex-wrap:wrap;gap:6px}.o-srun .nums span{font-size:12px;border:1px solid #d3dee6;border-radius:999px;padding:1px 8px;background:#f4f7fa}
 .o-srun ul,.o-srun ol{margin:4px 0 8px;padding-left:20px;font-size:13px}.o-srun h4{margin:10px 0 2px;font-size:13px}.o-srun pre{white-space:pre-wrap;font-size:12px;background:#f6f8fa;border-radius:6px;padding:8px;max-height:220px;overflow:auto}
 .o-rej summary{cursor:pointer;font-size:13px}
+/* What Temple starts from (research_context): three steps, four cards, the exact instructions */
+.o-steps{list-style:none;margin:0;padding:0;display:grid;gap:14px}.o-step-h{display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:15px;margin:4px 0 8px}
+.o-stepn{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--teal);color:#fff;font-size:13px;font-weight:700}
+.o-ro{font-size:12px;font-weight:600;color:var(--muted);border:1px solid var(--line2);border-radius:999px;padding:1px 8px}
+.o-ctx-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.o-ctx-card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0}
+.o-ctx-card h4{margin:0 0 6px;font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}.o-ctx-card p{margin:4px 0;font-size:13.5px}.o-ctx-card dl{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;margin:0;font-size:13.5px}
+.o-ctx-card dt{color:var(--muted)}.o-ctx-card dd{margin:0;overflow-wrap:anywhere}.o-ctx-card ul{margin:4px 0;padding-left:18px;font-size:13px}.o-ctx-card li{margin:2px 0}.o-ctx-card .chips{display:flex;flex-wrap:wrap;gap:4px;margin:4px 0}
+.o-ctx-card .chips span{font-size:12px;border:1px solid var(--line2);border-radius:999px;padding:1px 8px;background:var(--bg)}.o-ctx-card a{font-size:13px}
+.o-rule-on,.o-rule-off{font-size:11px;font-weight:700;border-radius:4px;padding:0 5px;margin-right:4px}.o-rule-on{background:#e6f4ea;color:#1e5b31}.o-rule-off{background:#fbeaea;color:#7a1f1f}
+.o-exact{margin-top:10px}.o-exact summary{cursor:pointer;font-weight:600;font-size:13.5px}.o-exact .t-tabs{margin:8px 0 4px}
+.o-mono{font-family:ui-monospace,Consolas,"Cascadia Mono",monospace;font-size:12px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f8fa;color:#1d2a35;border:1px solid var(--line);border-radius:8px;padding:10px;max-height:420px;overflow:auto;margin:6px 0 0}
+.o-ctx-warn{border-left:4px solid #b7791f;background:#fdf3e1;color:#6b4406;border-radius:6px;padding:6px 10px;font-size:13.5px;margin:6px 0}
+.o-add-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:16px;align-items:start}.o-add-form{display:grid;gap:10px}.o-add-form label{display:grid;gap:4px}.o-add-form .r-check{display:flex;gap:8px;align-items:center}
+.o-add-ctx{background:#f4f9fb;border:1px solid #cfe2ea;border-radius:10px;padding:12px 14px;min-width:0}.o-add-ctx h3{margin:0 0 4px;font-size:15px}.o-add-ctx .o-ctx-cards{grid-template-columns:minmax(0,1fr)}
+@media(max-width:900px){.o-add-grid{grid-template-columns:minmax(0,1fr)}.o-ctx-cards{grid-template-columns:minmax(0,1fr)}}
+.o-uses{margin:6px 0 0}.o-srun .nums span.g{border-color:#9db7c6;background:#e3f1f6}
 /* Organisation research */
 .o-research-new{background:#f4f9fb;border:1px solid #cfe2ea;border-radius:10px;padding:12px 14px;margin:12px 0}.o-research-new h3{margin:0 0 4px;font-size:15px}
 .o-run{border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:12px 0;background:#fff}.o-run summary{cursor:pointer;font-weight:600}
@@ -1503,8 +1531,8 @@ if(PAGE==='organisations'){
   return lines.join('\n')};
  const domain=u=>(u||'').replace(/^https?:\/\/(www\.)?/i,'').split('/')[0];
  $('o-demo').checked=DEMO_ORG;$('o-demo').disabled=DEMO;if(DEMO)$('o-demo').parentElement.title='Demo mode is on for the whole Console';
- $('o-demo-bar').hidden=!DEMO_ORG;for(const id of ['o-research','o-opp-scan','o-r-go'])$(id).disabled=DEMO_ORG;
- if(DEMO_ORG){$('o-research').title=$('o-opp-scan').title=$('o-r-go').title='Off for demo data: no web searches or model calls.'}
+ $('o-demo-bar').hidden=!DEMO_ORG;for(const id of ['o-research','o-opp-scan','o-n-research'])$(id).disabled=DEMO_ORG;
+ if(DEMO_ORG){$('o-research').title=$('o-opp-scan').title=$('o-n-research').title='Off for demo data: no web searches or model calls.'}
  $('o-demo').onchange=()=>{store('alice-org-demo',$('o-demo').checked);const u=new URL(location.href);u.searchParams.delete('org');location.href=u.href};
  $('o-demo-reset').onclick=()=>run(async()=>{if(!confirm('Rebuild the demo data? Changes you made to the demo organisations are lost. Your real data is not touched.'))return;await api('/admin/api/demo-data/reset','POST');$('notice').textContent='Demo data rebuilt.';st.org='';await load()});
  function renderFilters(){const L=st.L.organisations;const n={all:L.length,clients:L.filter(o=>o.is_client).length,attention:L.filter(attention).length,opps:L.filter(o=>openOpps(o.name).length).length,watched:L.filter(o=>watched(o.name)).length};
@@ -1559,12 +1587,12 @@ if(PAGE==='organisations'){
  $('c-accept').onclick=()=>run(async()=>{const r=await api('/admin/api/clients/suggestions','POST',{items:[...st.picked].map(id=>({type:st.type,id})),action:'accept'});$('notice').textContent=r.done+' suggestions accepted.';st.picked.clear();await loadClients();await load()});
  $('c-run').onclick=()=>run(async()=>{const b=$('c-run');b.disabled=true;$('c-run-result').textContent='Matching names, then asking Temple about the rest…';try{const r=await api('/admin/api/clients/temple-run','POST',{});$('c-run-result').textContent=r.status==='no_clients'?'Add a client first.':r.status==='busy'?'Tagging is already running.':(r.status==='paused'?r.message+' ':'')+'Checked '+r.checked+': '+r.applied+' tagged ('+r.by_alias+' by name match), '+r.suggested+' suggested; the rest stay General.';await loadClients();await load()}catch(e){$('c-run-result').textContent=e.message}finally{b.disabled=false}});
  return {refresh:async()=>{await loadClients();await load()},show:async(name,type)=>{st.client=name;if(type){st.type=type;for(const x of ['memory','file'])$('c-tab-'+x).classList.toggle('on',x===type)}st.picked.clear();await loadClients();await load()}}}
- function showAdd(on){$('o-add').hidden=!on;if(on){$('o-add').scrollIntoView({block:'start',behavior:'smooth'});$('o-r-name').focus()}}
+ function showAdd(on){$('o-add').hidden=!on;if(on){$('o-add').scrollIntoView({block:'start',behavior:'smooth'});$('o-n-name').focus();newPreview()}}
  $('o-add-toggle').onclick=()=>showAdd($('o-add').hidden);$('o-add-close').onclick=()=>showAdd(false);
  async function loadList(){const [L,O]=await Promise.all([api('/admin/api/organisations'),api('/admin/api/opportunities').catch(()=>({opportunities:[]}))]);st.L=L;st.opps=O.opportunities||[];
   if(st.org&&!L.organisations.some(o=>o.name===st.org))st.org='';
   $('o-mgr-list').replaceChildren(...L.managers.map(m=>{const o=document.createElement('option');o.value=m;return o}));
-  opts($('o-new-kind'),L.kinds.map(k=>[k,k]),$('o-new-kind').value||'other');opts($('o-kind'),L.kinds.map(k=>[k,k]));
+  opts($('o-n-kind'),L.kinds.map(k=>[k,k]),$('o-n-kind').value||'other');opts($('o-kind'),L.kinds.map(k=>[k,k]));
   opts($('f-section'),L.sections.map(s=>[s.key,s.name]),$('f-section').value||'identity');opts($('f-label'),Object.entries(KL),$('f-label').value||'general');
   opts($('b-provider'),[['claude','Claude'],['openai','GPT-6 Luna'],['grok','Grok'],['copilot','Microsoft Copilot']],$('b-provider').value||'claude');hint();renderList()}
  function miniOpps(o){const rows=openOpps(o.name);const all=st.opps.filter(x=>x.org.toLowerCase()===o.name.toLowerCase());const box=$('o-opp-mini');box.replaceChildren();
@@ -1601,42 +1629,87 @@ $('o-desc').value=o.description||'';$('o-web').value=o.website||'';
     if(f.status==='approved'){const rb=document.createElement('input');rb.type='date';rb.value=f.review_by;rb.setAttribute('aria-label','Review by');const sv=el('button','Set review date','secondary mini-act');sv.type='button';sv.onclick=()=>run(async()=>{await api('/admin/api/organisations/facts/'+f.id,'PUT',{review_by:rb.value});$('notice').textContent='Review date saved.';await load()});
      const rt=el('button','Retire','secondary mini-act');rt.type='button';rt.onclick=()=>run(async()=>{const reason=prompt('Why is this fact no longer right?');if(!reason||!reason.trim())return;await api('/admin/api/organisations/facts/'+f.id+'/retire','POST',{reason});$('notice').textContent='Retired.';await load()});act.append(rb,sv,rt)}
     row.append(txt,act);fs.append(row)}box.append(fs)}
-  $('b-text').textContent='';const w=OT.data&&OT.data.watch.find(x=>x.org===st.org);const on=!!w&&w.frequency!=='off';$('o-watch').checked=on;$('o-opp-freq').value=on?w.frequency:'weekly';$('o-opp-freq').disabled=!on;$('o-watch-note').textContent=on?(w.last_run?'Last scanned '+when(w.last_run):'Not scanned yet')+(w.next_run?' · next '+when(w.next_run):''):'Not watched: Temple only scans it when you press Scan for opportunities.'}
+  run(()=>BRIEF.set(BRIEF.on));const w=OT.data&&OT.data.watch.find(x=>x.org===st.org);const on=!!w&&w.frequency!=='off';$('o-watch').checked=on;$('o-opp-freq').value=on?w.frequency:'weekly';$('o-opp-freq').disabled=!on;$('o-watch-note').textContent=on?(w.last_run?'Last scanned '+when(w.last_run):'Not scanned yet')+(w.next_run?' · next '+when(w.next_run):''):'Not watched: Temple only scans it when you press Scan for opportunities.'}
  function link(href,text){const a=el('a',text,'src-link');a.href=href;a.target='_blank';a.rel='noopener noreferrer';return a}
  // ---------- searches and guidance: why Temple found what it found ----------
  async function searches(){const org=st.org;const d=await api('/admin/api/organisations/searches?org='+encodeURIComponent(org));if(org!==st.org)return;
   const g=d.guidance;$('o-sum-research').textContent=(d.runs.length?d.runs.length+' run'+(d.runs.length===1?'':'s')+' · last '+new Date(d.runs[0].created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short'}):'no runs yet')+(g.version?' · guidance v'+g.version:'')+(g.proposals.length?' · Temple suggests guidance':'');
-  guidanceBox(g);runList(d.runs)}
- function guidanceBox(g){const box=$('o-guide');box.replaceChildren(el('h3','Research guidance for '+g.org),el('p','A short note added to Temple’s research and opportunity scans for this organisation, as your guidance: what to focus on, programmes or sources to look for, what to leave out. It cannot change Alice’s rules: every fact and opportunity still needs a page the search returned. Secrets, protective markings and other clients’ names are refused.','muted small'));
+  guidanceBox(g,d.runs.length);runList(d.runs);if(DEMO_ORG)$('o-ctx').replaceChildren(el('p','Off for demo data: research and scans are switched off.','muted small'));else await loadCtx()}
+ // ---------- what Temple starts from (research_context.py): built by the same function the run uses, so shown = sent ----------
+ function ctxCards(d,o){o=o||{};const wrap=el('div','');
+  if(d.error){wrap.append(el('p',d.error,'o-ctx-warn'));return wrap}
+  for(const p of d.problems||[])wrap.append(el('p',p,'o-ctx-warn'));
+  const cards=el('div','','o-ctx-cards');const card=t=>{const c=el('section','','o-ctx-card');c.append(el('h4',t));cards.append(c);return c};
+  const lnk=(t,f)=>{const a=el('a',t);a.href='#';a.onclick=e=>{e.preventDefault();f()};return a};
+  const w=d.who,k=d.known,R=d.rules,m=R.model;
+  const c1=card('Who to research');const dl=document.createElement('dl');
+  for(const [a,b] of [['Name',w.name||'(not given)'],['Other names',(w.aliases||[]).join(', ')||'none'],['Type',w.kind],['Website',w.website||'none'],['Client',w.client?'Yes':'No']])dl.append(el('dt',a),el('dd',b));
+  c1.append(dl,el('p','Research sends the name and website.','muted small'));if(o.onChange)c1.append(lnk('Change these on the profile',o.onChange));
+  const c2=card('What it already knows');
+  c2.append(el('p',w.exists?k.approved+' approved fact'+(k.approved===1?'':'s')+(k.overdue?' · '+k.overdue+' review overdue':' · none overdue'):'Nothing yet: a new organisation.'),el('p',k.research,'small'));
+  if(d.scan)c2.append(el('p',k.scan,'small'));
+  c2.append(el('p',k.never+((k.local||k.other_client)?' Left out now: '+[k.local?k.local+' Local only':'',k.other_client?k.other_client+' naming another client':''].filter(Boolean).join(', ')+'.':''),'small'));
+  const c3=card('What it looks for');const ch=el('div','','chips');for(const x of d.sections.research)ch.append(el('span',x.name));
+  c3.append(ch,el('p','The same sections for every type of organisation.'+(d.sections.not_researched.length?' Not researched: '+d.sections.not_researched.join(', ')+' (that is yours).':''),'muted small'));
+  const sc=d.sections.scan;c3.append(el('p','Scans: news from the last '+sc.news_days+' days and at most '+sc.max+' opportunities, each mapped to one of your '+sc.offerings.length+' offerings.','small'));
+  const c4=card('Rules it follows');const ul=el('ul','');
+  for(const r of R.rules){const li=el('li','');li.append(el('span',r.on?'On':'Off',r.on?'o-rule-on':'o-rule-off'),el('strong',r.name+': '),document.createTextNode(r.text+(r.on?'':' (switched off on the Rules page)')));ul.append(li)}
+  for(const x of R.code)ul.append(el('li',x));if(R.packs.length)ul.append(el('li','Rule packs applied: '+R.packs.join(', ')+'.'));
+  const rl=el('a','Rules page');rl.href=R.href;
+  c4.append(ul,el('p','Model: '+m.name+' ('+m.provider_name+'), Temple’s reviewer setting. Tools: '+m.tools+'. '+m.fallback,'small'),rl);
+  wrap.append(cards);
+  const ex=document.createElement('details');ex.className='o-exact';ex.open=!!o.open;ex.append(el('summary','Show the exact instructions Temple will be given'));
+  const tabs=el('div','','t-tabs');tabs.setAttribute('role','group');tabs.setAttribute('aria-label','Which run');const note=el('p','','muted small'),pre=el('pre','','o-mono');pre.tabIndex=0;pre.setAttribute('aria-label','Exact instructions');
+  const kinds=[['research','Research online']].concat(d.scan?[['scan','Scan for opportunities']]:[]);let cur=kinds.some(x=>x[0]===o.tab)?o.tab:'research';
+  const show=kd=>{cur=kd;if(o.onTab)o.onTab(kd);const x=d[kd];for(const b of tabs.children){const on=b.dataset.k===kd;b.classList.toggle('on',on);b.setAttribute('aria-pressed',String(on))}
+   note.className=x.blocked?'o-ctx-warn':'muted small';note.textContent=(x.blocked?'Would not be sent as it stands: '+x.blocked+' ':'')+'For '+m.name+' ('+m.provider_name+'). '+(d.guidance.draft?'Includes the guidance you are typing (not saved yet). ':'')+'A run on another day carries that day’s date.';
+   pre.textContent='SYSTEM INSTRUCTIONS\n\n'+x.system+'\n\n\nMESSAGE\n\n'+x.message};
+  for(const [kd,l] of kinds){const b=el('button',l,'chip');b.type='button';b.dataset.k=kd;b.onclick=()=>show(kd);tabs.append(b)}
+  ex.append(tabs,note,pre);ex.addEventListener('toggle',()=>{if(o.onOpen)o.onOpen(ex.open)});show(cur);wrap.append(ex);
+  if(d.scan)c2.append(lnk('See the facts it is given',()=>{ex.open=true;show('scan');ex.scrollIntoView({block:'nearest',behavior:'smooth'})}));
+  return wrap}
+ const CTX={open:false,tab:'research',t:0,seq:0};
+ async function loadCtx(draft){const org=st.org,seq=++CTX.seq;const body={org};if(typeof draft==='string')body.guidance=draft;
+  let d;try{d=await api('/admin/api/organisations/context','POST',body)}catch(e){d={error:e.message}}if(org!==st.org||seq!==CTX.seq)return;
+  $('o-ctx').replaceChildren(ctxCards(d,{open:CTX.open,tab:CTX.tab,onOpen:v=>{CTX.open=v},onTab:v=>{CTX.tab=v},
+   onChange:()=>{const x=document.querySelector('.o-sec[data-sec="details"]');x.open=true;x.scrollIntoView({block:'start',behavior:'smooth'});$('o-web').focus()}}))}
+ function guidanceBox(g,nruns){const box=$('o-guide');box.replaceChildren(el('p','A short note added to Temple’s research and opportunity scans for this organisation, as your guidance: what to focus on, programmes or sources to look for, what to leave out. It cannot change Alice’s rules: every fact and opportunity still needs a page the search returned. Secrets, protective markings and other clients’ names are refused.','muted small'));
   const ta=document.createElement('textarea');ta.maxLength=g.max;ta.value=g.text;ta.setAttribute('aria-label','Research guidance');ta.placeholder='e.g. Focus on the digital and data programmes in the Council Plan 2024-29 and on Public Contracts Scotland notices; leave out school-level news.';
-  const cnt=el('span','','muted small');const upd=()=>{cnt.textContent=ta.value.length+' / '+g.max};ta.oninput=upd;upd();
+  const cnt=el('span','','muted small');const upd=()=>{cnt.textContent=ta.value.length+' / '+g.max};ta.oninput=()=>{upd();if(DEMO_ORG)return;clearTimeout(CTX.t);CTX.t=setTimeout(()=>run(()=>loadCtx(ta.value===g.text?undefined:ta.value)),600)};upd();
   const save=el('button','Save guidance','mini-act');save.type='button';save.onclick=()=>run(async()=>{const x=await api('/admin/api/organisations/guidance','PUT',{org:g.org,text:ta.value});$('notice').textContent=x.version?'Guidance saved as v'+x.version+'. The next research or scan uses it.':'Guidance cleared.';await searches()});
-  const row=el('div','','row');row.append(save,cnt,el('span',g.version?'Version '+g.version+(g.history[0]?' · '+(g.history[0].via==='temple'?'Temple’s suggestion approved by ':'saved by ')+g.history[0].created_by+', '+new Date(g.history[0].created_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):''):'No guidance yet','muted small'));
+  const h0=g.history[0];const row=el('div','','row');row.append(save,cnt,el('span',g.version&&h0?'Saved '+new Date(h0.created_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+' · used by the next run · v'+g.version+' '+(h0.via==='temple'?'(Temple’s suggestion, approved by ':'(by ')+h0.created_by+')':'No guidance yet','muted small'));
+  const ask=el('button','Ask Temple to suggest guidance','secondary mini-act');ask.type='button';ask.disabled=!nruns||DEMO_ORG;ask.title=nruns?'Temple reads the latest run and may suggest guidance; you approve it here before it is used.':'Available after the first run.';
+  ask.onclick=()=>{if(st.lastTalk)st.lastTalk.ask('What guidance would help next time?')};row.append(ask);
   box.append(ta,row);
   for(const p of g.proposals){const w=el('div','','o-gprop');w.append(el('strong','Temple suggests this guidance'),el('p',p.reason||'Suggested in a discussion about a run.','small'),el('pre',p.text));
    const r=el('div','','act-buttons');const ok=el('button','Approve: use this','mini-act'),no=el('button','Reject','secondary mini-act');ok.type=no.type='button';
    ok.onclick=()=>run(async()=>{const x=await api('/admin/api/organisations/guidance/'+p.id,'POST',{action:'approve'});$('notice').textContent='Approved as guidance v'+x.version+'.';await searches()});
    no.onclick=()=>run(async()=>{await api('/admin/api/organisations/guidance/'+p.id,'POST',{action:'reject'});await searches()});r.append(ok,no);w.append(r);box.append(w)}
   if(g.history.length>1){const h=document.createElement('details');h.append(el('summary','Earlier versions ('+(g.history.length-1)+')','small'));const ul=el('ul','');for(const v of g.history.slice(1))ul.append(el('li','v'+v.version+' · '+(v.via==='temple'?'Temple’s, approved by ':'')+v.created_by+' · '+new Date(v.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})+': '+(v.text||'(cleared)'),'small'));h.append(ul);box.append(h)}}
- function runList(list){const box=$('o-research-box');box.replaceChildren();if(!list.length){box.append(el('p','No research runs or scans yet. Use Research online or Scan for opportunities at the top.','muted small'));return}
+ function runList(list){const box=$('o-research-box');box.replaceChildren();st.lastTalk=null;if(!list.length){box.append(el('p','No research runs or scans yet. Use Research online or Scan for opportunities at the top.','muted small'));return}
   list.forEach((r,ix)=>{const d=document.createElement('details');d.className='o-srun';d.open=ix===0;const sm=el('summary','');
-   sm.append(el('span',r.kind_name,'k'),el('span',new Date(r.created_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),'muted small'));if(r.status!=='complete')sm.append(el('span','Failed','badge v-bad'));
-   const nums=el('span','','nums');const c=r.counts;for(const t of [c.queries+' search'+(c.queries===1?'':'es'),c.sources+' source'+(c.sources===1?'':'s')+' seen',c.found+' found',c.rejected+' rejected',r.guidance_version?'guidance v'+r.guidance_version:'no guidance'])nums.append(el('span',t));sm.append(nums);
+   sm.append(el('span',r.kind==='scan'?'Scan':'Research','k'),el('span',new Date(r.created_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),'muted small'));if(r.status!=='complete')sm.append(el('span','Failed','badge v-bad'));
+   const nums=el('span','','nums');const c=r.counts,rec0=r.record||{};const ns=(rec0.queries||[]).reduce((a,q)=>a+((q.searches||[]).length||0),0);const dup=(r.rejected_by_reason.find(x=>x.code==='duplicate')||{n:0}).n;const chk=rec0.checks||[];
+   const g=el('span',r.guidance_version?'guidance v'+r.guidance_version+' used':'no guidance');if(r.guidance_version)g.className='g';nums.append(g);
+   for(const t of [ns+' search'+(ns===1?'':'es'),c.sources+' page'+(c.sources===1?'':'s')+' read'].concat(r.kind==='scan'?[c.found+' found',chk.length+' re-checked'+(chk.some(x=>x.state!=='live')?' ('+chk.filter(x=>x.state==='changed').length+' changed, '+chk.filter(x=>x.state==='closed').length+' closed)':''),(c.rejected-dup)+' left out']:[c.found+' proposed',dup+' already known',(c.rejected-dup)+' left out']))nums.append(el('span',t));sm.append(nums);
    d.append(sm);const b=el('div','','body');
    b.append(el('p',r.status==='complete'?(r.summary||''):'Failed: '+r.error,'small'));const rec=r.record;
    for(const q of rec.queries||[]){b.append(el('h4','Searches'+(q.provider?' ('+q.provider+')':'')));if((q.searches||[]).length){const ul=el('ul','');for(const x of q.searches)ul.append(el('li',x));b.append(ul)}else b.append(el('p','The provider did not report its individual searches.','muted small'));
     if(q.sent){const qd=document.createElement('details');qd.append(el('summary','What Alice sent','small'),el('pre',q.sent));b.append(qd)}}
    const src=rec.sources||[];if(src.length){b.append(el('h4','Sources the search returned ('+src.length+')'));const ol=el('ol','');for(const x of src.slice().sort((a,b)=>b.cited-a.cited)){const li=el('li','');li.append(link(x.url,x.title||x.url),el('span',x.cited?' · cited':' · not cited','muted small'));ol.append(li)}b.append(ol)}
+   const ins=r.instructions;const id=document.createElement('details');id.append(el('summary','The exact instructions it ran with','small'));
+   id.append(ins?el('pre','SYSTEM INSTRUCTIONS\n\n'+(ins.system||'')+'\n\n\nMESSAGE\n\n'+(ins.message||'(not sent: the run stopped before the search)'),'o-mono'):el('p','Not kept for runs before 8 Oct 2026.','muted small'));b.append(id);
    const fd=rec.found||[];b.append(el('h4','Found ('+fd.length+')'));if(fd.length){const ul=el('ul','');for(const x of fd)ul.append(el('li',x.title+(x.offering?' · '+x.offering:'')+(x.section?' · '+x.section:'')));b.append(ul)}else b.append(el('p',r.kind==='scan'?'No opportunities found in this scan.':'No facts proposed in this run.','muted small'));
    const rj=rec.rejected||[];if(rj.length){const rd=document.createElement('details');rd.className='o-rej';rd.append(el('summary','Rejected ('+rj.length+'): '+r.rejected_by_reason.map(x=>x.label+' '+x.n).join(' · ')));const ul=el('ul','');for(const x of rj)ul.append(el('li',x.title+': '+x.reason));rd.append(ul);b.append(rd)}
    if((rec.checks||[]).length){b.append(el('h4','Open opportunities re-checked'));const ul=el('ul','');for(const x of rec.checks)ul.append(el('li',x.title+': '+x.state+(x.note?' ('+x.note+')':'')));b.append(ul)}
    const act=el('div','','act-buttons');const again=el('button','Run again with '+(r.guidance_version||$('o-guide').querySelector('textarea').value?'the current guidance':'no guidance'),'secondary mini-act');again.type='button';again.disabled=DEMO_ORG;
    again.onclick=()=>{if(r.kind==='scan')scanOrg(st.org,again,$('o-opp-status')).then(()=>run(searches));else research(st.org,$('o-web').value.trim(),$('o-research-status'),again)};act.append(again);b.append(act);
-   b.append(runTalk(r));d.append(b);box.append(d)})}
+   const talk=runTalk(r);if(!ix)st.lastTalk=talk;b.append(talk);d.append(b);box.append(d)})}
  function runTalk(r){const wrap=document.createElement('details');wrap.className='dec-talk';const sm=el('summary','');sm.append(el('span','Ask Temple about this run','dec-talk-t'),el('span',r.discussion?r.discussion+' message'+(r.discussion===1?'':'s')+' so far':'Why something was or was not found. Talking changes nothing.','small muted'));wrap.append(sm);
   const url='/admin/api/search-runs/'+r.id+'/discussion';const log=el('div','','dec-talk-log'),form=el('form','','dec-talk-form'),ta=document.createElement('textarea'),send=el('button','Send');ta.rows=2;ta.maxLength=4000;ta.placeholder='e.g. Why was nothing found about their cloud migration?';ta.setAttribute('aria-label','Message to Temple');send.type='submit';
   const starters=el('div','','dec-talk-starters');for(const q of [r.counts.found?'Why were these found?':'Why was nothing found?','Why were the rejected ones left out?','What guidance would help next time?']){const x=el('button',q,'chip');x.type='button';x.onclick=()=>{ta.value=q;form.requestSubmit()};starters.append(x)}
   form.append(ta,send);wrap.append(log,starters,form);let loaded=false;
+  wrap.ask=q=>{const d=wrap.closest('details.o-srun');if(d)d.open=true;wrap.open=true;ta.value=q;wrap.scrollIntoView({block:'nearest',behavior:'smooth'});form.requestSubmit()};
   const show=ms=>{log.replaceChildren(...ms.map(m=>{const bb=el('div','','dec-msg '+(m.role==='temple'?'from-t':'from-you'));bb.append(el('div',m.role==='temple'?'Temple':'You','who'),el('div',m.content,'txt'));if(m.note)bb.append(el('div',m.note+' (see Research guidance above).','small'));return bb}));starters.hidden=ms.length>0;log.scrollTop=log.scrollHeight};
   wrap.addEventListener('toggle',()=>{if(wrap.open&&!loaded){loaded=true;run(async()=>show((await api(url)).messages))}});
   form.onsubmit=e=>{e.preventDefault();const msg=ta.value.trim();if(!msg||send.disabled)return;send.disabled=true;ta.value='';const wait=el('div','Temple is thinking…','dec-msg from-t thinking');log.append(wait);
@@ -1646,18 +1719,42 @@ $('o-desc').value=o.description||'';$('o-web').value=o.website||'';
   try{const x=await api('/admin/api/organisations/research','POST',{name,website});st.org=x.org;st.status='proposed';statusEl.className='muted small';statusEl.textContent='';showAdd(false);
    $('notice').textContent=x.org+': '+x.summary+'. Check the sources, then approve the facts you want to keep.';await load();$('o-detail').scrollIntoView({block:'start',behavior:'smooth'})}
   catch(e){statusEl.className='muted small';statusEl.textContent=e.message}finally{btn.disabled=DEMO_ORG}}
- $('o-r-go').onclick=()=>{const n=$('o-r-name').value.trim(),w=$('o-r-web').value.trim();if(!n&&!w){$('o-r-status').textContent='Type a name or a website.';return}research(n,w,$('o-r-status'),$('o-r-go')).then(()=>{$('o-r-name').value=$('o-r-web').value=''})};
+ // ---------- Add an organisation: the form, with what Temple will start from beside it (the same preview, nothing saved) ----------
+ const NEW={t:0,seq:0};
+ function newForm(){return {name:$('o-n-name').value.trim(),website:$('o-n-web').value.trim(),aliases:$('o-n-aliases').value.split(',').map(x=>x.trim()).filter(Boolean),kind:$('o-n-kind').value||'other',client:$('o-n-client').checked}}
+ function newPreview(){clearTimeout(NEW.t);NEW.t=setTimeout(async()=>{const box=$('o-n-ctx'),f=newForm(),g=$('o-n-guide').value;
+  if(DEMO_ORG){box.replaceChildren(el('p','Off for demo data: research is switched off.','muted small'));return}
+  if(!f.name){box.replaceChildren(el('p','Type a name to see what Temple will start from.','muted small'));return}
+  const seq=++NEW.seq;let d;try{d=await api('/admin/api/organisations/context','POST',{...f,guidance:g.trim()?g:null})}catch(e){d={error:e.message}}
+  if(seq===NEW.seq)box.replaceChildren(ctxCards(d,{}))},400)}
+ for(const id of ['o-n-name','o-n-web','o-n-aliases','o-n-guide'])$(id).addEventListener('input',newPreview);for(const id of ['o-n-kind','o-n-client','o-n-watch'])$(id).addEventListener('change',newPreview);
+ $('o-n-client').addEventListener('change',()=>{if($('o-n-client').checked)$('o-n-watch').checked=true});
+ async function addOrg(research){const f=newForm(),stx=$('o-n-status');if(!f.name){stx.textContent='Enter a name.';$('o-n-name').focus();return}
+  const btns=[$('o-n-add'),$('o-n-research')];btns.forEach(b=>b.disabled=true);stx.className='muted small'+(research?' o-busy':'');stx.textContent=research?'Saved first, then Temple searches the web. This usually takes under a minute…':'Saving…';
+  try{const x=await api('/admin/api/organisations/add','POST',{...f,watch:$('o-n-watch').checked,guidance:$('o-n-guide').value,research});
+   st.org=x.name;if(x.research)st.status='proposed';for(const id of ['o-n-name','o-n-web','o-n-aliases','o-n-guide'])$(id).value='';$('o-n-client').checked=$('o-n-watch').checked=false;
+   stx.className='muted small';stx.textContent='';showAdd(false);if(TAG&&x.client)await TAG.refresh();
+   $('notice').textContent=x.research_error?'Added '+x.name+', but the research did not run: '+x.research_error:x.research?x.name+': '+x.research.summary+'. Check the sources, then approve the facts you want to keep.':'Added '+x.name+'.';
+   await loadOpps();await load();$('o-detail').scrollIntoView({block:'start',behavior:'smooth'})}
+  catch(e){stx.className='muted small';stx.textContent=e.message}finally{btns.forEach(b=>b.disabled=false);$('o-n-research').disabled=DEMO_ORG}}
+ $('o-n-add').onclick=()=>addOrg(false);$('o-n-research').onclick=()=>addOrg(true);$('o-add-form').onsubmit=e=>{e.preventDefault();addOrg(false)};
+ $('o-uses-link').onclick=e=>{e.preventDefault();const x=$('o-sec-research');x.open=true;x.scrollIntoView({block:'start',behavior:'smooth'})};
  $('o-research').onclick=()=>research(st.org,$('o-web').value.trim(),$('o-research-status'),$('o-research'));
  $('f-section').onchange=hint;$('f-statement').oninput=()=>{$('f-count').textContent=$('f-statement').value.length+' / 400'};
- $('o-new-save').onclick=()=>run(async()=>{const x=await api('/admin/api/organisations','POST',{name:$('o-new-name').value,kind:$('o-new-kind').value,description:$('o-new-desc').value,client:$('o-new-client').checked});st.org=x.name;$('o-new-name').value=$('o-new-desc').value='';$('o-new-client').checked=false;if(TAG&&x.client)await TAG.refresh();$('notice').textContent='Added '+x.name+'.';showAdd(false);await load()});
- $('o-client').onchange=()=>{$('o-aliases-wrap').hidden=!$('o-client').checked};
+  $('o-client').onchange=()=>{$('o-aliases-wrap').hidden=!$('o-client').checked};
  $('o-save').onclick=()=>run(async()=>{const o=st.L.organisations.find(x=>x.name===st.org);const cl=$('o-client').checked;
   if(o&&o.is_client&&!cl){const tg=o.tagged||{memories:0,files:0,chats:0};if(!confirm('Stop treating '+o.name+' as a client? Its '+tg.memories+' memories, '+tg.files+' files and '+tg.chats+' chats become General, visible in every chat including other clients\' chats.'))return}
   const x=await api('/admin/api/organisations','PUT',{name:st.org,kind:$('o-kind').value,description:$('o-desc').value,website:$('o-web').value.trim(),account_manager:$('o-mgr').value.trim(),client:cl,aliases:cl?$('o-aliases').value.split(','):null});
   $('notice').textContent=x.no_longer_client?st.org+' is no longer a client; '+x.no_longer_client.items+' items and '+x.no_longer_client.chats+' chats are now General.':(o&&!o.is_client&&cl?st.org+' is now a client. Run Temple tagging below to tag existing material.':'Saved.');await load();if(TAG)await TAG.refresh()});
  $('o-tagged-show').onclick=()=>run(async()=>{const t=$('o-tagging');t.open=true;await TAG.show(st.org);t.scrollIntoView({block:'start',behavior:'smooth'})});
  $('f-save').onclick=()=>run(async()=>{const x=await api('/admin/api/organisations/facts','POST',{org:st.org,section:$('f-section').value,statement:$('f-statement').value,source_system:$('f-system').value,source_ref:$('f-ref').value,as_of:$('f-asof').value,review_by:$('f-review').value,label:$('f-label').value});$('notice').textContent=x.duplicate?'That fact is already recorded.':'Fact added (review by '+x.review_by+').';$('f-statement').value='';$('f-count').textContent='';st.status='approved';await load()});
- $('b-show').onclick=()=>run(async()=>{const b=await api('/admin/api/organisations/brief?org='+encodeURIComponent(st.org)+'&provider='+$('b-provider').value+'&external='+$('b-external').checked);$('b-text').textContent=b.text?b.text+'\n\n('+b.facts+' facts · '+b.text.length+' characters · about '+Math.round(b.text.length/4)+' tokens)':(b.withheld||'Nothing would be sent: no approved facts this model may see.')});
+ // Brief models receive: Show brief / Hide brief, remembered per browser
+ function briefToggle(btn,out,fetchBrief,remember,start){let on=!!start;
+  const set=async v=>{on=!!v;btn.textContent=on?'Hide brief':'Show brief';btn.setAttribute('aria-expanded',String(on));remember(on);if(!on){out.textContent='';out.hidden=true;return}out.hidden=false;out.textContent=await fetchBrief()};
+  return {set,toggle:()=>set(!on),get on(){return on}}}
+ const BRIEF=briefToggle($('b-show'),$('b-text'),async()=>{const b=await api('/admin/api/organisations/brief?org='+encodeURIComponent(st.org)+'&provider='+$('b-provider').value+'&external='+$('b-external').checked);return b.text?b.text+'\n\n('+b.facts+' facts · '+b.text.length+' characters · about '+Math.round(b.text.length/4)+' tokens)':(b.withheld||'Nothing would be sent: no approved facts this model may see.')},
+  v=>{try{localStorage.setItem('alice-org-brief',v?'1':'0')}catch{}},(()=>{try{return localStorage.getItem('alice-org-brief')==='1'}catch{return false}})());
+ $('b-show').onclick=()=>run(BRIEF.toggle);for(const id of ['b-provider','b-external'])$(id).addEventListener('change',()=>{if(BRIEF.on)run(()=>BRIEF.set(true))});
  $('r-check').onclick=()=>run(async()=>{const x=await api('/admin/api/organisations/source?source_system='+encodeURIComponent($('r-system').value)+'&source_ref='+encodeURIComponent($('r-ref').value));$('r-result').textContent=x.facts.length+(x.facts.length===1?' fact matches':' facts match')+(x.facts.length?': '+x.facts.map(f=>f.org+' · '+f.statement.slice(0,60)).join(' | '):'')});
  $('r-go').onclick=()=>run(async()=>{if(!confirm('Retire every fact whose source matches? They stay in the history as retired.'))return;const x=await api('/admin/api/organisations/remove-source','POST',{source_system:$('r-system').value,source_ref:$('r-ref').value,reason:$('r-reason').value});$('r-result').textContent=x.removed+' removed.';await load()});
  // ---------- opportunity tracker (slide-out) ----------
