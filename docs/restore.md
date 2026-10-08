@@ -134,7 +134,8 @@ Use this when Alice's resource group or region is lost or unusable. The off-site
    ```
    The manifest also lists how many memories, knowledge items, proposals and files Alice held when the copy was taken.
 4. Build a new Alice in a new resource group (PowerShell). Work in a **fresh clone**, so this has its own `azure-state.json`
-   and your live setup state is never mixed with it:
+   and your live setup state is never mixed with it (the setup state lives in each resource group's own storage account, and a
+   step refuses to start if a local `azure-state.json` describes an Alice the resource group does not have):
    ```
    git clone https://github.com/stefanjoc-ux/Alice.git Alice-recovery
    cd Alice-recovery
