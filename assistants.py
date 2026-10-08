@@ -20,6 +20,10 @@ import substrate_store as store
 PROVIDERS = {'openai': ('gpt-6-luna', 'GPT-6 Luna'), 'claude': ('claude-haiku-4-5-20251001', 'Claude Haiku 4.5'),
              'claude_sonnet': ('claude-sonnet-5-5', 'Claude Sonnet 5.5'), 'claude_opus': ('claude-opus-5-5', 'Claude Opus 5.5'),
              'openai_astra': ('gpt-6-astra', 'GPT-6 Astra')}
+# The most each model may write in one answer (its real output limit), for work that returns long structured lists
+# (digital team members). Claude's figures are Anthropic's published limits; GPT-6's are taken as 128K.
+MAX_OUTPUT = {'openai': 128000, 'claude': 64000, 'claude_sonnet': 128000, 'claude_opus': 128000, 'openai_astra': 128000}
+STREAM_ABOVE = 16000                                       # longer Claude answers are streamed, so a long answer never hits an HTTP timeout
 PREMIUM = {'claude_opus', 'openai_astra'}                  # proposal writers only: too costly for answering questions
 QA_PROVIDERS = [k for k in PROVIDERS if k not in PREMIUM]
 KINDS = {'qa': 'Answers questions from knowledge', 'proposal': 'Writes proposals (writer and QA agents)'}
@@ -269,7 +273,11 @@ def _call(provider, system, messages, max_tokens=1500, timeout=60, workload='Ass
     if not os.getenv('ANTHROPIC_API_KEY'): raise ValueError('Missing ANTHROPIC_API_KEY.')
     from anthropic import Anthropic
     with Anthropic(timeout=timeout, max_retries=0) as client:
-        r = client.messages.create(model=model, system=system, max_tokens=max_tokens, messages=claude_messages(messages))
+        if max_tokens > STREAM_ABOVE:
+            with client.messages.stream(model=model, system=system, max_tokens=max_tokens, messages=claude_messages(messages)) as st:
+                r = st.get_final_message()
+        else:
+            r = client.messages.create(model=model, system=system, max_tokens=max_tokens, messages=claude_messages(messages))
     usage_meter.log(r, 'claude', model, workload)
     meta['truncated'] = getattr(r, 'stop_reason', None) == 'max_tokens'
     return '\n'.join(b.text for b in r.content if b.type == 'text')

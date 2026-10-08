@@ -112,14 +112,18 @@ def _parse(raw):
 #   lowest that searches); reasoning tokens count towards max_output_tokens, hence the larger limit.
 # - Anthropic Messages API: web_search_20250305 is the basic tool and the one Haiku 4.5 supports (the newer versions add
 #   dynamic filtering for 4.6 and later models). A long search can stop with pause_turn: send the turn back to continue.
-def _ask_openai(prompt, query, workload='Temple organisation research'):
+def _ask_openai(prompt, query, workload='Temple organisation research', model='', max_tokens=0, meta=None):
     from openai import OpenAI
     t0 = time.time()
-    with OpenAI(timeout=180, max_retries=0) as client:
-        r = client.responses.create(model=MODELS['openai'][1], instructions=prompt, input=query, tools=[{'type': 'web_search'}],
+    model = model or MODELS['openai'][1]
+    with OpenAI(timeout=600 if max_tokens > 16000 else 180, max_retries=0) as client:
+        r = client.responses.create(model=model, instructions=prompt, input=query, tools=[{'type': 'web_search'}],
                                     include=['web_search_call.action.sources'], reasoning={'effort': 'low'},
-                                    max_output_tokens=16000, store=False)
-    import usage_meter; usage_meter.log(r, 'openai', MODELS['openai'][1], workload, time.time() - t0)
+                                    max_output_tokens=max_tokens or 16000, store=False)
+    import usage_meter; usage_meter.log(r, 'openai', model, workload, time.time() - t0)
+    if isinstance(meta, dict):
+        why = getattr(getattr(r, 'incomplete_details', None), 'reason', None)
+        meta['truncated'] = getattr(r, 'status', '') == 'incomplete' and why in ('max_output_tokens', None)
     seen = {}
     for item in getattr(r, 'output', []) or []:
         action = getattr(item, 'action', None)
@@ -133,16 +137,22 @@ def _ask_openai(prompt, query, workload='Temple organisation research'):
     return r.output_text, seen
 
 
-def _ask_claude(prompt, query, workload='Temple organisation research'):
+def _ask_claude(prompt, query, workload='Temple organisation research', model='', max_tokens=0, meta=None):
     from anthropic import Anthropic
     t0 = time.time()
+    model, max_tokens = model or MODELS['claude'][1], max_tokens or 6000
     messages = [{'role': 'user', 'content': query}]
     tools = [{'type': 'web_search_20250305', 'name': 'web_search', 'max_uses': MAX_SEARCHES}]
     seen, texts = {}, []
-    with Anthropic(timeout=180, max_retries=0) as client:
+    with Anthropic(timeout=600 if max_tokens > 16000 else 180, max_retries=0) as client:
         for _ in range(4):                 # the first request plus up to three continuations after pause_turn
-            r = client.messages.create(model=MODELS['claude'][1], system=prompt, max_tokens=6000, tools=tools, messages=messages)
-            import usage_meter; usage_meter.log(r, 'claude', MODELS['claude'][1], workload, time.time() - t0)
+            if max_tokens > 16000:         # a long answer is streamed, so it never hits an HTTP timeout
+                with client.messages.stream(model=model, system=prompt, max_tokens=max_tokens, tools=tools, messages=messages) as st:
+                    r = st.get_final_message()
+            else:
+                r = client.messages.create(model=model, system=prompt, max_tokens=max_tokens, tools=tools, messages=messages)
+            import usage_meter; usage_meter.log(r, 'claude', model, workload, time.time() - t0)
+            if isinstance(meta, dict): meta['truncated'] = getattr(r, 'stop_reason', '') == 'max_tokens'
             for b in r.content:
                 if b.type == 'server_tool_use' and isinstance(getattr(b, 'input', None), dict): _ran(b.input.get('query'))
                 if b.type == 'web_search_tool_result':
@@ -158,8 +168,9 @@ def _ask_claude(prompt, query, workload='Temple organisation research'):
     return ''.join(texts), seen          # text blocks are split around citations: join them as written
 
 
-def _ask(prompt, query, provider, workload='Temple organisation research'):
-    return _ask_openai(prompt, query, workload) if provider == 'openai' else _ask_claude(prompt, query, workload)
+def _ask(prompt, query, provider, workload='Temple organisation research', **opts):
+    """opts (only when given): model (the model to search with, else MODELS), max_tokens, meta (gets 'truncated')."""
+    return _ask_openai(prompt, query, workload, **opts) if provider == 'openai' else _ask_claude(prompt, query, workload, **opts)
 
 
 def _failure(error, provider, query=''):
@@ -178,9 +189,10 @@ class SearchFailed(ValueError):
         super().__init__(first + more)
 
 
-def search(prompt, query_for, provider, workload='Temple organisation research'):
+def search(prompt, query_for, provider, workload='Temple organisation research', model='', max_tokens=0, meta=None):
     """Web search with the chosen provider; if it refuses the request (HTTP 4xx), try the other provider once, when its
     key is set. query_for(provider) builds and checks what is sent to that provider (its own provider rules).
+    model and max_tokens (optional) apply to the chosen provider only; meta (a dict) learns whether the answer was cut off.
     Returns (raw text, sources seen, provider used, failures before it). Raises SearchFailed."""
     failures = []
     _QUERIES.set([])
@@ -192,8 +204,12 @@ def search(prompt, query_for, provider, workload='Temple organisation research')
             except ValueError: break           # the other provider may not receive this: keep the first failure
         else:
             query = query_for(p)
+        opts = {}                               # passed only when given, so callers of the plain search are unchanged
+        if model and p == provider: opts['model'] = model
+        if max_tokens: opts['max_tokens'] = max_tokens
+        if meta is not None: opts['meta'] = meta
         try:
-            raw, seen = _ask(prompt, query, p, workload)
+            raw, seen = _ask(prompt, query, p, workload, **opts)
             if failures: LOG.warning('%s: web search answered by %s after %s', workload, PROVIDER_NAMES[p], failures[-1]['text'])
             return raw, seen, p, failures
         except Exception as e:

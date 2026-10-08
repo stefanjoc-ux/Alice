@@ -60,7 +60,7 @@ PRICE = {'rates': [{'ref': 'Q1', 'rate': 160, 'unit': 'm', 'source_url': 'https:
 PRICES = []
 
 
-def fake_ask(prompt, query, provider, workload=''):
+def fake_ask(prompt, query, provider, workload='', **kw):
     SEARCHED.append((prompt, query, provider))
     return json.dumps(PRICES.pop(0) if PRICES else PRICE), dict(RET)
 

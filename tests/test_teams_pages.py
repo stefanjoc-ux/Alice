@@ -38,7 +38,7 @@ def fake_call(provider, system, messages, max_tokens=1500, timeout=60, workload=
 assistants._call = fake_call
 RET = {'https://fictional-prices.example/foundations': 'Fictional price book'}
 PRICE_QUERIES = []
-org_research._ask = lambda prompt, query, provider, workload='': PRICE_QUERIES.append(query) or (json.dumps({'rates': [
+org_research._ask = lambda prompt, query, provider, workload='', **kw: PRICE_QUERIES.append(query) or (json.dumps({'rates': [
     {'ref': 'Q1', 'rate': 160, 'unit': 'm', 'source_url': 'https://fictional-prices.example/foundations', 'source_title': 'Foundations', 'source_date': '2026-05'}],
     'summary': '', 'note': 'Priced what I could.'}), dict(RET))
 demo = team_qs.demo_project()
