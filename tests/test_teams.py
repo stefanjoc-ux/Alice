@@ -67,12 +67,17 @@ def fake_ask(prompt, query, provider, workload='', **kw):
 
 org_research._ask = fake_ask
 
+# Market Trends QS searches the market too (task 3): its queries get a plain answer with no findings here
+_price_ask = org_research._ask
+org_research._ask = lambda prompt, query, provider, workload='', **kw: ((json.dumps({'findings': [], 'commentary': 'No market evidence.'}), {})
+                                                                         if 'MEASURED ITEMS' not in query else _price_ask(prompt, query, provider, workload, **kw))
+
 # ---------------- the seeded team, the page, the agents ----------------
 team = teams.get(TID)
 t('the Quantity surveying team is seeded with its four members', [m['role'] for m in team['members']] == ['Lead QS', 'Measurement Surveyor', 'Cost Surveyor', 'Market Trends QS'])
 jt = team['job_types'][0]
 t('job type Cost estimate: plan → measure → price → assemble → trends, each with what is handed on and what the receiver checks',
-  jt['name'] == 'Cost estimate' and [x['key'] for x in jt['stages']] == ['plan', 'measure', 'price', 'assemble', 'trends']
+  jt['name'] == 'Cost estimate' and [x['key'] for x in jt['stages']] == ['plan', 'measure', 'price', 'assemble', 'trends', 'adjust']
   and all(x['hands'] for x in jt['stages']) and all(x['checks'] for x in jt['stages'][1:]))
 t('autonomy starts as Approve every hand-off', team['autonomy'] == 'approve')
 import admin_ui
@@ -192,6 +197,9 @@ j = job(jid)
 trn = j['outputs']['trends']
 t('Market Trends with no history says so plainly (no model call)', trn['history'] == 0 and 'no past cost plans or team jobs' in trn['report'].lower()
   and not any('Market Trends' in w[0] for w in SEEN))
+step(j['pending'][0]['id'], 'approve')
+j = job(jid)
+t('no market adjustment suggested: the Lead QS has nothing to decide (no model call)', j['outputs']['adjust']['decision'] == 'none')
 t('the final output waits for sign-off, with a Word and an Excel document', j['pending'][0]['kind'] == 'signoff' and {d['kind'] for d in j['outputs']['documents']} == {'Word', 'Excel'})
 dl = {d['name'].rsplit('.', 1)[1]: cl.get('/documents/' + d['id'] + '/download') for d in j['outputs']['documents']}
 wtext = zipfile.ZipFile(io.BytesIO(dl['docx'].content)).read('word/document.xml').decode()
@@ -265,11 +273,11 @@ mid = next(m['id'] for m in r.json()['members'] if m['role'] == 'Services Engine
 st = [dict(x) for x in teams.get(TID)['job_types'][0]['stages']]
 st.insert(3, {'key': '', 'title': 'Check services', 'member': mid, 'task': 'Check the services allowance.', 'hands': 'Notes', 'checks': 'Priced items.'})
 r = cl.put(f'/admin/api/teams/{TID}/job-types/{JT}', json={'stages': st}, headers=H)
-t('stages and hand-offs can be edited on the page (versioned)', r.status_code == 200 and len(teams.get(TID)['job_types'][0]['stages']) == 6
+t('stages and hand-offs can be edited on the page (versioned)', r.status_code == 200 and len(teams.get(TID)['job_types'][0]['stages']) == 7
   and 'stages added' in teams.versions(TID)[0]['what'])
 t('a member can be removed once no stage uses it', cl.put(f'/admin/api/teams/{TID}/job-types/{JT}', json={'stages': [x for x in st if x['member'] != mid]}, headers=H).status_code == 200
   and cl.delete(f'/admin/api/teams/{TID}/members/{mid}', headers=H).status_code == 200)
-t('the built-in steps keep their checks after editing', [x['handler'] for x in teams.get(TID)['job_types'][0]['stages']] == ['qs_plan', 'qs_measure', 'qs_price', 'qs_assemble', 'qs_trends'])
+t('the built-in steps keep their checks after editing', [x['handler'] for x in teams.get(TID)['job_types'][0]['stages']] == ['qs_plan', 'qs_measure', 'qs_price', 'qs_assemble', 'qs_trends', 'qs_adjust'])
 
 # ---------------- Temple's suggestions need approval ----------------
 def coach_reply(provider, system, messages):

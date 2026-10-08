@@ -198,8 +198,21 @@ def _norm_member(m, old=None):
            'provider': m.get('provider', old.get('provider') or 'claude_sonnet'),
            'categories': [_clean(x, 40) for x in (m.get('categories', old.get('categories')) or []) if _clean(x, 40)][:20],
            'packs': [str(x) for x in (m.get('packs', old.get('packs')) or [])][:10]}
+    tools = m.get('tools', old.get('tools'))
+    if isinstance(tools, dict):               # switches set under Edit team; absent = the stage's own default (TOOL_DEFAULTS)
+        out['tools'] = {k: bool(v) for k, v in tools.items() if k in TOOLS}
     if out['provider'] not in assistants.PROVIDERS: raise ValueError('Choose one of the listed models.')
     return out
+
+
+TOOLS = {'web_search': 'Web search'}     # tools a member can be given or not, per member under Edit team
+TOOL_DEFAULTS = {}                       # stage handler -> {tool: on by default for a member that has not been set} (team_qs adds its own)
+
+
+def tool_on(member, tool, handler=''):
+    """Is this tool switched on for the member? Its own switch if set, else the default of the stage it works on."""
+    t = member.get('tools') or {}
+    return bool(t[tool]) if tool in t else bool(TOOL_DEFAULTS.get(handler, {}).get(tool, False))
 
 
 def _norm_stage(s, members):
@@ -233,7 +246,7 @@ def listing():
 def _save(tid, d, what, new=False):
     """Write a new version of a team (validated)."""
     _validate(d)
-    body = {k: d[k] for k in ('name', 'description', 'colour', 'icon', 'discipline', 'autonomy', 'settings', 'members', 'job_types') if k in d}
+    body = {k: d[k] for k in ('name', 'description', 'colour', 'icon', 'discipline', 'autonomy', 'settings', 'members', 'job_types', 'filing') if k in d}
     text = json.dumps(body, ensure_ascii=False)
     import rules_engine
     rules_engine.check_outbound(text, 'Digital team settings', packs=False)      # no secrets or markings in instructions
@@ -254,7 +267,7 @@ def _save(tid, d, what, new=False):
     return get(tid)
 
 
-def create(name, description='', autonomy='approve', tid=None, members=(), job_types=(), settings=None, colour='', icon='', discipline=''):
+def create(name, description='', autonomy='approve', tid=None, members=(), job_types=(), settings=None, colour='', icon='', discipline='', filing=None):
     tid = tid or re.sub(r'[^a-z0-9]+', '-', _clean(name, 60).lower()).strip('-') or _new_id('t-')
     with store.db() as c:
         if tid in RESERVED or c.execute('SELECT 1 FROM teams WHERE id=?', (tid,)).fetchone(): tid = tid + '-' + uuid.uuid4().hex[:4]
@@ -265,7 +278,38 @@ def create(name, description='', autonomy='approve', tid=None, members=(), job_t
             'stages': [_norm_stage(s, ids) for s in jt.get('stages') or []]} for jt in job_types]
     d = {'name': _clean(name, 80), 'description': _block(description, 600), 'autonomy': autonomy, 'settings': dict(settings or {}),
          'members': ms, 'job_types': jts, 'colour': colour or _default_colour(tid), 'icon': icon or 'people', 'discipline': _clean(discipline, 60)}
+    if filing: d['filing'] = _norm_filing(filing)
     return _save(tid, d, 'Team created', new=True)
+
+
+# ---- where finished work is filed (Stefan, 8 Oct 2026): a team setting, on/off plus a knowledge category he picks ----
+def _norm_filing(f):
+    return {'on': bool((f or {}).get('on')), 'category': store.clean_category((f or {}).get('category') or '')}
+
+
+def filing(t):
+    """The team's "File finished work in" setting, and whether that category exists (it is never created without Stefan)."""
+    f = _norm_filing(t.get('filing'))
+    names = {c['name'] for c in store.list_categories()['categories']}
+    return {**f, 'exists': bool(f['category']) and f['category'] in names}
+
+
+def set_filing(tid, on, category):
+    d = get(tid)
+    new = _norm_filing({'on': on, 'category': category})
+    if new['on'] and not new['category']: raise ValueError('Choose the category to file finished work in.')
+    if _norm_filing(d.get('filing')) == new: return d
+    d['filing'] = new
+    return _save(tid, d, 'File finished work: ' + (f'on, in “{new["category"]}”' if new['on'] else 'off'))
+
+
+def create_filing_category(tid):
+    """Create the category the team files into, when Stefan asks for it (the page offers it when it is missing)."""
+    f = filing(get(tid))
+    if not f['category']: raise ValueError('Choose a category first.')
+    if f['exists']: return f
+    store.create_category(f['category'], 'Finished work filed by digital teams, e.g. signed-off cost plans.')
+    return filing(get(tid))
 
 
 def _default_colour(tid):
@@ -308,14 +352,15 @@ def _member(d, mid):
 
 
 def _diff_member(old, new):
-    names = {'role': 'name', 'purpose': 'purpose', 'instructions': 'instructions', 'provider': 'model', 'categories': 'knowledge categories', 'packs': 'rule packs'}
+    names = {'role': 'name', 'purpose': 'purpose', 'instructions': 'instructions', 'provider': 'model', 'categories': 'knowledge categories', 'packs': 'rule packs',
+             'tools': 'tools'}
     return [names[k] for k in names if old.get(k) != new.get(k)]
 
 
 def update_member(tid, mid, fields, what=''):
     d = get(tid)
     m = _member(d, mid)
-    new = _norm_member({**m, **{k: v for k, v in fields.items() if k in ('role', 'purpose', 'instructions', 'provider', 'categories', 'packs')}}, m)
+    new = _norm_member({**m, **{k: v for k, v in fields.items() if k in ('role', 'purpose', 'instructions', 'provider', 'categories', 'packs', 'tools')}}, m)
     changed = _diff_member(m, new)
     if not changed: return d
     d['members'] = [new if x['id'] == mid else x for x in d['members']]
@@ -1422,14 +1467,16 @@ def _initials(role):
     return ''.join(w[0] for w in words[:2]).upper() or '?'
 
 
-def readiness(t):
-    """What a team still needs before it can run a job (then it is a draft), and the members with no knowledge ticked."""
+def readiness(t, cats=None):
+    """What a team still needs before it can run a job (then it is a draft), and the members with no knowledge ticked (a ticked category
+    that does not exist yet, such as a template's suggestion, gives no knowledge)."""
+    cats = cats if cats is not None else {c['name'] for c in store.list_categories()['categories']}
     missing = []
     if not t.get('members'): missing.append('Add members')
     if not t.get('job_types'): missing.append('Add a job type')
     ids = {m['id'] for m in t.get('members') or []}
     if any(s.get('member') not in ids for jt in t.get('job_types') or [] for s in jt.get('stages') or []): missing.append('Give every stage a member')
-    nk = [m['id'] for m in t.get('members') or [] if not m.get('categories')]
+    nk = [m['id'] for m in t.get('members') or [] if not set(m.get('categories') or []) & cats]
     hint = f'Tick knowledge categories for {len(nk)} member{"s" if len(nk) != 1 else ""}' if nk else ''
     return {'draft': bool(missing), 'missing': missing + ([hint] if missing and hint else []), 'no_knowledge': nk, 'hint': hint}
 
@@ -1617,9 +1664,10 @@ def board():
     items = _needs(defs, live, pend, sugg, paused)
     pend_by_job = {}
     for p in pend: pend_by_job.setdefault(p['job_id'], []).append(p)
+    cats = {c['name'] for c in store.list_categories()['categories']}
     out = []
     for d in defs:
-        r = readiness(d)
+        r = readiness(d, cats)
         lead = lead_id(d)
         mine = [i for i in items if i['team_id'] == d['id']]
         jl = [j for j in live if j['team_id'] == d['id']]
@@ -1747,13 +1795,29 @@ def page(tid):
     t = o['team']
     b = board()
     me = next((x for x in b['teams'] if x['id'] == tid), {})
-    tools = {m['id']: sorted({x for jt in t['job_types'] for s in jt['stages'] if s['member'] == m['id'] for x in HANDLER_TOOLS.get(s.get('handler') or '', [])})
-             for m in t['members']}
+    tools = {m['id']: member_tools(t, m) for m in t['members']}
     o.update({'identity': identity(t), 'lead': lead_id(t), 'readiness': readiness(t), 'member_states': _member_states(t, o['jobs']), 'member_tools': tools,
               'rules': rules_for(t), 'pricing': _pricing(t), 'chips': _chips(t), 'nav': _nav(b), 'pinned': tid in b['prefs']['pins'],
               'needs': [i for i in b['needs'] if i['team_id'] == tid], 'status': me.get('status', 'idle'), 'status_label': me.get('status_label', ''),
-              'colours': b['colours'], 'icons': b['icons'], 'disciplines': b['disciplines'], 'paused': b['paused'], 'templates': b['templates']})
+              'colours': b['colours'], 'icons': b['icons'], 'disciplines': b['disciplines'], 'paused': b['paused'], 'templates': b['templates'],
+              'filing': filing(t), 'tool_names': TOOLS, 'tool_switches': {m['id']: tool_switches(t, m) for m in t['members']}})
     return o
+
+
+def tool_switches(t, m):
+    """Each switchable tool for a member, on or off as it works now (its own switch, else its stages' default)."""
+    handlers = [s.get('handler') or '' for jt in t.get('job_types') or [] for s in jt['stages'] if s['member'] == m['id']] or ['']
+    return {k: any(tool_on(m, k, h) for h in handlers) for k in TOOLS}
+
+
+def member_tools(t, m):
+    """The tools a member uses beyond the model: its stages' own (HANDLER_TOOLS) and the tools switched on for it."""
+    handlers = [s.get('handler') or '' for jt in t.get('job_types') or [] for s in jt['stages'] if s['member'] == m['id']]
+    out = {x for h in handlers for x in HANDLER_TOOLS.get(h, [])}
+    for k, on in tool_switches(t, m).items():
+        if on: out.add(TOOLS[k])
+        else: out.discard(TOOLS[k])
+    return sorted(out)
 
 
 # ---- a job (Screen 3) ----
@@ -1924,7 +1988,7 @@ def from_template(key, name='', description='', colour='', icon='', discipline='
     t = copy.deepcopy(fn())
     return create(_clean(name, 80) or t['name'], _block(description, 600) or t.get('description', ''), t.get('autonomy', 'approve'), members=t['members'],
                   job_types=t['job_types'], settings=t.get('settings'), colour=colour or t.get('colour', ''), icon=icon or t.get('icon', ''),
-                  discipline=_clean(discipline, 60) or t.get('discipline', ''))
+                  discipline=_clean(discipline, 60) or t.get('discipline', ''), filing=t.get('filing'))
 
 
 # The quantity surveying team registers its stage handlers and seeds itself (team_qs imports this module; either order works).

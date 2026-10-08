@@ -131,6 +131,11 @@ def fake_ask(prompt, query, provider, workload='', **kw):
 assistants._call = fake_call
 org_research._ask = fake_ask
 
+# Market Trends QS searches the market too (task 3): its queries get a plain answer with no findings here
+_price_ask = org_research._ask
+org_research._ask = lambda prompt, query, provider, workload='', **kw: ((json.dumps({'findings': [], 'commentary': 'No market evidence.'}), {})
+                                                                         if 'MEASURED ITEMS' not in query else _price_ask(prompt, query, provider, workload, **kw))
+
 
 def start(title='FICTIONAL parts job'):
     body = {'job_type': 'cost-estimate', 'title': title, 'brief': 'A fictional single-storey hall for a community trust, to be estimated.',
@@ -245,6 +250,7 @@ CUT = []
 
 
 def cut_ask(prompt, query, provider, workload='', **kw):
+    if 'MEASURED ITEMS' not in query: return real_ask(prompt, query, provider, workload, **kw)
     refs = re.findall(r'^(Q\d+) \|', query.split('MEASURED ITEMS IN THIS PART')[1].split('RATE LIBRARY')[0], re.M)
     CUT.append(refs)
     if len(refs) > 3: kw['meta']['truncated'] = True; return '{"rates": [', {}

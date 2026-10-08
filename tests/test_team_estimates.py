@@ -80,6 +80,11 @@ def rates_standard(refs, query):
 
 assistants._call = fake_call
 org_research._ask = fake_ask
+
+# Market Trends QS searches the market too (task 3): its queries get a plain answer with no findings here
+_price_ask = org_research._ask
+org_research._ask = lambda prompt, query, provider, workload='', **kw: ((json.dumps({'findings': [], 'commentary': 'No market evidence.'}), {})
+                                                                         if 'MEASURED ITEMS' not in query else _price_ask(prompt, query, provider, workload, **kw))
 P['f'] = rates_standard
 
 
