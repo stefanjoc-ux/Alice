@@ -421,6 +421,11 @@ def estimates_allowed(outputs):
     return set(((outputs or {}).get('_estimates') or {}).get('refs') or [])
 
 
+def estimates_on_job(outputs):
+    """Team estimates allowed on this whole job (ticked on the Start a job screen)."""
+    return bool(((outputs or {}).get('_estimates') or {}).get('all'))
+
+
 def _source_lines(rs, allow_refs):
     lines = []
     for n, k in enumerate(rs['order'], 1):
@@ -500,7 +505,7 @@ def qs_price(job, stage, member, ctx):
     rs = rules_engine.rate_sources()                          # which sources, in which order: the Rules page decides
     if rr.get('order'):                                       # a different order for this re-run only; what is allowed stays the rule's
         rs = {**rs, 'order': list(rr['order']) + [k for k in rs['order'] if k not in rr['order']]}
-    allow_refs = estimates_allowed(outs) | (set(redo) if partial and rr.get('estimates') else set())
+    allow_refs = estimates_allowed(outs) | (set(redo) if partial and rr.get('estimates') else set()) | ({i['ref'] for i in items} if estimates_on_job(outs) else set())
     lib = library(job['team_id'])
     prov = member['provider'] if member.get('provider') in assistants.PROVIDERS else 'claude_sonnet'
     fam = assistants.family(prov)
@@ -1088,12 +1093,17 @@ def finish(job, team, jt):
     docs = [documents.keep('docx', documents._slug(title, '.docx'), word, md),
             documents.keep('xlsx', documents._slug(title, '.xlsx'), xlsx, md)]
     for d in docs: agents.note('wrote', 'document', d['id'], d['name'])
+    import pricing_templates                                  # the job's own pricing template, filled from the same items and figures
+    tf = pricing_templates.refill(job, team)
+    if tf.get('document'): docs.append({**tf['document'], 'kind': 'Excel', 'template': True})
     n = {k: sum(1 for i in items if i['rate_source'] == k) for k in SUMMARY_WORDS}
     summary = (f'Estimated total {_gbp(cp["total"])} excluding VAT ({_gbp(cp["construction"])} construction, preliminaries {cp["percentages"]["prelims_pct"]}%, '
                f'contingency {cp["percentages"]["contingency_pct"]}%, fees {cp["percentages"]["fees_pct"]}%). '
                + ', '.join(f'{n[k]} {SUMMARY_WORDS[k]}' for k in SUMMARY_WORDS if n[k] or k in ('web', 'unpriced')) + '. '
                + (estimated_line(cp) + ' ' if cp.get('estimated') else '') + f'{(price.get("location") or {}).get("note", "")} {DRAFT_MARK}.')
-    return {'documents': [{'id': d['id'], 'name': d['name'], 'kind': d['kind']} for d in docs], 'summary': summary, 'total': cp['total']}
+    return {'documents': [{'id': d['id'], 'name': d['name'], 'kind': d['kind'], **({'template': True} if d.get('template') else {})} for d in docs],
+            'summary': summary + (f' {tf["message"]}' if tf.get('message') else ''), 'total': cp['total'],
+            'template_fill': {k: v for k, v in tf.items() if k != 'document'}}
 
 
 def _rate_lines(items):
@@ -1256,7 +1266,7 @@ def job_view(d, team, jt):
                     'why': (f'{pricer} could not price these from the sources your rules allow ({", ".join(allowed) or "none"}). '
                             'Enter a rate for an item, leave it unpriced (excluded from the total and listed as an assumption), or ask the team to '
                             'estimate them: a team estimate is badged Estimate and listed as an assumption with its reasoning.'),
-                    'can_estimate': state in ('handoff', 'signoff'), 'estimate_rule_on': 'estimate' in rules_engine.rate_sources()['allowed'],
+                    'can_estimate': state in ('handoff', 'signoff'), 'estimate_rule_on': 'estimate' in rules_engine.rate_sources()['allowed'] or estimates_on_job(outs),
                     'rule_href': '/admin/rules?rule=rate_sources#rules',
                     'items': [{'ref': i['ref'], 'element': i['element'], 'description': i['description'], 'quantity': i['quantity'], 'unit': i['unit'],
                                'approximate': bool(i.get('approximate'))} for i in open_]}
@@ -1549,7 +1559,8 @@ def _talk_rules(team, job):
     allow = sorted(estimates_allowed((job or {}).get('outputs'))) if job else []
     return {'rate_sources': f'Rates may come from, in this order: {", ".join(rules_engine.RATE_SOURCES[k] for k in rs["allowed"]) or "nothing"}; '
                             f'not allowed: {", ".join(rules_engine.RATE_SOURCES[k] for k in rs["order"] if k not in rs["allowed"]) or "nothing"}.'
-                            + (f' On this job Stefan has allowed estimates for {", ".join(allow)}.' if allow else '')}
+                            + (f' On this job Stefan has allowed estimates for {", ".join(allow)}.' if allow else '')
+                            + (' Stefan has allowed team estimates for every item on this job.' if job and estimates_on_job(job.get('outputs')) else '')}
 
 
 teams.TALK_RULES['qs_price'] = _talk_rules

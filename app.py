@@ -3181,6 +3181,10 @@ def admin_clients_moved():      # clients are organisations marked Client now
 def admin_team_page(tid: str = FPath(pattern=r'^[A-Za-z0-9_-]{1,80}$')):
     return render_admin('teams',ADMIN_TOKEN)        # Digital teams: one team (the page reads which from its address)
 
+@app.get('/admin/teams/{tid}/start',response_class=HTMLResponse)
+def admin_team_start_page(tid: str = FPath(pattern=r'^[A-Za-z0-9_-]{1,80}$')):
+    return render_admin('teams',ADMIN_TOKEN)        # Digital teams: Start a job (the page reads which team from its address)
+
 @app.get('/admin/teams/{tid}/jobs/{jid}',response_class=HTMLResponse)
 def admin_team_job_page(tid: str = FPath(pattern=r'^[A-Za-z0-9_-]{1,80}$'), jid: str = FPath(pattern=r'^[0-9a-f]{32}$')):
     return render_admin('teams',ADMIN_TOKEN)        # Digital teams: one job

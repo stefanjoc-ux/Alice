@@ -167,6 +167,54 @@ class JobIn(BaseModel):
     client: str = Field('', max_length=80)
     uploads: list[UploadIn] = Field(default_factory=list, max_length=12)
     library: list[PickIn] = Field(default_factory=list, max_length=12)
+    template: str | None = Field(None, max_length=400)          # None = the client's or the team's default; '' = Alice's own layout
+    autonomy: str = Field('', pattern='^(|approve|signoff)$')
+    estimates: bool = False
+
+
+class InspectIn(BaseModel):
+    name: str = Field('', max_length=120)
+    data: str | None = Field(None, max_length=21_000_000)
+    path: str = Field('', max_length=400)
+
+
+class StartCheckIn(BaseModel):
+    form: dict
+
+
+class TemplateUploadIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    data: str = Field(min_length=1, max_length=21_000_000)
+
+
+class TeamPricingIn(BaseModel):
+    folder: str | None = Field(None, max_length=300)
+    default: str | None = Field(None, max_length=400)
+    outputs: str | None = Field(None, max_length=300)
+
+
+class MappingIn(BaseModel):
+    path: str = Field(min_length=1, max_length=400)
+    mapping: dict
+
+
+class DetectIn(BaseModel):
+    path: str = Field(min_length=1, max_length=400)
+    team: str = Field(pattern=ID)
+
+
+class TemplateClientIn(BaseModel):
+    path: str = Field(min_length=1, max_length=400)
+    client: str = Field('', max_length=80)
+
+
+class OrgTemplateIn(BaseModel):
+    org: str = Field(min_length=1, max_length=120)
+    path: str = Field('', max_length=400)
+
+
+class JobTemplateIn(BaseModel):
+    path: str = Field('', max_length=400)
 
 
 class RatesIn(BaseModel):
@@ -199,6 +247,46 @@ def teams_costs_rate(f: FxIn):
     """The exchange rate (pounds per dollar) used to show team costs in pounds; set by you, never fetched. None clears it."""
     import team_costs
     return _do(team_costs.set_fx, f.rate)
+
+
+@router.get('/admin/api/teams/pricing-templates/mapping')
+def pricing_mapping(path: str = Query(min_length=1, max_length=400), team: str = Query('', pattern=r'^([A-Za-z0-9_-]{1,80})?$'),
+                    redetect: bool = False):
+    """A template's mapping: as confirmed, or detected now (code first; the team lead's model only if code cannot tell)."""
+    import pricing_templates
+    return _do(pricing_templates.mapping, path, team, redetect, False)        # code only: a GET never calls a model
+
+
+@router.post('/admin/api/teams/pricing-templates/mapping/detect')
+def pricing_mapping_detect(d: DetectIn):
+    """When code cannot read a template's layout: ask the team lead's model (a POST: it spends)."""
+    import pricing_templates
+    return _do(pricing_templates.mapping, d.path, d.team, True, True)
+
+
+@router.put('/admin/api/teams/pricing-templates/mapping')
+def pricing_mapping_confirm(m: MappingIn):
+    import pricing_templates
+    return _do(pricing_templates.confirm, m.path, m.mapping)
+
+
+@router.put('/admin/api/teams/pricing-templates/client')
+def pricing_client(c: TemplateClientIn):
+    import pricing_templates
+    return _do(pricing_templates.set_client, c.path, c.client)
+
+
+@router.get('/admin/api/teams/pricing-templates/all')
+def pricing_all(org: str = Query('', max_length=120)):
+    import pricing_templates
+    cur = pricing_templates.org_default(org) if org else ''
+    return {'templates': pricing_templates.all_templates(), 'org_default': pricing_templates.describe(cur) if cur else None}
+
+
+@router.put('/admin/api/teams/pricing-templates/org-default')
+def pricing_org_default(o: OrgTemplateIn):
+    import pricing_templates
+    return _do(pricing_templates.set_org_default, o.org, o.path)
 
 
 @router.get('/admin/api/teams/demo-project')
@@ -269,6 +357,17 @@ def teams_job_version(jid: str = FPath(pattern=HEX), v: int = FPath(ge=1, le=100
     return _do(teams.version_view, jid, v)
 
 
+@router.put('/admin/api/teams/jobs/{jid}/template')
+def teams_job_template(t: JobTemplateIn, jid: str = FPath(pattern=HEX)):
+    return _do(teams.set_job_template, jid, t.path)
+
+
+@router.post('/admin/api/teams/jobs/{jid}/template/fill')
+def teams_job_template_fill(jid: str = FPath(pattern=HEX)):
+    _do(teams.refill_template, jid)
+    return _do(teams.job_page, jid)
+
+
 @router.post('/admin/api/teams/jobs/{jid}/resume')
 def teams_job_resume(jid: str = FPath(pattern=HEX)):
     return _do(teams.resume, jid)
@@ -320,6 +419,44 @@ async def teams_talk(q: TalkJobIn, tid: str = FPath(pattern=ID)):
     try: return await asyncio.to_thread(teams.talk, tid, q.job, q.message)
     except LookupError as e: raise HTTPException(404, str(e)) from None
     except ValueError as e: raise HTTPException(400, str(e)) from None
+
+
+@router.get('/admin/api/teams/{tid}/start')
+def teams_start_page(tid: str = FPath(pattern=ID)):
+    import team_start
+    return _do(team_start.page, tid)
+
+
+@router.post('/admin/api/teams/{tid}/inspect')
+def teams_inspect(f: InspectIn, tid: str = FPath(pattern=ID)):
+    import team_start
+    return _do(team_start.inspect, tid, f.name, f.data, f.path)
+
+
+@router.post('/admin/api/teams/{tid}/start-check')
+def teams_start_check(f: StartCheckIn, tid: str = FPath(pattern=ID)):
+    import team_start
+    return _do(team_start.check, tid, f.form)
+
+
+@router.get('/admin/api/teams/{tid}/pricing-templates')
+def teams_pricing(tid: str = FPath(pattern=ID)):
+    import pricing_templates
+    return _do(pricing_templates.team_page, tid)
+
+
+@router.put('/admin/api/teams/{tid}/pricing-templates')
+def teams_pricing_set(p: TeamPricingIn, tid: str = FPath(pattern=ID)):
+    import pricing_templates
+    return _do(pricing_templates.set_team, tid, p.folder, p.default, p.outputs)
+
+
+@router.post('/admin/api/teams/{tid}/pricing-templates')
+def teams_pricing_add(u: TemplateUploadIn, tid: str = FPath(pattern=ID)):
+    import pricing_templates
+    try: raw = base64.b64decode(u.data, validate=True)
+    except ValueError: raise HTTPException(400, 'The file could not be read.') from None
+    return _do(pricing_templates.add, tid, u.name, raw)
 
 
 @router.get('/admin/api/teams/{tid}/costs')
@@ -404,7 +541,7 @@ async def teams_member_talk(q: TalkIn, tid: str = FPath(pattern=ID), mid: str = 
 @router.post('/admin/api/teams/{tid}/jobs')
 def teams_job_start(j: JobIn, tid: str = FPath(pattern=ID)):
     return _do(teams.start_job, tid, j.job_type, j.title, j.brief, j.location, j.client,
-               [u.model_dump() for u in j.uploads], [p.model_dump() for p in j.library])
+               [u.model_dump() for u in j.uploads], [p.model_dump() for p in j.library], j.template, j.autonomy, j.estimates)
 
 
 @router.get('/admin/api/teams/{tid}/rates')
