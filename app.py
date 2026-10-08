@@ -32,7 +32,7 @@ import autoapprove
 import mileage
 import apps
 import speed
-from admin_ui import render_admin, PAGES, PERSONAL_PAGES
+from admin_ui import render_admin, PAGES, PERSONAL_PAGES, OWNER_PAGES
 from ui_theme import SHARED_CSS, SIGNIN_CSS, SIGNIN_JS, brand_html, FETCH_JS, FETCH_CSS
 import secrets
 import asyncio
@@ -994,6 +994,14 @@ async def signed_out_here(request: Request, call_next):
                 return RedirectResponse('/signout?everywhere=1', status_code=303)
             return JSONResponse({'detail': 'This device was signed out of Alice. Sign in again.'}, status_code=401)
     return await call_next(request)
+
+# ---- backups (backup.py): the Backup page, owner only ----
+import backup
+
+@app.get('/admin/api/backup')
+def admin_backup(request: Request, fresh: int = 0):
+    if not backup.owner_ok(request.headers): raise HTTPException(403, 'Backups are shown to the owner only.')
+    return backup.overview(fresh=bool(fresh))
 
 @app.get('/admin/api/signins')
 def admin_signins(request: Request):
@@ -3165,8 +3173,11 @@ def admin_team_job_page(tid: str = FPath(pattern=r'^[A-Za-z0-9_-]{1,80}$'), jid:
     return render_admin('teams',ADMIN_TOKEN)        # Digital teams: one job
 
 @app.get('/admin/{page}',response_class=HTMLResponse)
-def admin_section(page: str):
+def admin_section(page: str, request: Request):
     if page not in PAGES: raise HTTPException(404,'Admin page not found.')
+    if page in OWNER_PAGES and not backup.owner_ok(request.headers):
+        return HTMLResponse('<!doctype html><meta charset="utf-8"><title>Owner only · Alice</title><p style="font-family:sans-serif;margin:40px">'
+                            'This page is shown to the owner of Alice only. <a href="/admin">Back to Alice</a></p>', status_code=403)
     if (page == 'demo') != demo_instance.ON and (page == 'demo' or page in PERSONAL_PAGES):
         raise HTTPException(404,'Admin page not found.')        # the demo page only on the demo Alice; your own apps never there
     return render_admin(page,ADMIN_TOKEN)

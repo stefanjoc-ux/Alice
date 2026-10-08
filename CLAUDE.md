@@ -87,6 +87,8 @@ knowledge note "AI Substrate: status summary" through the `alice` connector, or 
   two Container Apps with one replica each: `alice-web` (`ALICE_ROLE=web`: uvicorn on 8000 plus the internal MCP server on
   127.0.0.1:8001 inside the container; Entra sign-in in front, Stefan only, `/healthz` excluded) and `alice-mcp`
   (`ALICE_ROLE=mcp`: `mcp_server.py --external` on 8002). `deploy/start.sh` starts the role; roles `migrate` and `test` too.
+- Backups (`azure-setup.ps1 -Step backup`, `infra/backup.bicep`, `backup.py`; see Backup and restore below): file share snapshots,
+  a CanNotDelete lock on the resource group, PostgreSQL backups kept 35 days, and the nightly off-site copy (job `alice-backup`).
 - PostgreSQL Flexible Server on a private network (point-in-time restore replaces "back up data\"); secrets in Key Vault,
   read by a managed identity; `Documents\` and `data\images` on an Azure Files share mounted at `/mnt/alice`.
 - Do not run `azure-setup.ps1 -Step apps` while a test-and-deploy run is in progress: it redeploys the image live at that moment and Bicep sets traffic to the latest revision, which can put the previous release back live (seen 4 Oct; fix with Go live > rollback).
@@ -188,6 +190,7 @@ A browser refresh is not enough: the old server process keeps running the old co
 | `provider_errors.py` | What a provider said when a model call failed: `describe`/`message` give the HTTP status and the provider's own message (trimmed to 220 characters; keys, `SECRET_PATTERNS` matches and any echo of what was sent removed), named by provider (e.g. "Anthropic rejected the request (HTTP 400): …"), and `log=` writes one line to web.log (logger `alice.provider`). Used by agent runs (`agents.tracked`), proposals and Argus, Temple's reviews and chat suggestions, the chat, assistants, Ask Temple, the client demo and web search. New code that calls a model reports failures through it, never as the exception's name alone |
 | `usage_meter.py` | Token/cost ledger, timings, savings |
 | `keyvault.py` | Optional API keys read from Key Vault at run time (`keyvault.get(ENV_NAME)`: environment first, then the vault via the app's managed identity, `ALICE_KEY_VAULT_URI`/`ALICE_IDENTITY_CLIENT_ID` from Bicep, IDENTITY_ENDPOINT/HEADER from Container Apps; 10-minute cache). Only names in `ALLOWED` (alice-twelvedata-key, alice-finnhub-key, alice-teams-webhook-url), never anything else in the vault. So Stefan adds a key in the Azure portal from any device, with no setup script or redeploy. New optional keys: add to `ALLOWED` and read through `keyvault.get` |
+| `backup.py` | **Backups** (Stefan, 8 Oct 2026; see Backup and restore). The nightly off-site copy, run as the Container Apps job `alice-backup` (`ALICE_ROLE=backup`, `python backup.py run`): `pg_dump` (custom format; the password only in PGPASSWORD, `pg_args`) and a tar.gz of the whole file share from a READ-ONLY mount (`/mnt/alice-ro`; `copy_files`, `_Exact` keeps the archive whole if a file changes mid-copy), both streamed in 8 MiB blocks (`OffsiteBlob`, Put Block / Put Block List with `If-None-Match: *`, never overwriting) to the off-site account only (refuses the live share's account, `ALICE_FILES_ACCOUNT`), with the managed identity; then a `-manifest.json` (sizes, sha256, `counts()` of memories, knowledge items, proposals and files, for checking a restore). Blobs `YYYY/MM/DD/<stamp>-database.dump|-files.tar.gz|-manifest.json`. Scheduled at 01:00 and 02:00 UTC; `due()` keeps the one at 02:00 UK time (`uk_offset` works out BST in code; `ALICE_BACKUP_FORCE=1` runs it whatever the time). Each run is a `backup_runs` row and an activity entry `backup_completed`/`backup_failed` with size and duration; a failure exits 1, shows on Home (`home_status`, also a warning after `STALE_HOURS` = 26 without a good copy) and is emailed to `ALICE_BACKUP_NOTIFY` (`notify.send`; `backup_failure_emailed`/`_not_emailed`). The Backup page (`/admin/backup`, Admin, `OWNER_PAGES`: `owner_ok` = the sign-in's object ID equals `ALICE_OWNER_OBJECT_ID`; on the PC, this computer only) shows each kind (`overview()`: off-site from `backup_runs`; file share snapshots from the vault's protected item and recovery points; the database's restore window and last full backup, both read from Resource Manager with Reader on those two resources only), retention, where, the next run and the lock. Settings come from Bicep as `ALICE_BACKUP_*`, `ALICE_PG_*`. Tests: `test_backup.py` (Azure and pg_dump are stand-ins; a real pg_dump when the run has a test PostgreSQL) |
 | `signins.py` | Sign-ins and devices (`/admin/signins`, Records and settings): Container Apps sign-in keeps each session in its browser's cookie, so Alice recognises a session by email + sign-in time (`iat` in X-MS-CLIENT-PRINCIPAL; trusted only with `ALICE_TRUST_EASYAUTH=1`) and the `signed_out_here` middleware in app.py turns away one signed out here (`signin_sessions.signed_out_at`) or any that signed in more than `SKEW` (300 s, Entra back-dates iat) before `signout_everywhere_at`. Notes device (`device_name` from the user agent) and address (first X-Forwarded-For) at most every 5 minutes; 30 days kept; never what was done. Sign out everywhere is refused if sign-in passes no iat. `/signout`, `/signed-out`, `/healthz` and static files are never turned away |
 | `speed.py` | The Speed page (`/admin/speed`, Records and settings): the `time_requests` middleware in app.py times every request (not static files or `/healthz`) and adds a `Server-Timing` header; `dbcompat.ON_QUERY`/`ON_CONNECT` and `store.ON_SQLITE_QUERY` count queries, database time and pool checkouts per request (context variable `speed.CURRENT`); each Console page reports its own load time from the browser (`/admin/api/speed/page`: until the page and its first API data are on screen). Kept in memory, written once a minute by a background thread to `speed_routes` (per day and route) and `speed_slow` (last 500 over 1 s); 30 days; routes and timings only, never query strings or content. Pages and JSON are gzip-compressed (`GZipMiddleware`, NDJSON streams excluded so answers still stream) |
 | `images.py`, `voice.py` | Generated images; ElevenLabs speech. The reading voice is kept in Alice (setting `voice_id`, `PUT /voice/default` from the chat's voice menu, page token), so it follows every device; without one, `ELEVENLABS_VOICE_ID`, else the voice named Bella (`app.VOICE_DEFAULT_NAME`) |
@@ -196,6 +199,29 @@ A browser refresh is not enough: the old server process keeps running the old co
 Models: GPT-6 Luna (`gpt-6-luna`, Responses API), GPT-6 Astra (`gpt-6-astra`, selection `openai_astra`; premium,
 reasoning effort low..max with no `none`, no image generation set up; manual only), Claude Haiku 4.5, Sonnet 5.5,
 Opus 5.5 (manual only; Auto never selects it), Grok 4.7 (xAI). Temple's reviewer is Luna or Haiku.
+
+## Backup and restore
+
+In Azure (Stefan, 8 Oct 2026), set up by `azure-setup.ps1 -Step backup` (run on its own; remembered in `azure-state.json`, so every
+later step that redeploys keeps backups exactly as set). `infra/backup.bicep` is a module of `main.bicep` (parameter `backup`):
+- **File share snapshots**: Recovery Services vault `alice-backup-vault`, policy `alice-files-daily` (01:00 UK, kept `filesBackupDays` = 30).
+  One file or folder can be restored from the portal or `az backup restore restore-azurefiles`.
+- **Database**: PostgreSQL's own backups, `pgBackupRetentionDays` = 35 (Azure's maximum), point-in-time restore. `pgGeoRedundantBackup`
+  is a parameter, off: Azure only allows it when a server is CREATED, so `-PgGeoBackup` refuses on the existing server (switching it on
+  means a new server; plan it with Stefan).
+- **Nightly off-site copy**: storage account `<prefix><suffix>offsite` in UK West (Standard LRS, Cool, `allowSharedKeyAccess: false`,
+  infrastructure encryption), container `alice-offsite` with time-based immutability (`offsiteKeepDays` = 35; unlocked unless
+  `-LockImmutability`, then never redeployed), blob and container soft delete (`offsiteSoftDeleteDays` = 35), and a lifecycle rule that
+  removes copies the day after their immutability ends. Alice's identity has Storage Blob Data Contributor there; the person running
+  the setup has Storage Blob Data Reader (for restores from Cloud Shell). The job mounts the share through a second, READ-ONLY
+  environment storage (`alice-files-ro`) and gets only the database secret, never the API keys.
+- **Resource group lock** `alice-do-not-delete` (CanNotDelete, `lockResourceGroup`, on). Lifting it is deliberate:
+  `az lock delete --name alice-do-not-delete --resource-group <rg>`, then `-Step backup -NoLock` so no later step puts it back. With it on,
+  nothing in the resource group can be deleted (revisions are deactivated, not deleted, so releases are unaffected); throwaway resources
+  (e.g. a restore drill) must live in a resource group of their own.
+- The pipeline moves `alice-backup` to each new image (`deploy/github/deploy.yml`; Stefan copies it into `.github`).
+- Never write backup data anywhere but the off-site account, never open the live share read-write from a backup or restore path, and
+  never delete or overwrite live data in a restore: restores go into NEW resources, then Alice is pointed at them.
 
 ## Information cards (the standard detail view)
 

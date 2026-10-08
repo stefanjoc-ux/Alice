@@ -81,7 +81,8 @@ jobs:
             az containerapp update -n "$APP" -g "$RG" --image "$IMAGE" --revision-suffix "r$TAG" --only-show-errors -o none
             echo "$APP: new revision $APP--r$TAG (no traffic); live stays $LIVE"
           done
-          for JOB in alice-migrate-check alice-migrate-apply; do
+          # alice-backup (the nightly off-site copy, from azure-setup -Step backup) runs the same image as the apps
+          for JOB in alice-migrate-check alice-migrate-apply alice-backup; do
             az containerapp job update -n "$JOB" -g "$RG" --image "$IMAGE" --only-show-errors -o none || true
           done
           echo "### Deployed (no traffic yet): alice:$TAG" >> "$GITHUB_STEP_SUMMARY"

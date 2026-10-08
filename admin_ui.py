@@ -23,6 +23,7 @@ PAGES = {
  'apps': ('Apps','Apps built on Alice that each do one job end to end. Each keeps its approvals on its own page; anything waiting for you also shows on Actions.'),
  'signins': ('Sign-ins and devices','Where Alice is signed in: each device and browser, the address it was used from, and when. Sign out one device, or every device at once (this one too). Your Microsoft sign-in for Outlook, Teams and the portal is not affected.'),
  'speed': ('Speed','Where Alice\'s time goes: how long pages take to load in your browser, how long each request takes on the server, and how much of that is the database. Only addresses and timings are kept, never what you asked or saw.'),
+ 'backup': ('Backups','How Alice is backed up: daily snapshots of the file share, the database to any moment in the last 35 days, and a nightly copy of both in another UK region that cannot be changed or deleted. When each last ran, how big it was, where it is kept and when it runs next. Shown to the owner only.'),
  'activity': ('Activity','Everything Alice and Temple did, and every decision you made: filter by type, date or words, and export for an audit trail.'),
 }
 
@@ -31,6 +32,10 @@ SECTIONS = {
 <div id="si-tiles" class="mi-tiles"></div><p class="small muted" id="si-note"></p>
 <div class="si-list" id="si-active"></div></section>
 <section><div class="mem-head"><h2>Recent sessions</h2><span class="small muted">Expired or signed out, last 30 days</span></div><div class="si-list" id="si-old"></div></section>''',
+'backup': r'''<section><div class="mem-head"><h2>Backups now</h2><button type="button" id="bk-refresh" class="secondary">Check again</button></div>
+<div id="bk-alert"></div><div id="bk-tiles" class="mi-tiles"></div><p class="small muted" id="bk-note"></p></section>
+<div id="bk-kinds" class="bk-grid"></div>
+<section><div class="mem-head"><h2>Recent off-site copies</h2><span class="small muted">The nightly copy, newest first</span></div><div class="table-wrap"><table id="bk-runs" class="mem-table"></table></div></section>''',
 'speed': r'''<section><div class="mem-head"><h2>Overview</h2><label class="small">Period <select id="sp-days"><option value="1">Today</option><option value="7" selected>Last 7 days</option><option value="30">Last 30 days</option></select></label></div>
 <div id="sp-tiles" class="mi-tiles"></div><p class="small muted" id="sp-note"></p></section>
 <section><div class="mem-head"><h2>Pages in your browser</h2><span class="small muted">Until the page and its data are on screen, average and slowest</span></div><div class="table-wrap"><table id="sp-pages" class="mem-table"></table></div></section>
@@ -586,6 +591,7 @@ a.av-tile:hover{border-color:var(--teal)}.av-tile b{font-size:28px;line-height:1
 .act-dec-cat input[type=email]{max-width:340px}.act-dec-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.act-dec-row select,.act-dec-row input{width:auto;min-width:220px}
 @media(max-width:700px){.act-dec-cat{grid-template-columns:1fr}}.act-switch{display:inline-flex;align-items:center;gap:6px;margin:0;white-space:nowrap}.act-switch input{width:auto;margin:0}
 .act-info{background:#f7fafc}.mi-top{display:flex;gap:14px;align-items:center;flex-wrap:wrap}.mi-top input,.mi-top select{margin:0;width:auto}.mi-file input{display:none}.mi-file .primary-btn{display:inline-block;background:#075e79;color:#fff;border-radius:8px;padding:9px 16px;font-weight:600;cursor:pointer}
+.bk-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin:0 0 18px}.bk-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;min-width:0}.bk-card h3{margin:0 0 4px;font-size:16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}.bk-card .bk-what{margin:0 0 10px;font-size:13px;color:#5d7385}.bk-card dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0;font-size:13px}.bk-card dt{color:#5d7385}.bk-card dd{margin:0;overflow-wrap:anywhere}.bk-err{margin:8px 0 0;font-size:13px;color:#7a1f1f}.bk-alert{border:1px solid #e0aaaa;background:#fbeaea;color:#7a1f1f;border-radius:10px;padding:10px 14px;margin:10px 0}.bk-alert.warn{border-color:#e2bf85;background:#fdf3e1;color:#6b4406}.hm-alert{display:block;border:1px solid #e0aaaa;background:#fbeaea;color:#7a1f1f;border-radius:10px;padding:10px 14px;margin:0 0 14px;text-decoration:none}.hm-alert.warn{border-color:#e2bf85;background:#fdf3e1;color:#6b4406}
 .mi-tiles{display:flex;gap:12px;flex-wrap:wrap;margin-top:14px}.mi-tile{background:#f4f7fa;border:1px solid #d3dee6;border-radius:10px;padding:10px 16px;min-width:120px}.mi-tile strong{display:block;font-size:20px;color:#102b40}.mi-tile span{font-size:12px;color:#5d7385}.mi-tile.mi-biz{background:#e6f0f8;border-color:#9cc0db}.mi-biz{color:#1d6fa5;font-weight:600}
 .mi-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 12px;margin:6px 0 10px;background:#f4f7fa;border:1px solid #d3dee6;border-radius:8px}.mi-form input,.mi-form select{margin:0;width:auto;flex:1 1 180px}.mi-form .mi-pc{flex:0 0 100px}.mi-form [hidden]{display:none!important}
 :root{--mi-bus:#1679a3;--mi-per:#eb6834;--mi-grid:#e3eaef}
@@ -1867,8 +1873,9 @@ if(PAGE==='home'){
   $('hm-hello').textContent=d.greeting+', '+d.name+'.';
   $('hm-sub').textContent=d.waiting.total?d.waiting.total+' thing'+(d.waiting.total===1?' needs':'s need')+' a decision from you. Everything else is running.':'Nothing is waiting for you. Here is what is happening in Alice.';
   const pw=d.assistants.find(a=>a.kind==='proposal');if(pw){$('hm-prop').href='/assistant/'+encodeURIComponent(pw.id);$('hm-prop').dataset.name=pw.name;$('hm-prop').dataset.kind='proposal';$('hm-prop').target='_blank'}
-  const r1=el('div','','hm-row hm-2');r1.append(waiting(d),today(d));const r2=el('div','','hm-row hm-3');r2.append(chats(d),props(d),helpers(d));const r3=el('div','','hm-row hm-2');r3.append(week(d),substrate(d));
-  $('hm').replaceChildren(r1,r2,r3)});
+  const r1=el('div','','hm-row hm-2');r1.append(waiting(d),today(d));
+  const bk=d.backup;const alerts=[];if(bk){const a=document.createElement('a');a.href=bk.link;a.className='hm-alert'+(bk.level==='warn'?' warn':'');a.setAttribute('role','alert');a.textContent=(bk.level==='bad'?'⚠ ':'⚑ ')+bk.text+' Open Backups →';alerts.push(a)}const r2=el('div','','hm-row hm-3');r2.append(chats(d),props(d),helpers(d));const r3=el('div','','hm-row hm-2');r3.append(week(d),substrate(d));
+  $('hm').replaceChildren(...alerts,r1,r2,r3)});
 }
 '''
 
@@ -1913,6 +1920,47 @@ if(PAGE==='signins'){
  $('si-all').onclick=()=>{if(!confirm('Sign out of Alice on every device, including this one? Each will have to sign in again. Your Microsoft sign-in elsewhere is not affected.'))return;
   run(async()=>{const r=await api('/admin/api/signout-everywhere','POST',{});location.href=r.next})};
  run(load);
+}
+if(PAGE==='backup'){
+ const at=iso=>{if(!iso)return '–';const d=new Date(iso);if(isNaN(d))return iso;const m=(Date.now()-d)/60000;const rel=m<0?(m>-90?'in '+Math.round(-m)+' min':'in '+Math.round(-m/60)+' h'):m<60?Math.round(m)+' min ago':m<1440?Math.round(m/60)+' h ago':Math.round(m/1440)+' days ago';
+  return d.toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+' ('+rel+')'};
+ const size=n=>{n=Number(n||0);if(!n)return '–';const u=['bytes','KB','MB','GB','TB'];let i=0;while(n>=1024&&i<4){n/=1024;i++}return (i?n.toFixed(1):n)+' '+u[i]};
+ const took=s=>{s=Math.round(s||0);return s>=60?Math.floor(s/60)+' min '+(s%60)+' s':s+' s'};
+ const badge=(ok,text)=>el('span',text,'badge '+(ok===true?'v-ok':ok===false?'v-bad':ok==='run'?'v-run':'v-warn'));
+ function card(title,what,state,rows,err){const c=el('section','','bk-card');const h=el('h3',title);if(state)h.append(state);c.append(h,el('p',what,'bk-what'));const dl=document.createElement('dl');
+  for(const [k,v] of rows){if(v==null||v==='')continue;dl.append(el('dt',k),el('dd',String(v)))}c.append(dl);if(err)c.append(el('p',err,'bk-err'));return c}
+ async function load(fresh){const d=await api('/admin/api/backup'+(fresh?'?fresh=1':''));const o=d.offsite,f=d.files,db=d.database;
+  $('bk-alert').replaceChildren();if(d.home){const a=el('div',d.home.text,'bk-alert'+(d.home.level==='warn'?' warn':''));a.setAttribute('role','alert');$('bk-alert').append(a)}
+  const tile=(v,l,cls)=>{const x=el('div','','mi-tile'+(cls?' '+cls:''));x.append(el('strong',v),el('span',l));return x};
+  const lo=o.last_ok;
+  $('bk-tiles').replaceChildren(tile(lo?at(lo.started_at).split(' (')[1].replace(')',''):'none yet','last off-site copy',lo?'mi-biz':''),
+   tile(f.last&&f.last.time?at(f.last.time).split(' (')[1].replace(')',''):'–','last file share snapshot'),
+   tile(db.earliest_restore?Math.max(0,Math.round((Date.now()-new Date(db.earliest_restore))/86400000))+' days':'–','database restore window'),
+   tile(d.lock.on?'On':'Off','resource group lock'));
+  $('bk-note').textContent=!d.configured?'Backups are not set up yet. In Azure Cloud Shell run azure-setup.ps1 -Step backup (see the pull request). On the PC, back up the data folder by copying it while Alice is stopped.':
+   d.lock.on?'Nothing in Alice\'s resource group can be deleted while the lock ('+d.lock.name+') is on. Lift it deliberately: az lock delete --name '+d.lock.name+' --resource-group <your resource group>, then run -Step backup -NoLock so it is not put back.':'The resource group lock is off.';
+  const last=o.last;
+  const offState=!o.configured?badge(null,'not set up'):!last?badge(null,'no copy yet'):last.status==='ok'?badge(true,'OK'):last.status==='running'?badge('run','running'):badge(false,'failed');
+  const fState=f.error&&!f.last?badge(null,'unknown'):f.last&&/^Complet/i.test(f.last.status||'')?badge(true,f.last.status):f.last?badge(null,f.last.status||'unknown'):badge(null,'no snapshot yet');
+  const dState=db.error&&!db.earliest_restore?badge(null,'unknown'):badge(true,'continuous');
+  $('bk-kinds').replaceChildren(
+   card('Nightly off-site copy','The database (pg_dump) and the whole file share, compressed, in a separate storage account in another UK region.',offState,[
+    ['Last copy',last?at(last.started_at):'–'],['Result',last?(last.status==='ok'?'Complete':last.status==='running'?'Running now':'Failed'):''],
+    ['Size',last&&last.detail&&last.detail.database?'database '+size(last.detail.database.bytes)+', files '+size((last.detail.files||{}).bytes)+((last.detail.files||{}).count!=null?' ('+Number(last.detail.files.count).toLocaleString('en-GB')+' files)':''):''],
+    ['Took',last&&last.duration_s!=null?took(last.duration_s):''],['Last good copy',lo&&last&&lo.id!==last.id?at(lo.started_at):''],
+    ['Kept',o.configured?o.keep_days+' days, then removed':''],['Where',o.where],['Protection',o.configured?o.protection:''],['Schedule',o.configured?o.schedule:''],['Next run',o.next_run?at(o.next_run):'']],
+    last&&last.status==='failed'?'What went wrong: '+last.error:''),
+   card('File share snapshots','Azure Backup: a daily snapshot of the share (Documents, images, imports), so one file or folder can be put back.',fState,[
+    ['Last snapshot',f.last?at(f.last.time):'–'],['Size',f.last&&f.last.size_gb!=null?f.last.size_gb+' GB':''],['Restore points',f.points!=null?String(f.points):''],
+    ['Kept',f.keep_days+' days'],['Where',f.where],['Schedule',f.schedule],['Next run',f.next_run?at(f.next_run):'']],f.error),
+   card('Database backups','PostgreSQL\'s own backups: put the database back to any moment in the restore window.',dState,[
+    ['Restore from',db.earliest_restore?at(db.earliest_restore)+' to now':''],['Last full backup',db.last?at(db.last.time):''],['Kept',db.keep_days+' days'],
+    ['Copy in another region',db.geo?'Yes (UK West)':'No (Azure only allows it when the server is created)'],['Where',db.where],['Schedule',db.schedule]],db.error));
+  const t=$('bk-runs');t.replaceChildren();const th=document.createElement('thead'),hr=document.createElement('tr');for(const h of ['When','Result','Database','Files','Took','Note']){const c=el('th',h);c.scope='col';hr.append(c)}th.append(hr);t.append(th);
+  const b=document.createElement('tbody');if(!o.recent.length){const tr=document.createElement('tr'),td=el('td','No off-site copies yet.','muted');td.colSpan=6;tr.append(td);b.append(tr)}
+  for(const r of o.recent){const tr=document.createElement('tr');const x=r.detail||{};
+   for(const v of [at(r.started_at),r.status==='ok'?badge(true,'Complete'):r.status==='running'?badge('run','Running'):badge(false,'Failed'),x.database?size(x.database.bytes):'–',x.files?size(x.files.bytes):'–',r.duration_s!=null?took(r.duration_s):'–',r.error||((x.files||{}).skipped||[]).length?(r.error||x.files.skipped.length+' file(s) could not be read'):'']){const td=document.createElement('td');if(v instanceof Node)td.append(v);else td.textContent=v;tr.append(td)}b.append(tr)}t.append(b)}
+ $('bk-refresh').onclick=()=>run(()=>load(true));run(()=>load(false));
 }
 if(PAGE==='speed'){
  const fmt=ms=>ms>=1000?(ms/1000).toFixed(1)+' s':Math.round(ms)+' ms';
@@ -2774,7 +2822,8 @@ PERSONAL_PAGES = {'health', 'trading', 'mileage'}      # Stefan's own apps: neve
 NAV_GROUPS = [('', ['home', 'actions']),
               ('Workspace', ['temple', 'assistants', 'teams', 'apps', 'organisations']),
               ('Knowledge', ['memories', 'knowledge', 'documents', 'archive']),
-              ('Admin', ['agents', 'rules', 'rule-packs', 'activity', 'usage', 'speed', 'signins'])]
+              ('Admin', ['agents', 'rules', 'rule-packs', 'activity', 'usage', 'speed', 'signins', 'backup'])]
+OWNER_PAGES = {'backup'}         # shown to the owner only (backup.owner_ok)
 NAV_FOLDS = {'Admin'}            # groups that fold away (remembered per browser; open when you are on one of their pages)
 
 _I = lambda d: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>'
@@ -2797,6 +2846,7 @@ NAV_ICONS = {
  'usage': _I('<path d="M16 6.5A4.5 4.5 0 0 0 8.5 9.5V12"/><path d="M6.5 12H14"/><path d="M8.5 12c0 3-1 5-2.5 7h11"/>'),
  'speed': _I('<path d="M4.5 17a8.5 8.5 0 1 1 15 0"/><path d="M12 13l4-4.5"/><circle cx="12" cy="13" r="1.2"/>'),
  'demo': _I('<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M10 8l4 2-4 2z"/>'),
+ 'backup': _I('<ellipse cx="12" cy="6" rx="7" ry="2.8"/><path d="M5 6v6c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8V6"/><path d="M5 12v6c0 1.5 3.1 2.8 7 2.8"/><path d="M15.5 17.5l2 2 3.5-4"/>'),
  'signins': _I('<rect x="3" y="5" width="18" height="11" rx="2"/><path d="M2 19h20"/><rect x="9.5" y="9" width="5" height="4" rx="1"/><path d="M10.5 9V8a1.5 1.5 0 0 1 3 0v1"/>'),
 }
 NAV_ICON_DEFAULT = _I('<circle cx="12" cy="12" r="7"/>')

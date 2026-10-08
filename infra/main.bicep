@@ -2,6 +2,7 @@
 //   stage 'infra'   network, PostgreSQL (private), Key Vault, registry, file share, Container Apps environment, identity
 //   stage 'migrate' + the two migration jobs (dry run and apply), run once at cut-over, inside the network
 //   stage 'apps'    + alice-web (chat and Command centre, Entra sign-in, Stefan only) and alice-mcp (external MCP endpoint)
+//   backup = true   + backup.bicep (with stage apps): file share snapshots, the resource group lock, the nightly off-site copy
 // No secret values live here or in git: API keys are put into Key Vault by the script; the apps read them by managed identity.
 targetScope = 'resourceGroup'
 
@@ -51,12 +52,39 @@ param publicUrl string = ''
 @description('Claude connector: client ID of the "Alice connector sign-in" app registration (its secret and signing key are in Key Vault); empty = off.')
 param connectorClientId string = ''
 
+// ---------------- backups (azure-setup.ps1 -Step backup; every later step keeps these) ----------------
+@description('Backups on: Azure Backup for the file share, the resource group lock and the nightly off-site copy (infra/backup.bicep).')
+param backup bool = false
+@minValue(7)
+@maxValue(35)
+@description('Days of PostgreSQL backups kept (point-in-time restore to any moment in them). 35 is the most Azure allows.')
+param pgBackupRetentionDays int = 35
+@description('Geo-redundant database backups (a copy in UK West). Azure only allows choosing this when the server is created: see the PR and docs.')
+param pgGeoRedundantBackup bool = false
+@description('Days of daily file share snapshots kept in the Recovery Services vault.')
+param filesBackupDays int = 30
+@description('Days each nightly off-site copy is kept unchangeable (immutability), then removed.')
+param offsiteKeepDays int = 35
+@description('Days a deleted off-site copy stays recoverable (soft delete).')
+param offsiteSoftDeleteDays int = 35
+@description('Region of the separate off-site storage account.')
+param offsiteLocation string = 'ukwest'
+@description('True once the off-site immutability policy is locked (it is then never redeployed).')
+param offsiteImmutabilityLocked bool = false
+@description('A CanNotDelete lock on the whole resource group (on by default with backups).')
+param lockResourceGroup bool = true
+@description('Who is emailed when a nightly backup fails (needs -Step mail for sending).')
+param backupNotify string = ''
+
 var suffix = take(uniqueString(resourceGroup().id), 6)
 var acrName = '${prefix}${suffix}acr'
 var kvName = '${prefix}-kv-${suffix}'
 var storageName = '${prefix}${suffix}files'
 var withJobs = stage == 'migrate' || stage == 'apps'
 var withApps = stage == 'apps'
+var withBackup = backup && withApps
+var backupVaultName = '${prefix}-backup-vault'
+var offsiteName = '${prefix}${suffix}offsite'
 
 // ---------------- monitoring ----------------
 resource logs 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
@@ -112,7 +140,7 @@ resource pg 'Microsoft.DBforPostgreSQL/flexibleServers@2022-12-01' = {
     administratorLogin: pgAdminLogin
     administratorLoginPassword: pgAdminPassword
     storage: { storageSizeGB: 32 }
-    backup: { backupRetentionDays: 14, geoRedundantBackup: 'Disabled' }
+    backup: { backupRetentionDays: pgBackupRetentionDays, geoRedundantBackup: pgGeoRedundantBackup ? 'Enabled' : 'Disabled' }
     network: { delegatedSubnetResourceId: vnet.properties.subnets[1].id, privateDnsZoneArmResourceId: pgDns.id }
     highAvailability: { mode: 'Disabled' }
   }
@@ -253,6 +281,24 @@ var connectorEnv = empty(connectorClientId) ? [] : [
   { name: 'ALICE_EXT_CONNECTOR_SECRET', secretRef: 'connector-secret' }
   { name: 'ALICE_EXT_CONNECTOR_KEY', secretRef: 'connector-key' }
 ]
+// What backup.py needs to know (the Backup page, and the alice-backup job). Empty until -Step backup.
+var backupEnv = !backup ? [] : [
+  { name: 'ALICE_BACKUP_ACCOUNT', value: offsiteName }
+  { name: 'ALICE_BACKUP_CONTAINER', value: 'alice-offsite' }
+  { name: 'ALICE_BACKUP_REGION', value: offsiteLocation == 'ukwest' ? 'UK West' : offsiteLocation }
+  { name: 'ALICE_BACKUP_KEEP_DAYS', value: string(offsiteKeepDays) }
+  { name: 'ALICE_BACKUP_SOFT_DELETE_DAYS', value: string(offsiteSoftDeleteDays) }
+  { name: 'ALICE_BACKUP_IMMUTABILITY_LOCKED', value: offsiteImmutabilityLocked ? '1' : '0' }
+  { name: 'ALICE_BACKUP_NOTIFY', value: backupNotify }
+  { name: 'ALICE_FILES_ACCOUNT', value: storageName }
+  { name: 'ALICE_BACKUP_VAULT_ID', value: resourceId('Microsoft.RecoveryServices/vaults', backupVaultName) }
+  { name: 'ALICE_BACKUP_FILES_DAYS', value: string(filesBackupDays) }
+  { name: 'ALICE_BACKUP_FILES_TIME', value: '01:00' }
+  { name: 'ALICE_PG_SERVER_ID', value: pg.id }
+  { name: 'ALICE_PG_BACKUP_DAYS', value: string(pgBackupRetentionDays) }
+  { name: 'ALICE_PG_GEO_BACKUP', value: pgGeoRedundantBackup ? '1' : '0' }
+  { name: 'ALICE_BACKUP_LOCK', value: lockResourceGroup ? 'alice-do-not-delete' : '' }
+]
 var commonEnv = concat(
   [
     { name: 'ALICE_DATABASE_URL', secretRef: 'database-url' }
@@ -266,7 +312,10 @@ var commonEnv = concat(
     // notify.py: held decisions emailed to their owner (only once -Step mail has set the mailbox)
     { name: 'ALICE_MAIL_FROM', value: mailFrom }
     { name: 'ALICE_PUBLIC_URL', value: publicUrl }
+    // backup.py: the Backup page is for the owner only (their Entra object ID), and shows these backups
+    { name: 'ALICE_OWNER_OBJECT_ID', value: ownerObjectId }
   ],
+  backupEnv,
   map(keySecretNames, s => { name: s.env, secretRef: s.name })
 )
 var volumes = [{ name: 'alice', storageType: 'AzureFile', storageName: envFiles.name, mountOptions: 'uid=10001,gid=10001,dir_mode=0770,file_mode=0660' }]
@@ -419,6 +468,44 @@ resource mcp 'Microsoft.App/containerApps@2024-03-01' = if (withApps) {
   dependsOn: [identityAcrPull, identityKvRead, dbUrlSecret, pgDatabase]
 }
 
+// ---------------- backups (with stage apps, once -Step backup has switched them on) ----------------
+// The job gets only what it needs: the database address, its identity, where to write, who to email. Not the API keys.
+var backupJobEnv = concat([
+  { name: 'ALICE_DATABASE_URL', secretRef: 'database-url' }
+  { name: 'ALICE_OWNER_NAME', value: ownerName }
+  { name: 'ALICE_AUDIT_STDOUT', value: '1' }
+  { name: 'ALICE_IDENTITY_CLIENT_ID', value: identity.properties.clientId }
+  { name: 'ALICE_MAIL_FROM', value: mailFrom }
+  { name: 'ALICE_PUBLIC_URL', value: publicUrl }
+], backupEnv)
+
+module backups 'backup.bicep' = if (withBackup) {
+  name: 'alice-backup'
+  params: {
+    location: location
+    offsiteLocation: offsiteLocation
+    prefix: prefix
+    environmentName: env.name
+    identityName: identity.name
+    storageAccountName: storage.name
+    shareName: share.name
+    pgServerName: pg.name
+    vaultName: backupVaultName
+    offsiteName: offsiteName
+    image: image
+    registries: registries
+    secrets: [{ name: 'database-url', keyVaultUrl: '${kvUri}secrets/database-url', identity: identity.id }]
+    env: backupJobEnv
+    filesRetentionDays: filesBackupDays
+    offsiteKeepDays: offsiteKeepDays
+    offsiteSoftDeleteDays: offsiteSoftDeleteDays
+    immutabilityLocked: offsiteImmutabilityLocked
+    lockResourceGroup: lockResourceGroup
+    deployerObjectId: deployerObjectId
+  }
+  dependsOn: [identityAcrPull, identityKvRead, dbUrlSecret, envFiles]
+}
+
 output acrName string = acr.name
 output acrLoginServer string = acr.properties.loginServer
 output keyVaultName string = kv.name
@@ -428,3 +515,5 @@ output environmentDomain string = env.properties.defaultDomain
 output webUrl string = 'https://${webFqdn}'
 output mcpUrl string = 'https://${mcpFqdn}'
 output postgresServer string = pg.name
+output offsiteAccount string = withBackup ? offsiteName : ''
+output backupVault string = withBackup ? backupVaultName : ''
