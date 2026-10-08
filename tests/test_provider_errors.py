@@ -61,8 +61,11 @@ class Refuses:
     def __exit__(self, *a): return False
     def create(self, **k): raise CREDIT
 real = anthropic.Anthropic; anthropic.Anthropic = Refuses
-temple.save_settings(True, 'claude')
+# proposed with automatic review off: with it on, propose() starts a background review of the same record, and the direct
+# review below would race it and correctly answer "A review is already running" (seen on PostgreSQL, where queries are slower)
+temple.save_settings(False, 'claude')
 rid = s.propose('Prefers short meetings', 'Stefan prefers meetings of 25 minutes.', 'Stefan said')['id']
+temple.save_settings(True, 'claude')
 try: out = temple.review_record(rid)
 except Exception as x: out = {'error': repr(x)}
 t('a failed Temple review records the provider message', out.get('status') == 'failed' and out['error'].startswith('Anthropic rejected the request (HTTP 400): Your credit balance')
