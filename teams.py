@@ -28,6 +28,7 @@ import uuid
 
 import agents
 import substrate_store as store
+import team_costs
 
 LOG = logging.getLogger('alice.teams')
 AUTONOMY = {'approve': 'Approve every hand-off', 'signoff': 'Run, I sign off at the end'}
@@ -58,7 +59,7 @@ ICONS = {
     'gear': ('Gear', '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1"/>'),
     'chat': ('Speech', '<path d="M4 5h16v11H9l-5 4z"/>'),
 }
-RESERVED = {'board', 'jobs', 'steps', 'suggestions', 'demo-project', 'library-files'}     # fixed paths under /admin/api/teams
+RESERVED = {'board', 'jobs', 'steps', 'suggestions', 'demo-project', 'library-files', 'costs'}     # fixed paths under /admin/api/teams
 DISCIPLINES = ['Quantity surveying', 'Bids and proposals', 'Finance', 'HR', 'Legal', 'Operations', 'Research', 'Technology']
 
 with store.db() as c:
@@ -98,6 +99,17 @@ with store.db() as c:
         role TEXT NOT NULL, member TEXT NOT NULL DEFAULT '', content TEXT NOT NULL, routed_to TEXT NOT NULL DEFAULT '',
         note TEXT NOT NULL DEFAULT '', cost_usd REAL NOT NULL DEFAULT 0, created_by TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL)''')
     c.execute('CREATE INDEX IF NOT EXISTS team_messages_job ON team_messages(team_id, job_id, created_at)')
+    # Job versions (Stefan, 8 Oct 2026): a re-price or re-measure makes a new version of the job (v1, v2…). team_jobs.version is the
+    # current one; team_job_versions keeps each version's what/who/note and, once superseded, its outputs as they were, so earlier
+    # versions stay readable. Each step records the version it belongs to.
+    c.execute('''CREATE TABLE IF NOT EXISTS team_job_versions (job_id TEXT NOT NULL, version INTEGER NOT NULL, kind TEXT NOT NULL DEFAULT 'first',
+        what TEXT NOT NULL DEFAULT '', asked_by TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '', started_at TEXT NOT NULL,
+        outputs TEXT NOT NULL DEFAULT '', signed_off_at TEXT, signed_off_by TEXT NOT NULL DEFAULT '', PRIMARY KEY (job_id, version))''')
+    for _t in ('team_jobs', 'team_steps'):
+        if 'version' not in {r['name'] for r in c.execute(f'PRAGMA table_info({_t})')}:
+            try: c.execute(f'ALTER TABLE {_t} ADD COLUMN version INTEGER NOT NULL DEFAULT 1')
+            except Exception as e:             # web and mcp start together: the other one may have just added it
+                if 'already exists' not in str(e) and 'duplicate column' not in str(e).lower(): raise
 
 
 class TeamError(ValueError):
@@ -570,9 +582,10 @@ def _add_step(jid, kind, stage='', member='', to_member='', status='', note='', 
     sid = uuid.uuid4().hex
     with store.db() as c:
         seq = (c.execute('SELECT coalesce(max(seq),0) FROM team_steps WHERE job_id=?', (jid,)).fetchone()[0] or 0) + 1
-        c.execute('INSERT INTO team_steps(id,job_id,seq,stage,kind,member,to_member,status,note,content,run_id,cost_usd,created_at) '
-                  'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)', (sid, jid, seq, stage, kind, member, to_member, status, _block(note, 2000),
-                                                       json.dumps(content or {}, ensure_ascii=False), run_id or '', float(cost or 0), store.now()))
+        ver = (c.execute('SELECT version FROM team_jobs WHERE id=?', (jid,)).fetchone() or [1])[0] or 1
+        c.execute('INSERT INTO team_steps(id,job_id,seq,stage,kind,member,to_member,status,note,content,run_id,cost_usd,created_at,version) '
+                  'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (sid, jid, seq, stage, kind, member, to_member, status, _block(note, 2000),
+                                                         json.dumps(content or {}, ensure_ascii=False), run_id or '', float(cost or 0), store.now(), ver))
     return sid
 
 
@@ -618,6 +631,9 @@ def _feedback(steps, stage_key):
             out.append({'from': 'Stefan', 'sent_back_because': [s['decision_note'] or 'No reason given.']})
         elif s['kind'] == 'question' and s['stage'] == stage_key and s['status'] == 'answered':
             out.append({'from': 'Stefan', 'question': s['content'].get('questions', []), 'answer': s['decision_note']})
+        elif s['kind'] in ('reprice', 'remeasure') and s['stage'] == stage_key and s['content'].get('note'):
+            out.append({'from': 'Stefan', 'asked_to_' + s['kind']: s['content'].get('refs') or s['content'].get('elements') or [],
+                        'version': s['content'].get('version'), 'note': s['content']['note']})
     return out
 
 
@@ -674,11 +690,13 @@ def _run(jid):
         members = {m['id']: m for m in team['members']}
         member = members.get(st['member'])
         if not member: raise TeamError(f'Stage “{st["title"]}” has no member in this team version.')
+        if st['key'] in ((job['outputs'].get('_rerun') or {}).get('carry') or {}):
+            _carry(jid, stages, i); continue
         _set(jid, holder=member['role'], error='')
         ctx = _context(job, team, jt, i, steps)
         box = agents.cost_box()
         try:
-            with box:
+            with box, team_costs.scope(job['team_id'], member['id'], member['role'], jid, job.get('version') or 1, agent_id='team-member'):
                 res = member_turn(job, st, member, ctx)
             cost = box.usd
         except agents.AgentBlocked as e:
@@ -733,9 +751,12 @@ def _run(jid):
         outputs = job['outputs']
         outputs[st['key']] = res.get('output')
         _set(jid, outputs=outputs)
-        if i + 1 >= len(stages):
+        carry = (outputs.get('_rerun') or {}).get('carry') or {}
+        n = i + 1
+        while n < len(stages) and stages[n]['key'] in carry: n += 1      # a stage kept from the last version is skipped: hand on past it
+        if n >= len(stages):
             _set(jid, stage=i + 1); continue
-        nxt = stages[i + 1]
+        nxt = stages[n]
         nm = members.get(nxt['member']) or {}
         pending = team['autonomy'] == 'approve'
         _add_step(jid, 'handoff', st['key'], member['id'], to_member=nxt['member'], status='pending' if pending else 'auto',
@@ -745,6 +766,19 @@ def _run(jid):
             _set(jid, status='waiting', holder='Stefan'); return
         _set(jid, stage=i + 1)
     _set(jid, status='blocked', error='The team took too many turns without finishing. Look at the steps, then Resume.')
+
+
+def _carry(jid, stages, i):
+    """A re-price or re-measure keeps a stage's work from the last version (e.g. the Market Trends report when it was not asked
+    for again): its output goes back in place, the job moves on, and the history says so. No model call."""
+    job = _row(jid)
+    outs = job['outputs']
+    rr = outs.get('_rerun') or {}
+    st = stages[i]
+    outs[st['key']] = rr['carry'].pop(st['key'])
+    _set(jid, outputs=outs, stage=i + 1)
+    _add_step(jid, 'note', st['key'], 'stefan', status='done',
+              note=f'“{st["title"]}” was not run again: its work from v{rr.get("from_version", job.get("version", 1) - 1)} is kept.')
 
 
 def _norm(q):
@@ -791,6 +825,7 @@ def _finish(job, team, jt):
     """The last stage is done: build the outputs (e.g. Word and Excel) and hold the job for Stefan's sign-off."""
     fn = FINISHERS.get(jt.get('finish') or '')
     outputs = job['outputs']
+    if outputs.pop('_rerun', None) is not None: _set(job['id'], outputs=outputs)      # the re-run is complete: this version is whole again
     if fn and not outputs.get('_finished'):
         try:
             outputs.update(fn(job, team, jt) or {})
@@ -1157,8 +1192,12 @@ def _complete(job, team, jt):
         try: kid = fn(job, team, jt) or ''
         except ValueError as e: LOG.warning('Digital team job %s: not saved to knowledge: %s', job['id'], e); kid = ''
     _set(job['id'], status='done', holder='', knowledge_id=kid, error='')
+    v = _row(job['id']).get('version') or 1
+    _ensure_version(job['id'])
     with store.db() as c:
-        store.audit(c, 'team_job_done', job['id'], 'human_review', f'{ref(job["id"])} {job["title"]} signed off' + (' and saved to Knowledge' if kid else ''))
+        c.execute('UPDATE team_job_versions SET signed_off_at=?, signed_off_by=? WHERE job_id=? AND version=?', (store.now(), _actor(), job['id'], v))
+        store.audit(c, 'team_job_done', job['id'], 'human_review', f'{ref(job["id"])} {job["title"]}' + (f' v{v}' if v > 1 else '') + ' signed off'
+                    + (' and saved to Knowledge' if kid else ''))
     return job_detail(job['id'])
 
 
@@ -1179,6 +1218,136 @@ def stop(jid):
         store.audit(c, 'team_job_stopped', jid, 'human_control', f'{ref(jid)} {job["title"]} stopped')
     _set(jid, status='stopped', holder='')
     return job_detail(jid)
+
+
+# ---------------- versions of a job, and copying one (Stefan, 8 Oct 2026) ----------------
+VERSION_KINDS = {'first': 'First run', 'reprice': 'Re-priced', 'remeasure': 'Re-measured'}
+
+
+def _signed_off(c, jid):
+    """{version: (when, who)} from the sign-offs Stefan approved."""
+    out = {}
+    for r in c.execute("SELECT version, decided_at, decided_by FROM team_steps WHERE job_id=? AND kind='signoff' AND status='approved' ORDER BY seq", (jid,)):
+        out[r[0] or 1] = (r[1], r[2])
+    return out
+
+
+def _ensure_version(jid):
+    """v1's row, for a job that has none yet (started before versions were kept, or never re-run)."""
+    j = _row(jid)
+    with store.db() as c:
+        if c.execute('SELECT 1 FROM team_job_versions WHERE job_id=? AND version=1', (jid,)).fetchone(): return
+        so = _signed_off(c, jid).get(1)
+        c.execute('INSERT INTO team_job_versions(job_id,version,kind,what,asked_by,started_at,signed_off_at,signed_off_by) VALUES (?,?,?,?,?,?,?,?) '
+                  'ON CONFLICT(job_id, version) DO NOTHING', (jid, 1, 'first', 'The team\'s first run', j['created_by'], j['created_at'],
+                                                             so[0] if so else None, so[1] if so else ''))
+
+
+def new_version(jid, kind, what, note=''):
+    """Start the job's next version (a re-price or re-measure): the outputs as they stand are kept with the version they belong to, so
+    it stays readable. Returns the new version number."""
+    _ensure_version(jid)
+    j = _row(jid)
+    cur = j.get('version') or 1
+    snap = {k: v for k, v in j['outputs'].items() if k not in ('_parts', '_rerun')}
+    with store.db() as c:
+        c.execute('UPDATE team_job_versions SET outputs=? WHERE job_id=? AND version=?', (json.dumps(snap, ensure_ascii=False), jid, cur))
+        c.execute('INSERT INTO team_job_versions(job_id,version,kind,what,asked_by,note,started_at) VALUES (?,?,?,?,?,?,?)',
+                  (jid, cur + 1, kind, _clean(what, 600), _actor(), _block(note, 1000), store.now()))
+        c.execute('UPDATE team_jobs SET version=? WHERE id=?', (cur + 1, jid))
+    return cur + 1
+
+
+def job_versions(jid):
+    """Every version of a job: what changed, who asked, the note, its cost, whether it was signed off; the current one marked."""
+    j = _row(jid)
+    cur = j.get('version') or 1
+    with store.db() as c:
+        rows = {r['version']: dict(r) for r in c.execute('SELECT job_id, version, kind, what, asked_by, note, started_at, signed_off_at, signed_off_by, '
+                                                          'outputs<>? AS kept FROM team_job_versions WHERE job_id=? ORDER BY version', ('', jid))}
+        so = _signed_off(c, jid)
+    if 1 not in rows:
+        rows[1] = {'version': 1, 'kind': 'first', 'what': 'The team\'s first run', 'asked_by': j['created_by'], 'note': '', 'started_at': j['created_at'],
+                   'signed_off_at': None, 'signed_off_by': '', 'kept': 0}
+    costs = team_costs.job(jid)
+    out = []
+    for v in sorted(rows):
+        r = rows[v]
+        when_, who = (r['signed_off_at'], r['signed_off_by']) if r.get('signed_off_at') else (so.get(v) or (None, ''))
+        out.append({'version': v, 'label': f'v{v}', 'kind': r['kind'], 'kind_label': VERSION_KINDS.get(r['kind'], r['kind']), 'what': r['what'],
+                    'asked_by': r['asked_by'], 'note': r['note'], 'started_at': r['started_at'], 'current': v == cur,
+                    'signed_off': bool(when_), 'signed_off_at': when_, 'signed_off_by': who or '',
+                    'readable': v == cur or bool(r.get('kept')), 'cost': costs['versions'].get(v) or team_costs.money(0, costs['fx'])})
+    return {'versions': out, 'current': cur, 'fx': costs['fx'], 'before_tracking': costs['before_tracking'], 'before_text': costs['before_text']}
+
+
+def version_view(jid, v):
+    """An earlier version, read-only: its cost plan (or work) as it stood, its documents and summary."""
+    j = _row(jid)
+    team, jt = _job_team(j)
+    v = int(v)
+    info = next((x for x in job_versions(jid)['versions'] if x['version'] == v), None)
+    if not info: raise LookupError('No such version of this job.')
+    d = job_detail(jid)
+    if not info['current']:
+        with store.db() as c:
+            r = c.execute('SELECT outputs FROM team_job_versions WHERE job_id=? AND version=?', (jid, v)).fetchone()
+        if not r or not r[0]: raise LookupError('This version\'s work was not kept.')
+        outs = json.loads(r[0])
+        d = {**d, 'outputs': outs, 'status': 'done', 'pending': []}
+    view = (JOB_VIEWS.get(jt.get('finish') or '') or (lambda *a: {}))(d, team, jt) or {}
+    latest = next(((s['key'], d['outputs'][s['key']]) for s in reversed(jt['stages']) if d['outputs'].get(s['key']) is not None), None)
+    return {'version': info, 'job': {'id': jid, 'ref': ref(jid), 'title': j['title']}, 'plan': view.get('plan'),
+            'text': None if view.get('plan') or not latest else {'stage': next(s['title'] for s in jt['stages'] if s['key'] == latest[0]),
+                                                                 'text': describe(latest[0], latest[1])[:20000]},
+            'summary': d['outputs'].get('summary') or '', 'documents': d['outputs'].get('documents') or []}
+
+
+def copy_job(jid, client='', title=''):
+    """Copy as a new job: the documents, the Lead's plan and the settings (job type, location, the team version it ran on) are kept;
+    the client is chosen again, and client separation decides (from the Rules page) whether this job's material may be used for it."""
+    import clients, organisations, proposals, rules_engine
+    j = _row(jid)
+    team, jt = _job_team(j)
+    org = ''
+    if _clean(client, 80):
+        try: org = organisations.canonical(client)
+        except ValueError: org = _clean(client, 80)
+    new_client = proposals._client_for(org) or org
+    new_c = proposals._client_for(org)
+    keep, rule_id = clients.item_filter(new_c, client_facing=facing(jt))
+    docs = _docs_in(jid)
+    plan = j['outputs'].get(jt['stages'][0]['key']) if jt['stages'] else None
+    named = set(clients.detect('\n'.join([j['title'], j['brief']] + [d['text'] for d in docs] + [json.dumps(plan, ensure_ascii=False) if plan else ''])))
+    old = proposals._client_for(j['client'])
+    if old: named.add(old)
+    refused = sorted(n for n in named if n != new_c and not keep(n))
+    if refused:
+        r = rules_engine.rule(rule_id) or {'name': rule_id}
+        rules_engine.log_block(rule_id, f'Digital team: copy of {ref(jid)}', f'Material for {", ".join(refused)} not used on a job for {new_c or "no client"}')
+        raise ValueError(f'{ref(jid)} holds material for {", ".join(refused)}, and the rule “{r["name"]}” does not allow it on a job for '
+                         f'{new_c or "no client"}. Choose {" or ".join(refused)} as the client, or start a new job with that client\'s own documents.')
+    title = _clean(title, 150) or _clean(f'{j["title"]} (copy)', 150)
+    rules_engine.check_outbound(title, 'Digital team job', packs=False)
+    first = jt['stages'][0] if jt['stages'] else None
+    keep_plan = bool(first and plan is not None)
+    outs = {first['key']: plan} if keep_plan else {}
+    outs['_copied_from'] = {'job': jid, 'ref': ref(jid), 'version': j.get('version') or 1}
+    nid = uuid.uuid4().hex
+    with store.db() as c:
+        c.execute('INSERT INTO team_jobs(id,team_id,job_type,team_version,title,brief,location,client,status,stage,holder,outputs,created_by,created_at,updated_at) '
+                  'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (nid, j['team_id'], j['job_type'], j['team_version'], title, j['brief'], j['location'], new_client,
+                                                             'running', 1 if keep_plan else 0, '', json.dumps(outs, ensure_ascii=False), _actor(), store.now(), store.now()))
+        for d in docs:
+            c.execute('INSERT INTO team_job_docs(id,job_id,name,kind,source,path,text,added_at) VALUES (?,?,?,?,?,?,?,?)',
+                      (uuid.uuid4().hex, nid, d['name'], d['kind'], d['source'], d['path'], d['text'], store.now()))
+        store.audit(c, 'team_job_copied', nid, 'human_review', f'{ref(nid)} {title}: copied from {ref(jid)} v{j.get("version") or 1}'
+                    f' · client {new_client or "none"} · {len(docs)} document(s)' + (' · plan kept' if keep_plan else ''))
+    _add_step(nid, 'note', first['key'] if first else '', 'stefan', status='done',
+              note=f'Copied from {ref(jid)} {j["title"]} (v{j.get("version") or 1}): {len(docs)} document{"s" if len(docs) != 1 else ""}'
+                   + (', the plan' if keep_plan else '') + f' and the settings kept; client {new_client or "none"}.')
+    kick(nid)
+    return job_detail(nid)
 
 
 # ---------------- reading ----------------
@@ -1203,7 +1372,7 @@ def job_detail(jid):
     stages = [{'key': s['key'], 'title': s['title'], 'role': (members.get(s['member']) or {}).get('role', ''), 'member': s['member']} for s in jt['stages']]
     pending = [s for s in steps if s['status'] == 'pending']
     return {**{k: j[k] for k in ('id', 'team_id', 'job_type', 'team_version', 'title', 'brief', 'location', 'client', 'status', 'stage', 'holder',
-                                 'ai_cost', 'error', 'knowledge_id', 'created_by', 'created_at', 'updated_at')},
+                                 'ai_cost', 'error', 'knowledge_id', 'created_by', 'created_at', 'updated_at', 'version')},
             'ref': ref(jid), 'job_type_name': jt['name'], 'team_name': team['name'], 'autonomy': team['autonomy'], 'stages': stages,
             'outputs': {k: v for k, v in j['outputs'].items() if not k.startswith('_')}, 'steps': steps, 'documents': docs,
             'pending': pending, 'busy': jid in _ACTIVE, 'progress': progress(j, jt['stages'], pending, members),
@@ -1695,12 +1864,14 @@ def board():
             'missing': r['missing'], 'job': job, 'running': len(jl), 'done': (cs.get('done') or {}).get('n', 0), 'last_activity': last,
             'search': ' '.join([d['name'], d.get('description', ''), d.get('discipline', '')] + [m['role'] for m in d.get('members') or []]
                                + [x['title'] for x in titles if x['team_id'] == d['id']][:30]).lower()})
+    costs = team_costs.board([t['id'] for t in out])
+    for t in out: t['cost'] = costs['teams'].get(t['id'])
     discs = sorted({t['discipline'] for t in out if t['discipline']} | set(DISCIPLINES))
     tmpl = []
     for k, fn in TEMPLATES.items():
         x = fn()
         tmpl.append({'key': k, **{f: x.get(f, '') for f in ('name', 'description', 'discipline', 'colour', 'icon')}, 'members': [m['role'] for m in x['members']]})
-    return {'teams': out, 'needs': items, 'paused': paused, 'prefs': prefs(),
+    return {'teams': out, 'needs': items, 'paused': paused, 'prefs': prefs(), 'costs': {k: costs[k] for k in ('total', 'fx', 'label', 'since')},
             'summary': {'teams': len(defs), 'members': sum(len(d.get('members') or []) for d in defs),
                         'running': sum(1 for j in live if j['status'] in ('running', 'waiting')), 'needs_you': len(items)},
             'colours': {k: {'hex': v[0], 'name': v[1]} for k, v in COLOURS.items()}, 'icons': {k: {'name': v[0], 'svg': v[1]} for k, v in ICONS.items()},
@@ -1715,6 +1886,12 @@ def _nav(b=None):
     p = b['prefs']
     return {'pins': [row(x) for x in p['pins'] if x in by], 'recent': [row(x) for x in p['recent'] if x in by and x not in p['pins']][:5],
             'icons': {k: v[1] for k, v in ICONS.items()}}
+
+
+def _rate_sources():
+    import rules_engine
+    rs = rules_engine.rate_sources()
+    return {'order': rs['order'], 'allowed': rs['allowed'], 'names': dict(rules_engine.RATE_SOURCES), 'href': '/admin/rules?rule=rate_sources#rules'}
 
 
 def rules_for(t):
@@ -1800,7 +1977,8 @@ def page(tid):
               'rules': rules_for(t), 'pricing': _pricing(t), 'chips': _chips(t), 'nav': _nav(b), 'pinned': tid in b['prefs']['pins'],
               'needs': [i for i in b['needs'] if i['team_id'] == tid], 'status': me.get('status', 'idle'), 'status_label': me.get('status_label', ''),
               'colours': b['colours'], 'icons': b['icons'], 'disciplines': b['disciplines'], 'paused': b['paused'], 'templates': b['templates'],
-              'filing': filing(t), 'tool_names': TOOLS, 'tool_switches': {m['id']: tool_switches(t, m) for m in t['members']}})
+              'filing': filing(t), 'tool_names': TOOLS, 'tool_switches': {m['id']: tool_switches(t, m) for m in t['members']},
+              'costs': team_costs.team(tid)})
     return o
 
 
@@ -1870,7 +2048,18 @@ def job_page(jid):
         latest = next(((s['key'], d['outputs'][s['key']]) for s in reversed(jt['stages']) if d['outputs'].get(s['key']) is not None), None)
         view['text'] = {'stage': stage_title.get(latest[0], ''), 'text': describe(latest[0], latest[1])[:20000]} if latest else None
     lead = members.get(lead_id(team)) or {}
+    raw = _row(jid)['outputs']
+    rr = raw.get('_rerun') or {}
+    handlers = {s.get('handler') for s in jt['stages']}
+    idle = d['status'] in ('waiting', 'blocked', 'done') and not d['busy']
+    figs = team_costs.staff(d['team_id'])
+    can = {'reprice': idle and 'qs_price' in handlers and bool((raw.get('price') or {}).get('items')),
+           'remeasure': idle and 'qs_measure' in handlers and bool((raw.get('measure') or {}).get('items')) and bool((raw.get('plan') or {}).get('elements')),
+           'copy': True}
     return {**d, 'identity': identity(now), 'team': {'id': now['id'], 'name': now['name'], 'href': team_url(now['id'])},
+            'costs': team_costs.job(jid), 'versions': job_versions(jid), 'can': can, 'elements': (raw.get('plan') or {}).get('elements') or [],
+            'rerun': {k: rr.get(k) for k in ('kind', 'version', 'from_version', 'refs', 'elements', 'by', 'note', 'order', 'estimates', 'trends')} if rr else None,
+            'copied_from': raw.get('_copied_from'), 'rate_sources': _rate_sources(), 'staff_on': bool(figs),
             'lead': {'id': lead.get('id', ''), 'role': lead.get('role', '')}, 'timeline': tl, 'messages': msgs, 'view': view,
             'members': [{'id': m['id'], 'role': m['role'], 'initials': _initials(m['role'])} for m in team['members']],
             'autonomy_label': AUTONOMY.get(team['autonomy'], ''), 'nav': _nav(), 'url': job_url(d['team_id'], jid),
@@ -1940,7 +2129,7 @@ def _talk(tid, jid, message):
     system = TALK_PROMPT.format(role=lead['role'], team=team['name'], purpose=lead.get('purpose') or '',
                                 routing='' if jid else 'There is no job open: do not route anything.\n')
     box = agents.cost_box()
-    with box:
+    with box, team_costs.scope(tid, lead['id'], lead['role'], jid or '', (j or {}).get('version') or (1 if jid else 0), kind='talk', agent_id='team-talk'):
         raw = call_model(lead, j or {}, system, payload, max_tokens=1500)
     data = parse_json(raw, lead['role'])
     reply = _block(data.get('reply'), 3000)

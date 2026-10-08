@@ -52,6 +52,37 @@ class EstimateIn(BaseModel):
     note: str = Field('', max_length=1000)
 
 
+class RepriceIn(BaseModel):
+    refs: list[str] = Field(default_factory=list, max_length=500)
+    estimates: bool = False
+    order: list[str] = Field(default_factory=list, max_length=6)
+    trends: bool = False
+    note: str = Field('', max_length=1000)
+
+
+class RemeasureIn(BaseModel):
+    elements: list[str] = Field(min_length=1, max_length=40)
+    estimates: bool = False
+    order: list[str] = Field(default_factory=list, max_length=6)
+    trends: bool = False
+    note: str = Field('', max_length=1000)
+
+
+class CopyIn(BaseModel):
+    client: str = Field('', max_length=80)
+    title: str = Field('', max_length=150)
+
+
+class FxIn(BaseModel):
+    rate: float | None = None
+
+
+class StaffIn(BaseModel):
+    on: bool
+    day_rate: float | None = None
+    days: float | None = None
+
+
 class RatesDecisionIn(BaseModel):
     entries: list[RateEntry] = Field(max_length=500)
     save_to_library: bool = True
@@ -163,6 +194,13 @@ def teams_board():
     return teams.board()
 
 
+@router.put('/admin/api/teams/costs/rate')
+def teams_costs_rate(f: FxIn):
+    """The exchange rate (pounds per dollar) used to show team costs in pounds; set by you, never fetched. None clears it."""
+    import team_costs
+    return _do(team_costs.set_fx, f.rate)
+
+
 @router.get('/admin/api/teams/demo-project')
 def teams_demo_project():
     return _do(team_qs.demo_project)
@@ -204,6 +242,31 @@ def teams_job_rates(d: RatesDecisionIn, jid: str = FPath(pattern=HEX)):
 @router.post('/admin/api/teams/jobs/{jid}/estimate')
 def teams_job_estimate(d: EstimateIn, jid: str = FPath(pattern=HEX)):
     return _do(team_qs.ask_estimates, jid, d.refs, d.note)
+
+
+@router.post('/admin/api/teams/jobs/{jid}/reprice')
+def teams_job_reprice(d: RepriceIn, jid: str = FPath(pattern=HEX)):
+    return _do(team_qs.reprice, jid, d.refs, d.estimates, d.order, d.trends, d.note)
+
+
+@router.post('/admin/api/teams/jobs/{jid}/remeasure')
+def teams_job_remeasure(d: RemeasureIn, jid: str = FPath(pattern=HEX)):
+    return _do(team_qs.remeasure, jid, d.elements, d.estimates, d.order, d.trends, d.note)
+
+
+@router.post('/admin/api/teams/jobs/{jid}/copy')
+def teams_job_copy(d: CopyIn, jid: str = FPath(pattern=HEX)):
+    return _do(teams.copy_job, jid, d.client, d.title)
+
+
+@router.get('/admin/api/teams/jobs/{jid}/versions')
+def teams_job_versions(jid: str = FPath(pattern=HEX)):
+    return _do(teams.job_versions, jid)
+
+
+@router.get('/admin/api/teams/jobs/{jid}/versions/{v}')
+def teams_job_version(jid: str = FPath(pattern=HEX), v: int = FPath(ge=1, le=10000)):
+    return _do(teams.version_view, jid, v)
 
 
 @router.post('/admin/api/teams/jobs/{jid}/resume')
@@ -257,6 +320,19 @@ async def teams_talk(q: TalkJobIn, tid: str = FPath(pattern=ID)):
     try: return await asyncio.to_thread(teams.talk, tid, q.job, q.message)
     except LookupError as e: raise HTTPException(404, str(e)) from None
     except ValueError as e: raise HTTPException(400, str(e)) from None
+
+
+@router.get('/admin/api/teams/{tid}/costs')
+def teams_costs(tid: str = FPath(pattern=ID)):
+    import team_costs
+    return _do(team_costs.team, tid)
+
+
+@router.put('/admin/api/teams/{tid}/staff/{mid}')
+def teams_staff(f: StaffIn, tid: str = FPath(pattern=ID), mid: str = FPath(pattern=ID)):
+    import team_costs
+    _do(team_costs.set_staff, tid, mid, f.on, f.day_rate, f.days)
+    return _do(team_costs.team, tid)
 
 
 @router.put('/admin/api/teams/{tid}/filing')

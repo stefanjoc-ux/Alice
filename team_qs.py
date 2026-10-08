@@ -307,6 +307,9 @@ def qs_measure(job, stage, member, ctx):
     docs = {x['name'].lower(): x for x in teams._docs_in(job['id'])}
     pieces = _element_pieces(plan, docs) or [{'label': 'General', 'docs': [x['name'] for x in docs.values()]}]
     every = ', '.join(p['label'] for p in pieces)
+    rr = (ctx['outputs'] or {}).get('_rerun') or {}
+    only = rr.get('elements') if rr.get('kind') == 'remeasure' else None        # Re-measure: only the elements Stefan chose
+    if only is not None: pieces = [p for p in pieces if p['label'] in only]
 
     def run(part, info):
         mine = list(dict.fromkeys(p['label'] for p in part))
@@ -343,9 +346,18 @@ def qs_measure(job, stage, member, ctx):
                           'source': {'document': doc['name'], 'page': page, 'line': line},
                           'source_text': doc['name'] + (f', page {page}' if page else '') + (f', {line}' if line else ''), 'note': teams._clean(it.get('note'), 300)})
     out['output'] = {'items': items, 'rejected': rejected}
+    if only is not None:                  # the other elements' items are kept exactly as measured (same refs, so their prices stay)
+        prev = (ctx['outputs'] or {}).get('measure') or (rr.get('previous') or {}).get('measure') or {}
+        kept = [i for i in prev.get('items') or [] if i['element'] not in only]
+        top = max([int(i['ref'][1:]) for i in prev.get('items') or [] if re.fullmatch(r'Q\d+', i['ref'])] + [0])
+        for n, i in enumerate(items, 1): i['ref'] = f'Q{top + n}'
+        out['output'] = {'items': kept + items, 'rejected': rejected,
+                         'remeasured': {'elements': list(only), 'refs': [i['ref'] for i in items],
+                                        'replaced': [i['ref'] for i in prev.get('items') or [] if i['element'] in only]}}
     out['parts'] = stats
     out['accept'] = True
     out['summary'] = (done[0][1].get('summary') if len(done) == 1 else '') or (f'{len(items)} items measured' + (f', {len(rejected)} left out without a source' if rejected else ''))
+    if only is not None: out['summary'] = f'Re-measured {", ".join(only)}: {len(items)} item{"s" if len(items) != 1 else ""}; the other elements are kept as measured.'
     out['summary'] = teams._clean(out['summary'], 300)
     return out
 
@@ -467,16 +479,28 @@ def _estimate(r, seen_norm):
 def qs_price(job, stage, member, ctx):
     import assistants, org_research, rules_engine, rule_packs
     outs = ctx['outputs'] or {}
-    prev = outs.get('price') or {}
-    redo = [r for r in prev.get('estimate_pass') or []] if prev.get('items') else []
-    items = prev['items'] if redo else (outs.get('measure') or {}).get('items') or []
+    rr = outs.get('_rerun') or {}
+    prev = outs.get('price') or (rr.get('previous') or {}).get('price') or {}
+    # Only some items are priced again: an estimate pass (Ask the team to estimate these), a Re-price (the items Stefan chose) or a
+    # Re-measure (the items measured again); every other item keeps its price exactly, and the measured quantities are never changed.
+    if prev.get('items') and prev.get('estimate_pass'): redo, partial = list(prev['estimate_pass']), True
+    elif prev.get('items') and rr.get('kind') == 'reprice': redo, partial = list(rr.get('refs') or []), True
+    elif prev.get('items') and rr.get('kind') == 'remeasure': redo, partial = list(((outs.get('measure') or {}).get('remeasured') or {}).get('refs') or []), True
+    else: redo, partial = [], False
+    if partial:
+        old = {i['ref']: i for i in prev['items']}
+        items = [old[m['ref']] if m['ref'] in old and m['ref'] not in redo else m for m in (outs.get('measure') or {}).get('items') or prev['items']]
+    else:
+        items = (outs.get('measure') or {}).get('items') or []
     if not items and not ctx.get('must_accept'):
         return {'accept': False, 'reasons': ['No measured items with a quantity, a unit and a source were handed on.'],
                 'summary': 'Sent back: nothing measured with a source.'}
     plan = outs.get('plan') or {}
     location = teams._clean(plan.get('location') or job.get('location'), 120)
     rs = rules_engine.rate_sources()                          # which sources, in which order: the Rules page decides
-    allow_refs = estimates_allowed(outs)
+    if rr.get('order'):                                       # a different order for this re-run only; what is allowed stays the rule's
+        rs = {**rs, 'order': list(rr['order']) + [k for k in rs['order'] if k not in rr['order']]}
+    allow_refs = estimates_allowed(outs) | (set(redo) if partial and rr.get('estimates') else set())
     lib = library(job['team_id'])
     prov = member['provider'] if member.get('provider') in assistants.PROVIDERS else 'claude_sonnet'
     fam = assistants.family(prov)
@@ -484,10 +508,10 @@ def qs_price(job, stage, member, ctx):
     fam = fam if fam in org_research.KEYS else 'claude'
     target = f'Digital team: {member["role"]}'
     byref = {i['ref']: i for i in items}
-    todo = [i for i in items if i['ref'] in redo] if redo else items
+    todo = [i for i in items if i['ref'] in redo] if partial else items
     elements = ', '.join(dict.fromkeys(i['element'] for i in items))
     pieces = _item_pieces(todo)
-    if pieces and not redo: pieces[0]['factor'] = True        # the regional factor is looked for once, in the first part
+    if pieces and not partial: pieces[0]['factor'] = True     # the regional factor is looked for once, in the first part
     prompt = PRICE_PROMPT.format(member=teams.member_prompt(member, stage, ctx), spec=PRICE_SPEC)
     web = teams.tool_on(member, 'web_search', 'qs_price')     # switched on or off per member under Edit team
     if not web: prompt += ('\nWEB SEARCH IS SWITCHED OFF for you on this team: you cannot cite pages, so published and built-up rates are not possible. '
@@ -529,7 +553,8 @@ def qs_price(job, stage, member, ctx):
         d = teams.ask_json(member, job, prompt, query, PRICE_SPEC, 'the list of priced items', call=search)
         return {'data': d, 'seen': found['seen'], 'used': found['used'], 'failures': found['failures'], 'factor': factor}
     done, stats = teams.in_parts(job, stage, pieces, run, _split_refs, batch=PRICE_ITEMS,
-                                 extra={**_extra_key(ctx, member), 'location': location, 'rules': rs, 'allow': sorted(allow_refs), 'redo': redo, 'web': web},
+                                 extra={**_extra_key(ctx, member), 'location': location, 'rules': rs, 'allow': sorted(allow_refs), 'redo': redo,
+                                        'partial': partial, 'web': web},
                                  size=lambda p: len(p['refs']))
     out = _merge_common([r['data'] for _, r in done])
     if not out['accept'] and not ctx.get('must_accept'): return out
@@ -546,10 +571,11 @@ def qs_price(job, stage, member, ctx):
     seen_norm = {org_research._norm_url(u): (u, t) for u, t in seen.items()}
     by_ref = {str(r.get('ref')): r for r in d.get('rates') or [] if isinstance(r, dict)}
     libmap = {r['id']: r for r in lib}
-    priced, refused, cited, blocked_est = [], list(prev.get('refused_rates') or []) if redo else [], set(), []
+    priced, cited, blocked_est = [], set(), []
+    refused = [x for x in prev.get('refused_rates') or [] if x.get('ref') not in set(redo)] if partial else []
     for it in items:
-        if redo and it['ref'] not in redo:
-            priced.append(it); continue                          # an estimate pass prices only the items Stefan chose
+        if partial and it['ref'] not in redo:
+            priced.append(it); continue                          # a partial pass prices only the items chosen
         r = by_ref.get(it['ref']) or {}
         row = {k: v for k, v in it.items() if k not in ('rate', 'rate_source', 'source_url', 'source_title', 'source_date', 'rate_note', 'library_row',
                                                          'working', 'estimate', 'decision')}
@@ -598,7 +624,7 @@ def qs_price(job, stage, member, ctx):
             row.update({'rate': None, 'rate_source': 'unpriced', 'rate_note': 'No allowed source could price it: ' + (
                 '; '.join(f'{rules_engine.RATE_SOURCES[k].lower()}: {w}' for k, w in why.items()) or 'none was found') + '.'})
         priced.append(row)
-    if redo:
+    if partial:
         loc = prev.get('location') or {'applied': False, 'factor': 1.0, 'note': 'National rates used.'}
     else:
         lf = d.get('location_factor') if isinstance(d.get('location_factor'), dict) else {}
@@ -626,6 +652,8 @@ def qs_price(job, stage, member, ctx):
     out['parts'] = stats
     out['accept'] = True
     out['summary'] = out['summary'] or ', '.join(f'{counts[k]} {SUMMARY_WORDS[k]}' for k in SUMMARY_WORDS if counts.get(k) or k in ('web', 'unpriced'))
+    if partial and rr and not prev.get('estimate_pass'):
+        out['summary'] = teams._clean(f'Priced again: {", ".join(redo) or "nothing (no item changed)"}; the other items keep their prices. ' + out['summary'], 300)
     return out
 
 
@@ -858,6 +886,13 @@ def qs_trends(job, stage, member, ctx):
     location = teams._clean(((outs.get('plan') or {}).get('location')) or job.get('location'), 120)
     market = _market(job, stage, member, ctx, location, asm.get('cost_plan') or {}) if teams.tool_on(member, 'web_search', 'qs_trends') else None
     past = history(job, member)
+    rr = outs.get('_rerun') or {}
+    before = (rr.get('previous') or {}).get('trends') or {}
+    only = None                                                     # a re-run compares only the items priced again; the rest keep theirs
+    if rr and before:
+        only = set(rr.get('refs') or []) if rr.get('kind') == 'reprice' else set(((outs.get('measure') or {}).get('remeasured') or {}).get('refs') or [])
+    every = items
+    if only is not None: items = [i for i in items if i['ref'] in only]
     out = {'accept': True, 'reasons': [], 'summary': '', 'note': '', 'questions': [], 'what_changed': ''}
     comps, matched, report = [], set(), ''
     if past:                                   # the second check: rates used against past projects held in Alice
@@ -891,7 +926,11 @@ def qs_trends(job, stage, member, ctx):
                 comps.append({'ref': it['ref'], 'description': it['description'], 'unit': it['unit'], 'rate_now': it['rate'], 'date_now': it.get('source_date') or '',
                               'past': rows, 'average_difference_pct': avg, 'note': teams._clean(m.get('note'), 300)})
                 matched.add(it['ref'])
-        order = {i['ref']: n for n, i in enumerate(items)}
+        if only is not None:
+            live = {i['ref'] for i in every}
+            for c_ in before.get('comparisons') or []:
+                if c_['ref'] not in only and c_['ref'] in live and c_['ref'] not in matched: comps.append(c_); matched.add(c_['ref'])
+        order = {i['ref']: n for n, i in enumerate(every)}
         comps.sort(key=lambda c_: order[c_['ref']])
         report = teams._block('\n\n'.join(dict.fromkeys(teams._block(d.get('commentary'), 3000) for _, d in done if d.get('commentary'))), 3000)
         if not comps: report = (report + '\n\n' if report else '') + 'None of the rates used has a comparable past rate (same unit and kind of work) in Alice.'
@@ -899,12 +938,14 @@ def qs_trends(job, stage, member, ctx):
     else:
         report = ('There are no past cost plans or team jobs in Alice to compare these rates with. This estimate will be filed in Knowledge once '
                   'you sign it off, so later estimates can be compared with it.')
-    out['output'] = {'history': len(past), 'comparisons': comps, 'unmatched': [i['ref'] for i in items if i['ref'] not in matched], 'report': report,
+    if only is not None and past:
+        report = (report + '\n\n' if report else '') + f'Only the items priced again were compared this time ({", ".join(sorted(only)) or "none"}); the others keep their comparison from the last version.'
+    out['output'] = {'history': len(past), 'comparisons': comps, 'unmatched': [i['ref'] for i in every if i['ref'] not in matched], 'report': report,
                      'market': market}
     if market: out['searches'] = market['searches']
     bits = ([f'{len(market["findings"])} market finding{"s" if len(market["findings"]) != 1 else ""} for {market["location"]}'
              + (f', suggests a {market["adjustment"]["pct"]:+g}% market adjustment' if market['adjustment'] else '')] if market else [])
-    bits.append(f'{len(comps)} of {len(items)} rates compared with past projects' if past else 'no past projects in Alice to compare with')
+    bits.append(f'{len(comps)} of {len(every)} rates compared with past projects' if past else 'no past projects in Alice to compare with')
     out['summary'] = teams._clean('; '.join(bits), 300)
     out['note'] = out['note'] or (f'Please accept or reject the suggested {market["adjustment"]["pct"]:+g}% market adjustment.' if market and market['adjustment'] else '')
     return out
@@ -1017,7 +1058,7 @@ def finish(job, team, jt):
     items = price.get('items') or []
     amounts = {l['ref']: l['amount'] for l in cp['lines']}
     sheets = [
-        {'name': 'Read me', 'rows': [[DRAFT_MARK], [f'Job {teams.ref(job["id"])}: {job["title"]}'], [f'Prepared {date.today().isoformat()} by the {team["name"]} team in Alice (team version v{job["team_version"]}).'],
+        {'name': 'Read me', 'rows': [[DRAFT_MARK], [f'Job {teams.ref(job["id"])}: {job["title"]}' + (f' (version v{job.get("version") or 1})' if (job.get('version') or 1) > 1 else '')], [f'Prepared {date.today().isoformat()} by the {team["name"]} team in Alice (team version v{job["team_version"]}).'],
                                       ['All arithmetic is done by Alice. Every rate has a source: a published web page with its date, your rate library, or it is unpriced and excluded.']]},
         {'name': 'Cost plan', 'rows': [['Ref', 'Element', 'Description', 'Quantity', 'Unit', 'Approximate', 'Rate (GBP)', 'Amount (GBP)', 'Rate source', 'Source', 'Source date']]
          + [[i['ref'], i['element'], i['description'], i['quantity'], i['unit'], 'Yes' if i.get('approximate') else '', i.get('rate'), amounts.get(i['ref']),
@@ -1039,7 +1080,8 @@ def finish(job, team, jt):
         {'name': 'Assumptions', 'rows': [['Type', 'Text']] + [['Assumption', a] for a in asm.get('assumptions') or []] + [['Exclusion', a] for a in asm.get('exclusions') or []]
          + [['Risk', r['risk'] + (' Mitigation: ' + r['mitigation'] if r.get('mitigation') else '')] for r in asm.get('risks') or []]},
     ]
-    title = f'Cost plan - {job["title"]} (draft)'
+    ver = job.get('version') or 1
+    title = f'Cost plan - {job["title"]}' + (f' v{ver}' if ver > 1 else '') + ' (draft)'
     rules_engine.check_file(md, title)
     word = documents.to_docx(title, md)
     xlsx = documents.to_xlsx(title, sheets)
@@ -1070,7 +1112,9 @@ def summary_note(job, team_name):
     adj = outs.get('adjust') or {}
     est = [i for i in items if i.get('rate_source') == 'estimate']
     unp = [i for i in items if i.get('rate_source') == 'unpriced']
-    lines = [f'Signed-off cost plan from the {team_name} team, job {teams.ref(job["id"])}: {teams.job_url(job["team_id"], job["id"])}', '',
+    ver = job.get('version') or 1
+    lines = [f'Signed-off cost plan from the {team_name} team, job {teams.ref(job["id"])}' + (f' v{ver}' if ver > 1 else '')
+             + f': {teams.job_url(job["team_id"], job["id"])}', '',
              f'Scope: {teams._clean(job["brief"], 600)}', f'Location: {job.get("location") or (outs.get("plan") or {}).get("location") or "not given"}',
              f'Signed off: {date.today().isoformat()}',
              f'Total excluding VAT: {_gbp(cp["total"])} (construction {_gbp(cp["construction"])}; preliminaries {cp["percentages"]["prelims_pct"]}%, '
@@ -1298,6 +1342,119 @@ def ask_estimates(jid, refs, note=''):
     teams._set(jid, status='running', error='', stage=i, outputs=outs)
     teams.kick(jid)
     return teams.job_detail(jid)
+
+
+# ---------------- Re-price and Re-measure: a new version of the job (Stefan, 8 Oct 2026) ----------------
+def _rerun_ready(jid):
+    """The job and its team for a re-run: only when the team is not working on it (waiting for you, stopped by a failure, or signed off)."""
+    j = teams._row(jid)
+    if j['status'] == 'stopped': raise ValueError('This job was stopped. Copy it as a new job instead.')
+    if j['status'] == 'running' or jid in teams._ACTIVE: raise ValueError('The team is working on this job: wait until it needs you or is signed off.')
+    team, jt = teams._job_team(j)
+    return j, team, jt
+
+
+def _clean_order(order):
+    import rules_engine
+    if not order: return None
+    out = list(dict.fromkeys(str(k) for k in order if str(k) in rules_engine.RATE_SOURCES))
+    if not out: raise ValueError('Choose the order of the rate sources from published, library, built up and estimate.')
+    return out
+
+
+def _restart(jid, j, jt, kind, stage_key, rerun, what, note, refs=None, elements=None, clear=()):
+    """New version, the work in `clear` removed (stages kept from the last version carried instead), pending decisions withdrawn,
+    the request in the job's history, and the team set going from `stage_key`."""
+    import rules_engine
+    note = teams._block(note, 1000)
+    if note: rules_engine.check_outbound(note, 'Digital team note', packs=False)
+    what = what[:1].upper() + what[1:]
+    keys = [s_['key'] for s_ in jt['stages']]
+    i = keys.index(stage_key)
+    v = teams.new_version(jid, kind, what, note)
+    outs = teams._row(jid)['outputs']
+    carry = {k: outs[k] for k in rerun.pop('keep', []) if k in outs}
+    rerun.update({'kind': kind, 'version': v, 'from_version': v - 1, 'by': teams._actor(), 'note': note, 'carry': carry})
+    for k in list(clear) + list(carry) + ['_finished', 'documents', 'summary', 'total', 'filed', '_parts']: outs.pop(k, None)
+    if isinstance(outs.get('price'), dict): outs['price'].pop('estimate_pass', None)
+    outs['_rerun'] = rerun
+    who = teams._actor()
+    with store.db() as c:
+        c.execute("UPDATE team_steps SET status='withdrawn', decided_at=?, decided_by=?, decision_note=? WHERE job_id=? AND status='pending'",
+                  (store.now(), who, f'Replaced by v{v} ({VERSION_WORD[kind]}).', jid))
+        store.audit(c, f'team_job_{kind}', jid, 'human_review', f'{teams.ref(jid)} {j["title"]}: v{v}, {what}' + (f' · {note[:200]}' if note else ''))
+    stage = jt['stages'][i]
+    teams._add_step(jid, kind, stage_key, 'stefan', to_member=stage['member'], status='done',
+                    note=f'You asked for v{v}: {what}' + (f' Your note: {note}' if note else ''),
+                    content={'by': who, 'version': v, 'refs': refs or [], 'elements': elements or [], 'note': note,
+                             'order': rerun.get('order'), 'estimates': rerun.get('estimates', False), 'trends': rerun.get('trends', False)})
+    teams._set(jid, status='running', error='', holder='', stage=i, outputs=outs)
+    teams.kick(jid)
+    return teams.job_detail(jid)
+
+
+VERSION_WORD = {'reprice': 'a re-price', 'remeasure': 'a re-measure'}
+
+
+def _stage_of(jt, handler):
+    return next((s_ for s_ in jt['stages'] if s_.get('handler') == handler), None)
+
+
+def reprice(jid, refs=None, estimates=False, order=None, trends=False, note=''):
+    """Re-price a job (waiting, stopped by a failure, or signed off) as a new version: only the Cost Surveyor works again, on the chosen
+    items (default: every unpriced and estimated item), keeping the measured quantities and every other item's price; Market Trends
+    again only if asked; then the Lead QS reassembles the cost plan and it comes back for sign-off. `estimates` allows team estimates
+    for these items on this re-run; `order` is a different order of the rate sources for this re-run (what is allowed stays the rule's)."""
+    j, team, jt = _rerun_ready(jid)
+    ps = _price_stage(jt)
+    if not ps: raise ValueError('This job has no pricing stage.')
+    outs = j['outputs']
+    items = (outs.get('price') or {}).get('items') or []
+    if not items: raise ValueError('Nothing has been priced on this job yet.')
+    have = [i['ref'] for i in items]
+    refs = [r for r in dict.fromkeys(str(x) for x in refs or []) if r]
+    if not refs: refs = [i['ref'] for i in items if i.get('rate_source') in ('unpriced', 'estimate')]
+    if not refs: raise ValueError('Every item has a rate that is not an estimate: choose the items to re-price.')
+    bad = [r for r in refs if r not in have]
+    if bad: raise ValueError(f'{", ".join(bad)}: not an item on this job.')
+    order = _clean_order(order)
+    ts, ad = _stage_of(jt, 'qs_trends'), _stage_of(jt, 'qs_adjust')
+    keep = [x['key'] for x in (ts, ad) if x] if not trends else []
+    rerun = {'refs': refs, 'order': order, 'estimates': bool(estimates), 'trends': bool(trends) and bool(ts), 'keep': keep,
+             'previous': {'price': outs.get('price'), **({'trends': outs['trends']} if trends and outs.get('trends') else {})}}
+    bits = [f're-price {", ".join(refs)}']
+    if estimates: bits.append('team estimates allowed for them')
+    if order: bits.append('rate sources in the order ' + ', '.join(order))
+    if trends and ts: bits.append('Market Trends again')
+    keys = [s_['key'] for s_ in jt['stages']]
+    return _restart(jid, j, jt, 'reprice', ps['key'], rerun, '; '.join(bits) + '.', note, refs=refs, clear=keys[keys.index(ps['key']) + 1:])
+
+
+def remeasure(jid, elements, estimates=False, order=None, trends=False, note=''):
+    """Re-measure chosen elements as a new version: the Measurement Surveyor takes them off again (the other elements' items are kept),
+    the Cost Surveyor prices only the items measured again, then the cost plan is reassembled and comes back for sign-off."""
+    j, team, jt = _rerun_ready(jid)
+    ms, ps = _stage_of(jt, 'qs_measure'), _price_stage(jt)
+    if not ms or not ps: raise ValueError('This job has no measuring stage.')
+    outs = j['outputs']
+    plan = outs.get('plan') or {}
+    have = plan.get('elements') or []
+    elements = [e for e in dict.fromkeys(teams._clean(x, 80) for x in elements or []) if e]
+    if not elements: raise ValueError('Choose the elements to re-measure.')
+    bad = [e for e in elements if e not in have]
+    if bad: raise ValueError(f'{", ".join(bad)}: not an element in the plan.')
+    if not (outs.get('measure') or {}).get('items'): raise ValueError('Nothing has been measured on this job yet.')
+    order = _clean_order(order)
+    ts, ad = _stage_of(jt, 'qs_trends'), _stage_of(jt, 'qs_adjust')
+    keep = [x['key'] for x in (ts, ad) if x] if not trends else []
+    rerun = {'elements': elements, 'order': order, 'estimates': bool(estimates), 'trends': bool(trends) and bool(ts), 'keep': keep,
+             'previous': {'measure': outs.get('measure'), 'price': outs.get('price'), **({'trends': outs['trends']} if trends and outs.get('trends') else {})}}
+    bits = [f're-measure {", ".join(elements)}, then price the items measured again']
+    if estimates: bits.append('team estimates allowed for them')
+    if order: bits.append('rate sources in the order ' + ', '.join(order))
+    if trends and ts: bits.append('Market Trends again')
+    keys = [s_['key'] for s_ in jt['stages']]
+    return _restart(jid, j, jt, 'remeasure', ms['key'], rerun, '; '.join(bits) + '.', note, elements=elements, clear=keys[keys.index(ms['key']):])
 
 
 def decide_rates(jid, entries, save_to_library=True, go_on=False):

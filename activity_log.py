@@ -73,6 +73,9 @@ LABELS = {
     'research_guidance_approved': ('organisations', 'Temple\'s research guidance approved'), 'research_guidance_rejected': ('organisations', 'Temple\'s research guidance rejected'),
     'temple_search_chat': ('temple', 'Discussed a research run or scan with Temple'),
     'team_suggestion_approved': ('teams', 'Temple\'s suggested instructions approved'), 'team_suggestion_rejected': ('teams', 'Temple\'s suggested instructions rejected'),
+    'team_job_reprice': ('teams', 'Team job re-priced (new version)'), 'team_job_remeasure': ('teams', 'Team job re-measured (new version)'),
+    'team_job_copied': ('teams', 'Team job copied as a new job'), 'team_costs_rate_set': ('teams', 'Exchange rate for team costs set'),
+    'team_staff_figures': ('teams', 'Your figures for a team member changed'),
 }
 RULE_NAMES = {'secret_detection': 'Secret detection', 'protective_marking': 'Protective marking guard', 'pii': 'Personal identifiers',
               'provider_allow': 'Provider allow-list', 'external_scope': 'External client scope', 'client_separation': 'Client separation', 'client_documents': 'Client-facing documents',

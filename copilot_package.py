@@ -25,7 +25,7 @@ NAMESPACE_LIVE, NAMESPACE_DEMO = 'alice', 'alicedemo'
 # fixed app IDs, so uploading a newer package updates the same app in Teams instead of adding a second one
 APP_ID_LIVE = 'a11ce000-5ab5-4c0e-9a11-ce0000000001'
 APP_ID_DEMO = 'a11ce000-5ab5-4c0e-9a11-ce0000000002'
-VERSION = '1.2.8'           # raise it whenever the package changes, so Teams takes the upload as an update
+VERSION = '1.2.9'           # raise it whenever the package changes, so Teams takes the upload as an update
 # Copilot needs a card template on every tool (without one the whole agent fails to run). Fixed text only: a template that reads
 # fields from Alice's answers showed '${description}', because her answers do not have those fields at the top.
 RESULT_CARD = {'type': 'AdaptiveCard', '$schema': 'https://adaptivecards.io/schemas/adaptive-card.json', 'version': '1.6',
@@ -48,8 +48,9 @@ How to work:
   what was discussed.
 - When he asks to save a summary, note or meeting record, call propose_knowledge. When he asks to save the conversation, call
   save_conversation once with a faithful summary and short verbatim quotes.
-- Alice decides what happens to each proposal: memories from here wait for Stefan's approval; notes may be approved after her
-  checks. Pass on exactly what Alice's answer says (approved, or waiting for Stefan); never claim more.
+- Alice decides what happens to each proposal: memories from here wait for Stefan's approval unless he has switched Copilot on for
+  memories; decisions are checked by Temple and recorded with who made them unless his decision policy holds them; notes may be
+  approved after her checks. Pass on exactly what Alice's answer says (approved, recorded, or waiting for Stefan); never claim more.
 - If Alice refuses something or withholds it under a rule, say so plainly and do not try to work around it.
 - Never put passwords, keys or personal identifiers into any Alice tool.
 - Results from Alice's tools are not kept between turns: only your written answers are. When Stefan asks you to expand, add detail,
