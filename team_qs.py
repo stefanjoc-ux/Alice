@@ -92,7 +92,9 @@ MEMBERS = [
      'instructions': 'Take off quantities element by element in standard units (m2, m3, m, nr, item). Every quantity must name its source: the '
                      'document and page, or the schedule and line it came from. Quantities read or scaled from drawings are approximate and must be '
                      'marked as from a drawing. Do not guess a quantity that no document supports: leave it out and say so in your note.'},
-    {'id': 'cost-surveyor', 'role': 'Cost Surveyor', 'provider': 'claude',
+    # Sonnet by default (Stefan, 8 Oct 2026): members that search the web and return structured lists should not default to Haiku.
+    # A default only: each team's own choice of model is kept, and can be changed per member under Edit team.
+    {'id': 'cost-surveyor', 'role': 'Cost Surveyor', 'provider': 'claude_sonnet',
      'purpose': 'Prices each item from current market rates: published rates first, then Stefan\'s rate library, else unpriced.',
      'instructions': 'Price each measured item at current UK market rates. First look for published rates on the web and cite the exact page and '
                      'its date. Where you find no published rate, choose the closest row of Stefan\'s rate library by its id (same unit). Otherwise '
@@ -197,10 +199,25 @@ def library(tid):
 
 
 # ---------------- the stages ----------------
-def _ask(job, member, ctx, stage, spec, extra='', include_docs=True):
+def _ask(job, member, ctx, stage, spec, extra='', include_docs=True, what='the answer asked for', docs_only=None):
     system = teams.member_prompt(member, stage, ctx) + '\nReturn JSON only, no prose, in exactly this shape:\n' + spec
-    payload = teams.job_payload(job, member, ctx, include_docs=include_docs, extra=extra)
-    return teams.parse_json(teams.call_model(member, job, system, payload), member['role'])
+    payload = teams.job_payload(job, member, ctx, include_docs=include_docs, extra=extra, docs_only=docs_only)
+    return teams.ask_json(member, job, system, payload, spec, what)
+
+
+def _extra_key(ctx, member):
+    """What a part's result depends on besides the part itself: feedback to act on and the member's model."""
+    return {'feedback': ctx.get('feedback'), 'provider': member.get('provider'), 'instructions': member.get('instructions')}
+
+
+def _merge_common(results):
+    """accept/reasons/questions/notes across the parts of a stage: one part refusing the work refuses it."""
+    outs = [_common(d) for d in results]
+    refused = [o for o in outs if not o['accept']]
+    reasons = list(dict.fromkeys(r for o in refused for r in o['reasons'] if r))
+    qs = list(dict.fromkeys(q for o in outs for q in o['questions']))[:4]
+    note = ' '.join(dict.fromkeys(o['note'] for o in outs if o['note']))[:1000]
+    return {'accept': not refused, 'reasons': reasons, 'summary': '', 'note': note, 'questions': qs}
 
 
 def _common(data):
@@ -210,52 +227,118 @@ def _common(data):
 
 
 def qs_plan(job, stage, member, ctx):
-    spec = ('{"plan": "how you will run the estimate", "elements": ["element names"], "documents": [{"name": "exact document name", "use": "what for"}], '
+    spec = ('{"plan": "how you will run the estimate", "elements": [{"name": "element name", "documents": ["exact names of the documents it is measured from"]}], '
+            '"documents": [{"name": "exact document name", "use": "what for"}], '
             '"location": "town or region of the site, if known", "assumptions": [], "summary": "one sentence", "note": "hand-off note to the Measurement Surveyor", '
             '"questions": []}')
-    d = _ask(job, member, ctx, stage, spec)
+    d = _ask(job, member, ctx, stage, spec, what='the plan as JSON')
     out = _common(d)
     loc = teams._clean(job.get('location') or d.get('location'), 120)
-    out['output'] = {'plan': teams._block(d.get('plan'), 4000), 'elements': [teams._clean(x, 80) for x in d.get('elements') or [] if teams._clean(x, 80)][:30],
+    names, ed = [], {}
+    for x in d.get('elements') or []:
+        n = teams._clean(x.get('name') if isinstance(x, dict) else x, 80)
+        if not n or n in names: continue
+        names.append(n)
+        if isinstance(x, dict): ed[n] = [teams._clean(y, 120) for y in x.get('documents') or [] if teams._clean(y, 120)][:12]
+    out['output'] = {'plan': teams._block(d.get('plan'), 4000), 'elements': names[:30], 'element_documents': {k: v for k, v in ed.items() if v and k in names[:30]},
                      'documents': [{'name': teams._clean(x.get('name'), 120), 'use': teams._clean(x.get('use'), 200)} for x in d.get('documents') or [] if isinstance(x, dict)][:12],
                      'location': loc, 'assumptions': [teams._clean(x, 300) for x in d.get('assumptions') or []][:20]}
     out['accept'] = True
     return out
 
 
+MEASURE_BATCH = 3            # elements per part of the take-off
+PRICE_ITEMS = 20             # items per part of the pricing (and of the comparison)
+MEASURE_SPEC = ('{"accept": true, "reasons": [], "items": [{"ref": "Q1", "element": "", "description": "", "quantity": 0, "unit": "m2|m3|m|nr|item", '
+                '"source": {"document": "exact document name", "page": "page number if the document has pages", "line": "schedule line, e.g. Line 4"}, '
+                '"from_drawing": false, "note": ""}], "summary": "one sentence", "note": "hand-off note to the Cost Surveyor", "questions": []}')
+
+
+def _doc_named(docs, name):
+    name = teams._clean(name, 120).lower()
+    return docs.get(name) or next((x for k, x in docs.items() if Path(k).stem == Path(name).stem), None) if name else None
+
+
+def _element_pieces(plan, docs):
+    """One piece per element of the plan, with the documents it is measured from (all of the job's documents when the plan names none)."""
+    every = [x['name'] for x in docs.values()]
+    ed = plan.get('element_documents') or {}
+    out = []
+    for n in plan.get('elements') or []:
+        mine = list(dict.fromkeys(d['name'] for d in (_doc_named(docs, x) for x in ed.get(n) or []) if d))
+        out.append({'label': n, 'docs': mine or every})
+    return out
+
+
+def _split_docs(piece):
+    if len(piece['docs']) < 2: return None
+    h = len(piece['docs']) // 2
+    return {**piece, 'docs': piece['docs'][:h]}, {**piece, 'docs': piece['docs'][h:]}
+
+
 def qs_measure(job, stage, member, ctx):
     plan = (ctx['outputs'] or {}).get('plan') or {}
     if not ctx.get('must_accept') and not plan.get('elements'):
         return {'accept': False, 'reasons': ['The plan lists no elements to measure.'], 'summary': 'Sent the plan back: no elements to measure.'}
-    spec = ('{"accept": true, "reasons": [], "items": [{"ref": "Q1", "element": "", "description": "", "quantity": 0, "unit": "m2|m3|m|nr|item", '
-            '"source": {"document": "exact document name", "page": "page number if the document has pages", "line": "schedule line, e.g. Line 4"}, '
-            '"from_drawing": false, "note": ""}], "summary": "one sentence", "note": "hand-off note to the Cost Surveyor", "questions": []}')
-    d = _ask(job, member, ctx, stage, spec)
-    out = _common(d)
-    if not out['accept'] and not ctx.get('must_accept'): return out
     docs = {x['name'].lower(): x for x in teams._docs_in(job['id'])}
-    items, rejected = [], []
-    for n, it in enumerate(d.get('items') or [], 1):
-        if not isinstance(it, dict): continue
-        desc = teams._clean(it.get('description'), 300)
-        q, unit = _num(it.get('quantity')), unit_key(it.get('unit'))
-        src = it.get('source') if isinstance(it.get('source'), dict) else {}
-        docname = teams._clean(src.get('document'), 120)
-        doc = docs.get(docname.lower()) or next((x for k, x in docs.items() if Path(k).stem == Path(docname.lower()).stem), None)
-        page, line = teams._clean(src.get('page'), 20), teams._clean(src.get('line'), 60)
-        why = ('no description' if not desc else 'no quantity above zero' if not q or q <= 0 else 'no unit' if not unit
-               else 'no source document' if not docname else f'“{docname}” is not one of this job\'s documents' if not doc
-               else 'no page or schedule line' if not (page or line) else '')
-        if why: rejected.append({'description': desc or '(none)', 'reason': why}); continue
-        approx = bool(it.get('from_drawing')) or doc['kind'] == 'drawing'
-        items.append({'ref': f'Q{len(items) + 1}', 'element': teams._clean(it.get('element'), 80) or 'General', 'description': desc,
-                      'quantity': round(q, 3), 'unit': unit, 'approximate': approx,
-                      'source': {'document': doc['name'], 'page': page, 'line': line},
-                      'source_text': doc['name'] + (f', page {page}' if page else '') + (f', {line}' if line else ''), 'note': teams._clean(it.get('note'), 300)})
+    pieces = _element_pieces(plan, docs) or [{'label': 'General', 'docs': [x['name'] for x in docs.values()]}]
+    every = ', '.join(p['label'] for p in pieces)
+
+    def run(part, info):
+        mine = list(dict.fromkeys(p['label'] for p in part))
+        names = list(dict.fromkeys(d for p in part for d in p['docs']))
+        extra = (f'WHOLE PLAN: elements {every}.\nTHIS PART: take off ONLY these elements: {", ".join(mine)}, from the DOCUMENTS given '
+                 f'({", ".join(names) or "none"}). The other elements are measured separately: do not measure them here.')
+        return _ask(job, member, ctx, stage, MEASURE_SPEC, extra=extra, what='the list of measured items', docs_only=names)
+    done, stats = teams.in_parts(job, stage, pieces, run, _split_docs, batch=MEASURE_BATCH, extra=_extra_key(ctx, member))
+    out = _merge_common([d for _, d in done])
+    if not out['accept'] and not ctx.get('must_accept'): return out
+    items, rejected, seen = [], [], set()
+    for part, d in done:
+        mine = {p['label'].lower(): p['label'] for p in part}
+        for it in d.get('items') or []:
+            if not isinstance(it, dict): continue
+            desc = teams._clean(it.get('description'), 300)
+            q, unit = _num(it.get('quantity')), unit_key(it.get('unit'))
+            src = it.get('source') if isinstance(it.get('source'), dict) else {}
+            docname = teams._clean(src.get('document'), 120)
+            doc = _doc_named(docs, docname)
+            page, line = teams._clean(src.get('page'), 20), teams._clean(src.get('line'), 60)
+            why = ('no description' if not desc else 'no quantity above zero' if not q or q <= 0 else 'no unit' if not unit
+                   else 'no source document' if not docname else f'“{docname}” is not one of this job\'s documents' if not doc
+                   else 'no page or schedule line' if not (page or line) else '')
+            if why: rejected.append({'description': desc or '(none)', 'reason': why}); continue
+            el = teams._clean(it.get('element'), 80)
+            el = mine.get(el.lower()) or (part[0]['label'] if len(mine) == 1 else el) or 'General'
+            key = (el.lower(), desc.lower(), round(q, 3), unit, doc['name'], page, line)
+            if key in seen: continue                       # the same item from two parts (e.g. a halved element) is kept once
+            seen.add(key)
+            approx = bool(it.get('from_drawing')) or doc['kind'] == 'drawing'
+            items.append({'ref': f'Q{len(items) + 1}', 'element': el, 'description': desc,
+                          'quantity': round(q, 3), 'unit': unit, 'approximate': approx,
+                          'source': {'document': doc['name'], 'page': page, 'line': line},
+                          'source_text': doc['name'] + (f', page {page}' if page else '') + (f', {line}' if line else ''), 'note': teams._clean(it.get('note'), 300)})
     out['output'] = {'items': items, 'rejected': rejected}
+    out['parts'] = stats
     out['accept'] = True
-    out['summary'] = out['summary'] or f'{len(items)} items measured' + (f', {len(rejected)} left out without a source' if rejected else '')
+    out['summary'] = (done[0][1].get('summary') if len(done) == 1 else '') or (f'{len(items)} items measured' + (f', {len(rejected)} left out without a source' if rejected else ''))
+    out['summary'] = teams._clean(out['summary'], 300)
     return out
+
+
+def _item_pieces(items, per=PRICE_ITEMS):
+    """Pieces of up to `per` items, one element at a time, in the take-off's order."""
+    out = []
+    for el in dict.fromkeys(i['element'] for i in items):
+        mine = [i['ref'] for i in items if i['element'] == el]
+        out += [{'label': el, 'refs': mine[k:k + per]} for k in range(0, len(mine), per)]
+    return out
+
+
+def _split_refs(piece):
+    if len(piece['refs']) < 2: return None
+    h = len(piece['refs']) // 2
+    return {**piece, 'refs': piece['refs'][:h]}, {**piece, 'refs': piece['refs'][h:], 'factor': False}
 
 
 def _library_candidates(tid, items):
@@ -286,6 +369,11 @@ def _date_ok(s):
     return s if m and '1990' <= m.group(1) and s[:10] <= date.today().isoformat() else ''
 
 
+PRICE_SPEC = ('{"accept": true, "reasons": [], "rates": [{"ref": "Q1", "rate": 0, "unit": "", "source_url": "", "source_title": "", "source_date": "YYYY-MM-DD or YYYY-MM", '
+              '"library_id": "", "note": ""}], "location_factor": {"factor": 1.0, "region": "", "source_url": "", "source_title": "", "source_date": ""}, '
+              '"searches": ["the searches you ran"], "summary": "one sentence", "note": "hand-off note to the Lead QS", "questions": []}')
+
+
 def qs_price(job, stage, member, ctx):
     import assistants, org_research, rules_engine, rule_packs
     items = ((ctx['outputs'] or {}).get('measure') or {}).get('items') or []
@@ -294,26 +382,59 @@ def qs_price(job, stage, member, ctx):
                 'summary': 'Sent back: nothing measured with a source.'}
     plan = (ctx['outputs'] or {}).get('plan') or {}
     location = teams._clean(plan.get('location') or job.get('location'), 120)
-    lib, cands = _library_candidates(job['team_id'], items)
-    fam = assistants.family(member['provider'])
+    lib = library(job['team_id'])
+    prov = member['provider'] if member.get('provider') in assistants.PROVIDERS else 'claude_sonnet'
+    fam = assistants.family(prov)
+    model = assistants.PROVIDERS[prov][0] if fam in org_research.KEYS else ''
     fam = fam if fam in org_research.KEYS else 'claude'
     target = f'Digital team: {member["role"]}'
-    query = (f'JOB: {job["title"]}\nLOCATION: {location or "not given (use national rates)"}\n'
-             'MEASURED ITEMS (ref | element | description | quantity | unit)\n'
-             + '\n'.join(f'{i["ref"]} | {i["element"]} | {i["description"]} | {i["quantity"]} | {i["unit"]}' for i in items)
-             + '\n\nRATE LIBRARY (id | description | unit | region | as of)\n'
-             + ('\n'.join(f'{r["id"]} | {r["description"]} | {r["unit"]} | {r["region"]} | {r["as_of"]}' for r in cands) or '(empty)')
-             + ('\n\nFEEDBACK TO ACT ON\n' + json.dumps(ctx['feedback'], ensure_ascii=False) if ctx.get('feedback') else ''))
-
-    def query_for(p):
-        rules_engine.check_outbound(query, target, provider=p)
-        return rule_packs.live_check(query, p, target, packs=member['packs'])['text'] if member.get('packs') else query
-    rules_engine.check_spend('chat')
+    byref = {i['ref']: i for i in items}
+    elements = ', '.join(dict.fromkeys(i['element'] for i in items))
+    pieces = _item_pieces(items)
+    if pieces: pieces[0]['factor'] = True                 # the regional factor is looked for once, in the first part
     prompt = PRICE_PROMPT.format(member=teams.member_prompt(member, stage, ctx))
-    raw, seen, used, failures = org_research.search(prompt, query_for, fam, workload=target)
-    d = teams.parse_json(raw, member['role'])
-    out = _common(d)
+
+    def run(part, info):
+        mine = [byref[r] for p in part for r in p['refs']]
+        _, cands = _library_candidates(job['team_id'], mine)
+        factor = any(p.get('factor') for p in part)
+        query = (f'JOB: {job["title"]}\nBRIEF\n{job["brief"][:3000]}\n\nLOCATION: {location or "not given (use national rates)"}\n'
+                 f'ALL ELEMENTS OF THE ESTIMATE: {elements}\n'
+                 + ('' if factor else 'THIS PART: leave location_factor empty; it is looked for separately.\n')
+                 + 'MEASURED ITEMS IN THIS PART (ref | element | description | quantity | unit)\n'
+                 + '\n'.join(f'{i["ref"]} | {i["element"]} | {i["description"]} | {i["quantity"]} | {i["unit"]}' for i in mine)
+                 + '\n\nRATE LIBRARY (id | description | unit | region | as of)\n'
+                 + ('\n'.join(f'{r["id"]} | {r["description"]} | {r["unit"]} | {r["region"]} | {r["as_of"]}' for r in cands) or '(empty)')
+                 + ('\n\nFEEDBACK TO ACT ON\n' + json.dumps(ctx['feedback'], ensure_ascii=False) if ctx.get('feedback') else ''))
+
+        def query_for(p):
+            rules_engine.check_outbound(query, target, provider=p)
+            return rule_packs.live_check(query, p, target, packs=member['packs'])['text'] if member.get('packs') else query
+        found = {'seen': {}, 'used': fam, 'failures': []}
+
+        def search(system, _payload):
+            rules_engine.check_spend('chat')
+            meta = {}
+            raw, seen, used, failures = org_research.search(system, query_for, fam, workload=target, model=model,
+                                                            max_tokens=teams.max_output(member), meta=meta)
+            found['seen'].update(seen); found['used'], found['failures'] = used, failures
+            if meta.get('truncated'): raise teams.CutOff(f'{member["role"]}\'s answer was cut off at the model\'s length limit.', raw=raw)
+            return raw
+        d = teams.ask_json(member, job, prompt, query, PRICE_SPEC, 'the list of priced items', call=search)
+        return {'data': d, 'seen': found['seen'], 'used': found['used'], 'failures': found['failures'], 'factor': factor}
+    done, stats = teams.in_parts(job, stage, pieces, run, _split_refs, batch=PRICE_ITEMS, extra={**_extra_key(ctx, member), 'location': location},
+                                 size=lambda p: len(p['refs']))
+    out = _merge_common([r['data'] for _, r in done])
     if not out['accept'] and not ctx.get('must_accept'): return out
+    seen, d, queries, failures, used = {}, {'rates': [], 'location_factor': {}}, [], [], fam
+    for part, r in done:
+        seen.update(r['seen'])
+        mine = {x for p in part for x in p['refs']}             # a part answers only for its own items
+        d['rates'] += [x for x in r['data'].get('rates') or [] if isinstance(x, dict) and str(x.get('ref')) in mine]
+        if r['factor'] and isinstance(r['data'].get('location_factor'), dict): d['location_factor'] = r['data']['location_factor']
+        queries += [q for q in r['data'].get('searches') or [] if isinstance(q, str)]
+        failures += r['failures']; used = r['used']
+    d['searches'] = list(dict.fromkeys(queries))
     seen_norm = {org_research._norm_url(u): (u, t) for u, t in seen.items()}
     by_ref = {str(r.get('ref')): r for r in d.get('rates') or [] if isinstance(r, dict)}
     libmap = {r['id']: r for r in lib}
@@ -359,12 +480,13 @@ def qs_price(job, stage, member, ctx):
         if f and f != 1.0: refused.append({'ref': 'location factor', 'rate': f, 'source_url': furl, 'reason': 'not applied: no source among the pages the search returned' if not fhit else 'outside a plausible range'})
     for u, t in seen.items():
         agents.note('read', 'web', u, ((t or '')[:160] + ' · ' if t else '') + ('cited' if u in cited else 'returned by the search, not cited'))
-    searches = [{'provider': org_research.PROVIDER_NAMES.get(used, used), 'queries': [teams._clean(q, 200) for q in d.get('searches') or []][:12],
+    searches = [{'provider': org_research.PROVIDER_NAMES.get(used, used), 'queries': [teams._clean(q, 200) for q in d.get('searches') or []][:40],
                  'sources': [{'url': u, 'title': (t or '')[:200], 'cited': u in cited} for u, t in seen.items()][:60],
                  'fallback': [x['text'] for x in failures]}]
     counts = {k: sum(1 for x in priced if x['rate_source'] == k) for k in SOURCE_LABELS}
     out['output'] = {'items': priced, 'location': loc, 'refused_rates': refused, 'searched_with': org_research.searched_with(used, failures)}
     out['searches'] = searches
+    out['parts'] = stats
     out['accept'] = True
     out['summary'] = out['summary'] or f'{counts["web"]} priced from the web, {counts["library"]} from your rate library, {counts["unpriced"]} unpriced'
     return out
@@ -407,7 +529,7 @@ def qs_assemble(job, stage, member, ctx):
                                                                                            'location': loc.get('note')}, ensure_ascii=False))
     spec = ('{"accept": true, "reasons": [], "summary": "two or three sentences describing the estimate (no figures)", "assumptions": [], "exclusions": [], '
             '"risks": [{"risk": "", "mitigation": ""}], "note": "hand-off note to the Market Trends QS", "questions": []}')
-    d = _ask(job, member, ctx, stage, spec, extra=extra, include_docs=False)
+    d = _ask(job, member, ctx, stage, spec, extra=extra, include_docs=False, what='the cost plan\'s assumptions, exclusions and risks')
     out = _common(d)
     if not out['accept'] and not ctx.get('must_accept'): return out
     auto = [f'{i["ref"]} {i["description"]}: ' + (f'left unpriced by {i["decision"]["by"]}' if i.get('decision') else
@@ -474,34 +596,50 @@ def qs_trends(job, stage, member, ctx):
                 'output': {'history': 0, 'comparisons': [], 'unmatched': [i['ref'] for i in items],
                            'report': 'There are no past cost plans or team jobs in Alice to compare these rates with, so no trend can be '
                                      'reported yet. This estimate will be saved to Knowledge once you sign it off, so later estimates can be compared with it.'}}
-    cur = '\n'.join(f'{i["ref"]} | {i["description"]} | {i["unit"]} | {i["rate"]} | {i.get("source_date") or ""}' for i in items)
-    old = '\n'.join(f'{h["hid"]} | {h["description"]} | {h["unit"]} | {h["rate"]} | {h["date"]} | {h["source"]}' for h in past)
-    extra = f'RATES USED NOW (ref | description | unit | rate | date)\n{cur}\n\nPAST RATES HELD IN ALICE (id | description | unit | rate | date | source)\n{old}'
+    imap = {i['ref']: i for i in items}
+    hmap = {h['hid']: h for h in past}
     spec = ('{"matches": [{"ref": "Q1", "history": ["H1"], "note": ""}], "commentary": "a short plain report of what the comparison shows, no percentages", '
             '"summary": "one sentence", "note": ""}')
-    d = _ask(job, member, ctx, stage, spec, extra=extra, include_docs=False)
-    out = _common(d)
+
+    def run(part, info):
+        mine = [imap[r] for p in part for r in p['refs']]
+        units = {i['unit'] for i in mine}
+        old = [h for h in past if h['unit'] in units]          # this part's own sources: past rates in the same units
+        cur = '\n'.join(f'{i["ref"]} | {i["description"]} | {i["unit"]} | {i["rate"]} | {i.get("source_date") or ""}' for i in mine)
+        hist = '\n'.join(f'{h["hid"]} | {h["description"]} | {h["unit"]} | {h["rate"]} | {h["date"]} | {h["source"]}' for h in old) or '(none in these units)'
+        extra = (f'ALL ELEMENTS OF THE ESTIMATE: {", ".join(dict.fromkeys(i["element"] for i in items))}\n'
+                 f'THIS PART: compare ONLY these rates.\nRATES USED NOW (ref | description | unit | rate | date)\n{cur}\n\n'
+                 f'PAST RATES HELD IN ALICE (id | description | unit | rate | date | source)\n{hist}')
+        return _ask(job, member, ctx, stage, spec, extra=extra, include_docs=False, what='the list of comparisons')
+    done, stats = teams.in_parts(job, stage, _item_pieces(items), run, _split_refs, batch=PRICE_ITEMS, extra={**_extra_key(ctx, member), 'history': len(past)},
+                                 size=lambda p: len(p['refs']))
+    out = _merge_common([d for _, d in done])
     out['accept'] = True
-    hmap = {h['hid']: h for h in past}
-    imap = {i['ref']: i for i in items}
     comps, matched = [], set()
-    for m in d.get('matches') or []:
-        if not isinstance(m, dict) or str(m.get('ref')) not in imap: continue
-        it = imap[str(m['ref'])]
-        hs = [hmap[h] for h in m.get('history') or [] if h in hmap and hmap[h]['unit'] == it['unit']]
-        if not hs: continue
-        rows = [{'rate': h['rate'], 'date': h['date'], 'source': h['source'], 'difference_pct': pct_change(it['rate'], h['rate'])} for h in hs]
-        avg = float((sum((Decimal(str(r['difference_pct'])) for r in rows), Decimal('0')) / len(rows)).quantize(Decimal('0.1'), ROUND_HALF_UP))
-        comps.append({'ref': it['ref'], 'description': it['description'], 'unit': it['unit'], 'rate_now': it['rate'], 'date_now': it.get('source_date') or '',
-                      'past': rows, 'average_difference_pct': avg, 'note': teams._clean(m.get('note'), 300)})
-        matched.add(it['ref'])
-    report = teams._block(d.get('commentary'), 3000)
+    for part, d in done:
+        refs = {x for p in part for x in p['refs']}
+        for m in d.get('matches') or []:
+            if not isinstance(m, dict) or str(m.get('ref')) not in refs or str(m['ref']) in matched: continue
+            it = imap[str(m['ref'])]
+            hs = [hmap[h] for h in m.get('history') or [] if h in hmap and hmap[h]['unit'] == it['unit']]
+            if not hs: continue
+            rows = [{'rate': h['rate'], 'date': h['date'], 'source': h['source'], 'difference_pct': pct_change(it['rate'], h['rate'])} for h in hs]
+            avg = float((sum((Decimal(str(r['difference_pct'])) for r in rows), Decimal('0')) / len(rows)).quantize(Decimal('0.1'), ROUND_HALF_UP))
+            comps.append({'ref': it['ref'], 'description': it['description'], 'unit': it['unit'], 'rate_now': it['rate'], 'date_now': it.get('source_date') or '',
+                          'past': rows, 'average_difference_pct': avg, 'note': teams._clean(m.get('note'), 300)})
+            matched.add(it['ref'])
+    order = {i['ref']: n for n, i in enumerate(items)}
+    comps.sort(key=lambda c_: order[c_['ref']])
+    report = teams._block('\n\n'.join(dict.fromkeys(teams._block(d.get('commentary'), 3000) for _, d in done if d.get('commentary'))), 3000)
     if not comps: report = (report + '\n\n' if report else '') + 'None of the rates used has a comparable past rate (same unit and kind of work) in Alice.'
+    out['parts'] = stats
     out['output'] = {'history': len(past), 'comparisons': comps, 'unmatched': [i['ref'] for i in items if i['ref'] not in matched], 'report': report}
-    out['summary'] = out['summary'] or f'{len(comps)} of {len(items)} rates compared with past projects'
+    out['summary'] = (done[0][1].get('summary') if len(done) == 1 else '') or f'{len(comps)} of {len(items)} rates compared with past projects'
+    out['summary'] = teams._clean(out['summary'], 300)
     return out
 
 
+teams.PART_LABELS.update({'qs_measure': ('Measuring', 'element'), 'qs_price': ('Pricing', 'element'), 'qs_trends': ('Comparing', 'element')})
 teams.HANDLERS.update({'qs_plan': qs_plan, 'qs_measure': qs_measure, 'qs_price': qs_price, 'qs_assemble': qs_assemble, 'qs_trends': qs_trends})
 
 

@@ -101,7 +101,19 @@ with store.db() as c:
 
 
 class TeamError(ValueError):
-    """A job could not go on; the message is plain and safe to show."""
+    """A job could not go on; the message is plain and safe to show. raw: the start of what the model replied, if any;
+    part: the part of the stage it was working on (see in_parts)."""
+    def __init__(self, msg, raw='', part=''):
+        super().__init__(msg)
+        self.raw, self.part = raw or '', part or ''
+
+
+class CutOff(TeamError):
+    """The model stopped at its length limit before finishing its answer."""
+
+
+class Unreadable(TeamError):
+    """The answer could not be read as the JSON asked for."""
 
 
 # ---------------- small helpers ----------------
@@ -118,13 +130,26 @@ def ref(jid):
     return 'J-' + str(jid or '')[:6].upper()
 
 
-def parse_json(raw, who='The member'):
-    text = (raw or '').strip()
-    text = re.sub(r'^```(?:json)?\s*|\s*```$', '', text)
+def parse_json(raw, who='The member', what='the answer asked for'):
+    """The JSON object in a member's answer, read tolerantly: web-search citation markup removed (as organisations does), code
+    fences ignored, and JSON found inside surrounding text. Raises Unreadable (with the raw reply) when there is none."""
+    import organisations
+    text = organisations.strip_citations(raw or '').strip()
+    text = re.sub(r'```(?:json)?', '', text)
     a, b = text.find('{'), text.rfind('}')
-    if a < 0 or b <= a: raise TeamError(f'{who} did not return a usable answer. Try again.')
-    try: return json.loads(text[a:b + 1], strict=False)
-    except ValueError: raise TeamError(f'{who}\'s answer was not in the expected format. Try again.') from None
+    if a >= 0 and b > a:
+        try:
+            out = json.loads(text[a:b + 1], strict=False)
+            if isinstance(out, dict): return out
+        except ValueError:
+            pass
+        dec = json.JSONDecoder(strict=False)              # prose around it, or text after it with braces of its own
+        for n, m in enumerate(re.finditer(r'\{', text)):
+            if n >= 200: break                           # a long reply: enough places tried
+            try: out, _ = dec.raw_decode(text, m.start())
+            except ValueError: continue
+            if isinstance(out, dict) and out: return out
+    raise Unreadable(f'{who}\'s reply could not be read: it was text, not {what}.', raw=raw)
 
 
 def _actor():
@@ -618,12 +643,16 @@ def _run(jid):
             cost = getattr(box, 'usd', 0)
             msg = (provider_errors.message(e, log=f'Digital team {member["role"]}') if provider_errors.is_provider_error(e)
                    else str(e) if isinstance(e, ValueError) else f'{type(e).__name__}: {e}')
-            _add_step(jid, 'turn', st['key'], member['id'], status='failed', note=msg[:500], cost=cost)
+            failed = {k: v for k, v in (('raw_reply', reply_excerpt(getattr(e, 'raw', ''), member['role'])), ('part', getattr(e, 'part', ''))) if v}
+            _add_step(jid, 'turn', st['key'], member['id'], status='failed', note=msg[:500], cost=cost, content=failed)
             _set(jid, status='blocked', error=_clean(msg, 500), ai_cost=job['ai_cost'] + cost); return
         job = _row(jid)
+        if st['key'] in (job['outputs'].get('_parts') or {}):        # the parts are merged into this turn's output: nothing left to retry
+            job['outputs']['_parts'].pop(st['key'])
+            _set(jid, outputs=job['outputs'])
         _set(jid, ai_cost=job['ai_cost'] + cost)
         _add_step(jid, 'turn', st['key'], member['id'], status='done', note=res.get('summary', ''),
-                  content={k: res.get(k) for k in ('accept', 'reasons', 'output', 'note', 'questions', 'searches', 'checks', 'concerns') if res.get(k) not in (None, '', [])},
+                  content={k: res.get(k) for k in ('accept', 'reasons', 'output', 'note', 'questions', 'searches', 'checks', 'concerns', 'parts') if res.get(k) not in (None, '', [])},
                   run_id=res.get('run_id', ''), cost=cost)
         qs = [q for q in (res.get('questions') or []) if _clean(q, 600)]
         if qs and ctx['questions_asked'] < MAX_QUESTIONS:
@@ -679,14 +708,16 @@ def _finish(job, team, jt):
     _set(job['id'], status='waiting', holder='Stefan')
 
 
+GENERIC_SPEC = ('{"accept": true, "reasons": [], "output": "your work for this stage, plain text", "summary": "one sentence for the board", '
+                '"note": "your hand-off note to the next member, one or two sentences", "questions": []}')
+
+
 def _generic(job, stage, member, ctx):
     """Any stage without its own handler: the member works from the brief, the documents and what it was handed."""
-    system = member_prompt(member, stage, ctx) + '''
-Return JSON only: {"accept": true, "reasons": [], "output": "your work for this stage, plain text", "summary": "one sentence for the board",
-"note": "your hand-off note to the next member, one or two sentences", "questions": []}
-Ask a question only when you cannot do the stage without Stefan's answer.'''
+    system = (member_prompt(member, stage, ctx) + '\nReturn JSON only: ' + GENERIC_SPEC
+              + '\nAsk a question only when you cannot do the stage without Stefan\'s answer.')
     payload = job_payload(job, member, ctx)
-    data = parse_json(call_model(member, job, system, payload), member['role'])
+    data = ask_json(member, job, system, payload, GENERIC_SPEC, 'the stage\'s work as JSON')
     return {'accept': data.get('accept') is not False, 'reasons': data.get('reasons') or [], 'output': _block(data.get('output'), 20000),
             'summary': _clean(data.get('summary'), 300), 'note': _block(data.get('note'), 1000), 'questions': data.get('questions') or []}
 
@@ -760,11 +791,14 @@ def _knowledge(job, member, fam):
     return '\n\n'.join(out)
 
 
-def documents_for(job, fam, member_role):
-    """[(name, kind, text)] for this job, library documents read now (labels checked for this model), trimmed."""
+def documents_for(job, fam, member_role, only=None):
+    """[(name, kind, text)] for this job, library documents read now (labels checked for this model), trimmed. only: the names
+    of the documents to include (a part of a stage sees only its own sources)."""
     import doc_library
     out, total = [], 0
+    keep = {x.lower() for x in only} if only is not None else None
     for d in _docs_in(job['id']):
+        if keep is not None and d['name'].lower() not in keep: continue
         text = d['text']
         if d['source'] == 'library':
             p = doc_library.resolve(d['path'])
@@ -781,13 +815,13 @@ def documents_for(job, fam, member_role):
     return out
 
 
-def job_payload(job, member, ctx, include_docs=True, extra=''):
+def job_payload(job, member, ctx, include_docs=True, extra='', docs_only=None):
     import assistants
     fam = assistants.family(member['provider'])
     parts = [f'JOB {ref(job["id"])}: {job["title"]}', 'BRIEF\n' + job['brief']]
     if job.get('location'): parts.append('LOCATION: ' + job['location'])
     if include_docs:
-        docs = documents_for(job, fam, member['role'])
+        docs = documents_for(job, fam, member['role'], only=docs_only)
         if docs: parts.append('DOCUMENTS\n' + '\n\n'.join(f'=== {n} ({DOC_KINDS.get(k, k)}) ===\n{t}' for n, k, t in docs))
     kn = _knowledge(job, member, fam)
     if kn: parts.append('KNOWLEDGE (from Alice)\n' + kn)
@@ -798,9 +832,17 @@ def job_payload(job, member, ctx, include_docs=True, extra=''):
     return '\n\n'.join(parts)
 
 
-def call_model(member, job, system, payload, max_tokens=6000):
+def max_output(member):
+    """The most this member's model may write in one answer: its real limit (assistants.MAX_OUTPUT), so long lists fit."""
+    import assistants
+    prov = member.get('provider') if member.get('provider') in assistants.PROVIDERS else 'claude_sonnet'
+    return assistants.MAX_OUTPUT.get(prov, 16000)
+
+
+def call_model(member, job, system, payload, max_tokens=None):
     """One model call for a member, through Alice's rules: secrets and markings, applied rule packs and the member's own
-    packs, the spending cap; a provider's refusal comes back as a plain sentence (provider_errors)."""
+    packs, the spending cap; a provider's refusal comes back as a plain sentence (provider_errors). An answer cut off at the
+    model's length limit raises CutOff (in_parts then halves the part)."""
     import assistants, rules_engine, rule_packs, provider_errors
     prov = member['provider'] if member.get('provider') in assistants.PROVIDERS else 'claude_sonnet'
     fam = assistants.family(prov)
@@ -809,14 +851,144 @@ def call_model(member, job, system, payload, max_tokens=6000):
     if member.get('packs'): payload = rule_packs.live_check(payload, fam, target, packs=member['packs'])['text']
     rules_engine.check_spend('chat')
     meta = {}
+    limit = max_tokens or max_output(member)
     try:
-        text = assistants._call(prov, system, [{'role': 'user', 'content': payload}], max_tokens=max_tokens, timeout=240,
+        text = assistants._call(prov, system, [{'role': 'user', 'content': payload}], max_tokens=limit, timeout=600 if limit > 16000 else 240,
                                 workload=f'Digital team: {member["role"]}', meta=meta)
     except Exception as e:
         if provider_errors.is_provider_error(e):
             raise TeamError(provider_errors.message(e, prov, sent=(payload,), log=f'Digital team {member["role"]}')) from None
         raise
-    if meta.get('truncated'): raise TeamError(f'{member["role"]}\'s answer was cut off at the model\'s length limit. Try again, or shorten the documents.')
+    if meta.get('truncated'): raise CutOff(f'{member["role"]}\'s answer was cut off at the model\'s length limit.', raw=text)
+    return text
+
+
+FORMAT_RETRY = '\n\nYour last reply could not be read. Reply with ONLY the JSON, in exactly this shape, with no other text before or after it:\n'
+
+
+def ask_json(member, job, system, payload, spec, what='the answer asked for', call=None):
+    """call_model, then parse_json; an unreadable reply is asked for once more ("reply with only the JSON in this shape"), then the
+    member stops with a plain reason naming what was expected. call(system, payload) replaces call_model (e.g. web search)."""
+    call = call or (lambda sy, pa: call_model(member, job, sy, pa))
+    raw = call(system, payload)
+    try: return parse_json(raw, member['role'], what)
+    except Unreadable:
+        pass
+    raw2 = call(system + FORMAT_RETRY + spec, payload)
+    try: return parse_json(raw2, member['role'], what)
+    except Unreadable:
+        raise Unreadable(f'{member["role"]}\'s reply could not be read, twice: it was text, not {what}.', raw=raw2 or raw) from None
+
+
+# ---------------- working in parts (Stefan, 8 Oct 2026) ----------------
+# A member whose output is a list (the take-off, the priced items, the comparisons) works through it in parts, as Parker's writer
+# does: each part is a few elements of the Lead QS's plan, sees the brief and the whole element list but only its own sources,
+# and the parts are merged in code. A part cut off at the model's length limit is halved and tried again, down to one element
+# (or one item, or one document); only then does the job stop, naming the element. Each finished part is kept on the job
+# (outputs['_parts']), so Try again redoes only the part that failed.
+PART_LABELS = {}             # stage handler -> (verb for the page, e.g. 'Pricing', noun for a piece, e.g. 'element')
+
+
+def _part_key(part, extra):
+    import hashlib
+    return hashlib.sha1(json.dumps({'p': part, 'x': extra}, sort_keys=True, ensure_ascii=False, default=str).encode()).hexdigest()[:20]
+
+
+def _put_parts(jid, stage_key, state):
+    outs = _row(jid)['outputs']
+    outs.setdefault('_parts', {})[stage_key] = state
+    _set(jid, outputs=outs)
+
+
+def _pack(pieces, batch, size):
+    """Parts of up to `batch` pieces, or (with size) of pieces whose sizes add up to at most `batch`; never an empty part."""
+    if not size: return [pieces[i:i + batch] for i in range(0, len(pieces), batch)]
+    out, cur, n = [], [], 0
+    for p in pieces:
+        if cur and n + size(p) > batch: out.append(cur); cur, n = [], 0
+        cur.append(p); n += size(p)
+    return out + ([cur] if cur else [])
+
+
+def in_parts(job, stage, pieces, run, split, batch=3, extra=None, size=None):
+    """Run a list-shaped stage in parts. pieces: [{'label': element name, ...}] in order; a part is up to `batch` pieces
+    (or, given size(piece), pieces adding up to `batch`, e.g. items).
+    run(part, info) -> parsed result for that part (info: {'index', 'first'}); split(piece) -> two smaller pieces, or None at
+    the smallest. extra: whatever else the results depend on (feedback, model), so a changed input is worked again.
+    Returns ([(part, result)], {'parts', 'halved', 'elements'}). Raises TeamError naming the element when the smallest part
+    is still cut off."""
+    verb, noun = PART_LABELS.get(stage.get('handler') or '', ('Working', 'part'))
+    labels = list(dict.fromkeys(p['label'] for p in pieces))
+    old = (_row(job['id'])['outputs'].get('_parts') or {}).get(stage['key']) or {}
+    results, cut = dict(old.get('results') or {}), set(old.get('cut') or [])
+    cut.discard((old.get('failed') or {}).get('key'))            # Try again: the part that stopped the job gets a real attempt
+    queue = _pack(pieces, batch, size)
+    done, halved, n = [], 0, 0
+
+    def state(current, failed=None):
+        left = {p['label'] for q in queue for p in q} | {p['label'] for p in current}
+        finished = [x for x in labels if x not in left]
+        return {'verb': verb, 'noun': noun, 'total': len(labels), 'done': len(finished), 'current': [p['label'] for p in current][:6],
+                'results': results, 'cut': sorted(cut), 'failed': failed}
+    while queue:
+        part = queue.pop(0)
+        key = _part_key(part, extra)
+        if key in results:
+            done.append((part, results[key])); continue
+        halves = None
+        if key not in cut:
+            _put_parts(job['id'], stage['key'], state(part))
+            try:
+                res = run(part, {'index': n, 'first': n == 0})
+                n += 1
+                results[key] = res
+                done.append((part, res)); continue
+            except CutOff:
+                cut.add(key)
+            except Exception as e:                       # kept: the parts already done are not worked again on Try again
+                names = ', '.join(dict.fromkeys(p['label'] for p in part))
+                _put_parts(job['id'], stage['key'], state(part, {'label': names, 'reason': _clean(str(e), 300)}))
+                if not getattr(e, 'part', ''):
+                    try: e.part = names
+                    except AttributeError: pass
+                raise
+        if len(part) > 1:
+            halves = [part[:len(part) // 2], part[len(part) // 2:]]
+        else:
+            two = split(part[0])
+            halves = [[two[0]], [two[1]]] if two else None
+        if not halves:
+            names = part[0]['label']
+            msg = (f'{stage["title"]} stopped at “{names}”: the answer was cut off at the model\'s length limit even when that {noun} '
+                   f'was worked on its own in the smallest part. Shorten its documents, split it in the plan, or choose a model that can write more.')
+            _put_parts(job['id'], stage['key'], state(part, {'label': names, 'reason': msg, 'key': key}))
+            raise TeamError(msg, part=names)
+        halved += 1
+        queue[0:0] = halves
+    agents.note('note', 'team_job', job['id'], f'{stage["title"]}: {len(done)} part{"s" if len(done) != 1 else ""}'
+                + (f', {halved} halved after an answer was cut off' if halved else '') + f', {len(labels)} {noun}s')
+    return done, {'parts': len(done), 'halved': halved, noun + 's': len(labels)}
+
+
+def part_progress(j, stages):
+    """The stage being worked in parts, for the page: "Pricing: element 3 of 7", and the part that failed, if one did."""
+    st = j['outputs'].get('_parts') or {}
+    i = j.get('stage', 0)
+    if j['status'] in ('done', 'stopped') or i >= len(stages): return None
+    x = st.get(stages[i]['key'])
+    if not x: return None
+    n = min(x['total'], x['done'] + (0 if x.get('failed') is None and x['done'] >= x['total'] else 1))
+    return {'stage': stages[i]['key'], 'text': f'{x["verb"]}: {x["noun"]} {n} of {x["total"]}' + (f' ({", ".join(x["current"])})' if x.get('current') else ''),
+            'done': x['done'], 'total': x['total'], 'failed': x.get('failed'), 'kept': len(x.get('results') or {})}
+
+
+def reply_excerpt(raw, member_role):
+    """The first 500 characters of a reply, through check_outbound (never kept if it holds a secret or a marking)."""
+    import rules_engine
+    text = _block(raw, 500)
+    if not text: return ''
+    try: rules_engine.check_outbound(text, f'Digital team: {member_role} (reply kept on the job)', packs=False)
+    except rules_engine.RuleViolation: return '(Not kept: the reply held something Alice\'s rules do not allow to be stored.)'
     return text
 
 
@@ -849,7 +1021,7 @@ def decide(sid, action, note=''):
         elif action == 'send_back':
             if not note: raise ValueError('Say what needs to change, so the member can act on it.')
             status, upd = 'sent_back', {'stage': keys.index(s['stage'])}
-            outs = job['outputs']; outs.pop(s['stage'], None); upd['outputs'] = outs
+            outs = job['outputs']; outs.pop(s['stage'], None); (outs.get('_parts') or {}).pop(s['stage'], None); upd['outputs'] = outs
         else: raise ValueError('Approve or send back.')
     elif s['kind'] == 'signoff':
         if action == 'approve': status, upd = 'approved', {}
@@ -859,7 +1031,7 @@ def decide(sid, action, note=''):
             back = max((n for n, x in enumerate(jt['stages']) if x['member'] == first), default=len(keys) - 1)
             status, upd = 'sent_back', {'stage': back}
             outs = job['outputs']
-            for k in keys[back:] + ['_finished']: outs.pop(k, None)
+            for k in keys[back:] + ['_finished']: outs.pop(k, None); (outs.get('_parts') or {}).pop(k, None)
             upd['outputs'] = outs
             with store.db() as c: c.execute('UPDATE team_steps SET stage=? WHERE id=?', (keys[back], sid))
         else: raise ValueError('Approve or send back.')
@@ -933,8 +1105,9 @@ def job_detail(jid):
     return {**{k: j[k] for k in ('id', 'team_id', 'job_type', 'team_version', 'title', 'brief', 'location', 'client', 'status', 'stage', 'holder',
                                  'ai_cost', 'error', 'knowledge_id', 'created_by', 'created_at', 'updated_at')},
             'ref': ref(jid), 'job_type_name': jt['name'], 'team_name': team['name'], 'autonomy': team['autonomy'], 'stages': stages,
-            'outputs': {k: v for k, v in j['outputs'].items() if k != '_finished'}, 'steps': steps, 'documents': docs,
+            'outputs': {k: v for k, v in j['outputs'].items() if k not in ('_finished', '_parts')}, 'steps': steps, 'documents': docs,
             'pending': pending, 'busy': jid in _ACTIVE, 'progress': progress(j, jt['stages'], pending, members),
+            'part_progress': part_progress(j, jt['stages']),
             'where': where(j, pending, members), 'is_demo': _is_demo(j, docs)}
 
 
@@ -1229,8 +1402,9 @@ def progress(j, stages, pending, members=None):
                      'done' if p and p['kind'] in ('handoff', 'signoff') else 'waiting' if p and p['kind'] == 'question' else 'current')
         elif i == cur + 1 and p and p['kind'] == 'handoff': state = 'waiting'
         else: state = 'todo'
+        pp = (outs.get('_parts') or {}).get(s['key']) if state in ('current', 'blocked') else None
         out.append({'key': s['key'], 'title': s['title'], 'role': ((members or {}).get(s['member']) or {}).get('role', ''), 'state': state,
-                    'count': _count(outs.get(s['key'])) if state == 'done' else ''})
+                    'count': _count(outs.get(s['key'])) if state == 'done' else (f'{pp["done"]} of {pp["total"]} {pp["noun"]}s done' if pp else '')})
     out.append({'key': '_signoff', 'title': 'Your sign-off', 'role': 'You', 'count': '',
                 'state': 'done' if st == 'done' else 'waiting' if p and p['kind'] == 'signoff' else 'stopped' if st == 'stopped' else 'todo'})
     return out
@@ -1540,6 +1714,9 @@ def job_page(jid):
         item = {'at': s['created_at'], 'kind': k, 'member': s['member'], 'who': role(s['member']) or 'Alice', 'stage': stage_title.get(s['stage'], s['stage']), 'status': st}
         if k == 'turn':
             item['text'] = (s['note'] or f'Finished “{item["stage"]}”.') if st == 'done' else f'Could not finish “{item["stage"]}”: {s["note"]}'
+            if st == 'failed' and s['content'].get('raw_reply'): item['raw_reply'] = s['content']['raw_reply']
+            if st == 'failed' and s['content'].get('part'): item['part'] = s['content']['part']
+            if st == 'done' and s['content'].get('parts'): item['parts'] = s['content']['parts']
             if st == 'done' and s['content'].get('output') is not None:
                 item['output_title'] = f'What {item["who"]} produced: {item["stage"]}'
                 item['output_text'] = describe(s['stage'], s['content']['output'])[:8000]

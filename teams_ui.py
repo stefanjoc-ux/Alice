@@ -92,6 +92,7 @@ SECTION = r'''<style>
 .tm-dec table input[type=number]{width:110px;margin:0;padding:5px 8px}.tm-dec .opts{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:10px 0 0}.tm-dec .opts label{margin:0;display:flex;gap:6px;align-items:center;font-size:13.5px}
 .tm-dec textarea{width:100%;min-height:54px;margin:8px 0 0}
 .tm-wait{border-left:4px solid var(--tm-wait-fill);background:#fffaf2;border-radius:8px;padding:10px 12px;margin:0 0 12px}.tm-wait textarea{width:100%;min-height:60px;margin-top:6px}
+.tm-partprog{margin:-4px 0 12px;font-size:13.5px;font-weight:600;color:var(--teal)}.tm-reply{margin-top:6px}.tm-reply pre{white-space:pre-wrap;font-size:12.5px;max-height:260px;overflow:auto}
 .tm-err{border-left:4px solid var(--tm-bad);background:#fbeaea;border-radius:8px;padding:10px 12px;margin:0 0 12px}
 .tm-src{display:inline-block;font-size:11.5px;font-weight:600;padding:1px 8px;border-radius:5px;border:1px solid;white-space:nowrap}
 .tm-src.web{background:#e3f1f6;border-color:#9ccbdc;color:#054a60}.tm-src.library{background:#f1ebf7;border-color:#cbb8e2;color:#4b2f73}.tm-src.yours{background:#e6f4ea;border-color:#9fcfaf;color:#1e5b31}
@@ -406,13 +407,15 @@ if(PAGE==='teams'){
  function drawJobNow(){const d=V.d;$('tv-split').hidden=false;drawNav(d.nav,d.team_id);const main=$('tm-main');main.replaceChildren();
   main.append(h('nav',{class:'tm-crumbs','aria-label':'Breadcrumb'},h('a',{href:'/admin/teams'},'Digital teams'),'›',h('a',{href:d.team.href},d.team.name),'›',h('span',{'aria-current':'page'},d.ref+' '+d.title)));
   const acts=h('div',{class:'tm-acts'});const brief=h('button',{type:'button',class:'secondary'},'Brief and files');brief.onclick=briefCard;acts.append(brief);
-  if(d.status==='blocked'||(d.status==='running'&&!d.busy&&(Date.now()-new Date(d.updated_at))>10*60000))acts.append(btn('Resume',async()=>{await api('/admin/api/teams/jobs/'+d.id+'/resume','POST',{});await loadJob()}));
+  const pp=d.part_progress,failedPart=d.status==='blocked'&&pp&&pp.failed;
+  if(d.status==='blocked'||(d.status==='running'&&!d.busy&&(Date.now()-new Date(d.updated_at))>10*60000))acts.append(btn(failedPart?'Try again':'Resume',async()=>{await api('/admin/api/teams/jobs/'+d.id+'/resume','POST',{});$('notice').textContent=failedPart?'Trying '+pp.failed.label+' again; the parts already done are kept.':'Resumed.';await loadJob()}));
   if(!['done','stopped'].includes(d.status))acts.append(btn('Stop job',async()=>{if(!confirm('Stop '+d.ref+'? Its work so far is kept.'))return;await api('/admin/api/teams/jobs/'+d.id+'/stop','POST',{});await loadJob()},'secondary'));
   const desc=[plural(d.documents.length,'document')+' provided',d.location||null,'started '+when(d.created_at)+(d.created_by?' by '+d.created_by:'')].filter(Boolean).join(' · ');
   main.append(h('div',{class:'tm-thead'},mark(d.identity.hex,d.identity.icon,'lg'),h('div',{class:'nm'},h('p',{class:'tm-label'+(d.is_demo?'':' plain')},(d.is_demo?'Demo · fictional · ':'')+d.job_type_name+' · '+d.ref),h('h2',null,d.title),h('p',null,desc)),acts));
   const track=h('ol',{class:'tm-track','aria-label':'Stages'});const SW={done:'Done',current:'Working now',waiting:'Waiting for you',todo:'To come',blocked:'Stopped by a failure',stopped:'Stopped'};
   for(const s of d.progress)track.append(h('li',{class:s.state},h('b',null,s.title),h('span',{class:'who'},s.role),h('span',{class:'tm-state '+s.state},SW[s.state]+(s.count?' · '+s.count:''))));main.append(track);
-  if(d.error)main.append(h('div',{class:'tm-err',role:'alert'},h('strong',null,'Stopped: '),d.error));
+  if(pp&&!['done','stopped'].includes(d.status))main.append(h('p',{class:'tm-partprog',role:'status'},pp.text+(failedPart?' · stopped at '+pp.failed.label:'')));
+  if(d.error)main.append(h('div',{class:'tm-err',role:'alert'},h('strong',null,'Stopped: '),d.error,failedPart?h('div',{class:'small'},'Try again redoes only '+pp.failed.label+(pp.kept?'; the '+plural(pp.kept,'part')+' already done '+(pp.kept===1?'is':'are')+' kept.':'.')):null));
   const cols=h('div',{class:'tm-cols'});const left=h('div'),side=h('div',{class:'tm-side'});cols.append(left,side);main.append(cols);
   if(d.view&&d.view.decision)left.append(decisionPanel(d.view.decision));for(const s of d.pending)left.append(pendingBox(s));
   left.append(outputPanel());
@@ -458,7 +461,9 @@ if(PAGE==='teams'){
   if(docs.length||d.knowledge_id){const o=h('div',{class:'tm-out'});for(const x of docs)o.append(h('a',{href:'/documents/'+x.id+'/download'},'⬇ '+x.kind+': '+x.name));if(d.knowledge_id)o.append(h('a',{href:'/admin/knowledge'},'Saved to Knowledge ↗'));s.append(o)}return s}
  function timeline(){const d=V.d;const ms={};for(const m of d.members)ms[m.id]=m;const ul=h('ol',{class:'tm-tl'});if(!d.timeline.length)return h('p',{class:'tm-empty'},'Nothing yet.');
   for(const x of d.timeline){const m=ms[x.member];const av=x.member==='stefan'?avatar('You','You',false,'','you'):avatar(m?m.initials:'A',x.who,m&&m.id===d.lead.id,d.identity.hex);
-   const li=h('li',null,av,h('div',null,h('span',{class:'w'},x.who),x.stage?h('span',{class:'small muted'},' · '+x.stage):null,h('div',null,x.text),x.outcome?h('div',{class:'o'},x.outcome):null,tm(x.at)));
+   const reply=x.raw_reply?h('details',{class:'tm-reply'},h('summary',null,'What it replied'+(x.part?' ('+x.part+')':'')),h('p',{class:'small muted'},'The first 500 characters of the reply, as received.'),h('pre',null,x.raw_reply)):null;
+   const parts=x.parts&&x.parts.parts>1?h('div',{class:'small muted'},'Worked in '+plural(x.parts.parts,'part')+(x.parts.halved?', '+x.parts.halved+' halved after an answer was cut off':'')):null;
+   const li=h('li',null,av,h('div',null,h('span',{class:'w'},x.who),x.stage?h('span',{class:'small muted'},' · '+x.stage):null,h('div',null,x.text),parts,reply,x.outcome?h('div',{class:'o'},x.outcome):null,tm(x.at)));
    if(x.output_text){const b=h('button',{type:'button',class:'secondary'},'See the output');b.onclick=()=>openCard({ref:d.ref,kind_label:'Digital team · Output',title:x.output_title,subtitle:d.title,sections:[{key:'what',title:x.stage,text:x.output_text},{key:'when',title:'When',rows:[['Produced',{time:x.at}]]}],actions:[]});li.lastChild.append(b)}
    ul.append(li)}return ul}
  // ---------- start: old links, then the right screen ----------
