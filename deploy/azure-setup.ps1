@@ -45,8 +45,17 @@ Steps (all by default, or one with -Step):
              -Step users -UseAppRoles on      remember the switch; then -Step apps puts it live (off = back to allowedPrincipals)
   recover  (run on its own, in a NEW resource group from a fresh clone; docs/restore.md part C) loads a nightly off-site copy
            into this new, empty Alice before its apps start: -Step recover -RecoverFrom <offsite account> [-RecoverCopy yyyy/mm/dd]
+  check    (run on its own; READ-ONLY, changes nothing) lists what each step has set up in the resource group (sign-in,
+           apps, connector, demo, Copilot, mail, backups: the vault and its retention, the lock, the off-site account and its
+           retention, the nightly job and its last run, the drill; app roles) and flags anything missing or different.
   -DatabaseHost <server address>  (any step; remembered) after a point-in-time restore into a new server (docs/restore.md part B),
            so redeploys keep database-url pointing at it. -DatabaseHost '' goes back to this template's own server.
+The setup state (what every step set up and every later step keeps) lives IN AZURE: the blob alice-setup/azure-state.json in
+Alice's own storage account (deploy/azure_state.py). Every step reads it first and writes it back whenever it saves; each saved
+version is also kept under alice-setup/history/. deploy\azure-state.json is only a cache of it. If the Azure copy is missing or
+older than the newest deployment, it is rebuilt from what is deployed first, and you are shown what was rebuilt. If the local
+file differs from the Azure copy, the step stops: delete or rename the local file to use the Azure copy, or add -UseLocalState
+to use the local file deliberately (it then replaces the Azure copy).
 Nothing here reads .env: keys are typed in once and live only in Key Vault.
 #>
 param(
@@ -77,12 +86,25 @@ param(
   [string]$RecoverCopy = '',          # -Step recover: which night (yyyy/mm/dd); default the newest copy
   [string]$DatabaseHost = '',         # after a point-in-time restore: the server Alice uses (remembered; '' = the template's own)
   [ValidateSet('', 'on', 'off')][string]$UseAppRoles = '',   # -Step users: switch who gets in to Entra app roles (on) or back (off); remembered
-  [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github', 'connector', 'demo', 'copilot', 'mail', 'backup', 'recover', 'users')][string]$Step = 'all'
+  [switch]$UseLocalState,             # use deploy\azure-state.json even though it differs from the Azure copy (it then replaces it)
+  [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github', 'connector', 'demo', 'copilot', 'mail', 'backup', 'recover', 'users', 'check')][string]$Step = 'all'
 )
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 $Template = Join-Path $Root 'infra\main.bicep'
-$StateFile = Join-Path $PSScriptRoot 'azure-state.json'
+$StateFile = Join-Path $PSScriptRoot 'azure-state.json'     # a cache: the setup state lives in Azure (azure_state.py)
+$StateHelper = Join-Path $PSScriptRoot 'azure_state.py'
+function Find-Python {
+  # The PC's .venv, else Python on the PATH (Cloud Shell has python3). Each is tried, so the Windows Store stub is skipped.
+  foreach ($c in @((Join-Path $Root '.venv\Scripts\python.exe'), (Join-Path $Root '.venv/bin/python'), 'python3', 'python', 'py')) {
+    if (-not ((Test-Path $c) -or (Get-Command $c -ErrorAction SilentlyContinue))) { continue }
+    $ErrorActionPreference = 'Continue'
+    & $c -c 'import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)' 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) { return $c }
+  }
+  throw 'Python 3.8 or later is needed for the setup state (deploy\azure_state.py). On the PC: python.org, or run from the folder with .venv. Cloud Shell has it.'
+}
+$StatePy = Find-Python
 
 function Say($text) { Write-Host "`n== $text" -ForegroundColor Cyan }
 function AzCli { $out = & az @args; if ($LASTEXITCODE -ne 0) { throw "az $($args -join ' ') failed" }; return $out }   # not named Az: PowerShell names ignore case, so it would call itself
@@ -100,7 +122,21 @@ function Add-AlsoAllow {
   return ,$also
 }
 function Load-State { if (Test-Path $StateFile) { return Get-Content $StateFile -Raw | ConvertFrom-Json } else { return [pscustomobject]@{} } }
-function Save-State($s) { $s | ConvertTo-Json -Depth 5 | Set-Content $StateFile -Encoding UTF8 }
+function Sync-State {
+  # The Azure copy first: read it (rebuilt from what is deployed if missing or behind), refuse a local file that differs.
+  $a = @('load', '--resource-group', $ResourceGroup, '--file', $StateFile, '--who', "$Me")
+  if ($UseLocalState) { $a += '--use-local' }
+  & $StatePy $StateHelper @a | Out-Host
+  if ($LASTEXITCODE -ne 0) { throw 'Stopped before changing anything: the setup state could not be settled (see above).' }
+}
+function Save-State($s) {
+  # Locally (the cache), then the Azure copy, with its ETag so another run's save is never overwritten.
+  $s | ConvertTo-Json -Depth 5 | Set-Content $StateFile -Encoding UTF8
+  & $StatePy $StateHelper save --resource-group $ResourceGroup --file $StateFile --who "$Me" --step $Step | Out-Host
+  if ($LASTEXITCODE -ne 0) { throw 'The setup state could not be saved to Azure (see above). Run -Step check to see what is set up.' }
+  $fresh = Get-Content $StateFile -Raw | ConvertFrom-Json
+  if ($fresh._azure) { Set-Prop $s '_azure' $fresh._azure }
+}
 function Set-Prop($obj, $name, $value) { $obj | Add-Member -NotePropertyName $name -NotePropertyValue $value -Force }
 function New-Password { -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 32 | ForEach-Object { [char]$_ }) }
 function Kv-Has($kv, $name) { AzTry keyvault secret show --vault-name $kv --name $name --query id -o tsv | Out-Null; return ($LASTEXITCODE -eq 0) }
@@ -121,6 +157,13 @@ function Kv-Get($kv, $name) { return (AzCli keyvault secret show --vault-name $k
 AzCli account set --subscription $SubscriptionId | Out-Null
 $Me = AzCli ad signed-in-user show --query id -o tsv
 $Tenant = AzCli account show --query tenantId -o tsv
+if ($Step -eq 'check') {
+  Say "Check (read-only): what each step has set up in $ResourceGroup"
+  & $StatePy $StateHelper check --resource-group $ResourceGroup --file $StateFile --who "$Me" | Out-Host
+  if ($LASTEXITCODE -ne 0) { throw 'The check could not finish (see above). Nothing was changed.' }
+  return
+}
+Sync-State
 $State = Load-State
 if ($PSBoundParameters.ContainsKey('DatabaseHost')) { Set-Prop $State 'databaseHost' $DatabaseHost.Trim(); Save-State $State }   # '' clears it
 Write-Host "Subscription $SubscriptionId, tenant $Tenant, resource group $ResourceGroup ($Location), you: $Me"
@@ -697,4 +740,5 @@ if (Want 'github') {
   Write-Host "  ACR_NAME              = $($State.acrName)"
 }
 
+Save-State $State      # the Azure copy is up to date at the end of every step
 Say 'Done'

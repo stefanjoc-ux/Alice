@@ -104,6 +104,7 @@ knowledge note "AI Substrate: status summary" through the `alice` connector, or 
   read by a managed identity; `Documents\` and `data\images` on an Azure Files share mounted at `/mnt/alice`.
 - Do not run `azure-setup.ps1 -Step apps` while a test-and-deploy run is in progress: it redeploys the image live at that moment and Bicep sets traffic to the latest revision, which can put the previous release back live (seen 4 Oct; fix with Go live > rollback).
 - `deploy/azure-setup.ps1` builds it in steps (infra, secrets, image, files, migrate, signin, apps, github; `connector`, `demo`, `copilot`, `mail` and `users` on their own; `users` adds the Alice.Owner/Admin/Member app roles, Assignment required and the owner as Owner, and with `-UseAppRoles on` remembers the switch that the next `-Step apps` puts live); it never reads .env. Steps deploy the LIVE image unless `-Step image` just built one (`Image-Ref`), so re-running a step never rolls back a promoted version.
+- **The setup state lives in Azure** (Stefan, 8 Oct 2026; `deploy/azure_state.py`, stdlib only, called by the script): blob `alice-setup/azure-state.json` in Alice's own storage account (the file share's), written with its ETag (two runs at once never overwrite each other; each version also under `alice-setup/history/`); `deploy\azure-state.json` is only a cache. Every step first runs `load`: a missing Azure copy, or one older than the newest deployment in the resource group (`deployedAt`), is rebuilt from what is deployed (deployment outputs and parameters, alice-web/alice-mcp settings, the web sign-in, the backup vault, lock, off-site account, jobs) and saved, showing each value and its source; the rebuild adds and updates but never switches off or blanks what the Azure copy has (`merge`). A local file that differs stops the step unless `-UseLocalState`. `save` runs on every `Save-State` and once at the end; the pending database password never leaves the machine. `-Step check` is read-only (`read_only` refuses any az command but show/list/download) and lists what each step set up, flagging what is missing or differs. Test: `test_azure_state.py`.
 - Pipeline (`.github/workflows/deploy.yml`): all suites inside the image (SQLite and PostgreSQL), push, then a new revision
   with no traffic, then automatic go-live (the deploy step first pins traffic to the live revision BY NAME, found with `revision list`, because Bicep's
   `latestRevision: true` (set again by `azure-setup -Step apps`) would otherwise put every new revision live at once; then
@@ -221,7 +222,7 @@ Opus 5.5 (manual only; Auto never selects it), Grok 4.7 (xAI). Temple's reviewer
 
 ## Backup and restore
 
-In Azure (Stefan, 8 Oct 2026), set up by `azure-setup.ps1 -Step backup` (run on its own; remembered in `azure-state.json`, so every
+In Azure (Stefan, 8 Oct 2026), set up by `azure-setup.ps1 -Step backup` (run on its own; remembered in the setup state in Azure, so every
 later step that redeploys keeps backups exactly as set). `infra/backup.bicep` is a module of `main.bicep` (parameter `backup`):
 - **File share snapshots**: Recovery Services vault `alice-backup-vault`, policy `alice-files-daily` (01:00 UK, kept `filesBackupDays` = 30).
   One file or folder can be restored from the portal or `az backup restore restore-azurefiles`.
