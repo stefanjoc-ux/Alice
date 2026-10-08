@@ -15,10 +15,15 @@ machine with an old copy (or none: Cloud Shell forgets) could quietly undo an ea
 - Writes carry the blob's ETag, so two runs at once (the PC and Cloud Shell) never overwrite each other.
 - `check` is read-only: what each step has set up, and anything missing. Every az command it runs is a read
   (show, list, download); anything else is refused in code.
+- `database-host` runs before every deployment of main.bicep: the state must name the database server Alice uses
+  (databaseHost). Not set = the address of the resource group's own server (postgresServer), read from Azure; if that
+  cannot be read, the deployment is refused. Only a resource group with no database server yet (the first -Step infra)
+  deploys without one, because the template is about to create it.
 
 Stdlib only (it runs from the PC's .venv and from Cloud Shell's python3). Talks to Azure only through the az CLI (AZ,
 which the tests replace). Never reads .env; the storage key goes to az in its environment, never on a command line.
-Exit codes: 0 fine, 2 Azure could not be read or written, 3 refused (local and Azure differ), 4 someone else saved first.
+Exit codes: 0 fine, 2 Azure could not be read or written, 3 refused (local and Azure differ), 4 someone else saved first,
+5 refused: no database host and none could be found.
 """
 import argparse
 import hashlib
@@ -192,6 +197,16 @@ class Live:
         return [r.get('name') for r in self.resources() if (r.get('type') or '').lower() == 'microsoft.storage/storageaccounts']
 
 
+PG_TYPE = 'Microsoft.DBforPostgreSQL/flexibleServers'
+
+
+def server_fqdn(live, server):
+    """The database server's address as Azure reports it, or None when it cannot be read."""
+    if not server: return None
+    srv = live.j('postgres', 'flexible-server', 'show', '-g', live.rg, '-n', server) or {}
+    return (srv.get('fullyQualifiedDomainName') or (srv.get('properties') or {}).get('fullyQualifiedDomainName') or '').strip() or None
+
+
 def env_of(app):
     try: items = app['properties']['template']['containers'][0].get('env') or []
     except (KeyError, IndexError, TypeError): return {}
@@ -317,8 +332,14 @@ def rebuild(live):
     elif apps and param(apps, 'allowedUserObjectIds') is not None:
         put('alsoAllow', list(param(apps, 'allowedUserObjectIds') or []), 'deployment alice-apps, parameter allowedUserObjectIds')
 
-    if newest:
-        put('databaseHost', param(newest, 'databaseHost') or '', f"deployment {newest['name']}, parameter databaseHost")
+    # The database Alice uses: the host the newest deployment named (after a restore into a new server), else the address
+    # of this resource group's own server, which is what the template used when databaseHost was empty. Never left empty
+    # when there is a server; left out (the stored value kept) when the address cannot be read.
+    host = (param(newest, 'databaseHost') or '').strip() if newest else ''
+    if host: put('databaseHost', host, f"deployment {newest['name']}, parameter databaseHost")
+    elif s.get('postgresServer'):
+        put('databaseHost', server_fqdn(live, s['postgresServer']),
+            f"database server {s['postgresServer']}: its address (the deployment left databaseHost empty, which meant this server)")
 
     # Backups: the resources themselves, then the settings they were deployed with (alice-web's ALICE_BACKUP_* settings)
     vault = live.named('Microsoft.RecoveryServices/vaults', name='alice-backup-vault')
@@ -438,7 +459,7 @@ def _upload(store, content, etag, who, step, newest):
     return content, props
 
 
-# ---------------- the three commands ----------------
+# ---------------- the commands ----------------
 def load(az, rg, path, use_local=False, who='', out=print):
     local = read_local(path)
     local_name = path or 'azure-state.json'
@@ -528,6 +549,35 @@ def save(az, rg, path, who='', step='', out=print):
     return 0
 
 
+def database_host(az, rg, path, out=print):
+    """Before any deployment of main.bicep. The local state (the cache the script then saves to Azure) gets databaseHost
+    when it has none: the address of the resource group's database server. Refused (5) when there is a server but its
+    address cannot be read, so main.bicep is never deployed with an empty databaseHost for an existing database."""
+    state = read_local(path) or {}
+    if (state.get('databaseHost') or '').strip(): return 0
+    live = Live(az, rg)
+    listed = live.j('resource', 'list', '-g', rg) if live.group() else []
+    if listed is None:
+        out(f'Stopped before deploying: the resources in {rg} could not be read, so the database server Alice uses is not known.')
+        out('Check you are signed in to the right subscription (az account show), then run the step again. Nothing was changed.')
+        return 5
+    servers = [r.get('name') for r in listed if (r.get('type') or '').lower() == PG_TYPE.lower()]
+    server = state.get('postgresServer') if state.get('postgresServer') in servers else (servers[0] if len(servers) == 1 else None)
+    if not servers:
+        out(f'No database server in {rg} yet: this deployment creates one and Alice uses it (databaseHost is set from it next time).')
+        return 0
+    fqdn = server_fqdn(live, server)
+    if not fqdn:
+        which = server or ', '.join(servers)
+        out(f'Stopped before deploying: databaseHost is not set and the address of the database server ({which}) could not be read.')
+        out("Give it once with -DatabaseHost <server>.postgres.database.azure.com (the server Alice uses now). Nothing was changed.")
+        return 5
+    state['databaseHost'] = fqdn
+    write_local(path, state)
+    out(f'databaseHost was not set: now {fqdn}, the address of database server {server} (the one Alice uses; nothing about it changes).')
+    return 0
+
+
 def check(az, rg, path, who='', out=print):
     """Read-only: what each step has set up, and anything missing. Changes nothing, writes no file."""
     az = read_only(az)
@@ -578,6 +628,11 @@ def check(az, rg, path, who='', out=print):
                             ('Managed identity alice-identity', 'Microsoft.ManagedIdentity/userAssignedIdentities', {'name': 'alice-identity'})):
         n = has(rtype, **kw) if kw else next((r['name'] for r in res if (r.get('type') or '').lower() == rtype.lower()), None)
         row('infra', item, 'ok' if n else 'MISSING', n or 'not found: run -Step infra')
+    pg_here = next((r['name'] for r in res if (r.get('type') or '').lower() == PG_TYPE.lower()), None)
+    dbh = (state.get('databaseHost') or '').strip()
+    if pg_here:
+        row('infra', 'Database Alice uses (databaseHost)', 'ok' if dbh else 'MISSING',
+            dbh or f'not set: the next step sets it from {pg_here}, or stops if it cannot read its address')
     kv = next((r['name'] for r in res if (r.get('type') or '').lower() == 'microsoft.keyvault/vaults'), None)
     listed = live.j('keyvault', 'secret', 'list', '--vault-name', kv) if kv else None
     secrets = {s.get('name') for s in (listed or [])}
@@ -735,7 +790,7 @@ def check(az, rg, path, who='', out=print):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description='The setup state of azure-setup.ps1, kept in Azure.')
-    ap.add_argument('command', choices=('load', 'save', 'check'))
+    ap.add_argument('command', choices=('load', 'save', 'check', 'database-host'))
     ap.add_argument('--resource-group', required=True)
     ap.add_argument('--file', required=True)
     ap.add_argument('--use-local', action='store_true')
@@ -748,6 +803,7 @@ def main(argv=None):
     try:
         if a.command == 'load': return load(AZ, a.resource_group, a.file, a.use_local, a.who, out)
         if a.command == 'save': return save(AZ, a.resource_group, a.file, a.who, a.step, out)
+        if a.command == 'database-host': return database_host(AZ, a.resource_group, a.file, out)
         return check(AZ, a.resource_group, a.file, a.who, out)
     except AzureError as e:
         out(f'Stopped: {e}'); return 2

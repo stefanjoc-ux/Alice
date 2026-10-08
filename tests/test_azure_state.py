@@ -22,6 +22,7 @@ ME, ALSO = '11111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-2222
 WEB_APP, API_APP, CONN_APP, GH_APP = 'aaaaaaaa-0000-0000-0000-000000000001', 'aaaaaaaa-0000-0000-0000-000000000002', 'aaaaaaaa-0000-0000-0000-000000000003', 'aaaaaaaa-0000-0000-0000-000000000004'
 KEY = 'c3RvcmFnZS1rZXktbm90LXJlYWw='
 CALLERS = f'cccc=Microsoft Copilot:copilot;{S.TOKEN_STORE}=Microsoft Copilot:copilot'
+PG_FQDN = 'alice-pg-abc123.postgres.database.azure.com'
 
 
 def res(rtype, name): return {'type': rtype, 'name': name}
@@ -86,6 +87,7 @@ class FakeAzure:
         self.sp = {WEB_APP: {'appRoleAssignmentRequired': True}}
         self.immutability = {'immutabilityPeriodSinceCreationInDays': 35, 'state': 'Unlocked'}
         self.policy_days = 30
+        self.pg_readable = True
 
     def blob_put(self, name, text):
         self.n += 1
@@ -130,7 +132,9 @@ class FakeAzure:
         if a[:3] == ['ad', 'sp', 'show']: return ok(self.sp.get(opt('--id'), {}))
         if a[:3] == ['backup', 'policy', 'show']: return ok({'properties': {'retentionPolicy': {'dailySchedule': {'retentionDuration': {'count': self.policy_days}}}}})
         if a[:3] == ['backup', 'item', 'list']: return ok([{'properties': {'friendlyName': 'alice', 'lastBackupTime': '2026-10-08T00:10:00Z', 'lastBackupStatus': 'Completed'}}])
-        if a[:3] == ['postgres', 'flexible-server', 'show']: return ok({'backup': {'backupRetentionDays': 35, 'geoRedundantBackup': 'Disabled'}})
+        if a[:3] == ['postgres', 'flexible-server', 'show']:
+            if not self.pg_readable or opt('-n') not in [r['name'] for r in self.resources]: return nf
+            return ok({'fullyQualifiedDomainName': PG_FQDN, 'backup': {'backupRetentionDays': 35, 'geoRedundantBackup': 'Disabled'}})
         if a[:4] == ['containerapp', 'job', 'execution', 'list']: return ok([{'properties': {'status': 'Succeeded', 'startTime': '2026-10-08T01:00:05Z'}}])
         raise AssertionError('unexpected az call: ' + cmd)
 
@@ -162,7 +166,7 @@ def read(p): return json.load(open(p, encoding='utf-8-sig'))
 FULL = {**{k: v for k, v in OUTPUTS.items()}, 'keyVault': 'alice-kv-abc123', 'webAuthClientId': WEB_APP, 'extAppId': API_APP, 'extCallers': CALLERS,
         'extAudiences': ['api://copilot-sso'], 'mailFrom': 'alice@example.org', 'alsoAllow': [ALSO], 'customDomain': 'alice.example.org',
         'connectorClientId': CONN_APP, 'backup': True, 'backupNotify': 'stefan@example.org', 'noLock': False, 'githubClientId': GH_APP,
-        'copilotAuthId': 'T_auth-config-123', 'image': 'aliceabc123acr.azurecr.io/alice:old'}
+        'copilotAuthId': 'T_auth-config-123', 'image': 'aliceabc123acr.azurecr.io/alice:old', 'databaseHost': PG_FQDN}
 
 # ---------------- the state is written to Azure ----------------
 az = FakeAzure()
@@ -235,7 +239,9 @@ t('rebuild: sign-in, the API app, callers, Copilot audiences, connector, mail an
   and st['connectorClientId'] == CONN_APP and st['mailFrom'] == 'alice@example.org' and st['customDomain'] == 'alice.example.org')
 t('rebuild: the other allowed people from the sign-in (the owner left out); app roles off', st['alsoAllow'] == [ALSO] and st['useAppRoles'] is False)
 t('rebuild: names from the deployment outputs; database host and image too', st['keyVault'] == 'alice-kv-abc123' and st['storageAccount'] == FILES
-  and st['webUrl'] == OUTPUTS['webUrl'] and st['databaseHost'] == '' and st['image'].endswith(':9f3e2d1') and st['githubClientId'] == GH_APP)
+  and st['webUrl'] == OUTPUTS['webUrl'] and st['image'].endswith(':9f3e2d1') and st['githubClientId'] == GH_APP)
+t('rebuild: databaseHost left empty by the deployment = the address of postgresServer, never "not set"',
+  st['databaseHost'] == PG_FQDN and 'database server alice-pg-abc123: its address' in text)
 t('rebuild: what nothing deployed shows is kept from the local file, and said so', st['copilotAuthId'] == 'T_auth-config-123' and 'kept from' in text and 'copilotAuthId' in text)
 t('rebuild: it shows each value and where it came from', re.search(r'backup\s+yes\s+\(found: alice-backup-vault', text) and 'alice-web: ALICE_BACKUP_NOTIFY' in text)
 t('rebuild: then the old PC copy is refused (it lacks the backup step)', code == 3 and 'differs' in text)
@@ -263,6 +269,52 @@ m, kept = S.merge({'backup': True, 'noLock': False, 'alsoAllow': ['x'], 'mailFro
 t('merge: backups, the lock and mail are kept when not found deployed; lists joined; a new value wins',
   m['backup'] is True and m['noLock'] is False and m['alsoAllow'] == ['x', 'y'] and m['mailFrom'] == 'a@x' and m['customDomain'] == 'new.example.org'
   and set(kept) == {'backup', 'noLock', 'mailFrom'})
+
+# ---------------- the database host: derived, never empty when a server exists ----------------
+az = FakeAzure()
+next(d for d in az.deployments if d['name'] == 'alice-apps')['properties']['parameters']['databaseHost'] = {'type': 'String', 'value': 'alice-pg-restored.postgres.database.azure.com'}
+live_state, src = S.rebuild(S.Live(az, RG))
+t('rebuild: a databaseHost the deployment named (after a restore into a new server) is kept as it is',
+  live_state['databaseHost'] == 'alice-pg-restored.postgres.database.azure.com')
+az = FakeAzure(); az.pg_readable = False
+live_state, _ = S.rebuild(S.Live(az, RG))
+t('rebuild: a server whose address cannot be read leaves databaseHost out (the stored value is kept, not blanked)', 'databaseHost' not in live_state)
+m, kept = S.merge({'databaseHost': ''}, {'databaseHost': PG_FQDN})
+t('rebuild: an Azure copy that says "not set" takes the derived address', m['databaseHost'] == PG_FQDN)
+
+az = FakeAzure()
+p = path('dbhost.json'); write(p, {k: v for k, v in FULL.items() if k != 'databaseHost'})
+code, text = run(S.database_host, az, RG, p)
+t('database-host: not set = set to the address of postgresServer, and said so', code == 0 and read(p)['databaseHost'] == PG_FQDN and PG_FQDN in text and 'alice-pg-abc123' in text)
+t('database-host: only reads Azure (the script saves the state afterwards)', not az.writes())
+n = len(az.calls)
+code, _ = run(S.database_host, az, RG, p)
+t('database-host: already set = nothing read, nothing changed', code == 0 and len(az.calls) == n and read(p)['databaseHost'] == PG_FQDN)
+write(p, {**FULL, 'databaseHost': 'alice-pg-restored.postgres.database.azure.com'})
+code, _ = run(S.database_host, az, RG, p)
+t('database-host: a host set after a restore is never replaced', code == 0 and read(p)['databaseHost'] == 'alice-pg-restored.postgres.database.azure.com')
+az = FakeAzure(); az.pg_readable = False
+write(p, {k: v for k, v in FULL.items() if k != 'databaseHost'}); raw = open(p, 'rb').read()
+code, text = run(S.database_host, az, RG, p)
+t('database-host: a server whose address cannot be read = refused (5), file untouched, says how to give it', code == 5 and open(p, 'rb').read() == raw
+  and 'Stopped before deploying' in text and '-DatabaseHost' in text)
+az = FakeAzure(); az.resources = [r for r in az.resources if r['type'] != 'Microsoft.DBforPostgreSQL/flexibleServers']
+write(p, {'postgresServer': 'alice-pg-gone'})
+code, text = run(S.database_host, az, RG, p)
+t('database-host: no server in the resource group yet (the first -Step infra) = deploy, the template creates it', code == 0 and 'databaseHost' not in read(p) and 'creates one' in text)
+az = FakeAzure(); real = az.__call__
+az_fail = lambda args, env=None: (1, '', 'ERROR: AuthorizationFailed') if args[:2] == ['resource', 'list'] else real(args, env)
+write(p, {})
+code, text = run(S.database_host, az_fail, RG, p)
+t('database-host: the resources cannot be listed = refused, never treated as "no server"', code == 5 and 'could not be read' in text and 'databaseHost' not in read(p))
+az = FakeAzure()
+write(p, {})
+code, _ = run(S.database_host, az, RG, p)
+t('database-host: no postgresServer in the state = the one server in the resource group', code == 0 and read(p)['databaseHost'] == PG_FQDN)
+
+az = FakeAzure(); az.blob_put(S.BLOB, json.dumps({**{k: v for k, v in FULL.items() if k != 'databaseHost'}, 'deployedAt': '2026-10-07T21:14:03.5551234+00:00'}))
+code, text = run(S.check, az, RG, path('nodb.json'), who=ME)
+t('check: a state with no databaseHost while a server exists is flagged', 'Database Alice uses (databaseHost): missing' in text and not az.writes())
 
 # ---------------- a local file for a resource group with no Alice ----------------
 az = FakeAzure(); az.groups = set()
@@ -318,4 +370,10 @@ chk = setup.index("if ($Step -eq 'check')")
 t('setup: -Step check runs before anything can save and returns straight after', chk < setup.index('Sync-State\n$State') and chk < setup.index("ContainsKey('DatabaseHost')")
   and 'StateHelper check' in setup[chk:chk + 400] and 'return' in setup[chk:chk + 500])
 t('setup: the state is written back at the end of every step', re.search(r"Save-State \$State[^\n]*\nSay 'Done'", setup))
+dep = setup[setup.index('function Deploy($stage, $extra) {'):]
+dep = dep[:dep.index('\n}\n')]
+t('setup: every deployment of main.bicep first makes sure databaseHost is set, and stops if it cannot',
+  dep[len('function Deploy($stage, $extra) {'):].lstrip().startswith('Ensure-DatabaseHost')
+  and re.search(r'function Ensure-DatabaseHost \{.*?StateHelper database-host .*?LASTEXITCODE -ne 0\) \{ throw', setup, re.S)
+  and setup.count('deployment group create') == 2 and "-f $Template" in dep)
 t('setup: the helper is stdlib only (it runs in Cloud Shell)', not re.search(r'^(import|from) (requests|azure|psycopg)', open(os.path.join(ROOT, 'deploy', 'azure_state.py')).read(), re.M))
