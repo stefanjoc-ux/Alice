@@ -26,6 +26,13 @@ Steps (all by default, or one with -Step):
   mail     (run on its own) lets Alice email (held decisions go to their owner): -Step mail -MailFrom alice@yourdomain
            gives Alice's managed identity the Microsoft Graph permission Mail.Send (no password or secret) and sets the
            sending mailbox on alice-web and alice-mcp. The mailbox must exist (a shared mailbox needs no licence).
+  backup   (run on its own) backups: Azure Backup for the file share (daily snapshots, kept 30 days), a CanNotDelete lock on
+           the resource group, PostgreSQL backups kept 35 days, and the nightly off-site copy (the alice-backup job at 02:00 UK
+           time: database and files to a separate storage account in UK West, unchangeable for 35 days). Takes the first
+           off-site copy straight away. Remembered: every later step keeps backups on.
+             -Step backup [-BackupNotify you@yourdomain] [-FilesBackupDays 30] [-OffsiteKeepDays 35] [-OffsiteSoftDeleteDays 35]
+                          [-PgBackupDays 35] [-NoLock] [-LockImmutability] [-PgGeoBackup]
+           Lift the lock deliberately: az lock delete --name alice-do-not-delete --resource-group <rg>, then -Step backup -NoLock.
 Nothing here reads .env: keys are typed in once and live only in Key Vault.
 #>
 param(
@@ -44,7 +51,15 @@ param(
   [string]$CopilotDemoAudience = '',
   [string]$CopilotDemoAuthId = '',    # the demo Alice's registration
   [string]$MailFrom = '',             # -Step mail: the mailbox Alice sends from
-  [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github', 'connector', 'demo', 'copilot', 'mail')][string]$Step = 'all'
+  [string]$BackupNotify = '',         # -Step backup: who is emailed when a nightly backup fails (default: you); remembered
+  [int]$FilesBackupDays = 0,          # -Step backup: days of file share snapshots kept (default 30); remembered
+  [int]$OffsiteKeepDays = 0,          # -Step backup: days each off-site copy is unchangeable, then removed (default 35); remembered
+  [int]$OffsiteSoftDeleteDays = 0,    # -Step backup: days a deleted off-site copy stays recoverable (default 35); remembered
+  [int]$PgBackupDays = 0,             # -Step backup: days of database backups (7-35, default 35); remembered
+  [switch]$NoLock,                    # -Step backup: no CanNotDelete lock on the resource group (it is on unless you say so)
+  [switch]$LockImmutability,          # -Step backup: lock the off-site immutability policy for good (asks you to confirm)
+  [switch]$PgGeoBackup,               # -Step backup: geo-redundant database backups (only if the server was created with them)
+  [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github', 'connector', 'demo', 'copilot', 'mail', 'backup')][string]$Step = 'all'
 )
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
@@ -54,7 +69,7 @@ $StateFile = Join-Path $PSScriptRoot 'azure-state.json'
 function Say($text) { Write-Host "`n== $text" -ForegroundColor Cyan }
 function AzCli { $out = & az @args; if ($LASTEXITCODE -ne 0) { throw "az $($args -join ' ') failed" }; return $out }   # not named Az: PowerShell names ignore case, so it would call itself
 function AzTry { $ErrorActionPreference = 'Continue'; & az @args 2>$null }   # may fail (e.g. "does it exist?"): Windows PowerShell 5.1 otherwise turns az's error text into a stop
-function Want($name) { return (($Step -eq 'all' -and $name -notin @('connector', 'demo', 'copilot', 'mail')) -or $Step -eq $name) }
+function Want($name) { return (($Step -eq 'all' -and $name -notin @('connector', 'demo', 'copilot', 'mail', 'backup')) -or $Step -eq $name) }
 function Public-Url { if ($State.customDomain) { return "https://$($State.customDomain)" } else { return "$($State.webUrl)" } }
 function Audiences { return (@($State.extAudiences | Where-Object { $_ }) -join ',') }   # Copilot's SSO audiences, kept on every redeploy
 function Add-AlsoAllow {
@@ -96,6 +111,13 @@ function Deploy($stage, $extra) {
   $pw = if ($kv -and (Kv-Has $kv 'pg-admin-password')) { Kv-Get $kv 'pg-admin-password' } elseif ($State.pendingPassword) { $State.pendingPassword } else { New-Password }
   if (-not $kv) { Set-Prop $State 'pendingPassword' $pw; Save-State $State }   # kept only until it is in Key Vault
   $values = @{ stage = $stage; pgAdminPassword = $pw; deployerObjectId = $Me; ownerObjectId = $Me; location = $Location }
+  # Backups (-Step backup) are remembered, so every step that redeploys keeps them exactly as they are
+  foreach ($k in 'pgBackupRetentionDays', 'filesBackupDays', 'offsiteKeepDays', 'offsiteSoftDeleteDays') { if ($State.$k) { $values[$k] = [int]$State.$k } }
+  if ($State.pgGeoBackup) { $values['pgGeoRedundantBackup'] = $true }
+  if ($State.backup) {
+    $values['backup'] = $true; $values['backupNotify'] = "$($State.backupNotify)"
+    $values['lockResourceGroup'] = -not $State.noLock; $values['offsiteImmutabilityLocked'] = [bool]$State.offsiteImmutabilityLocked
+  }
   foreach ($k in $extra.Keys) { $values[$k] = $extra[$k] }
   $doc = @{ '$schema' = 'https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#'; contentVersion = '1.0.0.0'; parameters = @{} }
   foreach ($k in $values.Keys) { $doc.parameters[$k] = @{ value = $values[$k] } }
@@ -104,7 +126,7 @@ function Deploy($stage, $extra) {
     [IO.File]::WriteAllText($pfile, ($doc | ConvertTo-Json -Depth 6))
     $out = AzCli deployment group create -g $ResourceGroup -f $Template -n ('alice-' + $stage) --parameters ('@' + $pfile) --query properties.outputs -o json | ConvertFrom-Json
   } finally { Remove-Item $pfile -Force -ErrorAction SilentlyContinue }
-  foreach ($p in 'acrName', 'acrLoginServer', 'keyVaultName', 'storageAccount', 'shareName', 'environmentDomain', 'webUrl', 'mcpUrl', 'postgresServer') {
+  foreach ($p in 'acrName', 'acrLoginServer', 'keyVaultName', 'storageAccount', 'shareName', 'environmentDomain', 'webUrl', 'mcpUrl', 'postgresServer', 'offsiteAccount', 'backupVault') {
     if ($out.$p) { Set-Prop $State $p $out.$p.value }
   }
   Set-Prop $State 'keyVault' $State.keyVaultName
@@ -460,6 +482,65 @@ if (Want 'mail') {
   Write-Host "Alice sends from $($State.mailFrom). Held decisions are emailed to their owner (Actions > Decisions)." -ForegroundColor Green
   Write-Host 'Recommended: limit the permission to that one mailbox (Exchange Online PowerShell, once):' -ForegroundColor Green
   Write-Host "  New-ApplicationAccessPolicy -AppId $($mi.clientId) -PolicyScopeGroupId <a mail-enabled security group holding $($State.mailFrom)> -AccessRight RestrictAccess -Description 'Alice sends only as her own mailbox'"
+}
+
+if (Want 'backup') {
+  Say 'Backups: file share snapshots, the resource group lock, database backups for 35 days and the nightly off-site copy'
+  if (-not $State.webAuthClientId -or -not $State.extAppId -or -not $State.extCallers) { throw 'Run -Step apps first.' }
+  AzCli provider register --namespace Microsoft.RecoveryServices --wait --output none | Out-Null
+  if ($FilesBackupDays) { if ($FilesBackupDays -lt 1 -or $FilesBackupDays -gt 200) { throw '-FilesBackupDays must be 1 to 200.' }; Set-Prop $State 'filesBackupDays' $FilesBackupDays }
+  if ($OffsiteKeepDays) { if ($OffsiteKeepDays -lt 1 -or $OffsiteKeepDays -gt 365) { throw '-OffsiteKeepDays must be 1 to 365.' }; Set-Prop $State 'offsiteKeepDays' $OffsiteKeepDays }
+  if ($OffsiteSoftDeleteDays) { if ($OffsiteSoftDeleteDays -lt 1 -or $OffsiteSoftDeleteDays -gt 365) { throw '-OffsiteSoftDeleteDays must be 1 to 365.' }; Set-Prop $State 'offsiteSoftDeleteDays' $OffsiteSoftDeleteDays }
+  if ($PgBackupDays) { if ($PgBackupDays -lt 7 -or $PgBackupDays -gt 35) { throw '-PgBackupDays must be 7 to 35 (Azure''s limits).' }; Set-Prop $State 'pgBackupRetentionDays' $PgBackupDays }
+  if ($PgGeoBackup) {
+    # Azure only lets you choose geo-redundant backups when a server is CREATED; an existing server cannot switch it on.
+    $geo = AzCli postgres flexible-server show -g $ResourceGroup -n $State.postgresServer --query backup.geoRedundantBackup -o tsv
+    if ("$geo".Trim() -ne 'Enabled') { throw "The database server $($State.postgresServer) was created without geo-redundant backups, and Azure cannot switch them on afterwards. It needs a new server (a point-in-time restore into a new server with geo-redundant backup on, then Alice moved to it): a planned change, not this step. Nothing was changed." }
+    Set-Prop $State 'pgGeoBackup' $true
+  }
+  if ($BackupNotify) { Set-Prop $State 'backupNotify' $BackupNotify.Trim() }
+  if (-not $State.backupNotify) {
+    $mail = AzTry ad signed-in-user show --query mail -o tsv
+    if (-not "$mail".Trim()) { $mail = AzTry ad signed-in-user show --query userPrincipalName -o tsv }
+    Set-Prop $State 'backupNotify' "$mail".Trim()
+  }
+  if (-not ($State.backupNotify -match '^[^@\s]+@[^@\s]+\.[^@\s]+$')) { throw 'Give -BackupNotify: the address to email when a nightly backup fails.' }
+  Set-Prop $State 'noLock' ([bool]$NoLock)
+  Set-Prop $State 'backup' $true
+  Save-State $State
+  if (-not $State.mailFrom) { Write-Host 'Note: email is not set up yet (-Step mail), so a failed backup shows on Home and the Backup page but is not emailed.' -ForegroundColor Yellow }
+  Write-Host 'Deploying (do not run this while a test-and-deploy run is in progress)...'
+  $also = @($State.alsoAllow | Where-Object { $_ })
+  $users = (@($Me) + $also | Select-Object -Unique) -join ','
+  $certId = ''
+  if ($State.customDomain) {
+    $envName = AzCli containerapp env list -g $ResourceGroup --query '[0].name' -o tsv
+    $certId = AzCli containerapp env certificate list -g $ResourceGroup -n $envName --managed-certificates-only --query "[?properties.subjectName=='$($State.customDomain)'].id | [0]" -o tsv
+  }
+  Deploy 'apps' @{ image = (Image-Ref); webAuthClientId = $State.webAuthClientId; keyVaultSecretNames = (Key-Names)
+                   extAppId = $State.extAppId; extAllowedUsers = $users; extCallers = $State.extCallers; extAudiences = (Audiences); mailFrom = "$($State.mailFrom)"; publicUrl = (Public-Url)
+                   allowedUserObjectIds = $also; customDomain = "$($State.customDomain)"; customDomainCertificateId = "$certId"
+                   connectorClientId = "$($State.connectorClientId)" }
+  if ($LockImmutability -and -not $State.offsiteImmutabilityLocked) {
+    Write-Host "Locking the immutability policy is permanent: no one (you included) can then shorten it or delete a copy before it is $(if ($State.offsiteKeepDays) { $State.offsiteKeepDays } else { 35 }) days old, and the off-site account cannot be deleted while it holds copies." -ForegroundColor Yellow
+    $ok = Read-Host 'Type LOCK to lock it for good'
+    if ($ok -eq 'LOCK') {
+      $etag = AzCli storage container immutability-policy show -g $ResourceGroup --account-name $State.offsiteAccount -c alice-offsite --query etag -o tsv
+      AzCli storage container immutability-policy lock -g $ResourceGroup --account-name $State.offsiteAccount -c alice-offsite --if-match "$etag".Trim() --output none | Out-Null
+      Set-Prop $State 'offsiteImmutabilityLocked' $true; Save-State $State
+      Write-Host 'Immutability policy locked. (The Backup page shows it as locked after the next setup step.)'
+    } else { Write-Host 'Not locked.' }
+  }
+  Write-Host 'Taking the first off-site copy now (a few minutes)...'
+  $st = Run-Job 'alice-backup'
+  if ($st -eq 'Succeeded') { Write-Host 'First off-site copy done.' -ForegroundColor Green } else { Write-Host 'The first off-site copy did not succeed: see the Backup page in Alice and the job''s log (above).' -ForegroundColor Yellow }
+  Write-Host ''
+  Write-Host "File share snapshots: vault $($State.backupVault), daily, kept $(if ($State.filesBackupDays) { $State.filesBackupDays } else { 30 }) days" -ForegroundColor Green
+  Write-Host "Database backups: kept $(if ($State.pgBackupRetentionDays) { $State.pgBackupRetentionDays } else { 35 }) days (point-in-time restore)" -ForegroundColor Green
+  Write-Host "Off-site copy: storage account $($State.offsiteAccount) (UK West), every night at 02:00 UK time; failures emailed to $($State.backupNotify)" -ForegroundColor Green
+  if ($State.noLock) { Write-Host 'Resource group lock: off (-NoLock).' -ForegroundColor Yellow }
+  else { Write-Host "Resource group lock: alice-do-not-delete. To lift it deliberately: az lock delete --name alice-do-not-delete --resource-group $ResourceGroup   then -Step backup -NoLock" -ForegroundColor Green }
+  Write-Host "Backup page: $(Public-Url)/admin/backup"
 }
 
 if (Want 'github') {

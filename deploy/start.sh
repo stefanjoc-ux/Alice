@@ -31,6 +31,11 @@ case "${ALICE_ROLE:-web}" in
   test)
     exec python tests/run_tests.py "$@"
     ;;
+  backup)
+    # Nightly off-site copy (backup.py): pg_dump of the live database and the file share (mounted READ-ONLY at /mnt/alice-ro),
+    # compressed, to the separate off-site storage account. Scheduled at 01:00 and 02:00 UTC; only the one at 02:00 UK time runs.
+    exec python backup.py run
+    ;;
   *)
-    echo "Unknown ALICE_ROLE: $ALICE_ROLE (use web, mcp, migrate or test)" >&2; exit 2 ;;
+    echo "Unknown ALICE_ROLE: $ALICE_ROLE (use web, mcp, migrate, test or backup)" >&2; exit 2 ;;
 esac

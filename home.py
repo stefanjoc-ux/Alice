@@ -9,6 +9,11 @@ def _safe(fn, default):
     except Exception: return default
 
 
+def backup_status():
+    import backup
+    return backup.home_status()
+
+
 def summary(tz=0):
     import actions, activity_log, agents, assistants, knowledge, organisations, rules_engine, doc_library
     acts = _safe(lambda: actions.summary(cached=True), {'total': 0, 'sections': []})
@@ -52,6 +57,7 @@ def summary(tz=0):
         'proposals': props,
         'assistants': [{'id': a['id'], 'name': a['name'], 'kind': a['kind'], 'status': a['status'], 'description': a['description']} for a in asst],
         'agents': {'total': len(ag), 'active': sum(1 for a in ag if a['status'] == 'active'), 'attention': attention[:5]},
+        'backup': _safe(backup_status, None),
         'substrate': {'memories': mem, 'knowledge': kn, 'organisations': len(orgs), 'clients': sum(1 for o in orgs if o.get('is_client')),
                       'documents': docs},
     }
