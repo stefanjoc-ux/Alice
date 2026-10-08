@@ -59,7 +59,7 @@ ICONS = {
     'gear': ('Gear', '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1"/>'),
     'chat': ('Speech', '<path d="M4 5h16v11H9l-5 4z"/>'),
 }
-RESERVED = {'board', 'jobs', 'steps', 'suggestions', 'demo-project', 'library-files', 'costs'}     # fixed paths under /admin/api/teams
+RESERVED = {'board', 'jobs', 'steps', 'suggestions', 'demo-project', 'library-files', 'costs', 'pricing-templates'}     # fixed paths under /admin/api/teams
 DISCIPLINES = ['Quantity surveying', 'Bids and proposals', 'Finance', 'HR', 'Legal', 'Operations', 'Research', 'Technology']
 
 with store.db() as c:
@@ -105,9 +105,13 @@ with store.db() as c:
     c.execute('''CREATE TABLE IF NOT EXISTS team_job_versions (job_id TEXT NOT NULL, version INTEGER NOT NULL, kind TEXT NOT NULL DEFAULT 'first',
         what TEXT NOT NULL DEFAULT '', asked_by TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '', started_at TEXT NOT NULL,
         outputs TEXT NOT NULL DEFAULT '', signed_off_at TEXT, signed_off_by TEXT NOT NULL DEFAULT '', PRIMARY KEY (job_id, version))''')
-    for _t in ('team_jobs', 'team_steps'):
-        if 'version' not in {r['name'] for r in c.execute(f'PRAGMA table_info({_t})')}:
-            try: c.execute(f'ALTER TABLE {_t} ADD COLUMN version INTEGER NOT NULL DEFAULT 1')
+    # Pricing templates and the Start a job screen (Stefan, 8 Oct 2026): the job's pricing template (a pointer into the document
+    # sources; '' = Alice's own layout), where it came from (client, team or chosen), and the approval for this job ('' = the team's).
+    for _t, _col, _ddl in (('team_jobs', 'version', 'INTEGER NOT NULL DEFAULT 1'), ('team_steps', 'version', 'INTEGER NOT NULL DEFAULT 1'),
+                           ('team_jobs', 'pricing_template', "TEXT NOT NULL DEFAULT ''"), ('team_jobs', 'pricing_template_from', "TEXT NOT NULL DEFAULT ''"),
+                           ('team_jobs', 'autonomy', "TEXT NOT NULL DEFAULT ''")):
+        if _col not in {r['name'] for r in c.execute(f'PRAGMA table_info({_t})')}:
+            try: c.execute(f'ALTER TABLE {_t} ADD COLUMN {_col} {_ddl}')
             except Exception as e:             # web and mcp start together: the other one may have just added it
                 if 'already exists' not in str(e) and 'duplicate column' not in str(e).lower(): raise
 
@@ -258,7 +262,7 @@ def listing():
 def _save(tid, d, what, new=False):
     """Write a new version of a team (validated)."""
     _validate(d)
-    body = {k: d[k] for k in ('name', 'description', 'colour', 'icon', 'discipline', 'autonomy', 'settings', 'members', 'job_types', 'filing') if k in d}
+    body = {k: d[k] for k in ('name', 'description', 'colour', 'icon', 'discipline', 'autonomy', 'settings', 'members', 'job_types', 'filing', 'pricing') if k in d}
     text = json.dumps(body, ensure_ascii=False)
     import rules_engine
     rules_engine.check_outbound(text, 'Digital team settings', packs=False)      # no secrets or markings in instructions
@@ -505,13 +509,16 @@ def _docs_in(job_id):
         return [dict(r) for r in c.execute('SELECT id, name, kind, source, path, text FROM team_job_docs WHERE job_id=? ORDER BY added_at, name', (job_id,))]
 
 
-def start_job(tid, job_type, title, brief, location='', client='', uploads=(), library=()):
+def start_job(tid, job_type, title, brief, location='', client='', uploads=(), library=(), template=None, autonomy='', estimates=False):
     """Start a job: uploads are [{name, kind, data (base64) | text}], library [{path, kind}] (pointers into the document sources;
-    their text is read at each turn, never stored). Every document is checked before anything is kept."""
-    import rules_engine, doc_library, organisations, proposals
+    their text is read at each turn, never stored). Every document is checked before anything is kept. template: a pricing template's
+    path ('' = Alice's own layout; None = the client's default, else the team's, else Alice's own). autonomy: 'approve' or 'signoff'
+    for this job ('' = the team's setting). estimates: team estimates allowed on this job."""
+    import rules_engine, doc_library, organisations, proposals, pricing_templates
     team = get(tid)
     jt = next((x for x in team['job_types'] if x['id'] == job_type), None)
     if not jt: raise ValueError('Choose a job type.')
+    if autonomy and autonomy not in AUTONOMY: raise ValueError('Choose how much the team does on its own.')
     title, brief, location = _clean(title, 150), _block(brief, 20000), _clean(location, 120)
     if not title: raise ValueError('Give the job a title.')
     if len(brief.split()) < 5: raise ValueError('Give the team a brief: what is wanted, in a few sentences.')
@@ -542,17 +549,68 @@ def start_job(tid, job_type, title, brief, location='', client='', uploads=(), l
         if not p: raise ValueError(f'{l.get("path")}: not found in the document sources.')
         rel = str(p.relative_to(doc_library.ROOT))
         docs.append((p.name, l.get('kind') if l.get('kind') in DOC_KINDS else 'spec', 'library', rel, ''))
+    if template is None: tpath, tfrom = pricing_templates.default_for(team, cl or org)
+    else: tpath, tfrom = pricing_templates._rel(template), 'chosen' if template else ''
+    if tpath: _template_ok(tpath, cl or org, jt)
+    outs = {'_estimates': {'all': True, 'refs': [], 'by': _actor(), 'at': store.now()}} if estimates else {}
     jid = uuid.uuid4().hex
     with store.db() as c:
-        c.execute('INSERT INTO team_jobs(id,team_id,job_type,team_version,title,brief,location,client,status,stage,holder,created_by,created_at,updated_at) '
-                  'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (jid, tid, job_type, team['version'], title, brief, location, cl or org,
-                                                           'running', 0, '', _actor(), store.now(), store.now()))
+        c.execute('INSERT INTO team_jobs(id,team_id,job_type,team_version,title,brief,location,client,status,stage,holder,outputs,created_by,created_at,'
+                  'updated_at,pricing_template,pricing_template_from,autonomy) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                  (jid, tid, job_type, team['version'], title, brief, location, cl or org, 'running', 0, '', json.dumps(outs), _actor(), store.now(), store.now(),
+                   tpath, tfrom, autonomy or ''))
         for name, kind, source, path, text in docs:
             c.execute('INSERT INTO team_job_docs(id,job_id,name,kind,source,path,text,added_at) VALUES (?,?,?,?,?,?,?,?)',
                       (uuid.uuid4().hex, jid, name, kind, source, path, text, store.now()))
-        store.audit(c, 'team_job_started', jid, 'human_review', f'{ref(jid)} {title} · {team["name"]} v{team["version"]} · {len(docs)} document(s)')
+        store.audit(c, 'team_job_started', jid, 'human_review', f'{ref(jid)} {title} · {team["name"]} v{team["version"]} · {len(docs)} document(s)'
+                    + (f' · pricing template {tpath.rsplit("/", 1)[-1]}' if tpath else '') + (' · team estimates allowed' if estimates else '')
+                    + (f' · {AUTONOMY[autonomy].lower()}' if autonomy else ''))
     kick(jid)
     return job(jid)
+
+
+def _template_ok(path, client, jt):
+    """A pricing template a job may use: in the document sources, readable, its Purview label allowed, and allowed for this job's client."""
+    import pricing_templates
+    p = pricing_templates.resolve(path)
+    if not p: raise ValueError('That pricing template is not in the document sources.')
+    if p.suffix.lower() not in pricing_templates.EXT_OK: raise ValueError(f'{p.name} is in the old Excel format (.xls): save it as .xlsx to use it.')
+    pricing_templates._label_ok(p.name, p.read_bytes())
+    pricing_templates.allowed_for(path, client, facing(jt))
+
+
+def set_job_template(jid, path):
+    """Change a job's pricing template ('' = Alice's own layout). Before measuring it is simply used; once the items are priced the
+    template is filled again from the same items, without re-running the team."""
+    import pricing_templates
+    j = _row(jid)
+    if j['status'] == 'stopped': raise ValueError('This job was stopped.')
+    team, jt = _job_team(j)
+    path = pricing_templates._rel(path)
+    if path: _template_ok(path, j['client'], jt)
+    _set(jid, pricing_template=path, pricing_template_from='chosen' if path else '')
+    with store.db() as c:
+        store.audit(c, 'team_job_template', jid, 'human_review', f'{ref(jid)} {j["title"]}: pricing template ' + (path.rsplit('/', 1)[-1] if path else "Alice's own layout"))
+    j = _row(jid)
+    if j['outputs'].get('_finished') or j['status'] == 'done':
+        refill_template(jid)
+    return job_page(jid)
+
+
+def refill_template(jid):
+    """Fill the job's pricing template again from the items as they stand (no member works again)."""
+    import pricing_templates
+    j = _row(jid)
+    if jid in _ACTIVE or j['status'] == 'running': raise ValueError('The team is working on this job: wait until it needs you.')
+    team, jt = _job_team(j)
+    res = pricing_templates.refill(j, team)
+    outs = _row(jid)['outputs']
+    docs = [d for d in outs.get('documents') or [] if not d.get('template')]
+    if res.get('document'): docs.append({**res['document'], 'kind': 'Excel', 'template': True})
+    if outs.get('documents') is not None or docs: outs['documents'] = docs
+    outs['template_fill'] = {k: v for k, v in res.items() if k != 'document'}
+    _set(jid, outputs=outs)
+    return res
 
 
 def _row(jid):
@@ -758,7 +816,7 @@ def _run(jid):
             _set(jid, stage=i + 1); continue
         nxt = stages[n]
         nm = members.get(nxt['member']) or {}
-        pending = team['autonomy'] == 'approve'
+        pending = (job.get('autonomy') or team['autonomy']) == 'approve'
         _add_step(jid, 'handoff', st['key'], member['id'], to_member=nxt['member'], status='pending' if pending else 'auto',
                   note=res.get('note') or res.get('summary', ''), content={'from_role': member['role'], 'to_role': nm.get('role', ''),
                                                                           'summary': res.get('summary', ''), 'next_stage': nxt['key']})
@@ -1333,11 +1391,19 @@ def copy_job(jid, client='', title=''):
     keep_plan = bool(first and plan is not None)
     outs = {first['key']: plan} if keep_plan else {}
     outs['_copied_from'] = {'job': jid, 'ref': ref(jid), 'version': j.get('version') or 1}
+    if (j['outputs'].get('_estimates') or {}).get('all'): outs['_estimates'] = {'all': True, 'refs': [], 'by': _actor(), 'at': store.now()}
+    import pricing_templates                     # the pricing template is a setting too, if the new client may use it; else that client's default
+    tpath, tfrom = j.get('pricing_template') or '', j.get('pricing_template_from') or ''
+    try:
+        if tpath: _template_ok(tpath, new_client, jt)
+    except ValueError:
+        tpath, tfrom = pricing_templates.default_for(get(j['team_id']), new_client)
     nid = uuid.uuid4().hex
     with store.db() as c:
-        c.execute('INSERT INTO team_jobs(id,team_id,job_type,team_version,title,brief,location,client,status,stage,holder,outputs,created_by,created_at,updated_at) '
-                  'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (nid, j['team_id'], j['job_type'], j['team_version'], title, j['brief'], j['location'], new_client,
-                                                             'running', 1 if keep_plan else 0, '', json.dumps(outs, ensure_ascii=False), _actor(), store.now(), store.now()))
+        c.execute('INSERT INTO team_jobs(id,team_id,job_type,team_version,title,brief,location,client,status,stage,holder,outputs,created_by,created_at,updated_at,'
+                  'pricing_template,pricing_template_from,autonomy) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                  (nid, j['team_id'], j['job_type'], j['team_version'], title, j['brief'], j['location'], new_client, 'running', 1 if keep_plan else 0, '',
+                   json.dumps(outs, ensure_ascii=False), _actor(), store.now(), store.now(), tpath, tfrom, j.get('autonomy') or ''))
         for d in docs:
             c.execute('INSERT INTO team_job_docs(id,job_id,name,kind,source,path,text,added_at) VALUES (?,?,?,?,?,?,?,?)',
                       (uuid.uuid4().hex, nid, d['name'], d['kind'], d['source'], d['path'], d['text'], store.now()))
@@ -1373,7 +1439,7 @@ def job_detail(jid):
     pending = [s for s in steps if s['status'] == 'pending']
     return {**{k: j[k] for k in ('id', 'team_id', 'job_type', 'team_version', 'title', 'brief', 'location', 'client', 'status', 'stage', 'holder',
                                  'ai_cost', 'error', 'knowledge_id', 'created_by', 'created_at', 'updated_at', 'version')},
-            'ref': ref(jid), 'job_type_name': jt['name'], 'team_name': team['name'], 'autonomy': team['autonomy'], 'stages': stages,
+            'ref': ref(jid), 'job_type_name': jt['name'], 'team_name': team['name'], 'autonomy': j.get('autonomy') or team['autonomy'], 'stages': stages,
             'outputs': {k: v for k, v in j['outputs'].items() if not k.startswith('_')}, 'steps': steps, 'documents': docs,
             'pending': pending, 'busy': jid in _ACTIVE, 'progress': progress(j, jt['stages'], pending, members),
             'part_progress': part_progress(j, jt['stages']),
@@ -1888,6 +1954,17 @@ def _nav(b=None):
             'icons': {k: v[1] for k, v in ICONS.items()}}
 
 
+def _job_template(j):
+    """The job's pricing template for the job page: which, where it came from, its mapping, the latest fill and what to choose from."""
+    import pricing_templates
+    t = pricing_templates.for_job(j)
+    team = get(j['team_id'])
+    choices = pricing_templates.in_folder(pricing_templates.team_settings(team)['folder'])
+    fills = pricing_templates.fills(j['id'])
+    return {**t, 'choices': choices, 'fill': j['outputs'].get('template_fill'), 'fills': [{k: f[k] for k in ('version', 'doc_id', 'library_path', 'client', 'differences', 'created_at')} for f in fills][-6:],
+            'measured': bool((j['outputs'].get('measure') or {}).get('items'))}
+
+
 def _rate_sources():
     import rules_engine
     rs = rules_engine.rate_sources()
@@ -2048,7 +2125,8 @@ def job_page(jid):
         latest = next(((s['key'], d['outputs'][s['key']]) for s in reversed(jt['stages']) if d['outputs'].get(s['key']) is not None), None)
         view['text'] = {'stage': stage_title.get(latest[0], ''), 'text': describe(latest[0], latest[1])[:20000]} if latest else None
     lead = members.get(lead_id(team)) or {}
-    raw = _row(jid)['outputs']
+    raw_job = _row(jid)
+    raw = raw_job['outputs']
     rr = raw.get('_rerun') or {}
     handlers = {s.get('handler') for s in jt['stages']}
     idle = d['status'] in ('waiting', 'blocked', 'done') and not d['busy']
@@ -2060,9 +2138,10 @@ def job_page(jid):
             'costs': team_costs.job(jid), 'versions': job_versions(jid), 'can': can, 'elements': (raw.get('plan') or {}).get('elements') or [],
             'rerun': {k: rr.get(k) for k in ('kind', 'version', 'from_version', 'refs', 'elements', 'by', 'note', 'order', 'estimates', 'trends')} if rr else None,
             'copied_from': raw.get('_copied_from'), 'rate_sources': _rate_sources(), 'staff_on': bool(figs),
+            'pricing_template': _job_template(raw_job), 'estimates_all': bool((raw.get('_estimates') or {}).get('all')),
             'lead': {'id': lead.get('id', ''), 'role': lead.get('role', '')}, 'timeline': tl, 'messages': msgs, 'view': view,
             'members': [{'id': m['id'], 'role': m['role'], 'initials': _initials(m['role'])} for m in team['members']],
-            'autonomy_label': AUTONOMY.get(team['autonomy'], ''), 'nav': _nav(), 'url': job_url(d['team_id'], jid),
+            'autonomy_label': AUTONOMY.get(d['autonomy'], '') + ('' if not raw_job.get('autonomy') else ' (this job)'), 'nav': _nav(), 'url': job_url(d['team_id'], jid),
             'job_type_description': jt.get('description', ''), 'doc_kinds': DOC_KINDS}
 
 

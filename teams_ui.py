@@ -126,6 +126,30 @@ SECTION = r'''<style>
 .tm-rp .items label{display:flex;gap:8px;align-items:flex-start;font-size:13px;font-weight:400}.tm-rp .opts{display:grid;gap:6px;margin:8px 0}.tm-rp .opts label{display:flex;gap:8px;align-items:center;font-weight:400;font-size:13.5px}
 .tm-order{list-style:none;margin:4px 0;padding:0;display:grid;gap:4px}.tm-order li{display:flex;gap:6px;align-items:center;font-size:13px}.tm-order li button{padding:0 8px}.tm-order li.off span{color:var(--muted);text-decoration:line-through}
 .tm-rp textarea{width:100%;min-height:54px}.tm-sortl{display:flex;gap:6px;align-items:center;font-size:13px}
+.ts-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start}.ts-steps{display:grid;gap:16px;margin:0;padding:0;list-style:none}
+.ts-step{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 18px}.ts-step h3{margin:0 0 10px;display:flex;gap:10px;align-items:center;font-size:16px}
+.ts-num{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--teal);color:#fff;font-size:13px;font-weight:700;flex:none}
+.ts-step label{display:grid;gap:4px;font-size:13px;font-weight:600;margin:0 0 10px}.ts-step .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.ts-step .hint{font-weight:400;color:var(--muted);font-size:12px}
+.ts-types{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px;margin:0 0 10px;border:0;padding:0}.ts-types legend{font-size:13px;font-weight:600;margin:0 0 6px;padding:0}
+.ts-type{display:flex!important;gap:8px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:9px 11px;font-weight:400!important;cursor:pointer;margin:0!important}
+.ts-type:has(input:checked){border-color:var(--teal);background:#eef7fa;box-shadow:0 0 0 1px var(--teal)}.ts-type b{display:block;font-size:13.5px}.ts-type span{font-size:12px;color:var(--muted)}
+.ts-drop{border:2px dashed #9fb6c4;border-radius:12px;padding:22px;text-align:center;background:#f7fafc;cursor:pointer;color:#3d5566}.ts-drop:focus-visible,.ts-drop.over{border-color:var(--teal);background:#eef7fa;outline:none}
+.ts-drop b{display:block;font-size:15px;color:var(--ink);margin:0 0 2px}.ts-files{display:grid;gap:8px;margin:10px 0 0}
+.ts-file{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px 11px;font-size:13px}
+.ts-file .nm{font-weight:600;overflow-wrap:anywhere}.ts-file .meta{font-size:12px;color:var(--muted)}.ts-file .meta .lbl{color:#4b2f73}.ts-file .prob{font-size:12px;color:var(--tm-bad)}
+.ts-file.tpl{border-color:#7fb3c8;background:#f1f8fb;box-shadow:inset 4px 0 0 var(--teal)}.ts-file select{margin:0;min-width:150px}.ts-file button{margin:0}
+.ts-tag{display:inline-block;font-size:11px;font-weight:700;border-radius:999px;padding:0 7px;margin-left:6px;border:1px solid #9ccbdc;background:#e3f1f6;color:#054a60}.ts-tag.warn{border-color:#f0c48a;background:var(--tm-wait-bg);color:#8a3f06}.ts-tag.ok{border-color:#9ccfaa;background:#e7f4ea;color:#1d5a2c}
+.ts-opt{display:flex!important;gap:8px;align-items:flex-start;font-weight:400!important}.ts-src{margin:4px 0 10px;padding-left:20px;font-size:13px}.ts-src li.off{color:var(--muted)}
+.ts-next{position:sticky;top:12px;background:var(--bar,#0b1626);color:#e8f0f6;border-radius:16px;padding:18px}.ts-next h3{color:#fff;margin:0 0 4px;font-size:16px}.ts-next p{color:#b9cad6;font-size:13px;margin:0 0 10px}
+.ts-who{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:10px}.ts-who li{display:grid;grid-template-columns:32px minmax(0,1fr);gap:10px;font-size:13px}.ts-who b{color:#fff}.ts-who .d{color:#b9cad6;font-size:12.5px}
+.ts-who .tm-av{background:#1d3550;color:#fff;border-color:#3b5a78}.ts-typ{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:13px;margin:0 0 12px;padding:10px 0;border-top:1px solid #23405d;border-bottom:1px solid #23405d}.ts-typ dt{color:#b9cad6}.ts-typ dd{margin:0;color:#fff;font-weight:600}
+.ts-ready{list-style:none;margin:0 0 14px;padding:0;display:grid;gap:6px;font-size:13px}.ts-ready li{display:grid;grid-template-columns:20px 1fr;gap:6px}.ts-ready .i{font-weight:700}.ts-ready .ok .i{color:#7ee2a0}.ts-ready .warn .i{color:#f5c26b}.ts-ready .no .i{color:#ff9b9b}
+.ts-next button.go{width:100%;margin:0;background:#fff;color:var(--bar,#0b1626);font-weight:700}.ts-next button.go:disabled{opacity:.55}.ts-next a{color:#9fd3e6}
+.tm-map{max-width:min(960px,96vw);width:100%;border:0;border-radius:14px;padding:18px 20px}.tm-map::backdrop{background:rgba(11,22,38,.55)}.tm-map h3{margin:0 0 6px}.tm-map .sheet{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:10px 0}
+.tm-map .roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}.tm-map label{display:grid;gap:3px;font-size:12.5px;font-weight:600}.tm-map .prev{max-height:220px;overflow:auto;margin:8px 0}.tm-map .prev td,.tm-map .prev th{font-size:11.5px;padding:2px 6px;border:1px solid #e3e9ee;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis}
+.tm-map .tm-acts button:first-child{background:var(--teal);color:#fff;border-color:var(--teal)}.tm-tpl{display:grid;gap:6px;font-size:13px}.tm-diffs{margin:6px 0 0;padding-left:18px;font-size:12.5px}.tm-diffs li{margin:2px 0}
+@media(max-width:1000px){.ts-grid{grid-template-columns:minmax(0,1fr)}.ts-next{position:static}}
+@media(max-width:640px){.ts-step .row{grid-template-columns:minmax(0,1fr)}.ts-file{grid-template-columns:minmax(0,1fr)}.ts-file select{min-width:0;width:100%}}
 @media(max-width:1100px){.tm-cols{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:900px){.tm-split{grid-template-columns:minmax(0,1fr)}.tm-nav{position:static}.tm-nav ul{display:flex;flex-wrap:wrap;gap:6px}.tm-nav li a{border:1px solid var(--line);border-radius:999px;padding:4px 10px}.tm-nav h4{margin:8px 0 4px}}
 @media(max-width:640px){.tm-nrow{grid-template-columns:auto minmax(0,1fr);align-items:start}.tm-nrow time{grid-column:2}.tm-nrow button{grid-column:2;justify-self:start}.tm-grid{grid-template-columns:minmax(0,1fr)}.tm-head h2,.tm-thead h2{font-size:19px}}
@@ -154,7 +178,7 @@ SECTION = r'''<style>
 SCRIPT = r"""
 if(PAGE==='teams'){
  const P=location.pathname.replace(/\/+$/,'').split('/');            // ['', 'admin', 'teams', id?, 'jobs'?, job?]
- const V={tid:P[3]?decodeURIComponent(P[3]):'',jid:P[4]==='jobs'&&P[5]?P[5]:'',d:null,timer:null,icons:{}};
+ const V={tid:P[3]?decodeURIComponent(P[3]):'',jid:P[4]==='jobs'&&P[5]?P[5]:'',start:P[4]==='start',d:null,timer:null,icons:{}};
  // ---------- small helpers ----------
  const h=(tag,a,...kids)=>{const e=document.createElement(tag);if(a)for(const [k,v] of Object.entries(a)){if(v==null||v===false)continue;if(k==='class')e.className=v;else if(k==='text')e.textContent=v;else if(k.startsWith('on'))e[k]=v;else if(k==='style')e.style.cssText=v;else e.setAttribute(k,v===true?'':v)}
   for(const c of kids.flat()){if(c==null||c===false)continue;e.append(c.nodeType?c:document.createTextNode(String(c)))}return e};
@@ -192,7 +216,7 @@ if(PAGE==='teams'){
    const go=i.resume?btn('Resume',async()=>{await api('/admin/api/teams/jobs/'+i.resume+'/resume','POST',{});$('notice').textContent=i.job_ref+' resumed.';await reload()}):h('a',{class:'button',href:i.href},i.action);
    box.append(h('div',{class:'tm-nrow'},mark(i.hex,i.icon,'sm'),h('div',null,who,h('div',{class:'s'},i.text)),i.at?tm(i.at):h('span'),go))}
   return box}
- async function reload(){if(V.jid)await loadJob();else if(V.tid)await loadTeam();else await loadBoard()}
+ async function reload(){if(V.jid)await loadJob();else if(V.start)await loadStart();else if(V.tid)await loadTeam();else await loadBoard()}
  // ---------- Screen 1: all teams ----------
  const B={status:store.get('status','all'),group:store.get('group','discipline'),view:store.get('view','cards'),sort:store.get('sort','needs'),q:''};
  async function loadBoard(){const d=await api('/admin/api/teams/board');V.d=d;setIconsFrom(d);drawBoard()}
@@ -256,16 +280,16 @@ if(PAGE==='teams'){
  // ---------- Screen 2: a team ----------
  const TABS=[['overview','Overview'],['jobs','Jobs'],['members','Members'],['knowledge','Knowledge'],['rules','Rules and autonomy'],['activity','Activity']];
  let tab=(location.hash||'').slice(1);if(!TABS.some(t=>t[0]===tab))tab='overview';
- const T={docs:[],lib:null,startOpen:false,editOpen:false,talkOpen:false};
+ const T={editOpen:false,talkOpen:false,pt:null};
  async function loadTeam(poll){const d=await api('/admin/api/teams/'+enc(V.tid)+'/page');V.d=d;setIconsFrom(d);
-  const typing=T.editOpen||(tab==='jobs'&&T.startOpen)||['members','knowledge','rules'].includes(tab);if(!poll||!typing)drawTeam();     // a refresh never wipes a form you are filling in
+  const typing=T.editOpen||['members','knowledge','rules'].includes(tab);if(!poll||!typing)drawTeam();     // a refresh never wipes a form you are filling in
   clearTimeout(V.timer);if(d.jobs.some(j=>j.status==='running'))V.timer=setTimeout(()=>run(()=>loadTeam(true)),3000)}
  function teamHead(){const d=V.d,t=d.team,idn=d.identity;const head=h('div',{class:'tm-thead'});
   const chips=h('div',{class:'tm-chips'},h('a',{class:'tm-chip',href:'#rules',onclick:()=>setTab('rules')},d.autonomy[t.autonomy]),...d.chips.map(c=>h('a',{class:'tm-chip'+(c.off?' off':''),href:c.href},c.label)),idn.discipline?h('span',{class:'tm-chip'},idn.discipline):null,pill(d.status,d.status_label));
   const pin=btn(d.pinned?'Unpin':'Pin',async()=>{await api('/admin/api/teams/'+enc(t.id)+'/pin','PUT',{on:!d.pinned});d.pinned=!d.pinned;await loadTeam()},'secondary');pin.setAttribute('aria-pressed',d.pinned);pin.title=d.pinned?'Remove from Pinned teams':'Keep this team in Pinned teams';
   const edit=h('button',{type:'button',class:'secondary','aria-expanded':T.editOpen},'Edit team');edit.onclick=()=>{T.editOpen=!T.editOpen;drawTeam()};
   const ask=h('button',{type:'button',class:'secondary','aria-expanded':T.talkOpen},'Ask the team');ask.onclick=()=>{T.talkOpen=!T.talkOpen;drawTeam()};
-  const start=h('button',{type:'button'},'Start a job');start.onclick=()=>{T.startOpen=true;setTab('jobs');setTimeout(()=>{const x=$('tm-start');if(x){x.scrollIntoView({block:'start'});const f=x.querySelector('select,input');if(f)f.focus()}},0)};
+  const start=h('a',{class:'button',href:'/admin/teams/'+enc(t.id)+'/start'},'Start a job');
   head.append(mark(idn.hex,idn.icon,'lg'),h('div',{class:'nm'},h('h2',null,t.name),t.description?h('p',null,t.description):null,chips),h('div',{class:'tm-acts'},pin,edit,ask,start));return head}
  function editPanel(){const d=V.d,t=d.team,idn=d.identity;const f=h('form',{class:'tm-form tm-panel'});const name=h('input',{type:'text',maxlength:'80',value:t.name,required:true}),disc=disciplineInput(idn.discipline,d.disciplines),desc=h('textarea',{maxlength:'600',rows:'2'});desc.value=t.description||'';
   const colours=swatches('tm-ecolour','Colour',d.colours,idn.colour),icons=swatches('tm-eicon','Icon',d.icons,idn.icon);const save=h('button',{type:'submit'},'Save'),cancel=h('button',{type:'button',class:'secondary'},'Cancel');cancel.onclick=()=>{T.editOpen=false;drawTeam()};
@@ -329,33 +353,14 @@ if(PAGE==='teams'){
   s.append(ul);if(R.applied_packs.length)s.append(h('p',{class:'small'},'Rule packs applied to every model call: ',...R.applied_packs.map((x,i)=>[i?', ':'',h('a',{href:x.href},x.name)])));
   for(const m of R.member_packs)if(m.packs.length)s.append(h('p',{class:'small'},m.member+'’s own rule packs: '+m.packs.join(', ')));return s}
  // ---- Jobs tab: start a job, all jobs ----
- function drawJobsTab(p){const d=V.d,t=d.team;const sp=h('section',{class:'tm-panel',id:'tm-start'});const toggle=h('button',{type:'button',class:T.startOpen?'secondary':'','aria-expanded':T.startOpen},T.startOpen?'Close':'Start a job');toggle.onclick=()=>{T.startOpen=!T.startOpen;drawTeam()};
-  sp.append(h('div',{class:'tm-head',style:'margin:0'},h('h3',{style:'margin:0'},'Start a job'),toggle));if(T.startOpen)sp.append(startForm());p.append(sp);
+ function drawJobsTab(p){const d=V.d,t=d.team;const sp=h('section',{class:'tm-panel',id:'tm-start'});
+  sp.append(h('div',{class:'tm-head',style:'margin:0'},h('div',null,h('h3',{style:'margin:0'},'Start a job'),h('p',{class:'small muted',style:'margin:2px 0 0'},'The job, its documents and pricing template, and how it should be priced, on one screen.')),h('a',{class:'button',href:'/admin/teams/'+enc(t.id)+'/start'},'Start a job')));p.append(sp);
   const list=h('section',{class:'tm-panel'},h('h3',null,'All jobs'));if(!d.jobs.length)list.append(h('p',{class:'tm-empty'},'No jobs yet.'));
   else{const wrap=h('div',{class:'table-wrap'}),tb=h('table',{class:'tm-list'});tb.append(h('thead',null,h('tr',null,['Job','Status','Where it is','Started','AI cost'].map(x=>h('th',{scope:'col'},x)))));const body=h('tbody');
    for(const j of d.jobs){const st=j.pending.length?['needs_you','Needs you']:j.status==='blocked'?['blocked','Stopped']:j.status==='done'?['done','Signed off']:j.status==='stopped'?['stopped','Stopped']:['running','Running'];
     body.append(h('tr',null,h('td',null,h('a',{href:'/admin/teams/'+enc(t.id)+'/jobs/'+j.id},j.ref+' '+j.title),h('div',{class:'small muted'},j.job_type_name+' · team v'+j.team_version)),h('td',null,pill(st[0],st[1])),
      h('td',{style:'min-width:200px'},['done','stopped'].includes(j.status)?j.where:[progBar(j.progress),whereLine(j.where)]),h('td',null,when(j.created_at)),h('td',{class:'num'},money(d.costs.jobs[j.id]||{text:(d.costs.fx.rate?'£':'$')+'0.00',note:d.costs.fx.note}))))}
    tb.append(body);wrap.append(tb);list.append(wrap,fxLine(d.costs.fx,'AI costs'))}p.append(list)}
- function startForm(){const d=V.d,t=d.team;const f=h('div',{class:'tm-form'});if(!t.job_types.length){f.append(h('p',{class:'tm-empty'},'Add a job type on the Rules and autonomy tab first.'));return f}
-  const jt=h('select');for(const x of t.job_types)jt.append(h('option',{value:x.id},x.name+(x.description?' · '+x.description:'')));
-  const title=h('input',{type:'text',maxlength:'150',placeholder:'e.g. New community hall, early cost estimate'}),brief=h('textarea',{maxlength:'20000',rows:'4',placeholder:'What is wanted, in a few sentences.'});
-  const loc=h('input',{type:'text',maxlength:'120',placeholder:'e.g. Perth, Scotland'}),client=h('input',{type:'text',maxlength:'80',placeholder:'An organisation marked Client keeps the job to its own material'});
-  const files=h('input',{type:'file',multiple:true,accept:'.pdf,.docx,.xlsx,.csv,.txt,.md','aria-label':'Upload documents'}),lib=h('select',{'aria-label':'Pick from the document sources'},h('option',{value:''},'Or pick from the document sources…')),add=h('button',{type:'button',class:'secondary'},'Add');
-  const docs=h('div',{class:'tm-docs'}),note=h('span',{class:'small muted'});
-  const guess=n=>/draw|plan|elevation|section|\.dwg/i.test(n)?'drawing':/schedule|\.csv|\.xlsx/i.test(n)?'schedule':/spec/i.test(n)?'spec':'brief';
-  const drawDocs=()=>{docs.replaceChildren(...T.docs.map((x,i)=>{const k=h('select',{'aria-label':'What '+x.name+' is'});for(const [kk,l] of Object.entries(d.doc_kinds))k.append(h('option',{value:kk},l));k.value=x.kind;k.onchange=()=>{x.kind=k.value};
-   const rm=h('button',{type:'button',class:'secondary'},'Remove');rm.onclick=()=>{T.docs.splice(i,1);drawDocs()};return h('div',{class:'tm-doc'},h('span',null,(x.path?'📁 ':'📄 ')+x.name),k,rm)}));note.textContent=T.docs.length?plural(T.docs.length,'document'):'Add the specification, schedules and drawings.'};
-  files.onchange=()=>run(async()=>{for(const fl of files.files){if(fl.size>15*1024*1024)throw Error(fl.name+' is larger than 15 MB.');const data=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]);r.onerror=()=>no(Error('Could not read '+fl.name));r.readAsDataURL(fl)});T.docs.push({name:fl.name,kind:guess(fl.name),data})}files.value='';drawDocs()});
-  add.onclick=()=>{const v=lib.value;if(!v)return;if(!T.docs.some(x=>x.path===v))T.docs.push({name:v.split('/').pop(),kind:guess(v),path:v});lib.value='';drawDocs()};
-  run(async()=>{if(!T.lib)T.lib=(await api('/admin/api/teams/library-files')).files;for(const x of T.lib)lib.append(h('option',{value:x.path},x.source+' › '+x.path))});
-  const demo=h('button',{type:'button',class:'secondary'},'Load the demo project (fictional)');demo.onclick=()=>run(async()=>{const x=await api('/admin/api/teams/demo-project');title.value=x.title;brief.value=x.brief;loc.value=x.location;client.value='';T.docs=x.documents.map(y=>({name:y.name,kind:y.kind,text:y.text}));drawDocs();$('notice').textContent='Demo project loaded (fictional). Load the fictional demo rate library on the Knowledge tab too, then Start the job.'});
-  const go=h('button',{type:'button'},'Start the job');go.onclick=()=>run(async()=>{go.disabled=true;try{const body={job_type:jt.value,title:title.value,brief:brief.value,location:loc.value,client:client.value,
-   uploads:T.docs.filter(x=>!x.path).map(x=>({name:x.name,kind:x.kind,...(x.text!=null?{text:x.text}:{data:x.data})})),library:T.docs.filter(x=>x.path).map(x=>({path:x.path,kind:x.kind}))};
-   const j=await api('/admin/api/teams/'+enc(t.id)+'/jobs','POST',body);T.docs=[];location.href='/admin/teams/'+enc(t.id)+'/jobs/'+j.id}finally{go.disabled=false}});
-  f.append(h('label',null,'Job type',jt),h('label',null,'Title',title),h('label',null,'Brief',brief),h('div',{class:'row'},h('label',null,'Location (optional)',loc),h('label',null,'Client (optional)',client)),
-   h('div',null,h('b',null,'Documents'),h('p',{class:'small muted'},'Uploaded documents are checked for secrets and protective markings and kept with the job; documents picked from a document source stay there and are read at each turn.'),h('div',{class:'tm-acts'},files,lib,add),docs),
-   h('div',{class:'tm-acts'},go,demo,note));drawDocs();return f}
  // ---- Members tab ----
  function checks(all,on){const w=h('div',{class:'tm-checks'});const boxes=[];for(const [k,l] of all){const c=h('input',{type:'checkbox',value:k});c.checked=on.includes(k);boxes.push(c);w.append(h('label',null,c,l))}w.values=()=>boxes.filter(c=>c.checked).map(c=>c.value);return w}
  const field=(label,node)=>h('label',null,label,node);
@@ -387,7 +392,7 @@ if(PAGE==='teams'){
   s.append(h('div',{class:'tm-acts'},h('label',null,on,' File finished work'),cat,btn('Save',async()=>{await api('/admin/api/teams/'+enc(t.id)+'/filing','PUT',{on:on.checked,category:cat.value});$('notice').textContent='Saved as a new team version.';await loadTeam()},'secondary')));
   if(f.category&&!f.exists)s.append(h('p',{class:'small',role:'note'},'“'+f.category+'” does not exist yet, so finished work cannot be filed there. ',btn('Create “'+f.category+'”',async()=>{await api('/admin/api/teams/'+enc(t.id)+'/filing/category','POST',{});$('notice').textContent='Category created.';await loadTeam()},'secondary')));
   return s}
- function drawKnowledgeTab(p){const d=V.d,t=d.team;p.append(filingPanel());const s=h('section',{class:'tm-panel'},h('h3',null,'Knowledge each member may use'),h('p',{class:'small muted'},'Members read only active knowledge in the categories ticked here, never Local only items, only what their model may receive, and only the clients’ material the Rules page allows. None ticked = no knowledge.'));
+ function drawKnowledgeTab(p){const d=V.d,t=d.team;p.append(filingPanel(),pricingPanel());const s=h('section',{class:'tm-panel'},h('h3',null,'Knowledge each member may use'),h('p',{class:'small muted'},'Members read only active knowledge in the categories ticked here, never Local only items, only what their model may receive, and only the clients’ material the Rules page allows. None ticked = no knowledge.'));
   if(!d.categories.length)s.append(h('p',{class:'tm-empty'},'There are no categories yet: create them on the Memories page.'));
   for(const m of t.members){const c=checks(d.categories.map(x=>[x,x]),m.categories||[]);const row=h('div',{class:'tm-mem'},h('h3',null,m.role,(m.categories||[]).length?null:h('span',{class:'tm-chip warn'},'No knowledge ticked')),c,h('div',{class:'tm-acts'},btn('Save',async()=>{await api('/admin/api/teams/'+enc(t.id)+'/members/'+enc(m.id),'PUT',{categories:c.values()});$('notice').textContent='Saved as a new team version.';await loadTeam()},'secondary')));s.append(row)}
   p.append(s);if(d.pricing.length)p.append(ratesPanel())}
@@ -469,7 +474,7 @@ if(PAGE==='teams'){
   left.append(outputPanel());
   const tl=h('section',{class:'tm-panel','aria-labelledby':'tm-tl-h'},h('h3',{id:'tm-tl-h'},'What the team did'));tl.append(timeline());side.append(tl);
   side.append(h('section',{class:'tm-panel','aria-labelledby':'tm-talk-h'},h('h3',{id:'tm-talk-h'},'Talk to the team'),h('p',{class:'small muted'},'Messages go to '+(d.lead.role||'the lead')+', who answers and passes them to whoever should act.'),talkPanel(d.team_id,d.id)));
-  side.append(thisJob())}
+  const tc=templateCard();if(tc)side.append(tc);side.append(thisJob())}
  function thisJob(){const d=V.d,C=d.costs,Vs=d.versions;const s=h('section',{class:'tm-panel','aria-labelledby':'tm-this-h'},h('h3',{id:'tm-this-h'},'This job'));
   s.append(h('dl',{class:'tm-kv'},h('dt',null,'AI cost'),h('dd',null,h('b',null,money(C.total)),d.status==='done'?'':' so far'),h('dt',null,'Version'),h('dd',null,'v'+(d.version||1)),h('dt',null,'Autonomy'),h('dd',null,d.autonomy_label),h('dt',null,'Team version'),h('dd',null,'v'+d.team_version),h('dt',null,'Client'),h('dd',null,d.client||'None')));
   if(C.members.length){const ul=h('ul',{class:'tm-ver','aria-label':'Each member’s share'});for(const m of C.members)ul.append(h('li',null,h('div',{class:'h'},h('b',null,m.role),h('span',{class:'small muted'},m.share_pct+'%'),h('span',{class:'c'},money(m.cost))),m.your_figures?h('div',{class:'tm-yours'},h('b',null,m.your_figures.label+': '),m.your_figures.text,m.your_figures.note?' '+m.your_figures.note:''):null));s.append(h('h4',{style:'margin:10px 0 0'},'Each member’s share'),ul)}
@@ -563,11 +568,151 @@ if(PAGE==='teams'){
    const li=h('li',null,av,h('div',null,h('span',{class:'w'},x.who),x.stage?h('span',{class:'small muted'},' · '+x.stage):null,h('div',null,x.text),parts,reply,x.outcome?h('div',{class:'o'},x.outcome):null,tm(x.at)));
    if(x.output_text){const b=h('button',{type:'button',class:'secondary'},'See the output');b.onclick=()=>openCard({ref:d.ref,kind_label:'Digital team · Output',title:x.output_title,subtitle:d.title,sections:[{key:'what',title:x.stage,text:x.output_text},{key:'when',title:'When',rows:[['Produced',{time:x.at}]]}],actions:[]});li.lastChild.append(b)}
    ul.append(li)}return ul}
+ // ---------- the pricing template mapping editor (shared by the start screen, the Knowledge tab and the job page) ----------
+ async function openMapping(path,opts){opts=opts||{};const q='?path='+enc(path)+(opts.team?'&team='+enc(opts.team):'')+(opts.redetect?'&redetect=true':'');const m=await api('/admin/api/teams/pricing-templates/mapping'+q);
+  const old=document.getElementById('tm-map');if(old)old.remove();const dlg=h('dialog',{class:'tm-map',id:'tm-map','aria-labelledby':'tm-map-h'});document.body.append(dlg);
+  const R=m.roles||{};const ROLES=['ref','description','quantity','unit','rate','amount','source'];const req=['description','quantity','unit','rate'];
+  const byName={};for(const s of (m.mapping&&m.mapping.sheets)||[])byName[s.sheet]=s;
+  const status={confirmed:'Confirmed'+(m.confirmed_by?' by '+m.confirmed_by:''),detected:'Detected by '+((m.mapping||{}).detected_by==='model'?'a model (the team lead’s), as code could not tell':'Alice’s code')+': check it, then confirm',changed:'The file has changed since its mapping was confirmed: check it again',none:m.problem||'Not mapped yet'}[m.status]||m.status;
+  dlg.append(h('h3',{id:'tm-map-h'},'Mapping: '+((m.template||{}).name||path)),h('p',{class:'small muted'},status+'. Alice reads each item row from these columns; elements are the sheets, or the section headings under the header.'));
+  const mode=h('select',{'aria-label':'Where the elements are'},h('option',{value:'headings'},'Section headings on the sheet'),h('option',{value:'sheets'},'One sheet per element'),h('option',{value:'single'},'No elements (one list)'));mode.value=(m.mapping||{}).mode||'single';
+  dlg.append(h('label',{style:'max-width:320px'},'Elements are',mode));const blocks=[];
+  for(const pv of m.preview||[]){const cur=byName[pv.sheet];const use=h('input',{type:'checkbox'});use.checked=!!cur;const hr=h('input',{type:'number',min:'1',max:'60',value:cur?cur.header_row:1,style:'width:80px'});
+   const headerText=()=>{const row=(pv.rows.find(r=>r[0]===+hr.value)||[]).slice(1);const o={};pv.columns.forEach((c,i)=>{o[c]=row[i]||''});return o};
+   const sels={};const roles=h('div',{class:'roles'});const fillSel=()=>{const ht=headerText();for(const r of ROLES){const was=sels[r]?sels[r].value:(cur&&cur.columns[r])||'';const sel=h('select',{'aria-label':(R[r]||r)+' column on '+pv.sheet},h('option',{value:''},'—'));for(const c of pv.columns)sel.append(h('option',{value:c},c+(ht[c]?' · '+ht[c]:'')));sel.value=was;sels[r]=sel}
+    roles.replaceChildren(...ROLES.map(r=>h('label',null,(R[r]||r)+(req.includes(r)?' *':''),sels[r])))};fillSel();hr.oninput=fillSel;
+   const tb=h('table',{class:'prev'});tb.append(h('tr',null,h('th',null,'Row'),...pv.columns.map(c=>h('th',null,c))));for(const r of pv.rows)tb.append(h('tr',null,...r.map((v,i)=>h(i?'td':'th',{title:String(v)},String(v)))));
+   const els=cur&&cur.elements&&cur.elements.length?h('p',{class:'small'},'Elements found: '+cur.elements.map(e=>e.name+' (row '+e.row+')').join(', ')):null;
+   const b=h('div',{class:'sheet'},h('label',{class:'ts-opt'},use,h('b',null,pv.sheet+': this sheet holds priced items')),h('label',{style:'max-width:200px'},'Header row',hr),roles,els,h('div',{class:'prev'},tb));dlg.append(b);
+   blocks.push({sheet:pv.sheet,use,hr,sels,cur})}
+  const msg=h('p',{class:'small',role:'alert'});const close=()=>{dlg.close();dlg.remove()};
+  const ok=btn('Confirm mapping',async()=>{msg.textContent='';const sheets=[];let edited=false;for(const b of blocks){if(!b.use.checked){if(b.cur)edited=true;continue}const cols={};for(const r of ROLES)if(b.sels[r].value)cols[r]=b.sels[r].value;
+    const missing=req.filter(r=>!cols[r]);if(missing.length){msg.textContent=b.sheet+': choose the '+missing.map(r=>(R[r]||r).toLowerCase()).join(', ')+' column.';return}
+    if(!b.cur||b.cur.header_row!==+b.hr.value||JSON.stringify(b.cur.columns)!==JSON.stringify(cols))edited=true;sheets.push({sheet:b.sheet,header_row:+b.hr.value,columns:cols,elements:b.cur&&b.cur.header_row===+b.hr.value?b.cur.elements:[]})}
+   if(!sheets.length){msg.textContent='Tick at least one sheet that holds priced items.';return}if(m.mapping&&mode.value!==m.mapping.mode)edited=true;
+   const x=await api('/admin/api/teams/pricing-templates/mapping','PUT',{path,mapping:{mode:mode.value,sheets,edited,detected_by:(m.mapping||{}).detected_by}});close();$('notice').textContent='Mapping confirmed for '+((m.template||{}).name||path)+'.';if(opts.onDone)await opts.onDone(x)});
+  const again=btn('Detect again',async()=>{close();await openMapping(path,{...opts,redetect:true})},'secondary');
+  if(m.can_ask_model)dlg.append(h('p',{class:'small'},btn('Ask the team lead’s model to read the layout',async()=>{await api('/admin/api/teams/pricing-templates/mapping/detect','POST',{path,team:opts.team});close();await openMapping(path,opts)},'secondary'),' It reads only the top rows of the template; you still confirm the mapping.'));const cancel=h('button',{type:'button',class:'secondary'},'Cancel');cancel.onclick=close;
+  dlg.append(msg,h('div',{class:'tm-acts'},ok,again,cancel));dlg.addEventListener('cancel',e=>{e.preventDefault();close()});dlg.showModal()}
+ const tplTag=t=>t?(t.shared?h('span',{class:'ts-tag'},'Shared'):h('span',{class:'ts-tag'},'For '+t.client)):null;
+ const mapTag=t=>t?h('span',{class:'ts-tag '+(t.mapping==='confirmed'?'ok':'warn')},t.mapping==='confirmed'?'Mapping confirmed':t.mapping_label||'Mapping not confirmed'):null;
+ // ---------- Start a job (Stefan approved the mock-up, 8 Oct 2026) ----------
+ const S={d:null,title:'',client:'',location:'',jt:'',brief:'',docs:[],estimates:false,autonomy:'',tpl:null,own:false,check:null,lib:null,n:0,timer:null};
+ const ROLE_KIND={drawing:'drawing',spec:'spec',schedule:'schedule',brief:'brief'};
+ async function loadStart(){const d=await api('/admin/api/teams/'+enc(V.tid)+'/start');S.d=d;setIconsFrom(d);if(!S.jt&&d.job_types[0])S.jt=d.job_types[0].id;if(!S.autonomy)S.autonomy=d.autonomy;defaultTemplate();drawStart();scheduleCheck()}
+ function orgDefault(){const d=S.d,c=S.client.trim().toLowerCase();if(!c)return null;const k=Object.keys(d.org_defaults).find(x=>x.toLowerCase()===c);return k?d.org_defaults[k]:null}
+ function defaultTemplate(){if(S.own||(S.tpl&&!S.tpl.auto))return;const o=orgDefault();const t=o?{...o,auto:true,from:'client'}:S.d.templates.default?{...S.d.templates.default,auto:true,from:'team'}:null;S.tpl=t}
+ function scheduleCheck(){clearTimeout(S.timer);S.timer=setTimeout(()=>run(runCheck),300)}
+ async function runCheck(){const f={job_type:S.jt,title:S.title,brief:S.brief,location:S.location,client_name:S.client.trim(),template:S.tpl?{path:S.tpl.path}:null,
+   documents:S.docs.map(x=>({name:x.name,role:x.role,scale:x.info?x.info.scale:null,problem:x.info?x.info.problem:''}))};S.check=await api('/admin/api/teams/'+enc(V.tid)+'/start-check','POST',{form:f});drawPanel()}
+ function drawStart(){const d=S.d;$('tv-split').hidden=false;drawNav(d.nav,d.team.id);const main=$('tm-main');main.replaceChildren();
+  main.append(h('nav',{class:'tm-crumbs','aria-label':'Breadcrumb'},h('a',{href:'/admin/teams'},'Digital teams'),'›',h('a',{href:d.team.href},d.team.name),'›',h('span',{'aria-current':'page'},'Start a job')));
+  main.append(h('div',{class:'tm-thead'},mark(d.team.hex,d.team.icon,'lg'),h('div',{class:'nm'},h('h2',null,'Start a job for '+d.team.name),h('p',null,'Tell the team what is needed and give it the documents. It works stage by stage and comes back to you as you choose below, then for your sign-off.'))));
+  const grid=h('div',{class:'ts-grid'});const steps=h('ol',{class:'ts-steps','aria-label':'Steps'});grid.append(steps,h('aside',{class:'ts-next',id:'ts-next','aria-labelledby':'ts-next-h'}));main.append(grid);
+  // 1 the job
+  const title=h('input',{type:'text',maxlength:'150',value:S.title,placeholder:'e.g. New community hall, early cost plan',required:true,'aria-required':'true'});title.oninput=()=>{S.title=title.value;scheduleCheck()};
+  const dl=h('datalist',{id:'ts-orgs'},...d.organisations.map(o=>h('option',{value:o.name},o.client?'Client':'')));
+  const client=h('input',{type:'text',maxlength:'80',list:'ts-orgs',value:S.client,placeholder:'An organisation, or leave empty for no client'});client.oninput=()=>{S.client=client.value;if(S.tpl&&S.tpl.auto)S.tpl=null;defaultTemplate();drawDocs();scheduleCheck()};
+  const loc=h('input',{type:'text',maxlength:'120',value:S.location,placeholder:'e.g. Perth, Scotland'});loc.oninput=()=>{S.location=loc.value;scheduleCheck()};
+  const types=h('fieldset',{class:'ts-types'},h('legend',null,'What’s needed'));for(const jt of d.job_types){const r=h('input',{type:'radio',name:'ts-jt',value:jt.id});r.checked=S.jt===jt.id;r.onchange=()=>{S.jt=jt.id;drawPanel();scheduleCheck()};types.append(h('label',{class:'ts-type'},r,h('span',null,h('b',null,jt.name),jt.description)))}
+  const brief=h('textarea',{maxlength:'20000',rows:'4',placeholder:'What is wanted, in a few sentences.'});brief.value=S.brief;brief.oninput=()=>{S.brief=brief.value;scheduleCheck()};
+  steps.append(h('li',{class:'ts-step'},h('h3',null,h('span',{class:'ts-num','aria-hidden':'true'},'1'),'The job'),h('label',null,'Name',title),
+   h('div',{class:'row'},h('label',null,'Client',client,dl,h('span',{class:'hint'},'A client keeps the job to its own material and its default pricing template.')),h('label',null,'Location',loc,h('span',{class:'hint'},'Market Trends uses it for regional costs.'))),
+   d.job_types.length?types:h('p',{class:'tm-empty'},'This team has no job types yet: add one on the team’s Rules and autonomy tab.'),h('label',null,'Brief',brief)));
+  // 2 documents
+  const file=h('input',{type:'file',multiple:true,accept:'.pdf,.docx,.xlsx,.xlsm,.csv,.txt,.md',hidden:true,'aria-hidden':'true',tabindex:'-1'});file.onchange=()=>run(async()=>{await addFiles(file.files);file.value=''});
+  const drop=h('div',{class:'ts-drop',role:'button',tabindex:'0','aria-label':'Add documents: drop files here or press Enter to choose them'},h('b',null,'Drop the documents here'),'or click to choose: specification, schedules, drawings, and a cost or pricing template');
+  drop.onclick=()=>file.click();drop.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();file.click()}};
+  drop.ondragover=e=>{e.preventDefault();drop.classList.add('over')};drop.ondragleave=()=>drop.classList.remove('over');drop.ondrop=e=>{e.preventDefault();drop.classList.remove('over');run(()=>addFiles(e.dataTransfer.files))};
+  const libBox=h('div',{id:'ts-lib'});const pick=d.library?h('button',{type:'button',class:'secondary'},'Pick from a document library'):null;if(pick)pick.onclick=()=>run(drawLib);
+  const demo=h('button',{type:'button',class:'secondary'},'Load the demo project (fictional)');demo.onclick=()=>run(async()=>{const x=await api('/admin/api/teams/demo-project');S.title=x.title;S.brief=x.brief;S.location=x.location;S.client='';title.value=x.title;brief.value=x.brief;loc.value=x.location;client.value='';
+   for(const y of x.documents){S.docs.push({key:++S.n,name:y.name,text:y.text,role:y.kind==='brief'?'brief':y.kind,info:{type:'Text',lines:y.text.split('\n').filter(Boolean).length,scale:y.kind==='drawing'?/\b1\s*:\s*\d{1,4}\b|\bscale\b/i.test(y.text):null,label:'',problem:''}})}
+   drawDocs();scheduleCheck();$('notice').textContent='Demo project loaded (fictional). Load the fictional demo rate library on the Knowledge tab too, then Start the job.'});
+  steps.append(h('li',{class:'ts-step'},h('h3',null,h('span',{class:'ts-num','aria-hidden':'true'},'2'),'Documents'),drop,file,h('div',{class:'tm-acts',style:'margin-top:8px'},pick,demo),libBox,h('div',{class:'ts-files',id:'ts-files','aria-live':'polite'})));
+  // 3 pricing
+  const rs=d.rate_sources;const ol=h('ol',{class:'ts-src'});for(const k of rs.order)ol.append(h('li',{class:rs.allowed.includes(k)?null:'off'},rs.names[k]+(rs.allowed.includes(k)?'':' (not allowed by the rule)')));ol.append(h('li',null,'Otherwise unpriced, never invented'));
+  const est=h('input',{type:'checkbox'});est.checked=S.estimates;est.onchange=()=>{S.estimates=est.checked};
+  const appr=h('fieldset',{class:'ts-types'},h('legend',null,'Approval'));for(const [k,l] of Object.entries(d.autonomy_options)){const r=h('input',{type:'radio',name:'ts-appr',value:k});r.checked=S.autonomy===k;r.onchange=()=>{S.autonomy=k;drawPanel()};
+   appr.append(h('label',{class:'ts-type'},r,h('span',null,h('b',null,k==='approve'?'Every hand-off':'Only the final output'),l+(k===d.autonomy?' (the team’s setting)':''))))}
+  steps.append(h('li',{class:'ts-step'},h('h3',null,h('span',{class:'ts-num','aria-hidden':'true'},'3'),'How it should be priced'),h('p',{class:'small',style:'margin:0'},'Rates come from, in this order (the rule ',h('a',{href:rs.href},'Where digital teams’ rates come from'),'):'),ol,
+   h('label',{class:'ts-opt'},est,h('span',null,'Allow team estimates on this job',h('span',{class:'hint',style:'display:block'},rs.allowed.includes('estimate')?'The rule already allows them.':'Each estimate is badged Estimate and listed as an assumption with its reasoning.'))),appr));
+  drawDocs();drawPanel()}
+ async function drawLib(){const box=$('ts-lib');if(!S.lib)S.lib=(await api('/admin/api/teams/library-files')).files;const tpls=S.d.templates.templates||[];
+  const sel=h('select',{'aria-label':'Document from the document sources'},h('option',{value:''},'Choose a document…'));for(const x of S.lib)sel.append(h('option',{value:x.path},x.source+' › '+x.path));
+  if(tpls.length){const g=h('optgroup',{label:'Pricing templates'});for(const x of tpls)g.append(h('option',{value:'tpl:'+x.path},x.path));sel.append(g)}
+  const add=btn('Add',async()=>{const v=sel.value;if(!v)return;if(v.startsWith('tpl:')){await useTemplate(v.slice(4));box.replaceChildren();return}
+   if(S.docs.some(x=>x.path===v))return;const doc={key:++S.n,name:v.split('/').pop(),path:v,role:'brief',busy:true};S.docs.push(doc);drawDocs();try{doc.info=await api('/admin/api/teams/'+enc(V.tid)+'/inspect','POST',{path:v});doc.role=doc.info.guess==='template'?'schedule':doc.info.guess}finally{doc.busy=false}box.replaceChildren();drawDocs();scheduleCheck()});
+  box.replaceChildren(h('div',{class:'tm-acts',style:'margin-top:8px'},sel,add))}
+ async function addFiles(list){for(const fl of list){if(fl.size>15*1024*1024)throw Error(fl.name+' is larger than 15 MB.');const data=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]);r.onerror=()=>no(Error('Could not read '+fl.name));r.readAsDataURL(fl)});
+   const doc={key:++S.n,name:fl.name,data,role:'brief',busy:true};S.docs.push(doc);drawDocs();
+   try{doc.info=await api('/admin/api/teams/'+enc(V.tid)+'/inspect','POST',{name:fl.name,data});doc.role=doc.info.guess}catch(e){doc.info={problem:e.message,type:'',label:''};doc.role='brief'}finally{doc.busy=false}
+   if(doc.role==='template')await makeTemplate(doc);drawDocs();scheduleCheck()}}
+ async function makeTemplate(doc){if(doc.path){S.docs=S.docs.filter(x=>x!==doc);await useTemplate(doc.path);return}
+  try{const x=await api('/admin/api/teams/'+enc(V.tid)+'/pricing-templates','POST',{name:doc.name,data:doc.data});S.docs=S.docs.filter(y=>y!==doc);S.tpl={...x,auto:false,from:'chosen'};S.own=false;S.d.templates=await api('/admin/api/teams/'+enc(V.tid)+'/pricing-templates');
+   $('notice').textContent=doc.name+' saved to '+(S.d.templates.settings.folder||'the templates folder')+' as a pricing template.'}
+  catch(e){doc.role='schedule';$('notice').textContent=e.message}}
+ async function useTemplate(path){const m=await api('/admin/api/teams/pricing-templates/mapping?path='+enc(path)+'&team='+enc(V.tid));S.tpl={...m.template,auto:false,from:'chosen'};S.own=false;drawDocs();scheduleCheck()}
+ function drawDocs(){const box=$('ts-files');if(!box)return;box.replaceChildren();const R=S.d.roles;
+  const roleSel=(v,label,fn)=>{const s=h('select',{'aria-label':'Role of '+label});for(const [k,l] of Object.entries(R))s.append(h('option',{value:k},l));s.value=v;s.onchange=()=>run(()=>fn(s.value));return s};
+  if(S.tpl){const t=S.tpl;const from=t.from==='client'?'Default for '+S.client.trim():t.from==='team'?'The team’s default':'Chosen for this job';
+   const chk=t.path?btn('Check mapping',()=>openMapping(t.path,{team:V.tid,onDone:async()=>{await useTemplate(t.path);if(t.auto)S.tpl.auto=true,S.tpl.from=t.from}}),'secondary'):null;
+   const rm=h('button',{type:'button',class:'secondary','aria-label':'Use Alice’s own layout instead of '+t.name},'Remove');rm.onclick=()=>{S.tpl=null;S.own=true;drawDocs();scheduleCheck()};
+   box.append(h('div',{class:'ts-file tpl'},h('div',null,h('div',{class:'nm'},'📊 '+t.name,tplTag(t),mapTag(t)),h('div',{class:'meta'},'Cost/pricing template · '+from+' · ',t.path),chk?h('div',{style:'margin-top:4px'},chk):null),
+    roleSel('template',t.name,v=>{if(v==='template')return;S.tpl=null;S.own=true;if(t.path)S.docs.push({key:++S.n,name:t.name,path:t.path,role:v,info:{type:'Excel',label:''}});drawDocs();scheduleCheck()}),rm))}
+  else box.append(h('p',{class:'small muted',style:'margin:2px 0'},S.own?'No pricing template: Alice’s own layout. ':'No pricing template yet: add one (role Cost/pricing template), or Alice’s own layout is used. ',S.own?(()=>{const b=h('button',{type:'button',class:'secondary',style:'padding:1px 8px;font-size:12px'},'Use the default again');b.onclick=()=>{S.own=false;defaultTemplate();drawDocs();scheduleCheck()};return b})():null));
+  for(const x of S.docs){const i=x.info||{};const bits=[i.type,i.pages?plural(i.pages,'page'):i.sheets?plural(i.sheets,'sheet'):i.lines?plural(i.lines,'line'):null,x.path?'from a document source':null].filter(Boolean).join(' · ');
+   const rm=h('button',{type:'button',class:'secondary','aria-label':'Remove '+x.name},'Remove');rm.onclick=()=>{S.docs=S.docs.filter(y=>y!==x);drawDocs();scheduleCheck()};
+   box.append(h('div',{class:'ts-file'},h('div',null,h('div',{class:'nm'},(x.path?'📁 ':'📄 ')+x.name),h('div',{class:'meta'},x.busy?'Reading…':bits,i.label?h('span',{class:'lbl'},' · Label: '+i.label):null,x.role==='drawing'&&i.scale===false?' · no scale found':''),i.problem?h('div',{class:'prob',role:'alert'},i.problem):null),
+    roleSel(x.role,x.name,async v=>{x.role=v;if(v==='template')await makeTemplate(x);drawDocs();scheduleCheck()}),rm))}}
+ function drawPanel(){const box=$('ts-next');if(!box)return;const d=S.d;const jt=d.job_types.find(x=>x.id===S.jt);box.replaceChildren(h('h3',{id:'ts-next-h'},'What happens next'));
+  if(!jt){box.append(h('p',null,'Choose what’s needed.'));return}
+  box.append(h('p',null,(S.autonomy==='approve'?'You approve each hand-off; ':'The team works on its own; ')+'the final output always waits for your sign-off.'));
+  const ul=h('ul',{class:'ts-who'});for(const m of jt.members){let does=m.does.join(' Then: ');if(!S.location.trim()&&/cost trends|regional factor/i.test(does))does+=' (no location given: national figures)';ul.append(h('li',null,avatar(m.initials,m.role,m.lead,'','lg'),h('div',null,h('b',null,m.role+(m.lead?' (lead)':'')),h('div',{class:'d'},does))))}box.append(ul);
+  if(jt.typical&&(jt.typical.run_time||jt.typical.ai_cost)){const dlx=h('dl',{class:'ts-typ'});if(jt.typical.run_time)dlx.append(h('dt',null,'Typical time to your sign-off'),h('dd',null,jt.typical.run_time));if(jt.typical.ai_cost)dlx.append(h('dt',null,'Typical AI cost'),h('dd',{title:jt.typical.ai_cost.note},jt.typical.ai_cost.text));
+   box.append(dlx,h('p',{style:'font-size:12px'},'From '+plural(jt.typical.jobs,'finished job')+' of this team.'))}
+  const C=S.check;box.append(h('h3',{style:'font-size:14px;margin:6px 0'},'Ready to start'));
+  if(C){const rl=h('ul',{class:'ts-ready'});for(const it of C.items){const cls=it.ok?'ok':it.level==='required'?'no':'warn';rl.append(h('li',{class:cls},h('span',{class:'i','aria-hidden':'true'},it.ok?'✓':it.level==='required'?'✕':'!'),h('span',null,h('span',{class:'tm-sr'},it.ok?'Done: ':it.level==='required'?'Needed: ':'Note: '),it.text)))}box.append(rl)}
+  const go=h('button',{type:'button',class:'go',disabled:!(C&&C.ready)},'Start the job');go.onclick=()=>run(startJob);box.append(go)}
+ async function startJob(){const d=S.d;const body={job_type:S.jt,title:S.title,brief:S.brief,location:S.location,client:S.client.trim(),
+   uploads:S.docs.filter(x=>!x.path).map(x=>({name:x.name,kind:ROLE_KIND[x.role]||'brief',...(x.text!=null?{text:x.text}:{data:x.data})})),library:S.docs.filter(x=>x.path).map(x=>({path:x.path,kind:ROLE_KIND[x.role]||'brief'})),
+   template:S.tpl?(S.tpl.auto?null:S.tpl.path):(S.own?'':null),autonomy:S.autonomy===d.autonomy?'':S.autonomy,estimates:S.estimates};
+  const j=await api('/admin/api/teams/'+enc(V.tid)+'/jobs','POST',body);location.href='/admin/teams/'+enc(V.tid)+'/jobs/'+j.id}
+ // ---------- pricing templates on the Knowledge tab ----------
+ function pricingPanel(){const d=V.d,t=d.team;const s=h('section',{class:'tm-panel','aria-labelledby':'tm-pt-h'},h('h3',{id:'tm-pt-h'},'Pricing templates'),h('p',{class:'small muted'},'Spreadsheet templates the team fills with each job’s items and rates (one per job). They stay in the document sources, never in Alice. A template is shared unless you tag it to a client; then only that client’s jobs may use it.'));
+  const P=T.pt;if(!P){s.append(h('p',{class:'small muted'},'Loading…'));run(async()=>{T.pt=await api('/admin/api/teams/'+enc(t.id)+'/pricing-templates');drawTeam()});return s}
+  const fsel=(v,label)=>{const x=h('select',{'aria-label':label},h('option',{value:''},'Not set'));for(const f of P.folders)x.append(h('option',{value:f},f));x.value=v||'';return x};
+  const folder=fsel(P.settings.folder,'Templates folder'),outs=fsel(P.settings.outputs,'Where filled copies are saved');const def=h('select',{'aria-label':'The team’s default template'},h('option',{value:''},'Alice’s own layout'));for(const x of P.templates.filter(x=>x.shared&&x.readable))def.append(h('option',{value:x.path},x.name));def.value=P.settings.default||'';
+  const save=btn('Save',async()=>{T.pt=await api('/admin/api/teams/'+enc(t.id)+'/pricing-templates','PUT',{folder:folder.value,outputs:outs.value,default:def.value});$('notice').textContent='Saved as a new team version.';drawTeam()});
+  s.append(h('div',{class:'tm-form'},h('div',{class:'row'},h('label',null,'Templates folder',folder),h('label',null,'Save filled copies to (optional)',outs)),h('label',null,'The team’s default template',def),h('div',{class:'tm-acts'},save)));
+  if(P.folder_missing)s.append(h('p',{class:'small',role:'alert'},'The templates folder is no longer in the document sources: choose it again.'));
+  const wrap=h('div',{class:'table-wrap'}),tb=h('table',{class:'tm-tbl'});tb.append(h('thead',null,h('tr',null,['Template','Who may use it','Mapping',''].map(x=>h('th',{scope:'col'},x)))));const body=h('tbody');
+  for(const x of P.templates){const cs=h('select',{'aria-label':'Client for '+x.name},h('option',{value:''},'Shared (any job)'));for(const c of P.clients)cs.append(h('option',{value:c},'Only '+c));cs.value=x.client||'';
+   cs.onchange=()=>run(async()=>{await api('/admin/api/teams/pricing-templates/client','PUT',{path:x.path,client:cs.value});T.pt=null;$('notice').textContent=x.name+(cs.value?' tagged to '+cs.value+'.':' is shared.');drawTeam()});
+   body.append(h('tr',null,h('td',null,x.name,h('div',{class:'small muted'},x.path)),h('td',null,x.readable?cs:'—'),h('td',null,mapTag(x)),h('td',null,x.readable?btn('Check mapping',()=>openMapping(x.path,{team:t.id,onDone:async()=>{T.pt=null;drawTeam()}}),'secondary'):'')))}
+  tb.append(body);wrap.append(tb);s.append(P.templates.length?wrap:h('p',{class:'tm-empty'},P.settings.folder?'No templates in '+P.settings.folder+' yet.':'Choose the templates folder first.'));
+  const up=h('input',{type:'file',accept:'.xlsx,.xlsm,.csv','aria-label':'Add a pricing template'});up.onchange=()=>run(async()=>{const fl=up.files[0];if(!fl)return;const data=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]);r.onerror=()=>no(Error('Could not read '+fl.name));r.readAsDataURL(fl)});
+   const x=await api('/admin/api/teams/'+enc(t.id)+'/pricing-templates','POST',{name:fl.name,data});up.value='';T.pt=null;$('notice').textContent=x.name+' added to '+P.settings.folder+'. Check its mapping before a job uses it.';drawTeam()});
+  s.append(h('div',{class:'tm-acts',style:'margin-top:8px'},h('label',{class:'small'},'Add a template (saved into the templates folder, never overwriting) ',up),btn('Refresh',async()=>{T.pt=null;drawTeam()},'secondary')));return s}
+ // ---------- the job's pricing template (job page) ----------
+ function templateCard(){const d=V.d,tp=d.pricing_template;if(!tp)return null;const s=h('section',{class:'tm-panel','aria-labelledby':'tm-tp-h'},h('h3',{id:'tm-tp-h'},'Pricing template'));
+  const from={client:'Default for '+(d.client||'the client'),team:'The team’s default',chosen:'Chosen for this job'}[tp.from]||'';
+  const w=h('div',{class:'tm-tpl'});w.append(h('div',null,h('b',null,tp.own?'Alice’s own layout':tp.name),tp.own?null:tplTag(tp),tp.own?null:mapTag(tp)),from?h('div',{class:'small muted'},from):null);
+  if(!tp.own&&tp.readable)w.append(h('div',null,btn('Check mapping',()=>openMapping(tp.path,{team:d.team_id,onDone:async()=>{await loadJob()}}),'secondary')));
+  const sel=h('select',{'aria-label':'Pricing template for this job'},h('option',{value:''},'Alice’s own layout'));for(const x of tp.choices.filter(x=>x.readable))sel.append(h('option',{value:x.path},x.name+(x.shared?'':' (for '+x.client+')')));sel.value=tp.own?'':tp.path;
+  const use=btn('Use this template',async()=>{await api('/admin/api/teams/jobs/'+d.id+'/template','PUT',{path:sel.value});$('notice').textContent=tp.measured?'Template changed; filled again from the same items.':'Template changed.';await loadJob()},'secondary');
+  w.append(h('label',{class:'small'},'Change it ',sel),use,tp.measured?h('p',{class:'small muted',style:'margin:0'},'The items are already measured: a new template is filled from the same items, without re-running the team.'):null);
+  const f=tp.fill;if(f&&f.message)w.append(h('p',{class:'small',role:'status'},f.message));
+  const last=tp.fills[tp.fills.length-1];if(last){w.append(h('p',{class:'small',style:'margin:0'},'Filled for v'+last.version+' ',when(last.created_at),last.client?' · tagged to '+last.client:'',' · ',h('a',{href:'/documents/'+last.doc_id+'/download'},'Download ⬇'),last.library_path?' · saved to '+last.library_path:''));
+   if(last.differences.length){const ul=h('ul',{class:'tm-diffs','aria-label':'Where the template’s formulas differ from Alice’s figures'});for(const x of last.differences)ul.append(h('li',null,h('b',null,x.where+': '),x.note));w.append(h('p',{class:'small',style:'margin:4px 0 0'},h('b',null,'The template’s own formulas against Alice’s figures:')),ul)}
+   else w.append(h('p',{class:'small muted',style:'margin:0'},'The template’s formulas agree with Alice’s figures.'))}
+  if(!tp.own&&(d.outputs.documents||d.status==='done'))w.append(btn('Fill the template again',async()=>{await api('/admin/api/teams/jobs/'+d.id+'/template/fill','POST',{});$('notice').textContent='Filled again from the items as they stand.';await loadJob()},'secondary'));
+  s.append(w);return s}
  // ---------- start: old links, then the right screen ----------
  const qp=new URLSearchParams(location.search);
  if(!V.tid&&qp.get('job'))run(async()=>{const j=await api('/admin/api/teams/jobs/'+enc(qp.get('job')));location.replace('/admin/teams/'+enc(j.team_id)+'/jobs/'+j.id)});
  else if(!V.tid&&qp.get('team'))location.replace('/admin/teams/'+enc(qp.get('team'))+(location.hash||''));
  else if(V.jid)run(loadJob);
+ else if(V.start)run(loadStart);
  else if(V.tid){run(async()=>{await loadTeam();api('/admin/api/teams/'+enc(V.tid)+'/seen','POST',{}).catch(()=>{})});window.addEventListener('hashchange',()=>{const k=location.hash.slice(1);if(TABS.some(x=>x[0]===k)&&k!==tab){tab=k;if(V.d)drawTeam()}})}
  else{run(loadBoard);$('tb-q').oninput=()=>{B.q=$('tb-q').value;drawTeams()};$('tb-group').onchange=()=>{B.group=$('tb-group').value;store.set('group',B.group);drawTeams()};$('tb-sort').onchange=()=>{B.sort=$('tb-sort').value;store.set('sort',B.sort);drawTeams()};
   $('tb-cards').onclick=()=>{B.view='cards';store.set('view','cards');drawBoard()};$('tb-list').onclick=()=>{B.view='list';store.set('view','list');drawBoard()};
