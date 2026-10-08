@@ -107,7 +107,7 @@ t('the job waits on the hand-off out of pricing, and the Lead QS asks for a deci
   dec and dec['state'] == 'handoff' and dec['lead'] == 'Lead QS' and dec['pricer'] == 'Cost Surveyor' and {i['ref'] for i in dec['items']} == {'Q2', 'Q3'}
   and dec['title'] == 'Lead QS needs a decision on 2 items')
 t('the cost plan so far shows each source (web linked to its page, library, unpriced)', {r_['ref']: r_['source'] for r_ in pl['rows']} == {'Q1': 'web', 'Q2': 'unpriced', 'Q3': 'unpriced'}
-  and pl['rows'][0]['source_url'] == 'https://fictional-prices.example/foundations' and pl['counts'] == {'web': 1, 'library': 0, 'yours': 0, 'unpriced': 2})
+  and pl['rows'][0]['source_url'] == 'https://fictional-prices.example/foundations' and pl['counts'] == {'web': 1, 'library': 0, 'built_up': 0, 'estimate': 0, 'yours': 0, 'unpriced': 2})
 t('no total while items are undecided; amounts still worked out in code', pl['totals'] is None and pl['undecided'] == 2 and pl['rows'][0]['amount'] == 11840.0
   and pl['rows'][1]['amount'] is None)
 t('the stage tracker: three done (with counts), the next waiting for you, then to come and your sign-off', [x['state'] for x in p['progress']] == ['done', 'done', 'done', 'waiting', 'todo', 'todo']
@@ -193,7 +193,8 @@ t('the lead is whoever works the first stage', tp['lead'] == 'lead-qs')
 t('each member\'s state in the live job', tp['member_states']['measurement-surveyor']['label'] == 'Done · 3 items measured' and tp['member_states']['lead-qs']['state'] == 'waiting'
   and tp['member_states']['market-trends-qs']['label'] == 'To come')
 t('tools come from the stages a member works on (web search for the Cost Surveyor)', tp['member_tools']['cost-surveyor'] == ['Rate library', 'Web search'] and tp['member_tools']['lead-qs'] == [])
-t('where prices come from: the order the pricing code applies, read from it', [o['key'] for o in tp['pricing'][0]['order']] == [x['key'] for x in team_qs.PRICE_RULES] == ['web', 'library', 'unpriced']
+t('where prices come from: the order the pricing code applies, read from the rate-source rule', [(o['key'], o['allowed']) for o in tp['pricing'][0]['order']]
+  == [(x['key'], x['allowed']) for x in team_qs.price_rules()] == [('published', True), ('library', True), ('built_up', True), ('estimate', False), ('unpriced', True)]
   and tp['pricing'][0]['role'] == 'Cost Surveyor' and 'not by the models' in tp['pricing'][0]['note'] and tp['pricing'][0]['rules'][0]['href'].startswith('/admin/rules?rule='))
 ids = [x['id'] for x in tp['rules']['rules']]
 t('rules this team follows: the member turns\' guardrails, named as on the Rules page, with links', ids == [x for x in agents.ANATOMY['team-member']['guardrails'] if x != 'client_separation']

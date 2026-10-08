@@ -268,7 +268,7 @@ ANATOMY = {
                     'instructions': 'The member\'s purpose and standing instructions, the stage\'s task, what it hands on and what it checks before accepting work.',
                     'tools': ['Web search (provider built-in), for the Cost Surveyor', 'Arithmetic and source checks in code'],
                     'data': ['input', 'documents', 'knowledge', 'web'],
-                    'guardrails': ['secret_detection', 'protective_marking', 'client_separation', 'client_documents', 'provider_allow', 'spend_cap'],
+                    'guardrails': ['secret_detection', 'protective_marking', 'client_separation', 'client_documents', 'provider_allow', 'rate_sources', 'spend_cap'],
                     'outputs': ['Stage outputs and hand-off notes', 'Questions for you', 'Word and Excel cost plan (draft)'],
                     'gate': 'You approve each hand-off (or only the final output) on Actions'},
     'team-talk': {'model': 'The lead\'s model, chosen on the team page',
