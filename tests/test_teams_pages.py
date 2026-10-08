@@ -41,6 +41,11 @@ PRICE_QUERIES = []
 org_research._ask = lambda prompt, query, provider, workload='', **kw: PRICE_QUERIES.append(query) or (json.dumps({'rates': [
     {'ref': 'Q1', 'rate': 160, 'unit': 'm', 'source_url': 'https://fictional-prices.example/foundations', 'source_title': 'Foundations', 'source_date': '2026-05'}],
     'summary': '', 'note': 'Priced what I could.'}), dict(RET))
+
+# Market Trends QS searches the market too (task 3): its queries get a plain answer with no findings here
+_price_ask = org_research._ask
+org_research._ask = lambda prompt, query, provider, workload='', **kw: ((json.dumps({'findings': [], 'commentary': 'No market evidence.'}), {})
+                                                                         if 'MEASURED ITEMS' not in query else _price_ask(prompt, query, provider, workload, **kw))
 demo = team_qs.demo_project()
 
 
@@ -110,7 +115,7 @@ t('the cost plan so far shows each source (web linked to its page, library, unpr
   and pl['rows'][0]['source_url'] == 'https://fictional-prices.example/foundations' and pl['counts'] == {'web': 1, 'library': 0, 'built_up': 0, 'estimate': 0, 'yours': 0, 'unpriced': 2})
 t('no total while items are undecided; amounts still worked out in code', pl['totals'] is None and pl['undecided'] == 2 and pl['rows'][0]['amount'] == 11840.0
   and pl['rows'][1]['amount'] is None)
-t('the stage tracker: three done (with counts), the next waiting for you, then to come and your sign-off', [x['state'] for x in p['progress']] == ['done', 'done', 'done', 'waiting', 'todo', 'todo']
+t('the stage tracker: three done (with counts), the next waiting for you, then to come and your sign-off', [x['state'] for x in p['progress']] == ['done', 'done', 'done', 'waiting', 'todo', 'todo', 'todo']
   and p['progress'][1]['count'] == '3 items' and p['progress'][-1]['title'] == 'Your sign-off')
 t('the job is labelled as the demo job', p['is_demo'] and p['where'].startswith('Waiting for you'))
 
@@ -161,7 +166,7 @@ t('every team carries what the board groups by (discipline, status) and filters 
   and by[TID]['status'] == 'needs_you' and by[BID]['status'] == 'draft' and by[BID]['discipline'] == 'Bids')
 t('search covers member roles and job names', 'cost surveyor' in by[TID]['search'] and 'larchbank' in by[TID]['search'])
 t('a card shows the lead and the live job with one segment per stage plus sign-off', [m['lead'] for m in by[TID]['members']] == [True, False, False, False]
-  and by[TID]['job']['id'] == JID and len(by[TID]['job']['progress']) == 6 and by[TID]['job']['where'].startswith('Waiting for you'))
+  and by[TID]['job']['id'] == JID and len(by[TID]['job']['progress']) == 7 and by[TID]['job']['where'].startswith('Waiting for you'))
 t('disciplines are suggested from the teams and a starter list', 'Bids' in b['disciplines'] and 'Quantity surveying' in b['disciplines'])
 
 # ---------------- pins and recent teams, per person ----------------

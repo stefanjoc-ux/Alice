@@ -78,6 +78,12 @@ class MemberIn(BaseModel):
     provider: str | None = Field(None, max_length=40)
     categories: list[str] | None = Field(None, max_length=20)
     packs: list[str] | None = Field(None, max_length=10)
+    tools: dict[str, bool] | None = None
+
+
+class FilingIn(BaseModel):
+    on: bool
+    category: str = Field('', max_length=40)
 
 
 class StageIn(BaseModel):
@@ -251,6 +257,16 @@ async def teams_talk(q: TalkJobIn, tid: str = FPath(pattern=ID)):
     try: return await asyncio.to_thread(teams.talk, tid, q.job, q.message)
     except LookupError as e: raise HTTPException(404, str(e)) from None
     except ValueError as e: raise HTTPException(400, str(e)) from None
+
+
+@router.put('/admin/api/teams/{tid}/filing')
+def teams_filing(f: FilingIn, tid: str = FPath(pattern=ID)):
+    return _do(teams.set_filing, tid, f.on, f.category)
+
+
+@router.post('/admin/api/teams/{tid}/filing/category')
+def teams_filing_category(tid: str = FPath(pattern=ID)):
+    return _do(teams.create_filing_category, tid)
 
 
 @router.put('/admin/api/teams/{tid}/autonomy')
