@@ -323,6 +323,12 @@ def recent(days=7, limit=200):
                                                      or c.execute('SELECT name FROM files WHERE id=?', (r['item_id'],)).fetchone())
             else: x = c.execute("SELECT org || ': ' || statement FROM org_facts WHERE id=?", (r['item_id'],)).fetchone()
             r['title'] = x[0] if x else '(deleted)'
+    if store.viewer() is not None:                 # only items in this person's spaces
+        def _vis(r):
+            if r['item_type'] == 'memory': return store.can_see('record', r['item_id'])
+            if r['item_type'] == 'knowledge': return store.can_see('file', r['item_id'])
+            return store.can_see('organisation', (r['title'] or '').split(':')[0])
+        rows = [r for r in rows if _vis(r)]
     rec, fil = refs.of('record', [r['item_id'] for r in rows if r['item_type'] == 'memory']), refs.of('file', [r['item_id'] for r in rows if r['item_type'] == 'knowledge'])
     for r in rows: r['ref'] = rec.get(r['item_id']) or fil.get(r['item_id']) or ''
     return rows

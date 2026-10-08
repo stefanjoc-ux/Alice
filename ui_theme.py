@@ -82,7 +82,7 @@ FETCH_JS = r"""
   a.onclick=()=>location.reload();b.append(t,a);(document.body||document.documentElement).append(b)};
  window.fetch=(u,o)=>{o=Object.assign({},o||{});let same=true;
   try{same=new URL(typeof u==='string'?u:u.url,location.href).origin===location.origin}catch{}
-  if(same){const h=new Headers(o.headers||(typeof u!=='string'&&u.headers)||undefined);h.set('X-Requested-With','XMLHttpRequest');o.headers=h;if(!o.credentials)o.credentials='same-origin'}
+  if(same){const h=new Headers(o.headers||(typeof u!=='string'&&u.headers)||undefined);h.set('X-Requested-With','XMLHttpRequest');try{const sp=localStorage.getItem('alice-space');if(sp&&!h.has('X-Alice-Space'))h.set('X-Alice-Space',sp)}catch{}o.headers=h;if(!o.credentials)o.credentials='same-origin'}
   return f(u,o).then(r=>{if(same&&r.status===401&&!String(typeof u==='string'?u:u.url).includes('/me'))ended();return r})}})();
 """
 FETCH_CSS = (".session-ended{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:999;display:flex;gap:14px;align-items:center;"

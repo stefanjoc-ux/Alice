@@ -261,8 +261,18 @@ def listing(everyone=False):
 
 
 def _may_see(tid):
+    """The team is in one of this person's spaces, and their profile lets them see it."""
     import permissions
-    return permissions.can(store.viewer(), 'team', permissions.VIEW, tid)
+    return store.can_see('team', tid) and permissions.can(store.viewer(), 'team', permissions.VIEW, tid)
+
+
+def _job_space(tid):
+    """A new job goes in its team's space when the person starting it may contribute there, else their own default space."""
+    import spaces
+    v = store.viewer()
+    if v is None: return ''
+    sid = spaces.space_of('team', tid)
+    return sid if spaces.may_contribute(v, sid) else ''
 
 
 def _cap(tid, cap):
@@ -291,6 +301,7 @@ def _save(tid, d, what, new=False):
         c.execute('INSERT INTO team_versions(team_id,version,definition,changed_at,changed_by,what) VALUES (?,?,?,?,?,?)',
                   (tid, v, text, store.now(), who, what[:500]))
         store.audit(c, 'team_changed', tid, 'human_control', f'{body["name"]} v{v}: {what[:300]}')
+    if new: store.stamp('team', tid)          # in the creator's default space (spaces.py)
     return get(tid)
 
 
@@ -578,7 +589,7 @@ def start_job(tid, job_type, title, brief, location='', client='', uploads=(), l
         store.audit(c, 'team_job_started', jid, 'human_review', f'{ref(jid)} {title} · {team["name"]} v{team["version"]} · {len(docs)} document(s)'
                     + (f' · pricing template {tpath.rsplit("/", 1)[-1]}' if tpath else '') + (' · team estimates allowed' if estimates else '')
                     + (f' · {AUTONOMY[autonomy].lower()}' if autonomy else ''))
-    store.stamp('team_job', jid)          # who started it (users.py): the job is theirs, and the team reads with their eyes
+    store.stamp('team_job', jid, space=_job_space(tid))   # who started it, and its space: the team's, if they may add to it
     kick(jid)
     return job(jid)
 
@@ -1434,7 +1445,7 @@ def copy_job(jid, client='', title=''):
                       (uuid.uuid4().hex, nid, d['name'], d['kind'], d['source'], d['path'], d['text'], store.now()))
         store.audit(c, 'team_job_copied', nid, 'human_review', f'{ref(nid)} {title}: copied from {ref(jid)} v{j.get("version") or 1}'
                     f' · client {new_client or "none"} · {len(docs)} document(s)' + (' · plan kept' if keep_plan else ''))
-    store.stamp('team_job', nid)
+    store.stamp('team_job', nid, space=_job_space(j['team_id']))
     _add_step(nid, 'note', first['key'] if first else '', 'stefan', status='done',
               note=f'Copied from {ref(jid)} {j["title"]} (v{j.get("version") or 1}): {len(docs)} document{"s" if len(docs) != 1 else ""}'
                    + (', the plan' if keep_plan else '') + f' and the settings kept; client {new_client or "none"}.')
@@ -2193,7 +2204,7 @@ TALK_RULES = {}              # stage handler -> function(team, job) -> {rule id:
 
 
 def messages(tid, jid=''):
-    if store.restricted() is not None and (not jid or not store.can_see('team_job', jid)): return []    # their own jobs' talk only
+    if (jid and not store.can_see('team_job', jid)) or (not jid and store.restricted() is not None): return []    # jobs in their spaces only
     with store.db() as c:
         rows = [dict(r) for r in c.execute('SELECT id, role, member, content, routed_to, note, created_by, created_at FROM team_messages '
                                            'WHERE team_id=? AND job_id=? ORDER BY created_at', (tid, jid or ''))]
@@ -2215,7 +2226,7 @@ def _talk(tid, jid, message):
     message = _block(message, 4000)
     if not message: raise ValueError('Write a message to the team first.')
     rules_engine.check_outbound(message, 'Digital team: Talk to the team', packs=False)
-    if store.restricted() is not None and (not jid or not store.can_see('team_job', jid)):
+    if (jid and not store.can_see('team_job', jid)) or (not jid and store.restricted() is not None):
         raise ValueError('Talk to the team about one of your own jobs: open the job first.')
     if jid:
         j = _row(jid)

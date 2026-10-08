@@ -21,13 +21,16 @@ def summary(tz=0):
     today = _safe(lambda: activity_log.overview('today', tz=tz), {'totals': {}})
     week = _safe(lambda: activity_log.overview('7d', tz=tz), {'buckets': [], 'groups': [], 'gate': []})
     spend = _safe(rules_engine.spend_status, {})
+    rc, ra = store.viewer_clause('record', 'r.id')            # what is in this person's spaces (spaces.py)
+    cc, ca = store.viewer_clause('chat', 'c.id')
+    pc, pa = store.viewer_clause('proposal', 'proposals.id')
     with store.db() as c:
-        mem = c.execute("SELECT count(*) FROM records r LEFT JOIN memory_archive a ON a.record_id=r.id WHERE coalesce(a.state,r.status)='approved'").fetchone()[0]
+        mem = c.execute("SELECT count(*) FROM records r LEFT JOIN memory_archive a ON a.record_id=r.id WHERE coalesce(a.state,r.status)='approved'" + rc, ra).fetchone()[0]
         chats = [dict(r) for r in c.execute(
-            'SELECT c.id,c.title,c.updated_at,c.client,(SELECT count(*) FROM chat_turns t WHERE t.chat_id=c.id) AS turns FROM chats c '
-            'ORDER BY c.updated_at DESC LIMIT 25')]
+            'SELECT c.id,c.title,c.updated_at,c.client,(SELECT count(*) FROM chat_turns t WHERE t.chat_id=c.id) AS turns FROM chats c WHERE 1=1'
+            + cc + 'ORDER BY c.updated_at DESC LIMIT 25', ca)]
         props = [dict(r) for r in _safe(lambda: list(c.execute(
-            "SELECT id,assistant_id,title,organisation,status,qa,context,created_at FROM proposals WHERE status!='discarded' ORDER BY updated_at DESC LIMIT 4")), [])]
+            "SELECT id,assistant_id,title,organisation,status,qa,context,created_at FROM proposals WHERE status!='discarded'" + pc + "ORDER BY updated_at DESC LIMIT 4", pa)), [])]
     for p in props:
         try:
             import json

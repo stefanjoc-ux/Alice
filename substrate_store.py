@@ -966,25 +966,33 @@ def organised_records(status='approved', query='', category='', sort='newest', o
         with db() as c:
             om = {r[0]: r[1] for r in c.execute(f'SELECT record_id,owner FROM record_meta WHERE record_id IN ({marks})', ids)}
     dec = decisions_for(ids)
+    sp = _spaces().of('record', ids)                 # which space each one is in (spaces.py)
     for r in d['records']:
         r['owner'] = om.get(r['id'], '')
         r['decided'] = dec.get(r['id'])
+        r['space'] = sp.get(r['id'], '')
     d['owners'] = owners()
     return d
 
 
-# ---- Who may see what (users.py, permissions.py). VIEWER is set per request by app.py's people middleware (and by the
-# MCP servers for each call): the signed-in person. None means the system or the owner on this computer: everything, as
-# before. A RESTRICTED viewer (anyone without the Owner role) sees only the items they created themselves, until Spaces
-# arrive. Who created an item is kept in item_authors (one row per item; items made before this have none and belong to
-# the owner). Every list or search that a restricted person can reach adds viewer_clause(); a single item is checked
-# with can_see(). Background work started from a request keeps its viewer: start threads with spawn(), never Thread().
+# ---- Who may see what (users.py, permissions.py, spaces.py). VIEWER is set per request by app.py's people middleware (and
+# by the MCP servers for each call): the signed-in person. None means the system (schedulers, start-up): everything.
+# Everyone else, the owner included, sees items in the SPACES they belong to (spaces.py): memories, decisions, knowledge,
+# organisations, proposals, digital teams, their jobs and pricing templates each belong to exactly one space (item_spaces;
+# an item with no row belongs to the default work space). Chats and generated documents stay private to whoever made them
+# (item_authors; none = the owner's). A space tied to a client keeps that client's material to its members, wherever it
+# sits. Every list or search adds viewer_clause(); one item is checked with can_see() (and can_change() for writes).
+# Background work started from a request keeps its viewer: start threads with spawn(), never Thread().
 import threading as _threading
 from collections import namedtuple as _namedtuple
 
 Viewer = _namedtuple('Viewer', 'oid email name role full')
 VIEWER = contextvars.ContextVar('alice_viewer', default=None)
-ITEM_TYPES = ('record', 'file', 'organisation', 'proposal', 'team_job', 'chat', 'document')
+SPACE = contextvars.ContextVar('alice_space', default='')     # the space switcher: '' = all my spaces
+AUTHOR_TYPES = ('chat', 'document')                            # private to whoever made them
+SPACE_TYPES = ('record', 'file', 'organisation', 'proposal', 'team', 'team_job', 'pricing_template')
+ITEM_TYPES = AUTHOR_TYPES + SPACE_TYPES
+CLIENT_TAG = {'record': 'memory', 'file': 'file'}              # client_tags.item_type for the types tagged there
 
 with db() as _c:
     _c.execute("CREATE TABLE IF NOT EXISTS item_authors (item_type TEXT NOT NULL, item_id TEXT NOT NULL COLLATE NOCASE, "
@@ -997,7 +1005,7 @@ def viewer():
 
 
 def restricted():
-    """The object ID of a viewer who sees only their own items, or None (sees everything)."""
+    """The object ID of a viewer without the Owner role (Alice-wide settings and pages are an Owner's), or None."""
     v = VIEWER.get()
     return None if v is None or v.full else (v.oid or '-')
 
@@ -1010,25 +1018,86 @@ def as_viewer(v):
     finally: VIEWER.reset(token)
 
 
-def viewer_clause(item_type, id_expr):
-    """SQL to add to a WHERE: (' ', []) for a viewer who sees everything, else only items this person created."""
-    oid = restricted()
-    if oid is None: return ' ', []          # a space, so it can sit between two pieces of SQL either way
-    return (f' AND EXISTS (SELECT 1 FROM item_authors ia WHERE ia.item_type=? AND ia.item_id={id_expr} AND ia.author_oid=?) ',
-            [item_type, oid])
+def _spaces():
+    import spaces
+    return spaces
 
 
-def stamp(item_type, item_id, oid=None):
-    """Record who created an item (the current viewer unless given). Items made by the system or on this computer get
-    no row and belong to the owner. Never changes an existing author."""
-    if item_type not in ITEM_TYPES or not item_id: return
-    if oid is None:
-        v = VIEWER.get()
-        oid = v.oid if v is not None else ''
-    if not oid: return
+def viewer_clause(item_type, id_expr, client_expr=None):
+    """SQL to add to a WHERE for this viewer: (' ', []) for the system, else only the items in their spaces (or, for chats
+    and generated documents, their own). client_expr: the item's client column, for items not tagged in client_tags."""
+    v = VIEWER.get()
+    if v is None or demo_active(): return ' ', []   # the system; the fictional demo data. A space, so it can sit between two pieces of SQL
+    sp = _spaces()
+    if item_type in AUTHOR_TYPES:
+        mine = sp.author_keys(v)
+        if not mine: return ' AND 1=0 ', []
+        own = (f" OR NOT EXISTS (SELECT 1 FROM item_authors ia WHERE ia.item_type=? AND ia.item_id={id_expr})" if '' in mine else '')
+        keys = [k for k in mine if k]
+        cond = (f"EXISTS (SELECT 1 FROM item_authors ia WHERE ia.item_type=? AND ia.item_id={id_expr} AND ia.author_oid IN ({','.join('?' * len(keys))}))"
+                if keys else '1=0')
+        return f' AND ({cond}{own}) ', ([item_type] + keys if keys else []) + ([item_type] if own else [])
+    ids = sp.visible(v)
+    if not ids: return ' AND 1=0 ', []
+    sql = (f" AND coalesce((SELECT isp.space_id FROM item_spaces isp WHERE isp.item_type=? AND isp.item_id={id_expr}), ?) "
+           f"IN ({','.join('?' * len(ids))}) ")
+    args = [item_type, sp.default_space()] + ids
+    blocked = sp.blocked_clients(v)               # clients tied to a space this person is not in: never theirs to see
+    if blocked:
+        marks = ','.join('?' * len(blocked))
+        if item_type in CLIENT_TAG:
+            sql += f' AND NOT EXISTS (SELECT 1 FROM client_tags ctb WHERE ctb.item_type=? AND ctb.item_id={id_expr} AND lower(ctb.client) IN ({marks})) '
+            args += [CLIENT_TAG[item_type]] + blocked
+        elif item_type == 'organisation':
+            sql += f' AND lower({id_expr}) NOT IN ({marks}) '; args += blocked
+        elif client_expr:
+            sql += f" AND lower(coalesce({client_expr},'')) NOT IN ({marks}) "; args += blocked
+    return sql, args
+
+
+def can_see(item_type, item_id):
+    if VIEWER.get() is None or demo_active(): return True
+    if not item_id: return False
+    vc, va = viewer_clause(item_type, 'x.iid')
     with db() as c:
-        c.execute('INSERT OR IGNORE INTO item_authors(item_type,item_id,author_oid,created_at) VALUES (?,?,?,?)',
-                  (item_type, str(item_id), oid, now()))
+        return c.execute('SELECT 1 FROM (SELECT CAST(? AS TEXT) AS iid) x WHERE 1=1' + vc, [str(item_id)] + va).fetchone() is not None
+
+
+def can_change(item_type, item_id):
+    """May this viewer change the item: for chats and documents, theirs; otherwise they may contribute to its space."""
+    v = VIEWER.get()
+    if v is None or demo_active(): return True
+    if not can_see(item_type, item_id): return False
+    if item_type in AUTHOR_TYPES: return True
+    sp = _spaces()
+    return sp.may_contribute(v, sp.space_of(item_type, item_id))
+
+
+def visible_ids(item_type, ids):
+    """The subset of ids this viewer may see, in order."""
+    ids = [i for i in ids if i]
+    if VIEWER.get() is None: return list(ids)
+    return [i for i in ids if can_see(item_type, i)]
+
+
+def stamp(item_type, item_id, oid=None, space=None):
+    """Record who created an item (the current viewer unless given) and, for items that live in spaces, which space: the one
+    given (the caller has checked it may be used), else the viewer's default space (their personal space unless they chose
+    another). Items made by the system get no rows: they are the owner's and sit in the default work space. Never changes
+    an existing author or space."""
+    if item_type not in ITEM_TYPES or not item_id or demo_active(): return
+    v = VIEWER.get()
+    if oid is None: oid = v.oid if v is not None else ''
+    rows = []
+    if oid: rows.append(('INSERT OR IGNORE INTO item_authors(item_type,item_id,author_oid,created_at) VALUES (?,?,?,?)', (item_type, str(item_id), oid, now())))
+    if item_type in SPACE_TYPES:
+        target = space or (_spaces().default_for(v) if v is not None else '')
+        if target:
+            rows.append(('INSERT OR IGNORE INTO item_spaces(item_type,item_id,space_id,placed_at,placed_by) VALUES (?,?,?,?,?)',
+                         (item_type, str(item_id), target, now(), actor())))
+    if not rows: return
+    with db() as c:
+        for sql, a in rows: c.execute(sql, a)
 
 
 def author_of(item_type, item_id):
@@ -1038,36 +1107,15 @@ def author_of(item_type, item_id):
     return r[0] if r else ''
 
 
-def can_see(item_type, item_id):
-    oid = restricted()
-    if oid is None: return True
-    return bool(item_id) and author_of(item_type, item_id) == oid
-
-
-def visible_ids(item_type, ids):
-    """The subset of ids this viewer may see, in order."""
-    ids = [i for i in ids if i]
-    oid = restricted()
-    if oid is None or not ids: return list(ids) if oid is None else []
-    seen = set()
-    with db() as c:
-        for i in range(0, len(ids), 500):
-            chunk = [str(x) for x in ids[i:i + 500]]
-            seen |= {r[0] for r in c.execute(f"SELECT item_id FROM item_authors WHERE item_type=? AND author_oid=? AND item_id IN ({','.join('?' * len(chunk))})",
-                                             [item_type, oid] + chunk)}
-    return [i for i in ids if str(i) in seen]
-
-
 def author_viewer(item_type, item_id):
-    """The viewer whose eyes background work on this item should use: its author's (restricted), or None for the owner's
-    own items. Temple, teams and connectors working on someone's item draw only on what that person may see."""
+    """The viewer whose eyes background work on this item should use: its author's. Temple, teams and connectors working on
+    someone's item draw only on the spaces that person belongs to (the owner's own items: the owner's spaces)."""
     oid = author_of(item_type, item_id)
-    if not oid: return None
     try:
         import users
-        return users.viewer_for(oid)
+        return users.viewer_for(oid) if oid else users.owner_viewer()
     except Exception:
-        return Viewer(oid, '', '', 'member', False)
+        return Viewer(oid or '-', '', '', 'member', False)
 
 
 def spawn(target, *args, name=None, **kwargs):
@@ -1076,3 +1124,6 @@ def spawn(target, *args, name=None, **kwargs):
     t = _threading.Thread(target=lambda: ctx.run(target, *args, **kwargs), daemon=True, name=name)
     t.start()
     return t
+
+
+import spaces as _spaces_module  # noqa: E402,F401  (here, so its tables exist before any query asks for them; never inside a transaction)

@@ -28,7 +28,7 @@ TRANSIENT = {'APIConnectionError', 'APITimeoutError', 'RateLimitError', 'Interna
 TOOLS = ['list_files', 'read_file', 'search_files', 'search_records', 'get_organisation', 'list_organisations',
          'search_opportunities', 'propose_record',
          'propose_decision', 'propose_knowledge', 'propose_org_fact', 'save_conversation', 'append_conversation',
-         'list_proposals', 'get_proposal', 'propose_proposal_changes']
+         'list_proposals', 'get_proposal', 'propose_proposal_changes', 'list_spaces']
 WRITE_TOOLS = {'propose_record', 'propose_decision', 'propose_knowledge', 'propose_org_fact', 'save_conversation', 'append_conversation',
                'propose_proposal_changes'}
 LABELS = ['general', 'internal', 'client']
@@ -62,6 +62,10 @@ BUILTIN = [
      'Tags memories with the tags you created (Work, Personal or both); confident matches applied, the rest suggested. Never re-adds a tag you removed.',
      'In the background after a new memory or a tag change, or Tag with Temple', ['Temple memory tags'],
      'Titles, the start and the category of memories not yet looked at', 'Tags (by your Temple mode) or suggestions', False),
+    ('temple-share-gate', 'Temple: sharing check', 'internal',
+     'Before an item goes into a shared space, reads it for personal or special category details and anything private; a hit waits for its author.',
+     'When someone shares or moves an item into a shared space', ['Temple sharing check'],
+     'The one item being shared', 'Clear, or held for its author (with reasons)', False),
     ('temple-replacements', 'Temple: replacement checks', 'internal',
      'Looks for older knowledge a newer item replaces; suggests retiring it, quoting the newer item.',
      'When knowledge becomes active, or Find replaced items', ['Temple replacement check'],
@@ -191,6 +195,10 @@ ANATOMY = {
     'temple-memory-tags': {'model': 'temple', 'instructions': 'Choose which of your tags apply to each memory (usually one to three), with a confidence; respects each tag\'s area.',
                            'tools': ['None'], 'data': ['memories'], 'guardrails': ['spend_cap', 'secret_detection', 'protective_marking'],
                            'outputs': ['Tags when 75%+ confident, otherwise suggestions'], 'gate': 'Your tags always win; a tag you remove is never put back'},
+    'temple-share-gate': {'model': 'temple', 'instructions': 'Say whether the item holds personal data about its author or others, special category data, or anything private.',
+                          'tools': ['Personal identifier and special category checks (free, no model)'], 'data': ['memories', 'knowledge', 'organisations'],
+                          'guardrails': ['spend_cap', 'secret_detection', 'protective_marking', 'share_gate'],
+                          'outputs': ['Clear, or held with reasons'], 'gate': 'The item\'s author shares anyway or keeps it personal'},
     'temple-replacements': {'model': 'temple', 'instructions': 'Decide whether a newer knowledge item replaces an older one; must quote the newer item.',
                             'tools': ['Wording and title matching (free, no model)', 'Quote check'], 'data': ['knowledge'],
                             'guardrails': ['spend_cap', 'provider_allow', 'protective_marking', 'secret_detection', 'client_separation'],
@@ -299,7 +307,7 @@ GROUPS = [
     ('conversations', 'Learning from conversations', 'Suggest memories, decisions and knowledge from chats, saved conversations and meetings.',
      ['temple-chat', 'temple-chat-review', 'temple-meeting']),
     ('stewardship', 'Keeping memory and knowledge tidy', 'Review proposed memories, categorise and tag them, tag clients and spot replaced knowledge.',
-     ['temple-review', 'temple-discuss', 'temple-taxonomy', 'temple-categorise', 'temple-memory-tags', 'temple-tagging', 'temple-replacements']),
+     ['temple-review', 'temple-discuss', 'temple-taxonomy', 'temple-categorise', 'temple-memory-tags', 'temple-tagging', 'temple-replacements', 'temple-share-gate']),
     ('apps_agents', 'Inside your apps', 'Agents that do one job inside an app, such as reading a lab report for Health Insights.',
      ['health-extract']),
     ('teams', 'Digital teams', 'Members of your digital teams working jobs stage by stage, and Temple suggesting how to refine them.',

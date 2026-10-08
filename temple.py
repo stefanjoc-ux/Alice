@@ -169,8 +169,9 @@ def automatic_review(rid):
 def inbox(offset=0):
     with store.db() as c:
         expire(c)
-        rows=[dict(r) for r in c.execute('SELECT * FROM records ORDER BY created_at DESC,id LIMIT 20 OFFSET ?',(offset,))]
-        total=c.execute('SELECT count(*) FROM records').fetchone()[0]
+        vc,va=store.viewer_clause('record','records.id')        # the memories in this person's spaces
+        rows=[dict(r) for r in c.execute('SELECT * FROM records WHERE 1=1'+vc+'ORDER BY created_at DESC,id LIMIT 20 OFFSET ?',(*va,offset))]
+        total=c.execute('SELECT count(*) FROM records WHERE 1=1'+vc,va).fetchone()[0]
         for row in rows:
             archive=c.execute('SELECT state FROM memory_archive WHERE record_id=?',(row['id'],)).fetchone()
             if archive:row['status']=archive['state']
@@ -209,14 +210,16 @@ def reason_line(report):
 
 def queue(view='pending', verdict_filter='', query='', offset=0, limit=50):
     """view: pending (proposals awaiting a decision) | reviewed (anything Temple has reviewed) | all."""
+    vc, va = store.viewer_clause('record', 'r.id')                # the memories in this person's spaces
+    ac, aa = store.viewer_clause('record', 'records.id')
     with store.db() as c:
         expire(c)
         rows = [dict(r) for r in c.execute(
             "SELECT r.*,coalesce(a.state,r.status) AS status,coalesce(m.category,'') AS category "
-            "FROM records r LEFT JOIN memory_archive a ON a.record_id=r.id LEFT JOIN record_meta m ON m.record_id=r.id "
-            "ORDER BY r.created_at DESC,r.id")]
+            "FROM records r LEFT JOIN memory_archive a ON a.record_id=r.id LEFT JOIN record_meta m ON m.record_id=r.id WHERE 1=1"
+            + vc + "ORDER BY r.created_at DESC,r.id", va)]
         active_ids = {x['id']: x['title'] for x in c.execute(
-            "SELECT id,title FROM records WHERE status='approved' AND NOT EXISTS (SELECT 1 FROM memory_archive WHERE record_id=records.id)")}
+            "SELECT id,title FROM records WHERE status='approved' AND NOT EXISTS (SELECT 1 FROM memory_archive WHERE record_id=records.id)" + ac, aa)}
         reviews = {}
         for v in c.execute('SELECT * FROM temple_reviews ORDER BY created_at DESC,id'):
             reviews.setdefault(v['record_id'], []).append(dict(v))
@@ -278,9 +281,10 @@ def chat_suggestions(status='pending', kind='', query='', offset=0, limit=50):
     groups = {'pending': ('pending',), 'later': ('later',), 'handled': ('accepted', 'dismissed')}
     try:
         with store.db() as c:
+            vc, va = store.viewer_clause('chat', 's.chat_id')     # suggestions from this person's own chats
             rows = [dict(r) for r in c.execute(
                 "SELECT s.*,coalesce(ch.title,'(deleted chat)') AS chat_title FROM temple_suggestions s "
-                "LEFT JOIN chats ch ON ch.id=s.chat_id ORDER BY s.created_at DESC")]
+                "LEFT JOIN chats ch ON ch.id=s.chat_id WHERE 1=1" + vc + "ORDER BY s.created_at DESC", va)]
     except Exception:
         rows = []
     counts = {g: sum(1 for r in rows if r['status'] in states) for g, states in groups.items()}

@@ -404,6 +404,7 @@ def replacements(status='pending', new_id='', old_id='', limit=200):
     for r in rows:
         n, o = all_meta.get(r['new_id']), all_meta.get(r['old_id'])
         if not n or not o: continue
+        if not (store.can_see('file', r['new_id']) and store.can_see('file', r['old_id'])): continue     # both in this person's spaces
         if r['status'] == 'pending' and (o['status'] not in ('active', 'archived') or o.get('superseded_by')): continue
         r.update(new_title=n['title'], new_status=n['status'], new_created=n['created_at'],
                  old_title=o['title'], old_status=o['status'], old_created=o['created_at'])
@@ -490,7 +491,9 @@ def listing(kind='', status='active', category='', client='', label='', query=''
            and (not q or q in (r['title'] + ' ' + r['name'] + ' ' + r['source'] + ' ' + (r['summary'] or '')).lower())]
     page = out[offset:offset + limit]
     dec = store.decisions_for([r['id'] for r in page])
-    for r in page: r['decided'] = dec.get(r['id'])
+    import spaces
+    sp = spaces.of('file', [r['id'] for r in page])
+    for r in page: r['decided'] = dec.get(r['id']); r['space'] = sp.get(r['id'], '')
     return {'items': page, 'total': len(out), 'counts': counts, 'labels': LABELS, 'kinds': KINDS, 'owners': store.owners(), 'review_days': review_days(),
             'next_offset': offset + len(page) if offset + len(page) < len(out) else None}
 

@@ -79,11 +79,16 @@ LABELS = {
     'access_refused': ('blocks', 'Access refused (permissions)'), 'user_first_signin': ('rules', 'Person signed in for the first time'),
     'user_changed': ('rules', 'Person\'s role, profile or status changed'), 'permission_profile_created': ('rules', 'Permission profile created'),
     'permission_profile_changed': ('rules', 'Permission profile changed'), 'permission_profile_deleted': ('rules', 'Permission profile deleted'),
+    'space_created': ('rules', 'Space created'), 'space_member_added': ('rules', 'Person added to a space'), 'space_member_changed': ('rules', 'Space role changed'),
+    'space_member_removed': ('rules', 'Person removed from a space'), 'space_shared': ('memories', 'Item shared into a space'),
+    'space_moved': ('memories', 'Item moved to another space'), 'space_share_held': ('blocks', 'Sharing held for the author (sharing check)'),
+    'space_share_refused': ('blocks', 'Sharing refused: not classified'), 'space_share_kept': ('memories', 'Author kept an item personal'),
+    'spaces_migrated': ('rules', 'Items placed in spaces')
 }
 RULE_NAMES = {'secret_detection': 'Secret detection', 'protective_marking': 'Protective marking guard', 'pii': 'Personal identifiers',
               'provider_allow': 'Provider allow-list', 'external_scope': 'External client scope', 'client_separation': 'Client separation', 'client_documents': 'Client-facing documents',
               'quality': 'Quality check', 'duplicates': 'Duplicate block', 'spend_cap': 'Spending caps', 'retention': 'Chat retention',
-              'purview_labels': 'Purview sensitivity labels', 'permissions': 'Users and permissions', 'users': 'Users and permissions'}
+              'purview_labels': 'Purview sensitivity labels', 'permissions': 'Users and permissions', 'users': 'Users and permissions', 'spaces': 'Spaces', 'share_gate': 'Sharing check'}
 HEX = re.compile(r'^[0-9a-f]{32}$')
 
 

@@ -45,6 +45,11 @@ BUILTIN = [
      'are refused (keep contact details in the source system), as is anything about a named person\'s health, '
      'beliefs, ethnicity, sexuality, union membership or criminal matters. Every organisation fact needs a source '
      'and a review-by date (default below, at most 24 months).', True, {'review_months': 12}, '', False),
+    ('share_gate', 'security', 'Sharing check', 'enforced',
+     'Before anything enters or moves into a shared space (whoever moves it: a person, Temple, a team or a connector), it is checked for '
+     'personal identifiers, contact details, health or other special category details about anyone, and anything marked private (Local only, '
+     'or in a personal-area category); Temple reads it too. Anything found holds it for its author to share anyway or keep personal. An item '
+     'with no category confirmed by a person never enters a shared space.', True, {'temple': True}, '', True),
     ('client_separation', 'organisation', 'Client separation', 'enforced',
      'In a chat tagged with a client, memory and file tools return only that client\'s material plus General '
      '(untagged) material. Strict mode also keeps client material out of untagged chats.', True,
@@ -375,6 +380,22 @@ def find_personal(text):
         if SPECIAL.search(sentence) and PERSON.search(sentence):
             found.append('personal details about someone (special category data)'); break
     return found
+
+
+def check_share(text):
+    """The Sharing check's code part (rule share_gate): reasons an item should not go into a shared space without its
+    author confirming. Uses the same detectors as the other rules, never copies of them."""
+    import rule_packs
+    reasons = []
+    pii = find_pii(text)
+    if pii: reasons.append('It contains ' + ', '.join(pii).lower() + '.')
+    personal = find_personal(text)
+    if personal: reasons.append('It contains ' + ' and '.join(personal) + '.')
+    if rule_packs.self_disclosure(text) and not any('special category' in r for r in reasons):
+        reasons.append('It contains health or other special category details about its author.')
+    elif rule_packs.special_about_person(text) and not any('special category' in r for r in reasons):
+        reasons.append('It contains health or other special category details about someone.')
+    return reasons
 
 
 def check_org_fact(org, statement, source):

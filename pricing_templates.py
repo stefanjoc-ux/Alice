@@ -113,6 +113,8 @@ def describe(path, p=None):
     """A template as the pickers show it: shared or the client it is tagged to, and whether its mapping is confirmed."""
     p = p or resolve(path)
     r = _row(path) or {}
+    if r.get('client') and not store.can_see('pricing_template', _rel(path)):      # its client tag sits in a space this person is not in
+        r = dict(r, client='(a client in another space)')
     out = {'path': _rel(path), 'name': Path(_rel(path)).name, 'client': r.get('client') or '', 'shared': not r.get('client'),
            'readable': bool(p) and p.suffix.lower() in EXT_OK, 'exists': bool(p)}
     if not p: out.update(mapping='missing', mapping_label='Not in the document sources any more')
@@ -190,10 +192,12 @@ def set_client(path, client):
     if not resolve(path): raise ValueError('That template is not in the document sources.')
     client = _clean(client, 80)
     if client and client not in clients.names(): raise ValueError('Choose a client (an organisation marked Client), or none for a shared template.')
+    if _row(path) and not store.can_change('pricing_template', path): raise ValueError('This template\'s client tag is in a space you do not contribute to.')
     with store.db() as c:
         c.execute('INSERT INTO pricing_templates(path,client,updated_at) VALUES (?,?,?) ON CONFLICT(path) DO UPDATE SET client=excluded.client, '
                   'updated_at=excluded.updated_at', (path, client, store.now()))
         store.audit(c, 'pricing_template_client', path, 'client_separation', f'{Path(path).name}: ' + (f'tagged to {client}' if client else 'shared (no client)'))
+    store.stamp('pricing_template', path)          # the tag belongs to a space (spaces.py); never moves one already placed
     return describe(path)
 
 

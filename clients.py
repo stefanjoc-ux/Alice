@@ -42,9 +42,10 @@ def _aliases(values, name):
 
 
 def list_clients():
-    if store.restricted() is not None: return []     # clients are organisations: an Owner's until shared Spaces arrive
     with store.db() as c:
         rows = [dict(r) for r in c.execute('SELECT * FROM clients ORDER BY lower(name)')]
+    if store.viewer() is not None: rows = [r for r in rows if store.can_see('organisation', r['name'])]   # clients in this person's spaces
+    with store.db() as c:
         for r in rows:
             r['aliases'] = json.loads(r['aliases'] or '[]')
             r['memories'] = c.execute("SELECT count(*) FROM client_tags WHERE item_type='memory' AND client=?", (r['name'],)).fetchone()[0]
@@ -54,8 +55,8 @@ def list_clients():
 
 
 def names():
-    if store.restricted() is not None: return []
-    with store.db() as c: return [r[0] for r in c.execute('SELECT name FROM clients ORDER BY lower(name)')]
+    with store.db() as c: rows = [r[0] for r in c.execute('SELECT name FROM clients ORDER BY lower(name)')]
+    return rows if store.viewer() is None else [n for n in rows if store.can_see('organisation', n)]     # clients in this person's spaces
 
 
 def canonical(name):
@@ -458,13 +459,15 @@ def items(item_type='memory', client='', query='', offset=0, limit=50):
                 "coalesce(t.client,'') AS client,coalesce(t.assigned_by,'') AS assigned_by,t.confidence,coalesce(t.suggestion,'') AS suggestion,"
                 "coalesce(t.suggestion_reason,'') AS suggestion_reason FROM records r LEFT JOIN memory_archive a ON a.record_id=r.id "
                 "LEFT JOIN client_tags t ON t.item_type='memory' AND t.item_id=r.id "
-                "WHERE coalesce(a.state,r.status) IN ('proposed','approved') ORDER BY r.created_at DESC")]
+                "WHERE coalesce(a.state,r.status) IN ('proposed','approved')" + store.viewer_clause('record', 'r.id')[0] + "ORDER BY r.created_at DESC",
+                store.viewer_clause('record', 'r.id')[1])]
         else:
             rows = [dict(r) for r in c.execute(
                 "SELECT f.id,f.name AS title,f.summary AS preview,'file' AS status,f.created_at,coalesce(t.client,'') AS client,"
                 "coalesce(t.assigned_by,'') AS assigned_by,t.confidence,coalesce(t.suggestion,'') AS suggestion,"
                 "coalesce(t.suggestion_reason,'') AS suggestion_reason FROM files f "
-                "LEFT JOIN client_tags t ON t.item_type='file' AND t.item_id=f.id ORDER BY f.created_at DESC")]
+                "LEFT JOIN client_tags t ON t.item_type='file' AND t.item_id=f.id WHERE 1=1" + store.viewer_clause('file', 'f.id')[0] + "ORDER BY f.created_at DESC",
+                store.viewer_clause('file', 'f.id')[1])]
     counts = {'__general__': sum(1 for r in rows if not r['client']), '__suggested__': sum(1 for r in rows if r['suggestion'])}
     for r in rows:
         if r['client']: counts[r['client']] = counts.get(r['client'], 0) + 1

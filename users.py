@@ -81,8 +81,14 @@ def owner_oid():
 
 
 def local_owner():
-    """The owner at this computer (no sign-in): sees everything."""
+    """The owner at this computer (no sign-in)."""
     return store.Viewer('', '', store.owner_name(), 'owner', True)
+
+
+def owner_viewer():
+    """The owner, for background work on the owner's own items: on the PC the owner here, in Azure by object ID."""
+    o = owner_oid()
+    return store.Viewer(o, '', store.owner_name(), 'owner', True) if trusted() and o else local_owner()
 
 
 # ---------------- the sign-in headers ----------------
