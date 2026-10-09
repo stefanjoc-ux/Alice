@@ -379,6 +379,73 @@ t('setup: -Step users gives the owner Alice.Owner first, the admins (you, a prev
   and '--method DELETE' in setup and setup.index("Assign (Owner) $roles[0]") < setup.index('--method DELETE')
   and "if ($old) { Add-Admin $old }" in setup and 'second, break-glass' not in setup and "Sign-In-Others $values['allowedUserObjectIds']" in setup)
 
+# ---------------- -Step users: the app roles JSON sent to Graph (az ad app update --app-roles) ----------------
+OTHER_ROLE = {'allowedMemberTypes': ['User'], 'description': 'Someone else\'s role', 'displayName': 'Other', 'id': 'aaaaaaaa-1111-1111-1111-111111111111',
+              'isEnabled': True, 'origin': 'Application', 'value': 'Other.Role'}
+OLD_OWNER = {'allowedMemberTypes': ['User'], 'description': 'old text', 'displayName': 'Alice Owner', 'id': 'bbbbbbbb-2222-2222-2222-222222222222',
+             'isEnabled': True, 'origin': 'Application', 'value': 'Alice.Owner'}
+
+
+def roles_via_cli(existing_text):
+    src, dst = path('roles-now.json'), path('roles-send.json')
+    open(src, 'w', encoding='utf-8-sig').write(existing_text)          # PowerShell 5.1 may write a BOM
+    code = S.main(['app-roles', '--existing', src, '--out', dst])
+    return code, open(dst, encoding='utf-8').read() if code == 0 else ''
+
+
+def well_typed(roles):
+    """Graph's shape: a JSON array of objects; allowedMemberTypes a list of strings; isEnabled a boolean; every other field one string."""
+    if not isinstance(roles, list) or not roles: return False
+    for r in roles:
+        if not isinstance(r, dict) or set(r) - set(S.ROLE_FIELDS): return False
+        for k, v in r.items():
+            if k == 'allowedMemberTypes':
+                if not (isinstance(v, list) and v and all(isinstance(x, str) for x in v)): return False
+            elif k == 'isEnabled':
+                if not isinstance(v, bool): return False
+            elif not isinstance(v, str): return False
+    return True
+
+
+cases = {
+    'no roles yet': '[]',
+    'empty output': '',
+    'other roles kept, an existing Alice.Owner': json.dumps([OTHER_ROLE, OLD_OWNER], indent=2),
+    'Windows PowerShell 5.1 wrapping (an array inside the array)': json.dumps([[OTHER_ROLE, OLD_OWNER]]),
+    'a single role, not in an array': json.dumps(OTHER_ROLE),
+    'a field that came back as a list': json.dumps([{**OTHER_ROLE, 'displayName': ['Other'], 'isEnabled': [True]}]),
+}
+results = {}
+for name, text in cases.items():
+    code, sent = roles_via_cli(text)
+    results[name] = json.loads(sent) if code == 0 else None
+    t(f'app roles JSON ({name}): an array of roles, every field a single value except allowedMemberTypes (a list of strings)',
+      code == 0 and sent.lstrip().startswith('[') and well_typed(results[name]))
+    t(f'app roles JSON ({name}): Alice.Owner, Alice.Admin and Alice.Member once each, enabled, for users',
+      results[name] is not None and [r['value'] for r in results[name] if r['value'].startswith('Alice.')] == list(S.ROLE_VALUES)
+      and all(r['isEnabled'] is True and r['allowedMemberTypes'] == ['User'] for r in results[name] if r['value'].startswith('Alice.')))
+kept = results['other roles kept, an existing Alice.Owner']
+t('app roles JSON: the app\'s other roles are kept, read-only fields (origin) left out',
+  kept[0] == {k: v for k, v in OTHER_ROLE.items() if k != 'origin'} and not any('origin' in r for r in kept))
+ids = {r['value']: r['id'] for r in kept}
+t('app roles JSON: an Alice role that already exists keeps its own ID; the others get the fixed IDs',
+  ids['Alice.Owner'] == OLD_OWNER['id'] and ids['Alice.Admin'] == S.ADMIN_ROLE_ID and {r['value']: r['id'] for r in results['no roles yet']}['Alice.Owner'] == S.OWNER_ROLE_ID)
+t('app roles JSON: the 5.1 wrapping gives exactly what the plain array gives', results['Windows PowerShell 5.1 wrapping (an array inside the array)'] == kept)
+t('app roles JSON: a list where one value belongs is sent as that value', results['a field that came back as a list'][0]['displayName'] == 'Other'
+  and results['a field that came back as a list'][0]['isEnabled'] is True)
+code, _ = roles_via_cli('not json')
+t('app roles: unreadable current roles stop the step before anything is sent', code == 2)
+t('check: reads the role IDs the app really has', S.role_ids({'appRoles': [OLD_OWNER]})['Alice.Owner'] == OLD_OWNER['id']
+  and S.role_ids({'appRoles': [[OLD_OWNER]]})['Alice.Owner'] == OLD_OWNER['id'] and S.role_ids({})['Alice.Admin'] == S.ADMIN_ROLE_ID)
+setup = open(os.path.join(ROOT, 'deploy', 'azure-setup.ps1'), encoding='utf-8').read()
+add_roles = setup.split('function Add-Roles', 1)[1].split('\n  }\n', 1)[0]
+t('setup: the app roles are built by azure_state.py app-roles (not ConvertTo-Json), and the JSON is printed when az refuses it',
+  'app-roles --existing' in add_roles and 'ConvertTo-Json' not in add_roles and 'catch' in add_roles and 'ReadAllText($send)' in add_roles)
+t('setup: the role IDs used for assignments are read back from the app, never assumed',
+  "appRoles[?value=='$($r.value)'].id | [0]" in setup and '388aff1f' not in setup.split("if (Want 'users')", 1)[1].split("if (Want 'connector')", 1)[0])
+t('setup: no JSON array is read with @(... | ConvertFrom-Json) (Windows PowerShell 5.1 does not unroll it)',
+  not re.search(r'@\(\s*AzCli[^\n]*\|\s*ConvertFrom-Json\s*\)', setup) and 'Json-Array (AzCli ad app show' in setup)
+
 az = FakeAzure()          # no Azure copy yet, a deployment newer than everything
 code, text = run(S.check, az, RG, path('none.json'), who=ME)
 t('check: a missing Azure copy is flagged, and check does not create it', 'Setup state in Azure' in text and 'the next step rebuilds it' in text and az.state() is None and not az.writes())

@@ -51,6 +51,17 @@ PROTECTIONS_OFF = ('noLock',)          # true = a protection off: never inferred
 DEFAULTS = {'pgBackupRetentionDays': 35, 'filesBackupDays': 30, 'offsiteKeepDays': 35, 'offsiteSoftDeleteDays': 35}
 TOKEN_STORE = 'ab3be6b7-f5df-413d-ac2d-abf1e3fd9c0b'   # Microsoft's Enterprise token store (Copilot)
 ROLE_VALUES = ('Alice.Owner', 'Alice.Admin', 'Alice.Member')
+# The app roles -Step users puts on the web (and connector) sign-in app. The IDs are used only when the app has no role with
+# that value yet: an existing role keeps its own ID (app_roles), and the script reads the IDs back from the app.
+ALICE_ROLES = (
+    {'id': OWNER_ROLE_ID, 'value': 'Alice.Owner', 'displayName': 'Alice Owner',
+     'description': "An owner of Alice: full access, including everyone's items, Health, Trading, Mileage and Backups. Entra decides: anyone with this role is an owner."},
+    {'id': ADMIN_ROLE_ID, 'value': 'Alice.Admin', 'displayName': 'Alice Admin',
+     'description': 'Their permission profile, plus Users and permissions, Rules and Rule packs. Never Health, Trading, Mileage or Backups.'},
+    {'id': '63e492a6-c40b-4485-b412-3ed386f849d6', 'value': 'Alice.Member', 'displayName': 'Alice Member',
+     'description': 'Their permission profile only (by default: Chat and their own saved chats).'},
+)
+ROLE_FIELDS = ('allowedMemberTypes', 'description', 'displayName', 'id', 'isEnabled', 'value')   # what Graph accepts back
 READ_VERBS = ('show', 'list', 'download')
 
 
@@ -584,6 +595,74 @@ def database_host(az, rg, path, out=print):
     return 0
 
 
+def _items(x):
+    """Every object in x, however deeply it is wrapped in lists (Windows PowerShell 5.1 does not unroll a JSON array, so the
+    script's own reads used to come back as [[...]])."""
+    if isinstance(x, list):
+        for y in x: yield from _items(y)
+    elif isinstance(x, dict):
+        yield x
+
+
+def _scalar(v):
+    """One value, never a list (Graph refuses an array where it expects a string or a boolean)."""
+    while isinstance(v, list): v = v[0] if v else ''
+    return v
+
+
+def app_roles(existing):
+    """The appRoles to send to Graph: the app's other roles kept as they are, and Alice.Owner, Alice.Admin and Alice.Member,
+    each keeping the ID it already has on the app (else the fixed one). Only the fields Graph accepts back; every field a
+    single value except allowedMemberTypes, a list of strings. Always a JSON array, even with one role."""
+    have = list(_items(existing))
+    mine = {r['value'] for r in ALICE_ROLES}
+    out = []
+    for r in have:
+        if _scalar(r.get('value')) in mine: continue
+        kept = {}
+        for k in ROLE_FIELDS:
+            if k not in r: continue
+            if k == 'allowedMemberTypes':
+                kept[k] = [str(m) for m in _flat(r[k]) if m] or ['User']
+            elif k == 'isEnabled':
+                kept[k] = bool(_scalar(r[k]))
+            else:
+                kept[k] = str(_scalar(r[k]) or '')
+        out.append(kept)
+    for a in ALICE_ROLES:
+        old = next((r for r in have if _scalar(r.get('value')) == a['value']), None)
+        out.append({'allowedMemberTypes': ['User'], 'description': a['description'], 'displayName': a['displayName'],
+                    'id': str(_scalar((old or {}).get('id')) or a['id']), 'isEnabled': True, 'value': a['value']})
+    return out
+
+
+def _flat(x):
+    if isinstance(x, list):
+        for y in x: yield from _flat(y)
+    else:
+        yield x
+
+
+def role_ids(app):
+    """{role value: id} for the Alice roles on an app registration (its own IDs, else the fixed ones)."""
+    ids = {r['value']: r['id'] for r in ALICE_ROLES}
+    for r in _items((app or {}).get('appRoles') or []):
+        if _scalar(r.get('value')) in ids and r.get('id'): ids[_scalar(r['value'])] = str(_scalar(r['id']))
+    return ids
+
+
+def app_roles_file(existing_path, out_path, out=print):
+    """-Step users: read the app's current appRoles (az ad app show --query appRoles), write what to send."""
+    try:
+        raw = open(existing_path, encoding='utf-8-sig').read().strip()
+        existing = json.loads(raw) if raw else []
+    except (OSError, ValueError) as e:
+        out(f'Stopped: could not read the app\'s current roles ({e}). Nothing was changed.'); return 2
+    roles = app_roles(existing)
+    with open(out_path, 'w', encoding='utf-8') as f: json.dump(roles, f, ensure_ascii=False)
+    return 0
+
+
 def check(az, rg, path, who='', out=print):
     """Read-only: what each step has set up, and anything missing. Changes nothing, writes no file."""
     az = read_only(az)
@@ -784,19 +863,21 @@ def check(az, rg, path, who='', out=print):
         row('users', 'Owner of Alice (ownerObjectId)', 'DIFFERS', f"the state says {want}, alice-web has {live_owner or 'none'} as its fallback: run -Step apps")
     else: row('users', 'Owner of Alice (ownerObjectId)', 'ok', want)
     admins = [a.lower() for a in (state.get('adminObjectIds') or []) if a and a.lower() != want]
+    rid = role_ids(app)
+    OWNER_ID, ADMIN_ID = rid['Alice.Owner'], rid['Alice.Admin']
     if want and have and (sp or {}).get('id'):
         got = live.j('rest', '--method', 'GET', '--url', f"https://graph.microsoft.com/v1.0/servicePrincipals/{sp['id']}/appRoleAssignedTo")
         if got is None: row('users', 'Role assignments', 'info', 'could not read the assignments (you need to be able to read the enterprise application); not checked')
         else:
             held = {}
             for a in got.get('value') or []: held.setdefault(str(a.get('principalId', '')).lower(), set()).add(a.get('appRoleId'))
-            ok = OWNER_ROLE_ID in held.get(want, set())
+            ok = OWNER_ID in held.get(want, set())
             row('users', 'Alice.Owner: the owner', 'ok' if ok else 'MISSING', want + ('' if ok else ': run -Step users'))
             for a in admins:
                 r = held.get(a, set())
-                status = 'DIFFERS' if OWNER_ROLE_ID in r else ('ok' if ADMIN_ROLE_ID in r else 'MISSING')
+                status = 'DIFFERS' if OWNER_ID in r else ('ok' if ADMIN_ID in r else 'MISSING')
                 row('users', 'Alice.Admin: admin', status, a + {'DIFFERS': ': also holds Alice.Owner (an owner): run -Step users', 'MISSING': ': run -Step users', 'ok': ''}[status])
-            others = sorted(o for o, r in held.items() if OWNER_ROLE_ID in r and o != want and o not in admins)
+            others = sorted(o for o, r in held.items() if OWNER_ID in r and o != want and o not in admins)
             if others: row('users', 'Other owners (Alice.Owner in Entra)', 'info', ', '.join(others))
     row('recover', 'Recovery', 'info', 'only for a NEW resource group (docs/restore.md part C)' if wanted else 'not used')
 
@@ -818,9 +899,11 @@ def check(az, rg, path, who='', out=print):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description='The setup state of azure-setup.ps1, kept in Azure.')
-    ap.add_argument('command', choices=('load', 'save', 'check', 'database-host'))
-    ap.add_argument('--resource-group', required=True)
-    ap.add_argument('--file', required=True)
+    ap.add_argument('command', choices=('load', 'save', 'check', 'database-host', 'app-roles'))
+    ap.add_argument('--resource-group', default='')
+    ap.add_argument('--file', default='')
+    ap.add_argument('--existing', default='')     # app-roles: the app's current appRoles (JSON)
+    ap.add_argument('--out', default='')          # app-roles: where to write the appRoles to send
     ap.add_argument('--use-local', action='store_true')
     ap.add_argument('--who', default='')
     ap.add_argument('--step', default='')
@@ -829,6 +912,10 @@ def main(argv=None):
     except Exception: pass
     out = lambda s='': print(s, flush=True)
     try:
+        if a.command == 'app-roles':
+            if not a.existing or not a.out: ap.error('app-roles needs --existing and --out')
+            return app_roles_file(a.existing, a.out, out)
+        if not a.resource_group or not a.file: ap.error(f'{a.command} needs --resource-group and --file')
         if a.command == 'load': return load(AZ, a.resource_group, a.file, a.use_local, a.who, out)
         if a.command == 'save': return save(AZ, a.resource_group, a.file, a.who, a.step, out)
         if a.command == 'database-host': return database_host(AZ, a.resource_group, a.file, out)
