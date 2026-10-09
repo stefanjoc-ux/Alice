@@ -105,7 +105,7 @@ knowledge note "AI Substrate: status summary" through the `alice` connector, or 
 - **Settings**: `.env` (never read it; see rule 1).
 
 ### In Azure (Tuduma, UK South) — see `infra/main.bicep`, `deploy/`
-- One image (`Dockerfile`, packages pinned in `requirements.txt`: add any new package there too, with Stefan's say),
+- One image (`Dockerfile`, packages pinned in `requirements.txt`: add any new package there too, with Stefan's say; Docker's official images, the Dockerfile's base and the pipeline's PostgreSQL service, come from Amazon's public mirror `public.ecr.aws/docker/library/…`, the same images, never Docker Hub directly: GitHub's runners share Docker Hub's anonymous pull limit, which failed PR #38 before any test ran on 9 Oct 2026; `tests/test_image_sources.py` checks it),
   two Container Apps with one replica each: `alice-web` (`ALICE_ROLE=web`: uvicorn on 8000 plus the internal MCP server on
   127.0.0.1:8001 inside the container; Entra sign-in in front, Stefan only, `/healthz` excluded) and `alice-mcp`
   (`ALICE_ROLE=mcp`: `mcp_server.py --external` on 8002). `deploy/start.sh` starts the role; roles `migrate`, `test`, `backup`,
