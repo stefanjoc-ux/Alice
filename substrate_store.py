@@ -982,7 +982,9 @@ def organised_records(status='approved', query='', category='', sort='newest', o
 import threading as _threading
 from collections import namedtuple as _namedtuple
 
-Viewer = _namedtuple('Viewer', 'oid email name role full')
+# owner: an owner of Alice (users.is_owner: the Alice.Owner role, or the configured ID while app roles are off), for the
+# owner-only areas (Health, Trading, Mileage, Backups). Set by users.py; anything else that builds a Viewer leaves it False.
+Viewer = _namedtuple('Viewer', 'oid email name role full owner', defaults=(False,))
 VIEWER = contextvars.ContextVar('alice_viewer', default=None)
 ITEM_TYPES = ('record', 'file', 'organisation', 'proposal', 'team_job', 'chat', 'document')
 

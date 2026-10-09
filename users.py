@@ -10,8 +10,12 @@ Two ways in, switched by ALICE_USE_APP_ROLES (Bicep useAppRoles):
   on              the web sign-in app's roles decide: Alice.Owner, Alice.Admin or Alice.Member, assigned in Entra (the
                   enterprise application has "Assignment required"). Someone with none of them is refused.
 The role Alice uses is the LOWER of the Entra role (a ceiling: take it away in Entra and they drop at once) and the role
-set on the Users and permissions page (which starts at the Entra role on first sign-in). The owner (ALICE_OWNER_OBJECT_ID)
-is always Owner, cannot be demoted, suspended or removed, and there is always at least one active Owner.
+set on the Users and permissions page (which starts at the Entra role on first sign-in). ENTRA DECIDES THE OWNER (Stefan,
+9 Oct 2026), through ONE check, is_owner(): anyone assigned the Alice.Owner app role is an owner of Alice (full access,
+including Health, Trading, Mileage and Backups). The configured owner object ID (ALICE_OWNER_OBJECT_ID, the setup state's
+ownerObjectId) is only a bootstrap fallback while app roles are off. Never an account name or email. An owner is always
+Owner and cannot be demoted, suspended or removed here (take the role away in Entra); an Admin never sees the personal areas;
+there is always at least one active Owner.
 
 A permission profile is a named set of levels per section (permissions.py). Owners see and manage everything; Admins and
 Members get their profile (Admins also Users and permissions, Rules and Rule packs). A new person gets the default Member
@@ -31,6 +35,7 @@ ROLES = ('member', 'admin', 'owner')                    # lowest first
 RANK = {r: i for i, r in enumerate(ROLES)}
 ROLE_LABEL = {'owner': 'Owner', 'admin': 'Admin', 'member': 'Member'}
 ENTRA_ROLES = {'Alice.Owner': 'owner', 'Alice.Admin': 'admin', 'Alice.Member': 'member'}
+OWNER_ROLE = 'Alice.Owner'          # the app role that makes an account an owner of Alice (is_owner)
 STATUSES = ('active', 'suspended')
 DEFAULT_PROFILE = 'member'          # the default profile id for anyone new
 CACHE_S = 15                        # a change on the Users page reaches every request within this (same process: at once)
@@ -51,6 +56,10 @@ def _schema(c):
               "role TEXT NOT NULL DEFAULT 'member', profile TEXT NOT NULL DEFAULT 'member', status TEXT NOT NULL DEFAULT 'active', "
               "entra_role TEXT NOT NULL DEFAULT '', first_seen TEXT NOT NULL, last_seen TEXT NOT NULL, "
               "updated_at TEXT NOT NULL DEFAULT '', updated_by TEXT NOT NULL DEFAULT '')")
+    # entra_owner: 1 when their last sign-in carried the Alice.Owner role (is_owner for background work and the connector,
+    # which have no sign-in to read). Additive; read again at every sign-in, so taking the role away in Entra clears it.
+    if 'entra_owner' not in {r[1] for r in c.execute('PRAGMA table_info(users)')}:
+        c.execute('ALTER TABLE users ADD COLUMN entra_owner INTEGER NOT NULL DEFAULT 0')
     c.execute("CREATE TABLE IF NOT EXISTS permission_profiles (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', "
               "levels TEXT NOT NULL DEFAULT '{}', builtin INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL, updated_by TEXT NOT NULL DEFAULT '')")
 
@@ -80,9 +89,28 @@ def owner_oid():
     return (os.environ.get('ALICE_OWNER_OBJECT_ID') or '').strip().lower()
 
 
+def fallback_oid():
+    """The configured owner object ID, while it counts: only while app roles are off (the bootstrap, before Entra decides)."""
+    return '' if use_app_roles() else owner_oid()
+
+
+def is_owner(oid='', roles=None, row=None):
+    """THE owner check (every owner-only area and rule uses it, through permissions.is_owner_person): the Alice.Owner app role
+    in Entra, or, only while app roles are off, the configured owner object ID (fallback_oid). roles: the role claims of the
+    sign-in being handled now; without one (background work, the connector), the role as recorded at their last sign-in (row,
+    else read). Never by name or email."""
+    oid = (oid or '').strip().lower()
+    ow = fallback_oid()
+    if oid and ow and oid == ow: return True
+    if roles is not None: return OWNER_ROLE in roles
+    if not oid: return False
+    row = row if row is not None else _row(oid)
+    return bool(row and row.get('entra_owner'))
+
+
 def local_owner():
     """The owner at this computer (no sign-in): sees everything."""
-    return store.Viewer('', '', store.owner_name(), 'owner', True)
+    return store.Viewer('', '', store.owner_name(), 'owner', True, True)
 
 
 # ---------------- the sign-in headers ----------------
@@ -109,7 +137,7 @@ def principal(headers):
 
 def entra_ceiling(p):
     """The highest Alice role Entra gives this person ('' = none)."""
-    if p.get('oid') and p['oid'] == owner_oid(): return 'owner'
+    if is_owner(p.get('oid'), p.get('roles', [])): return 'owner'
     if not use_app_roles(): return 'owner'                 # allowedPrincipals mode: Entra let in only the owner's own accounts
     got = [ENTRA_ROLES[r] for r in p.get('roles', []) if r in ENTRA_ROLES]
     return max(got, key=RANK.get) if got else ''
@@ -149,16 +177,17 @@ def profile_levels(pid):
     except ValueError: return permissions.clean_levels({})
 
 
-def effective_role(row, ceiling):
-    if row and row['oid'] == owner_oid(): return 'owner'
+def effective_role(row, ceiling, owner=None):
+    """owner: is_owner() for this sign-in (None = read from the row)."""
+    if row and (owner if owner is not None else is_owner(row['oid'], row=row)): return 'owner'
     stored = (row or {}).get('role') or 'member'
     if stored not in RANK: stored = 'member'
     if not ceiling: return ''
     return min(stored, ceiling, key=RANK.get)
 
 
-def _viewer(row, role):
-    return store.Viewer(row['oid'], row.get('email', ''), row.get('name', ''), role, role == 'owner')
+def _viewer(row, role, owner=False):
+    return store.Viewer(row['oid'], row.get('email', ''), row.get('name', ''), role, role == 'owner', bool(owner))
 
 
 def identify(headers):
@@ -168,32 +197,33 @@ def identify(headers):
     if not p.get('oid'):
         if not use_app_roles() and not owner_oid():
             # Behind sign-in with no object ID and no owner configured (allowedPrincipals mode, as before roles): the owner.
-            return store.Viewer('', p.get('email', ''), p.get('name', ''), 'owner', True)
+            return store.Viewer('', p.get('email', ''), p.get('name', ''), 'owner', True, is_owner('', p.get('roles', [])))
         raise Refused('Alice could not tell who you are from your sign-in. Sign out and sign in again; if this keeps happening, '
                       'ask the owner of Alice to check your account.', 'no_object_id')
     ceiling = entra_ceiling(p)
     row = _row(p['oid'])
-    is_owner = p['oid'] == owner_oid()
+    owner = is_owner(p['oid'], p.get('roles', []))
     if row is None:
         if not ceiling:
             raise Refused('You do not have access to Alice. Ask its owner to give you a role (Alice Member, Admin or Owner).', 'no_role')
         row = _first_sight(p, ceiling)
     else:
         _touch(row, p, ceiling)
-    if row['status'] == 'suspended' and not is_owner:
+    if row['status'] == 'suspended' and not owner:
         raise Refused('Your access to Alice is suspended. Ask its owner if you think this is wrong.', 'suspended')
-    role = effective_role(row, ceiling)
+    role = effective_role(row, ceiling, owner)
     if not role:
         raise Refused('You do not have access to Alice. Ask its owner to give you a role (Alice Member, Admin or Owner).', 'no_role')
-    return _viewer(row, role)
+    return _viewer(row, role, owner)
 
 
 def _first_sight(p, ceiling):
     t = store.now()
-    role = 'owner' if p['oid'] == owner_oid() else ceiling
+    role = 'owner' if is_owner(p['oid'], p.get('roles', [])) else ceiling
     with store.db() as c:
-        c.execute('INSERT INTO users(oid,email,name,role,profile,status,entra_role,first_seen,last_seen) VALUES (?,?,?,?,?,?,?,?,?) '
-                  'ON CONFLICT(oid) DO NOTHING', (p['oid'], p.get('email', ''), p.get('name', ''), role, DEFAULT_PROFILE, 'active', ceiling, t, t))
+        c.execute('INSERT INTO users(oid,email,name,role,profile,status,entra_role,entra_owner,first_seen,last_seen) VALUES (?,?,?,?,?,?,?,?,?,?) '
+                  'ON CONFLICT(oid) DO NOTHING', (p['oid'], p.get('email', ''), p.get('name', ''), role, DEFAULT_PROFILE, 'active', ceiling,
+                                                  int(OWNER_ROLE in p.get('roles', [])), t, t))
         store.audit(c, 'user_first_signin', p['oid'], 'users', f"{p.get('email') or p['oid']} signed in for the first time as {ROLE_LABEL[role]} "
                     f"(profile {DEFAULT_PROFILE}); nothing is shared with them until someone decides to")
     _touched[p['oid']] = time.time()
@@ -203,13 +233,15 @@ def _first_sight(p, ceiling):
 
 def _touch(row, p, ceiling):
     now = time.time()
-    changed = (p.get('email') and p['email'] != row['email']) or (p.get('name') and p['name'] != row['name']) or ceiling != row['entra_role']
+    entra_owner = int(OWNER_ROLE in p.get('roles', []))
+    changed = ((p.get('email') and p['email'] != row['email']) or (p.get('name') and p['name'] != row['name']) or ceiling != row['entra_role']
+               or entra_owner != int(row.get('entra_owner') or 0))
     if not changed and now - _touched.get(row['oid'], 0) < TOUCH_S: return
     _touched[row['oid']] = now
     try:
         with store.db() as c:
-            c.execute('UPDATE users SET email=?,name=?,entra_role=?,last_seen=? WHERE oid=?',
-                      (p.get('email') or row['email'], p.get('name') or row['name'], ceiling, store.now(), row['oid']))
+            c.execute('UPDATE users SET email=?,name=?,entra_role=?,entra_owner=?,last_seen=? WHERE oid=?',
+                      (p.get('email') or row['email'], p.get('name') or row['name'], ceiling, entra_owner, store.now(), row['oid']))
         _forget(row['oid'])
     except Exception:
         pass
@@ -220,13 +252,14 @@ def viewer_for(oid):
     object ID is always the owner. Unknown or suspended people get a viewer that sees nothing of anyone else's."""
     oid = (oid or '').strip().lower()
     if not oid: return None
-    if oid == owner_oid(): return store.Viewer(oid, '', store.owner_name(), 'owner', True)
+    if oid == fallback_oid(): return store.Viewer(oid, '', store.owner_name(), 'owner', True, True)
     row = _row(oid)
     if not row or row['status'] != 'active':
         return store.Viewer(oid, '', '', 'member', False)
-    ceiling = row['entra_role'] if use_app_roles() else 'owner'
-    role = effective_role(row, ceiling) or 'member'
-    return _viewer(row, role)
+    owner = is_owner(oid, row=row)
+    ceiling = 'owner' if owner or not use_app_roles() else row['entra_role']
+    role = effective_role(row, ceiling, owner) or 'member'
+    return _viewer(row, role, owner)
 
 
 def connector_viewer(oid):
@@ -235,7 +268,7 @@ def connector_viewer(oid):
     the owner's accounts, so they are the owner; with app roles they must sign in to Alice on the web once first."""
     oid = (oid or '').strip().lower()
     if not oid: raise Refused('Alice could not tell who you are from this sign-in.', 'no_object_id')
-    if oid == owner_oid(): return store.Viewer(oid, '', store.owner_name(), 'owner', True)
+    if oid == fallback_oid(): return store.Viewer(oid, '', store.owner_name(), 'owner', True, True)
     row = _row(oid)
     if row is None:
         if not use_app_roles(): return store.Viewer(oid, '', '', 'owner', True)
@@ -258,11 +291,13 @@ def listing():
     with store.db() as c:
         rows = [dict(r) for r in c.execute('SELECT * FROM users ORDER BY CASE role WHEN \'owner\' THEN 0 WHEN \'admin\' THEN 1 ELSE 2 END, lower(name), lower(email)')]
         profiles = {r['id']: r['name'] for r in c.execute('SELECT id,name FROM permission_profiles')}
-    ow = owner_oid()
+    ow = fallback_oid()
     for r in rows:
-        ceiling = r['entra_role'] if use_app_roles() else 'owner'
-        r['effective_role'] = effective_role(r, ceiling) if r['oid'] != ow else 'owner'
-        r['is_owner'] = r['oid'] == ow
+        owner = is_owner(r['oid'], row=r)
+        ceiling = 'owner' if owner or not use_app_roles() else r['entra_role']
+        r['effective_role'] = effective_role(r, ceiling, owner)
+        r['is_owner'] = owner
+        r['owner_by'] = ('the configured owner (until app roles are on)' if ow and r['oid'] == ow else 'the Alice.Owner role in Entra') if owner else ''
         r['profile_name'] = profiles.get(r['profile'], profiles.get(DEFAULT_PROFILE, 'Member (default)'))
         r['limited_by_entra'] = bool(ceiling) and RANK.get(r['role'], 0) > RANK.get(ceiling, 0)
     return {'users': rows, 'profiles': profiles_list(), 'app_roles': use_app_roles(), 'owner_configured': bool(ow),
@@ -281,8 +316,9 @@ def _who():
 def _check_can_change(actor, target):
     """Owners change anyone (except the owner's own record); Admins change Members and Admins but not Owners, and never
     themselves (no raising your own access)."""
-    if target['oid'] == owner_oid():
-        raise PermissionError('The owner of Alice always has full access: their role, profile and status cannot be changed here.')
+    if is_owner(target['oid'], row=target):
+        raise PermissionError('An owner of Alice (anyone with the Alice.Owner role in Entra) always has full access: their role, '
+                              'profile and status cannot be changed here. Change their role in Entra instead.')
     if actor.role == 'owner': return
     if actor.role != 'admin': raise PermissionError('Only an Owner or an Admin can change people.')
     if target['oid'] == actor.oid: raise PermissionError('You cannot change your own role, profile or status. Ask an Owner.')
@@ -302,7 +338,7 @@ def update(oid, role=None, profile=None, status=None):
         if role is not None:
             if role not in RANK: raise ValueError('Role must be Owner, Admin or Member.')
             if role == 'owner' and actor.role != 'owner': raise PermissionError('Only an Owner can make someone an Owner.')
-            if target['role'] == 'owner' and role != 'owner' and not _active_owners(c, exclude=oid) and not owner_oid():
+            if target['role'] == 'owner' and role != 'owner' and not _active_owners(c, exclude=oid) and not fallback_oid():
                 raise ValueError('There must always be at least one Owner.')
             if role != target['role']: changes.append(f"role {ROLE_LABEL.get(target['role'], target['role'])} → {ROLE_LABEL[role]}")
         if profile is not None:
@@ -310,7 +346,7 @@ def update(oid, role=None, profile=None, status=None):
             if profile != target['profile']: changes.append(f"profile {target['profile']} → {profile}")
         if status is not None:
             if status not in STATUSES: raise ValueError('Status must be active or suspended.')
-            if status == 'suspended' and target['role'] == 'owner' and not _active_owners(c, exclude=oid) and not owner_oid():
+            if status == 'suspended' and target['role'] == 'owner' and not _active_owners(c, exclude=oid) and not fallback_oid():
                 raise ValueError('There must always be at least one active Owner.')
             if status != target['status']: changes.append('suspended' if status == 'suspended' else 'access restored')
         if not changes: return {'changed': False, 'user': person(oid)}

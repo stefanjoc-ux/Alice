@@ -84,7 +84,8 @@ class FakeAzure:
         self.secrets = ['pg-admin-password', 'database-url', 'openai-api-key', 'anthropic-api-key', 'web-auth-secret', 'connector-secret', 'connector-key']
         self.ad_apps = {WEB_APP: {'appId': WEB_APP, 'displayName': 'Alice web sign-in', 'appRoles': [{'value': v} for v in S.ROLE_VALUES]},
                         GH_APP: {'appId': GH_APP, 'displayName': 'Alice GitHub deploy'}}
-        self.sp = {WEB_APP: {'appRoleAssignmentRequired': True}}
+        self.sp = {WEB_APP: {'id': 'sp-web-0001', 'appRoleAssignmentRequired': True}}
+        self.assigned = [(ME, S.OWNER_ROLE_ID)]       # (person, app role) on the web sign-in's enterprise application
         self.immutability = {'immutabilityPeriodSinceCreationInDays': 35, 'state': 'Unlocked'}
         self.policy_days = 30
         self.pg_readable = True
@@ -130,6 +131,8 @@ class FakeAzure:
         if a[:4] == ['ad', 'app', 'credential', 'list']: return ok([{'endDateTime': '2027-09-01T00:00:00Z'}])
         if a[:4] == ['ad', 'app', 'federated-credential', 'list']: return ok([{'subject': 'repo:x:ref:refs/heads/main'}, {'subject': 'repo:x:environment:production'}])
         if a[:3] == ['ad', 'sp', 'show']: return ok(self.sp.get(opt('--id'), {}))
+        if a[:1] == ['rest'] and opt('--method') == 'GET' and opt('--url') == 'https://graph.microsoft.com/v1.0/servicePrincipals/sp-web-0001/appRoleAssignedTo':
+            return ok({'value': [{'principalId': o, 'appRoleId': r} for o, r in self.assigned]})
         if a[:3] == ['backup', 'policy', 'show']: return ok({'properties': {'retentionPolicy': {'dailySchedule': {'retentionDuration': {'count': self.policy_days}}}}})
         if a[:3] == ['backup', 'item', 'list']: return ok([{'properties': {'friendlyName': 'alice', 'lastBackupTime': '2026-10-08T00:10:00Z', 'lastBackupStatus': 'Completed'}}])
         if a[:3] == ['postgres', 'flexible-server', 'show']:
@@ -166,7 +169,7 @@ def read(p): return json.load(open(p, encoding='utf-8-sig'))
 FULL = {**{k: v for k, v in OUTPUTS.items()}, 'keyVault': 'alice-kv-abc123', 'webAuthClientId': WEB_APP, 'extAppId': API_APP, 'extCallers': CALLERS,
         'extAudiences': ['api://copilot-sso'], 'mailFrom': 'alice@example.org', 'alsoAllow': [ALSO], 'customDomain': 'alice.example.org',
         'connectorClientId': CONN_APP, 'backup': True, 'backupNotify': 'stefan@example.org', 'noLock': False, 'githubClientId': GH_APP,
-        'copilotAuthId': 'T_auth-config-123', 'image': 'aliceabc123acr.azurecr.io/alice:old', 'databaseHost': PG_FQDN}
+        'copilotAuthId': 'T_auth-config-123', 'image': 'aliceabc123acr.azurecr.io/alice:old', 'databaseHost': PG_FQDN, 'ownerObjectId': ME}
 
 # ---------------- the state is written to Azure ----------------
 az = FakeAzure()
@@ -344,6 +347,37 @@ az.resources = [r for r in az.resources if r['name'] != 'alice-backup']
 code, text = run(S.check, az, RG, p, who=ME)
 t('check: a lifted lock, a missing job and a changed retention are flagged', 'Needs attention (3)' in text and 'Resource group lock: missing' in text
   and 'Nightly off-site copy job: missing' in text and 'File share snapshots kept: differs' in text and not az.writes())
+
+# ---------------- the owner of Alice (ownerObjectId): a setting you choose, kept, and checked; Entra decides who is an owner ----------------
+NEW_OWNER = '33333333-3333-3333-3333-333333333333'
+live_state, src = S.rebuild(S.Live(FakeAzure(), RG))
+t('rebuild: the owner from alice-web (ALICE_OWNER_OBJECT_ID)', live_state.get('ownerObjectId') == ME and 'ALICE_OWNER_OBJECT_ID' in src['ownerObjectId'])
+merged, kept = S.merge({**FULL, 'ownerObjectId': NEW_OWNER, 'adminObjectIds': [ME]}, live_state)
+t('merge: an owner you chose (-OwnerObjectId) is kept, not put back to what is deployed, until -Step apps puts it live',
+  merged['ownerObjectId'] == NEW_OWNER and 'ownerObjectId' in kept and merged['adminObjectIds'] == [ME])
+merged, _ = S.merge({k: v for k, v in FULL.items() if k != 'ownerObjectId'}, live_state)
+t('merge: an owner never set is filled from what is deployed (so -Step apps never changes it by surprise)', merged['ownerObjectId'] == ME)
+az = FakeAzure(); az.blob_put(S.BLOB, json.dumps({**FULL, 'ownerObjectId': NEW_OWNER, 'adminObjectIds': [ME], 'deployedAt': '2026-10-07T21:14:03.5551234+00:00'}))
+p = path('owner.json'); write(p, {**FULL, 'ownerObjectId': NEW_OWNER, 'adminObjectIds': [ME]})
+code, text = run(S.check, az, RG, p, who=ME)
+t('check: an owner fallback not yet live on alice-web is flagged with what to run', re.search(r'DIFFERS\s+Owner of Alice \(ownerObjectId\)\s+the state says ' + NEW_OWNER + ', alice-web has ' + ME, text) and 'run -Step apps' in text)
+t('check: the owner without Alice.Owner, and an admin still holding Alice.Owner, are flagged (run -Step users)',
+  re.search(r'MISSING\s+Alice.Owner: the owner\s+' + NEW_OWNER + ': run -Step users', text)
+  and re.search(r'DIFFERS\s+Alice.Admin: admin\s+' + ME + ': also holds Alice.Owner', text) and not az.writes())
+az.assigned = [(NEW_OWNER, S.OWNER_ROLE_ID), (ME, S.ADMIN_ROLE_ID), ('44444444-4444-4444-4444-444444444444', S.OWNER_ROLE_ID)]
+az.apps['alice-web']['properties']['template']['containers'][0]['env'] = env({'ALICE_OWNER_OBJECT_ID': NEW_OWNER, 'ALICE_USE_APP_ROLES': '0'})
+code, text = run(S.check, az, RG, p, who=ME)
+t('check: once -Step users and -Step apps have run, the owner and the admin are ok, and any other owner Entra has is listed',
+  re.search(r'ok\s+Owner of Alice \(ownerObjectId\)\s+' + NEW_OWNER, text) and re.search(r'ok\s+Alice.Owner: the owner', text)
+  and re.search(r'ok\s+Alice.Admin: admin\s+' + ME, text) and re.search(r'info\s+Other owners \(Alice.Owner in Entra\)\s+4444', text))
+setup = open(os.path.join(ROOT, 'deploy', 'azure-setup.ps1'), encoding='utf-8').read()
+t('setup: -OwnerObjectId is a remembered setting; every deployment names it, never simply whoever runs the script',
+  '[string]$OwnerObjectId' in setup and "Set-Prop $State 'ownerObjectId'" in setup and 'ownerObjectId = $Me' not in setup
+  and setup.count('ownerObjectId = (Owner)') == 2 and "elseif (-not (Owner))" in setup)
+t('setup: -Step users gives the owner Alice.Owner first, the admins (you, a previous owner, -AdminObjectIds) Alice.Admin, and takes Alice.Owner from admins only',
+  "Assign (Owner) $roles[0] 'the owner of Alice'" in setup and "Assign $o $roles[1] 'admin'" in setup and 'Add-Admin $Me' in setup
+  and '--method DELETE' in setup and setup.index("Assign (Owner) $roles[0]") < setup.index('--method DELETE')
+  and "if ($old) { Add-Admin $old }" in setup and 'second, break-glass' not in setup and "Sign-In-Others $values['allowedUserObjectIds']" in setup)
 
 az = FakeAzure()          # no Azure copy yet, a deployment newer than everything
 code, text = run(S.check, az, RG, path('none.json'), who=ME)

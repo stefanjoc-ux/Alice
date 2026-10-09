@@ -8,7 +8,8 @@ Who gets what:
   Owner role      everything (Manage everywhere) and everyone's items.
   Admin role      their profile, plus Users and permissions, Rules and Rule packs (Manage) and other people's sign-ins.
   Member role     their profile only.
-  Owner only      Health, Trading, Mileage and Backups: only the owner (ALICE_OWNER_OBJECT_ID), whatever a profile says.
+  Owner only      Health, Trading, Mileage and Backups: only an owner (users.is_owner: the Alice.Owner role in Entra, or
+                  the configured owner object ID while app roles are off), whatever a profile or role on the page says.
 Until Spaces arrive, anyone without the Owner role sees only the items they created themselves (substrate_store
 .viewer_clause), and the parts of Alice that show everyone's material at once are Owner only (FULL below).
 
@@ -102,10 +103,13 @@ def _trusted():
 
 
 def is_owner_person(v):
-    """The owner themselves (health, trading, mileage, backups). On the PC whoever is at this computer is the owner."""
+    """The owner themselves (Health, Trading, Mileage, Backups and the drill, the owner rules on Users and permissions). On the
+    PC whoever is at this computer is the owner. In Azure: users.is_owner, the one owner check (the Alice.Owner role in Entra,
+    or the configured owner object ID only while app roles are off; never a name or email), as worked out when they were identified."""
     if not _trusted(): return v is None or v.full
-    owner = (os.environ.get('ALICE_OWNER_OBJECT_ID') or '').strip().lower()
-    return bool(owner) and v is not None and v.oid == owner
+    if v is None: return False
+    import users
+    return bool(getattr(v, 'owner', False)) or users.is_owner(v.oid, roles=[])
 
 
 def full(v):
@@ -409,7 +413,7 @@ def _section_label(key):
 def check(v, spec, params, query=None, pages=None):
     """None if this person may go ahead, else the plain reason they may not. v: store.Viewer (None = the system)."""
     if spec in ('open', 'any'): return None
-    if spec == 'owner':
+    if spec == 'owner' or (spec == 'page' and (params.get('page') or 'home') in OWNER_ONLY):     # owner-only pages too, whatever the role
         return None if is_owner_person(v) else 'This part of Alice belongs to its owner only.'
     if v is None or v.full:
         return None
