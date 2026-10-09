@@ -379,7 +379,7 @@ ROUTES = {
     'PUT /admin/api/teams/{tid}/filing': 'team:manage', 'POST /admin/api/teams/{tid}/filing/category': 'full',
     'PUT /admin/api/teams/{tid}/autonomy': 'team:manage', 'PUT /admin/api/teams/{tid}/settings': 'team:manage',
     'POST /admin/api/teams/{tid}/members': 'team:manage', 'PUT /admin/api/teams/{tid}/members/{mid}': 'team:manage',
-    'DELETE /admin/api/teams/{tid}/members/{mid}': 'team:manage', 'POST /admin/api/teams/{tid}/job-types': 'team:manage',
+    'DELETE /admin/api/teams/{tid}/members/{mid}': 'team:manage', 'PUT /admin/api/teams/{tid}/member-order': 'team:manage', 'POST /admin/api/teams/{tid}/job-types': 'team:manage',
     'PUT /admin/api/teams/{tid}/job-types/{jt}': 'team:manage', 'POST /admin/api/teams/{tid}/restore': 'team:manage',
     'GET /admin/api/teams/{tid}/members/{mid}/discussion': 'full', 'POST /admin/api/teams/{tid}/members/{mid}/discussion': 'full',
     'POST /admin/api/teams/{tid}/jobs': 'team:use:run', 'GET /admin/api/teams/{tid}/rates': 'team:view',

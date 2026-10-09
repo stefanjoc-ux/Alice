@@ -200,7 +200,7 @@ t('…and with that history it compares the rates too (the second check)', jb['o
 
 # ---------------- the page ----------------
 html = cl.get(f'/admin/teams/{TID}').text
-t('the team page has the filing panel and the per-member tools', 'File finished work in' in html and "field('Tools',tools)" in html)
+t('the team page has the filing panel and the per-member tools', 'File finished work in' in html and "title:'Tools',node:" in html)
 import shutil, subprocess, tempfile
 from pathlib import Path
 node = shutil.which('node')

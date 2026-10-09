@@ -243,6 +243,13 @@ def run_rate(cost30, now, began):
     return cost30 * Decimal('365') / days, ('from the last 30 days' if days >= 30 else f'from the {int(days)} days tracked since {_day(began)}')
 
 
+def _rows(tid, now):
+    """The team's tracked costs up to now (a person without the Owner role: their own jobs' costs only)."""
+    vc, va = store.viewer_clause('team_job', 'team_costs.job_id')
+    with store.db() as c:
+        return [dict(r) for r in c.execute('SELECT member_id, role, job_id, at, usd FROM team_costs WHERE team_id=? AND at<=?' + vc, (tid, now.isoformat(), *va))]
+
+
 def team(tid, now=None):
     """A team's running cost: each member over the four periods, the team total, the annual run rate (Estimate), the cost of each
     job, your figures where entered, and what was spent before tracking began."""
@@ -251,10 +258,9 @@ def team(tid, now=None):
     now = now or datetime.now(timezone.utc)
     f, began = fx(), since()
     ps = periods(now)
-    vc, va = store.viewer_clause('team_job', 'team_costs.job_id')     # a person without the Owner role: their own jobs' costs only
     mine = store.restricted() is not None
+    rows = _rows(tid, now)
     with store.db() as c:
-        rows = [dict(r) for r in c.execute('SELECT member_id, role, job_id, at, usd FROM team_costs WHERE team_id=? AND at<=?' + vc, (tid, now.isoformat(), *va))]
         before = Decimal('0') if mine else _before(c, tid, began)
         jb = {} if mine else {r[0]: _d(r[1]) for r in c.execute('SELECT s.job_id, sum(s.cost_usd) FROM team_steps s JOIN team_jobs j ON j.id=s.job_id '
                                                                  'WHERE j.team_id=? AND s.created_at<? GROUP BY s.job_id', (tid, began))}
@@ -293,6 +299,73 @@ def team(tid, now=None):
             'run_rate': {'value': money(rr, f), 'label': 'Estimate', 'basis': rr_basis} if rr is not None else {'value': None, 'label': 'Estimate', 'basis': rr_basis},
             'before_tracking': money(before, f) if before else None, 'before_text': f'Before tracking began ({_day(began)})',
             'jobs': job_cost, 'staff_on': bool(figs)}
+
+
+MEMBER_PERIODS = PERIODS + [('all', 'Since tracking began')]
+TREND_WEEKS = 12             # the small trend line on each member's card: the last 12 weeks, week by week
+LAST_JOBS = 10               # the member's last jobs, with what each cost, in its editor
+
+
+def members(tid, now=None, base=None):
+    """The Members tab (Stefan, 9 Oct 2026): for each member, the cost in every period (the Running cost card's four, plus since
+    tracking began), its share of the team total, the jobs it worked on and the average per job in each period, the last 12 weeks
+    week by week, and its last 10 jobs with what each cost. From the same rows as team(), so the figures agree with the Running cost
+    card, Usage and the Agents page. `base` is team()'s result when the caller already has it (its rate and team total are used)."""
+    now = now or datetime.now(timezone.utc)
+    base = base or team(tid, now)
+    f, began = base['fx'], base['since']
+    rows = _rows(tid, now)
+    starts = {k: st.isoformat() for k, _, st in periods(now)}
+    starts['all'] = ''
+    keys = [k for k, _ in MEMBER_PERIODS]
+    week0 = now - timedelta(weeks=TREND_WEEKS)
+    total = {k: Decimal('0') for k in keys}
+    per = {}
+    for r in rows:
+        mid = r['member_id'] or '_'
+        m = per.setdefault(mid, {'sums': {k: Decimal('0') for k in keys}, 'jobs': {k: set() for k in keys},
+                                 'weeks': [Decimal('0')] * TREND_WEEKS, 'by_job': {}})
+        usd = _d(r['usd'])
+        for k in keys:
+            if r['at'] >= starts[k]:
+                m['sums'][k] += usd
+                total[k] += usd
+                if r['job_id']: m['jobs'][k].add(r['job_id'])
+        try: at = datetime.fromisoformat(str(r['at']).replace('Z', '+00:00'))
+        except ValueError: at = None
+        if at is not None and at.tzinfo is None: at = at.replace(tzinfo=timezone.utc)
+        if at is not None and week0 <= at <= now:
+            m['weeks'][min(TREND_WEEKS - 1, int((at - week0).total_seconds() // (7 * 86400)))] += usd
+        if r['job_id']:
+            u, last = m['by_job'].get(r['job_id'], (Decimal('0'), ''))
+            m['by_job'][r['job_id']] = (u + usd, max(last, str(r['at'])))
+    ids = {j for m in per.values() for j in m['by_job']}
+    titles = {}
+    if ids:
+        import teams
+        with store.db() as c:
+            for r in c.execute('SELECT id, title, status, created_at FROM team_jobs WHERE id IN (' + ','.join('?' * len(ids)) + ')', tuple(ids)):
+                titles[r['id']] = {'ref': teams.ref(r['id']), 'title': r['title'], 'status': r['status'], 'created_at': r['created_at']}
+    info = [{'key': k, 'label': f'{l} ({_day(began)})' if k == 'all' else l, 'start': starts[k],
+             'since': '' if k == 'all' else (f'since {_day(began)}' if starts[k] < began else '')} for k, l in MEMBER_PERIODS]
+    out = {}
+    for mid, m in per.items():
+        jobs = sorted(m['by_job'].items(), key=lambda kv: kv[1][1], reverse=True)[:LAST_JOBS]
+        out[mid] = {'costs': {k: money(m['sums'][k], f) for k in keys},
+                    'share_pct': {k: (float((m['sums'][k] / total[k] * 100).quantize(Decimal('0.1'), ROUND_HALF_UP)) if total[k] else None) for k in keys},
+                    'jobs': {k: len(m['jobs'][k]) for k in keys},
+                    'per_job': {k: (money(m['sums'][k] / len(m['jobs'][k]), f) if m['jobs'][k] else None) for k in keys},
+                    'trend': [{'start': (week0 + timedelta(weeks=i)).isoformat(), **money(v, f)} for i, v in enumerate(m['weeks'])],
+                    'last_jobs': [{'job_id': j, **titles.get(j, {'ref': '', 'title': 'A job you cannot see', 'status': '', 'created_at': ''}),
+                                   'cost': money(u, f), 'at': at} for j, (u, at) in jobs if j in titles]}
+    empty = {'costs': {k: money(0, f) for k in keys}, 'share_pct': {k: (0.0 if total[k] else None) for k in keys}, 'jobs': {k: 0 for k in keys},
+             'per_job': {k: None for k in keys}, 'trend': [{'start': (week0 + timedelta(weeks=i)).isoformat(), **money(0, f)} for i in range(TREND_WEEKS)],
+             'last_jobs': []}
+    import teams
+    current = [m['id'] for m in teams.get(tid)['members']]
+    return {'fx': f, 'since': began, 'since_text': _day(began), 'periods': info, 'total': {k: money(v, f) for k, v in total.items()},
+            'members': {mid: out.get(mid, empty) for mid in current},
+            'former': {k: money(sum((per[mid]['sums'][k] for mid in per if mid not in current), Decimal('0')), f) for k in keys}}
 
 
 def job(jid):
