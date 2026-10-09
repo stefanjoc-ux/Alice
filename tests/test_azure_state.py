@@ -470,7 +470,8 @@ t('setup: every Save-State also saves to Azure, and the run stops if it cannot',
 chk = setup.index("if ($Step -eq 'check')")
 t('setup: -Step check runs before anything can save and returns straight after', chk < setup.index('Sync-State\n$State') and chk < setup.index("ContainsKey('DatabaseHost')")
   and 'StateHelper check' in setup[chk:chk + 400] and 'return' in setup[chk:chk + 500])
-t('setup: the state is written back at the end of every step', re.search(r"Save-State \$State[^\n]*\nSay 'Done'", setup))
+t('setup: the state is written back at the end of every step (then the step is added to the setup history)',
+  re.search(r"Save-State \$State[^\n]*\n(?:[^\n]*Record-Step 'ok'[^\n]*\n)?Say 'Done'", setup))
 dep = setup[setup.index('function Deploy($stage, $extra) {'):]
 dep = dep[:dep.index('\n}\n')]
 t('setup: every deployment of main.bicep first makes sure databaseHost is set, and stops if it cannot',

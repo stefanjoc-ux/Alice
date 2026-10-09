@@ -74,6 +74,8 @@ version is also kept under alice-setup/history/. deploy\azure-state.json is only
 older than the newest deployment, it is rebuilt from what is deployed first, and you are shown what was rebuilt. If the local
 file differs from the Azure copy, the step stops: delete or rename the local file to use the Azure copy, or add -UseLocalState
 to use the local file deliberately (it then replaces the Azure copy).
+Every step but check is recorded in the setup history (who, when, step, the settings given, result; never a key or password):
+in the setup state in Azure and on the file share (setup/setup-history.json), shown on Alice's Admin › What's new page.
 Nothing here reads .env: keys are typed in once and live only in Key Vault.
 #>
 param(
@@ -112,6 +114,7 @@ param(
   [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github', 'connector', 'demo', 'copilot', 'mail', 'backup', 'recover', 'users', 'localmodel', 'check')][string]$Step = 'all'
 )
 $ErrorActionPreference = 'Stop'
+$ScriptParams = @{}; foreach ($k in $PSBoundParameters.Keys) { $ScriptParams[$k] = $PSBoundParameters[$k] }   # for the setup history (Record-Step)
 $Root = Split-Path -Parent $PSScriptRoot
 $Template = Join-Path $Root 'infra\main.bicep'
 $StateFile = Join-Path $PSScriptRoot 'azure-state.json'     # a cache: the setup state lives in Azure (azure_state.py)
@@ -159,6 +162,21 @@ function Save-State($s) {
   $fresh = Get-Content $StateFile -Raw | ConvertFrom-Json
   if ($fresh._azure) { Set-Prop $s '_azure' $fresh._azure }
 }
+function Record-Step($result, $err) {
+  # The setup history (Stefan, 9 Oct 2026): one line per step that changes Azure (who, when, step, settings, result), kept in the
+  # setup state in Azure and copied to the file share for Admin › What's new. azure_state.py records only the settings it knows
+  # by name and never a value that looks like a key or password. Best effort: it never changes the step's own outcome.
+  $a = @('history', '--resource-group', $ResourceGroup, '--file', $StateFile, '--who', "$Me", '--who-name', "$MeName", '--step', $Step, '--result', $result)
+  foreach ($k in $ScriptParams.Keys) {
+    if ($k -in @('SubscriptionId', 'Step')) { continue }
+    $v = $ScriptParams[$k]
+    if ($v -is [System.Management.Automation.SwitchParameter]) { $v = [bool]$v }
+    $a += @('--param', "$k=$v")
+  }
+  if ($err) { $a += @('--error', ("$err" -split "`n")[0]) }
+  $ErrorActionPreference = 'Continue'
+  & $StatePy $StateHelper @a 2>$null | Out-Host
+}
 function Json-Array($lines) {
   # A JSON array from az as a real array of its items, in Windows PowerShell 5.1 too (its ConvertFrom-Json returns the whole
   # array as ONE object, so @(... | ConvertFrom-Json) is an array holding an array)
@@ -185,6 +203,7 @@ function Kv-Get($kv, $name) { return (AzCli keyvault secret show --vault-name $k
 
 AzCli account set --subscription $SubscriptionId | Out-Null
 $Me = AzCli ad signed-in-user show --query id -o tsv
+$MeName = AzTry ad signed-in-user show --query userPrincipalName -o tsv
 $Tenant = AzCli account show --query tenantId -o tsv
 if ($Step -eq 'check') {
   Say "Check (read-only): what each step has set up in $ResourceGroup"
@@ -194,6 +213,9 @@ if ($Step -eq 'check') {
 }
 Sync-State
 $State = Load-State
+$StateReady = $true
+# A step that stops with an error is recorded in the setup history too (then stops as before)
+trap { if ($StateReady -and -not $script:Recorded) { $script:Recorded = $true; Record-Step 'failed' "$($_.Exception.Message)" }; break }
 if ($PSBoundParameters.ContainsKey('DatabaseHost')) { Set-Prop $State 'databaseHost' $DatabaseHost.Trim(); Save-State $State }   # '' clears it
 
 # The owner of Alice: a setting in the setup state (ownerObjectId), never simply whoever runs this script. -OwnerObjectId sets
@@ -886,4 +908,5 @@ if (Want 'github') {
 }
 
 Save-State $State      # the Azure copy is up to date at the end of every step
+$script:Recorded = $true; Record-Step 'ok' ''
 Say 'Done'

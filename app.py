@@ -968,6 +968,9 @@ async def who_is_acting(request: Request, call_next):
     X-MS-CLIENT-PRINCIPAL-NAME; trusted only with ALICE_TRUST_EASYAUTH=1), otherwise the owner (ALICE_OWNER_NAME)."""
     who = request.headers.get('x-ms-client-principal-name', '') if os.environ.get('ALICE_TRUST_EASYAUTH') == '1' else ''
     token = store.ACTOR.set(' '.join(who.split())[:120]) if who else None
+    if not changelog._LIVE_NOTED:          # What's new: the first request through the public address = this release went live
+        try: await asyncio.to_thread(changelog.note_live, request.headers.get('host', ''), request.url.path, revision_hosts())
+        except Exception: pass
     try: return await call_next(request)
     finally:
         if token is not None: store.ACTOR.reset(token)
@@ -3301,6 +3304,15 @@ def admin_permissions_catalogue(): return permissions.catalogue()
 # ---- spaces (spaces.py): shared team memory with explicit membership ----
 import spaces
 spaces.ensure_migrated()          # at start-up, outside any transaction: the owner's existing items placed once (logged with counts)
+
+# ---- what changed (changelog.py): CHANGELOG.md read at each start; the first process to see a new release records it ----
+import changelog
+if os.environ.get('ALICE_NO_RELEASE_RECORD') != '1':     # the test suites switch it off (tests/_util.py); test_changelog runs it
+    try: changelog.record_release()
+    except Exception as e: logging.getLogger('alice.changelog').warning('Release not recorded: %s', str(e)[:300])
+
+@app.get('/admin/api/whats-new')
+def admin_whats_new(): return changelog.overview()
 
 class SpaceIn(BaseModel):
     name: str = Field(min_length=2, max_length=80)

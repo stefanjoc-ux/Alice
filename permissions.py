@@ -6,7 +6,7 @@ run jobs, re-price, see costs and manage pricing templates.
 
 Who gets what:
   Owner role      everything (Manage everywhere) and everyone's items.
-  Admin role      their profile, plus Users and permissions, Rules and Rule packs (Manage) and other people's sign-ins.
+  Admin role      their profile, plus Users and permissions, Rules, Rule packs and What's new (Manage) and other people's sign-ins.
   Member role     their profile only.
   Owner only      Health, Trading, Mileage and Backups: only an owner (users.is_owner: the Alice.Owner role in Entra, or
                   the configured owner object ID while app roles are off), whatever a profile or role on the page says.
@@ -49,7 +49,7 @@ SECTIONS = [
     ('signins', 'Sign-ins (their own devices)', 'Admin', ('none', 'view', 'use')),
 ]
 SECTION_KEYS = [s[0] for s in SECTIONS]
-ROLE_SECTIONS = {'users': 'Users and permissions', 'rules': 'Rules', 'rule-packs': 'Rule packs'}   # Admin or Owner role
+ROLE_SECTIONS = {'users': 'Users and permissions', 'rules': 'Rules', 'rule-packs': 'Rule packs', 'whats-new': "What's new"}   # Admin or Owner role
 OWNER_ONLY = {'health': 'Health Insights', 'trading': 'Trading desk', 'mileage': 'Mileage', 'backup': 'Backups'}
 # Parts of Alice that show everyone's material at once: Owner role only until Spaces (what a profile gives is not enough).
 FULL_ONLY_PAGES = {'organisations', 'temple', 'actions', 'demo'}
@@ -244,6 +244,8 @@ ROUTES = {
     'GET /admin/api/users': 'admin', 'PUT /admin/api/users/{oid}': 'admin', 'POST /admin/api/permission-profiles': 'admin',
     'PUT /admin/api/permission-profiles/{pid}': 'admin', 'DELETE /admin/api/permission-profiles/{pid}': 'admin',
     'GET /admin/api/permissions/catalogue': 'admin', 'GET /admin/api/my-access': 'any',
+    # what's new (changelog.py): the change log, releases and setup steps run (Admin or Owner)
+    'GET /admin/api/whats-new': 'admin',
     # spaces: everyone has at least their personal space; spaces.py decides who may manage, share or move what
     'GET /admin/api/spaces': 'any', 'GET /admin/api/spaces/mine': 'any', 'POST /admin/api/spaces': 'any', 'PUT /admin/api/spaces/default': 'any',
     'POST /admin/api/spaces/move': 'any', 'POST /admin/api/spaces/held/{mid}': 'any', 'PUT /admin/api/spaces/{sid}/members': 'any',
