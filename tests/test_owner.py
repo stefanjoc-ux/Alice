@@ -58,6 +58,13 @@ def owner_everywhere(h):
             and cl.post('/admin/api/backup/drill', headers=h).status_code == 400)      # allowed; refused only because no drill is set up here
 
 
+try:
+    for _ in range(2):                       # a restart against the same database: the guarded ALTER must not run twice
+        with store.db() as c: users._schema(c)
+    t('the users table setup runs again on an existing database (entra_owner added once; PostgreSQL included)', True)
+except Exception as e:
+    t(f'the users table setup runs again on an existing database (entra_owner added once; PostgreSQL included): {e}', False)
+
 t('the owner-only API list covers backups, the drill, health, trading and mileage',
   {'GET /admin/api/backup', 'POST /admin/api/backup/drill', 'GET /admin/api/health', 'GET /admin/api/trading', 'GET /admin/api/mileage'}
   <= {f'{m} {p}' for m, p in OWNER_APIS})

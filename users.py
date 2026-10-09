@@ -58,7 +58,7 @@ def _schema(c):
               "updated_at TEXT NOT NULL DEFAULT '', updated_by TEXT NOT NULL DEFAULT '')")
     # entra_owner: 1 when their last sign-in carried the Alice.Owner role (is_owner for background work and the connector,
     # which have no sign-in to read). Additive; read again at every sign-in, so taking the role away in Entra clears it.
-    if 'entra_owner' not in {r[1] for r in c.execute('PRAGMA table_info(users)')}:
+    if 'entra_owner' not in {r['name'] for r in c.execute('PRAGMA table_info(users)')}:
         c.execute('ALTER TABLE users ADD COLUMN entra_owner INTEGER NOT NULL DEFAULT 0')
     c.execute("CREATE TABLE IF NOT EXISTS permission_profiles (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', "
               "levels TEXT NOT NULL DEFAULT '{}', builtin INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL, updated_by TEXT NOT NULL DEFAULT '')")
