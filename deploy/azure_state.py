@@ -321,6 +321,11 @@ def rebuild(live):
         put('image', _image(web), 'alice-web: its running image')
         put('mailFrom', wenv.get('ALICE_MAIL_FROM', ''), 'alice-web: ALICE_MAIL_FROM')
         put('useAppRoles', wenv.get('ALICE_USE_APP_ROLES') == '1', 'alice-web: ALICE_USE_APP_ROLES')
+        # Temple's local model (-Step localmodel): on when alice-web is told where it answers; parked when the app is there but unused
+        put('localModel', bool(wenv.get('ALICE_LOCAL_MODEL_URL')), 'alice-web: ALICE_LOCAL_MODEL_URL')
+        if wenv.get('ALICE_LOCAL_MODEL'): put('localModelName', wenv['ALICE_LOCAL_MODEL'], 'alice-web: ALICE_LOCAL_MODEL')
+        if not wenv.get('ALICE_LOCAL_MODEL_URL') and live.named('Microsoft.App/containerApps', name='alice-local-model'):
+            put('localModelParked', True, 'resource alice-local-model (not used by alice-web)')
         doms = ((web.get('properties') or {}).get('configuration') or {}).get('ingress') or {}
         doms = [c.get('name') for c in (doms.get('customDomains') or []) if c.get('name')]
         put('customDomain', doms[0].lower() if doms else '', 'alice-web: custom domain')
@@ -879,6 +884,22 @@ def check(az, rg, path, who='', out=print):
                 row('users', 'Alice.Admin: admin', status, a + {'DIFFERS': ': also holds Alice.Owner (an owner): run -Step users', 'MISSING': ': run -Step users', 'ok': ''}[status])
             others = sorted(o for o, r in held.items() if OWNER_ID in r and o != want and o not in admins)
             if others: row('users', 'Other owners (Alice.Owner in Entra)', 'info', ', '.join(others))
+    # ---- Temple's local model
+    lm = live.app('alice-local-model') if (state.get('localModel') or state.get('localModelParked') or wenv.get('ALICE_LOCAL_MODEL_URL')
+                                            or live.named('Microsoft.App/containerApps', name='alice-local-model')) else None
+    using = bool(wenv.get('ALICE_LOCAL_MODEL_URL'))
+    if not lm and not state.get('localModel') and not using:
+        row('localmodel', "Temple's local model", 'off', 'not set up: -Step localmodel -LocalModel on')
+    else:
+        row('localmodel', 'Local model app', 'ok' if lm else 'MISSING', 'alice-local-model' if lm else 'alice-local-model not found: run -Step localmodel -LocalModel on')
+        if lm:
+            ing = ((lm.get('properties') or {}).get('configuration') or {}).get('ingress') or {}
+            row('localmodel', 'Internal ingress only', 'ok' if ing and not ing.get('external') else 'DIFFERS',
+                'no public address' if ing and not ing.get('external') else 'it has a public address: run -Step localmodel again')
+        if bool(state.get('localModel')) != using:
+            row('localmodel', 'Alice uses it', 'DIFFERS', f"the state says {'on' if state.get('localModel') else 'off'}, alice-web has {'on' if using else 'off'}: run -Step localmodel")
+        else:
+            row('localmodel', 'Alice uses it', 'ok' if using else 'off', (wenv.get('ALICE_LOCAL_MODEL') or '') if using else 'switched off (kept at zero replicas)')
     row('recover', 'Recovery', 'info', 'only for a NEW resource group (docs/restore.md part C)' if wanted else 'not used')
 
     # ---- print

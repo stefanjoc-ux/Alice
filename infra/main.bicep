@@ -3,6 +3,7 @@
 //   stage 'migrate' + the two migration jobs (dry run and apply), run once at cut-over, inside the network
 //   stage 'apps'    + alice-web (chat and Command centre, Entra sign-in, Stefan only) and alice-mcp (external MCP endpoint)
 //   backup = true   + backup.bicep (with stage apps): file share snapshots, the resource group lock, the nightly off-site copy
+//   localModel = true  + local-model.bicep (with stage apps): Temple's local model for screening and categories, internal ingress only
 // No secret values live here or in git: API keys are put into Key Vault by the script; the apps read them by managed identity.
 targetScope = 'resourceGroup'
 
@@ -83,6 +84,14 @@ param backupNotify string = ''
 param drillResourceGroup string = '${resourceGroup().name}-drill'
 @description('Recovery (azure-setup.ps1 -Step recover, docs/restore.md part C): {account, container, manifest} of the off-site copy to load into THIS new, empty Alice. Empty = no recovery job.')
 param recoverFrom object = {}
+
+// ---------------- Temple's local model (azure-setup.ps1 -Step localmodel; every later step keeps it) ----------------
+@description('Temple\'s local model on: a small open model served inside this environment on internal ingress only (infra/local-model.bicep), for the sharing check, categories, tags and keeping them tidy. Choosing it in Alice is a separate setting (Agents page).')
+param localModel bool = false
+@description('The Ollama model tag the local model serves.')
+param localModelName string = 'qwen3:4b'
+@description('True once a local model was deployed and then switched off: it is kept at zero replicas (no charge while idle).')
+param localModelParked bool = false
 
 var suffix = take(uniqueString(resourceGroup().id), 6)
 var acrName = '${prefix}${suffix}acr'
@@ -310,6 +319,11 @@ var backupEnv = !backup ? [] : [
   { name: 'ALICE_DRILL_REPORTS', value: 'drill-reports' }
   { name: 'ALICE_DRILL_RG', value: drillResourceGroup }
 ]
+// temple_model.py: where Temple's local model answers (empty = no local model; Alice then never chooses Local)
+var localModelEnv = !localModel ? [] : [
+  { name: 'ALICE_LOCAL_MODEL_URL', value: 'http://${prefix}-local-model' }
+  { name: 'ALICE_LOCAL_MODEL', value: localModelName }
+]
 var commonEnv = concat(
   [
     { name: 'ALICE_DATABASE_URL', secretRef: 'database-url' }
@@ -329,6 +343,7 @@ var commonEnv = concat(
     { name: 'ALICE_USE_APP_ROLES', value: useAppRoles ? '1' : '0' }
   ],
   backupEnv,
+  localModelEnv,
   map(keySecretNames, s => { name: s.env, secretRef: s.name })
 )
 var volumes = [{ name: 'alice', storageType: 'AzureFile', storageName: envFiles.name, mountOptions: 'uid=10001,gid=10001,dir_mode=0770,file_mode=0660' }]
@@ -553,6 +568,19 @@ module backups 'backup.bicep' = if (withBackup) {
     backupNotify: backupNotify
   }
   dependsOn: [identityAcrPull, identityKvRead, dbUrlSecret, envFiles]
+}
+
+module localModels 'local-model.bicep' = if (withApps && (localModel || localModelParked)) {
+  name: 'alice-local-model'
+  params: {
+    location: location
+    prefix: prefix
+    environmentName: env.name
+    storageAccountName: storage.name
+    modelName: localModelName
+    minReplicas: localModel ? 1 : 0
+  }
+  dependsOn: [envFiles]
 }
 
 output acrName string = acr.name

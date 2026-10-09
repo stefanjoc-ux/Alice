@@ -83,9 +83,11 @@ LABELS = {
     'space_member_removed': ('rules', 'Person removed from a space'), 'space_shared': ('memories', 'Item shared into a space'),
     'space_moved': ('memories', 'Item moved to another space'), 'space_share_held': ('blocks', 'Sharing held for the author (sharing check)'),
     'space_share_refused': ('blocks', 'Sharing refused: not classified'), 'space_share_kept': ('memories', 'Author kept an item personal'),
-    'spaces_migrated': ('rules', 'Items placed in spaces')
+    'spaces_migrated': ('rules', 'Items placed in spaces'),
+    'temple_model_set': ('rules', 'Temple\'s model for screening changed'), 'temple_model_held': ('agents', 'Screening held: local model not answering'),
+    'temple_model_retry': ('agents', 'Held screening tried again'), 'temple_model_eval': ('agents', 'Temple\'s models evaluated')
 }
-RULE_NAMES = {'secret_detection': 'Secret detection', 'protective_marking': 'Protective marking guard', 'pii': 'Personal identifiers',
+RULE_NAMES = {'temple_model': 'Temple\'s model for screening', 'secret_detection': 'Secret detection', 'protective_marking': 'Protective marking guard', 'pii': 'Personal identifiers',
               'provider_allow': 'Provider allow-list', 'external_scope': 'External client scope', 'client_separation': 'Client separation', 'client_documents': 'Client-facing documents',
               'quality': 'Quality check', 'duplicates': 'Duplicate block', 'spend_cap': 'Spending caps', 'retention': 'Chat retention',
               'purview_labels': 'Purview sensitivity labels', 'permissions': 'Users and permissions', 'users': 'Users and permissions', 'spaces': 'Spaces', 'share_gate': 'Sharing check'}

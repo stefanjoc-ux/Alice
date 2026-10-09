@@ -365,7 +365,14 @@ def _sample():
 
 
 def _ask(payload):
-    """Temple's answer and whether it stopped at the length limit."""
+    """Temple's answer and whether it stopped at the length limit, from the model chosen for screening and categories
+    (temple_model: Cloud or Local; Local may hold the review)."""
+    import temple_model
+    return temple_model.answer('taxonomy', PROMPT, payload, MAX_TOKENS, lambda: _cloud(payload))[:2]
+
+
+def _cloud(payload):
+    """Temple's answer from the cloud and whether it stopped at the length limit."""
     import temple, usage_meter
     provider = temple.reviewer()
     key = 'OPENAI_API_KEY' if provider == 'openai' else 'ANTHROPIC_API_KEY'
