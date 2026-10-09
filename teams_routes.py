@@ -3,7 +3,7 @@ in app.py's protect_admin middleware apply to every change."""
 import asyncio
 import base64
 
-from fastapi import APIRouter, HTTPException, Path as FPath, Query
+from fastapi import APIRouter, Body, HTTPException, Path as FPath, Query
 from pydantic import BaseModel, Field
 
 import teams
@@ -66,6 +66,15 @@ class RemeasureIn(BaseModel):
     order: list[str] = Field(default_factory=list, max_length=6)
     trends: bool = False
     note: str = Field('', max_length=1000)
+
+
+class ResumeIn(BaseModel):
+    note: str = Field('', max_length=1000)
+
+
+class HideIn(BaseModel):
+    path: str = Field(min_length=1, max_length=400)
+    hidden: bool = True
 
 
 class CopyIn(BaseModel):
@@ -369,8 +378,8 @@ def teams_job_template_fill(jid: str = FPath(pattern=HEX)):
 
 
 @router.post('/admin/api/teams/jobs/{jid}/resume')
-def teams_job_resume(jid: str = FPath(pattern=HEX)):
-    return _do(teams.resume, jid)
+def teams_job_resume(d: ResumeIn | None = Body(None), jid: str = FPath(pattern=HEX)):
+    return _do(teams.resume, jid, (d.note if d else ''))
 
 
 @router.post('/admin/api/teams/jobs/{jid}/stop')
@@ -449,6 +458,12 @@ def teams_pricing(tid: str = FPath(pattern=ID)):
 def teams_pricing_set(p: TeamPricingIn, tid: str = FPath(pattern=ID)):
     import pricing_templates
     return _do(pricing_templates.set_team, tid, p.folder, p.default, p.outputs)
+
+
+@router.put('/admin/api/teams/{tid}/pricing-templates/hidden')
+def teams_pricing_hidden(d: HideIn, tid: str = FPath(pattern=ID)):
+    import pricing_templates
+    return _do(pricing_templates.set_hidden, tid, d.path, d.hidden)
 
 
 @router.post('/admin/api/teams/{tid}/pricing-templates')

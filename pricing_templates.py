@@ -145,6 +145,7 @@ def set_team(tid, folder=None, default=None, outputs=None):
             if not p: raise ValueError('That template is not in the document sources.')
             if p.suffix.lower() not in EXT_OK: raise ValueError('Use an Excel workbook (.xlsx or .xlsm) or a CSV file as a template.')
             if (_row(default) or {}).get('client'): raise ValueError('A team\'s default template must be shared: this one is tagged to a client.')
+            if default in hidden_paths(tid): raise ValueError('That template is removed from this team\'s list: add it back first (Show hidden).')
         new['default'] = default
     if new == cur: return team_page(tid)
     t['pricing'] = new
@@ -154,14 +155,96 @@ def set_team(tid, folder=None, default=None, outputs=None):
 
 
 def team_page(tid):
-    """For the team's Knowledge tab and the Start a job screen: folders, the templates in the team's folder, the default."""
-    import teams, doc_library
+    """For the team's Knowledge tab and the Start a job screen: folders, the templates in the team's folder (less the ones removed
+    from this team's list), the default, and the removed ones for Show hidden."""
+    import teams, doc_library, permissions
     t = teams.get(tid)
     s = team_settings(t)
     folders = [f['path'] for f in doc_library.folders(depth=4)]
+    hid = hidden(tid)
+    gone = {h['path'] for h in hid}
     return {'settings': s, 'folders': folders, 'folder_missing': bool(s['folder']) and s['folder'] not in folders,
-            'templates': in_folder(s['folder']), 'default': describe(s['default']) if s['default'] else None,
+            'templates': [x for x in in_folder(s['folder']) if x['path'] not in gone],
+            'default': describe(s['default']) if s['default'] and s['default'] not in gone else None,
+            'hidden': [{**describe(h['path']), 'hidden_by': h['by'], 'hidden_at': h['at']} for h in hid],
+            'fallbacks': _fallbacks(t, gone), 'can_manage': permissions.level(store.viewer(), 'team', tid) >= permissions.MANAGE,
             'clients': sorted(__import__('clients').names())}
+
+
+# ---------------- "Remove from this list" (Stefan, 9 Oct 2026) ----------------
+# A per-team list of templates hidden from that team's list and pickers, in settings ('pricing_hidden:<team id>'), keyed by the
+# file's path. The file in the document source is never touched, its saved mapping is kept, and jobs that used it keep their
+# filled copies. A hidden default is skipped: an organisation's default falls back to the team's, the team's to Alice's own layout.
+def _hidden_key(tid):
+    return f'pricing_hidden:{tid}'
+
+
+def hidden(tid):
+    """[{path, by, at}] removed from this team's list, oldest first."""
+    with store.db() as c:
+        r = c.execute('SELECT value FROM settings WHERE key=?', (_hidden_key(tid),)).fetchone()
+    try: v = json.loads(r[0]) if r else []
+    except ValueError: v = []
+    return [{'path': _rel(x.get('path')), 'by': str(x.get('by') or ''), 'at': str(x.get('at') or '')}
+            for x in v if isinstance(x, dict) and _rel(x.get('path'))] if isinstance(v, list) else []
+
+
+def hidden_paths(tid):
+    return {h['path'] for h in hidden(tid)}
+
+
+def _org_defaults_for(path):
+    with store.db() as c:
+        return [r[0] for r in c.execute('SELECT org FROM org_pricing_templates WHERE path=? ORDER BY org', (_rel(path),))]
+
+
+def _fallbacks(t, gone):
+    """Plain sentences for the defaults that a removed template used to be, and what new jobs use instead."""
+    s = team_settings(t)
+    team_default = s['default'] if s['default'] and s['default'] not in gone and resolve(s['default']) else ''
+    instead = f'the team\'s default, “{Path(team_default).name}”' if team_default else 'Alice\'s own layout'
+    out = []
+    for path in sorted(gone):
+        name = Path(path).name
+        if path == s['default']:
+            out.append(f'“{name}” was the team\'s default: new jobs now use Alice\'s own layout, unless their client has a default of its own.')
+        orgs = _org_defaults_for(path)
+        if orgs:
+            out.append(f'“{name}” is the default for {", ".join(orgs[:6])}{" and others" if len(orgs) > 6 else ""}: their new jobs in this team use {instead}.')
+    return out
+
+
+def set_hidden(tid, path, on=True):
+    """Remove a template from this team's list (on) or add it back (off). Never touches the file or its mapping. Logged with who."""
+    import teams
+    t = teams.get(tid)
+    path = _rel(path)
+    if not path: raise ValueError('Choose a template.')
+    cur = hidden(tid)
+    paths = [h['path'] for h in cur]
+    name = Path(path).name
+    if on:
+        if path in paths: return {**team_page(tid), 'message': f'“{name}” is already removed from this team\'s list.'}
+        listed = {x['path'] for x in in_folder(team_settings(t)['folder'])}
+        if path not in listed and path != team_settings(t)['default']: raise ValueError('That template is not in this team\'s list.')
+        cur.append({'path': path, 'by': store.actor() or '', 'at': store.now()})
+    else:
+        if path not in paths: raise ValueError('That template is not hidden from this team\'s list.')
+        cur = [h for h in cur if h['path'] != path]
+    with store.db() as c:
+        c.execute('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', (_hidden_key(tid), json.dumps(cur)))
+        store.audit(c, 'pricing_template_hidden' if on else 'pricing_template_restored', path, 'human_control',
+                    f'{name}: ' + (f'removed from {t["name"]}\'s list of pricing templates (the file and its mapping are kept)' if on
+                                   else f'added back to {t["name"]}\'s list of pricing templates'))
+    page = team_page(tid)
+    if on:
+        msg = [f'“{name}” removed from this team\'s list. The file in the document source and its mapping are kept; jobs that used it keep their filled copies.']
+        msg += [f for f in page['fallbacks'] if f.startswith(f'“{name}”')]
+    else:
+        orgs = _org_defaults_for(path)
+        back = (['the team\'s default'] if path == team_settings(t)['default'] else []) + ([f'the default for {", ".join(orgs[:6])}'] if orgs else [])
+        msg = [f'“{name}” is back in this team\'s list' + (f' and is {" and ".join(back)} again.' if back else '.')]
+    return {**page, 'message': ' '.join(msg)}
 
 
 def add(tid, name, raw):
@@ -239,11 +322,12 @@ def all_templates():
 
 def default_for(team, client_or_org):
     """(path, where it came from) for a new job: the client's (organisation's) default, else the team's, else Alice's own layout."""
+    gone = hidden_paths(team['id']) if team.get('id') else set()        # removed from this team's list: skipped, the next default used
     if client_or_org:
         p = org_default(client_or_org)
-        if p and resolve(p): return p, 'client'
+        if p and p not in gone and resolve(p): return p, 'client'
     d = team_settings(team)['default']
-    if d and resolve(d): return d, 'team'
+    if d and d not in gone and resolve(d): return d, 'team'
     return '', ''
 
 
@@ -967,7 +1051,9 @@ def refill(job, team=None):
     if not path: return {'status': 'own'}
     outs = job['outputs']
     items = (outs.get('price') or {}).get('items') or []
-    if not items: return {'status': 'no_items', 'message': 'Nothing priced yet: the template is filled once the items are priced.'}
+    if not items:                       # measured but not priced (e.g. a job stopped before pricing): the quantities, rates left blank
+        items = [{**i, 'rate': None, 'rate_source': 'unpriced', 'rate_note': 'measured, not priced yet'} for i in (outs.get('measure') or {}).get('items') or []]
+    if not items: return {'status': 'no_items', 'message': 'Nothing measured yet: the template is filled once the items are measured.'}
     p = resolve(path)
     if not p or p.suffix.lower() not in EXT_OK: return {'status': 'failed', 'message': 'The pricing template is no longer in the document sources.'}
     m = confirmed(path)
@@ -984,11 +1070,12 @@ def refill(job, team=None):
     meta = {'ref': teams.ref(job['id']), 'title': job['title'], 'version': v}
     try: data, diffs = fill(meta, items, plan, m, raw, p.name)
     except ValueError as e: return {'status': 'failed', 'message': str(e)}
-    out_name = documents._slug(f'{job["title"]} v{v} - {p.stem}', '.xlsx')
+    ext = '.xlsm' if p.suffix.lower() == '.xlsm' else '.xlsx'          # a macro-enabled template's copy keeps its macros (keep_vba in _load)
+    out_name = documents._slug(f'{job["title"]} v{v} - {p.stem}', ext)
     text = '\n'.join(_text_rows(_load(data, out_name)))
     try: rules_engine.check_file(text, out_name)
     except rules_engine.RuleViolation as e: return {'status': 'failed', 'message': f'The filled template was not kept: {e}'}
-    doc = documents.keep('xlsx', out_name, data, text)
+    doc = documents.keep(ext[1:], out_name, data, text)
     agents.note('wrote', 'document', doc['id'], doc['name'])
     lib = ''
     outfolder = team_settings(teams.get(job['team_id']))['outputs']

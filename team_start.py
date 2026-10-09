@@ -37,16 +37,17 @@ def page(tid):
             'autonomy': t['autonomy'], 'autonomy_options': teams.AUTONOMY, 'roles': ROLES,
             'rate_sources': {'order': rs['order'], 'allowed': rs['allowed'], 'names': dict(rules_engine.RATE_SOURCES), 'on': rs['on'],
                              'href': '/admin/rules?rule=rate_sources#rules'},
-            'templates': pricing_templates.team_page(tid), 'organisations': orgs, 'org_defaults': _org_defaults(orgs),
+            'templates': pricing_templates.team_page(tid), 'organisations': orgs, 'org_defaults': _org_defaults(orgs, tid),
             'library': any(s['id'] for s in doc_library.sources()), 'icons': {k: v[1] for k, v in teams.ICONS.items()}, 'nav': teams._nav()}
 
 
-def _org_defaults(orgs):
+def _org_defaults(orgs, tid=''):
     import pricing_templates
+    gone = pricing_templates.hidden_paths(tid) if tid else set()       # removed from this team's list: the team's default is used instead
     out = {}
     for o in orgs:
         p = pricing_templates.org_default(o['name'])
-        if p: out[o['name']] = pricing_templates.describe(p)
+        if p and p not in gone: out[o['name']] = pricing_templates.describe(p)
     return out
 
 
