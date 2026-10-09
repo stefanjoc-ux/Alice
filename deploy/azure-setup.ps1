@@ -151,6 +151,13 @@ function Save-State($s) {
   $fresh = Get-Content $StateFile -Raw | ConvertFrom-Json
   if ($fresh._azure) { Set-Prop $s '_azure' $fresh._azure }
 }
+function Json-Array($lines) {
+  # A JSON array from az as a real array of its items, in Windows PowerShell 5.1 too (its ConvertFrom-Json returns the whole
+  # array as ONE object, so @(... | ConvertFrom-Json) is an array holding an array)
+  $items = @()
+  foreach ($x in (((@($lines) -join "`n").Trim()) | ConvertFrom-Json)) { $items += $x }
+  return ,$items
+}
 function Set-Prop($obj, $name, $value) { $obj | Add-Member -NotePropertyName $name -NotePropertyValue $value -Force }
 function New-Password { -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 32 | ForEach-Object { [char]$_ }) }
 function Kv-Has($kv, $name) { AzTry keyvault secret show --vault-name $kv --name $name --query id -o tsv | Out-Null; return ($LASTEXITCODE -eq 0) }
@@ -440,25 +447,31 @@ if (Want 'users') {
   function Retry($what, [scriptblock]$do) {
     for ($i = 1; $i -le 12; $i++) { try { return (& $do) } catch { if ($i -eq 12) { throw "$what failed: $_" }; Start-Sleep -Seconds 10 } }
   }
-  # Fixed IDs, so running this again changes nothing and the roles never get new IDs (Alice reads the role NAMES).
-  $roles = @(
-    @{ id = '388aff1f-7b8b-4bcf-bde1-0df23a400f6e'; value = 'Alice.Owner'; displayName = 'Alice Owner'; description = 'An owner of Alice: full access, including everyone''s items, Health, Trading, Mileage and Backups. Entra decides: anyone with this role is an owner.' },
-    @{ id = '5fc72aad-c175-48b3-89ef-0d7f38675c1c'; value = 'Alice.Admin'; displayName = 'Alice Admin'; description = 'Their permission profile, plus Users and permissions, Rules and Rule packs. Never Health, Trading, Mileage or Backups.' },
-    @{ id = '63e492a6-c40b-4485-b412-3ed386f849d6'; value = 'Alice.Member'; displayName = 'Alice Member'; description = 'Their permission profile only (by default: Chat and their own saved chats).' }
-  )
+  # The roles' JSON is built by deploy\azure_state.py (app-roles), not by PowerShell: Windows PowerShell 5.1 does not unroll a
+  # JSON array from ConvertFrom-Json, so the app's current roles came back wrapped in another array and Graph refused the
+  # update ("StartArray ... PrimitiveValue expected"). The helper keeps the app's other roles, keeps the ID an Alice role
+  # already has (else a fixed one), sends only the fields Graph accepts, every one a single value except allowedMemberTypes.
+  $roles = @([ordered]@{ value = 'Alice.Owner'; id = '' }, [ordered]@{ value = 'Alice.Admin'; id = '' }, [ordered]@{ value = 'Alice.Member'; id = '' })
   function Add-Roles($appId, $label) {
-    $have = @(AzCli ad app show --id $appId --query 'appRoles' -o json | ConvertFrom-Json)
-    $merged = @($have | Where-Object { $_.value -notin $roles.value })      # any other roles on the app are kept
-    foreach ($r in $roles) {
-      $merged += [pscustomobject]@{ allowedMemberTypes = @('User'); description = $r.description; displayName = $r.displayName
-                                    id = $r.id; isEnabled = $true; value = $r.value }
-    }
-    $tmp = New-TemporaryFile
-    try { [IO.File]::WriteAllText($tmp, (ConvertTo-Json -InputObject @($merged) -Depth 5 -Compress)); AzCli ad app update --id $appId --app-roles "@$tmp" | Out-Null }
-    finally { Remove-Item $tmp -ErrorAction SilentlyContinue }
+    $existing = New-TemporaryFile; $send = New-TemporaryFile
+    try {
+      [IO.File]::WriteAllText($existing, ((AzCli ad app show --id $appId --query 'appRoles' -o json) -join "`n"))
+      & $StatePy $StateHelper app-roles --existing $existing --out $send | Out-Host
+      if ($LASTEXITCODE -ne 0) { throw "Could not work out the app roles for $label (see above). Nothing was changed." }
+      try { AzCli ad app update --id $appId --app-roles "@$send" | Out-Null }
+      catch {
+        Write-Host "The app roles sent to $label ($appId) were:" -ForegroundColor Yellow
+        Write-Host ([IO.File]::ReadAllText($send))
+        throw
+      }
+    } finally { Remove-Item $existing, $send -ErrorAction SilentlyContinue }
     Write-Host "$label`: roles Alice.Owner, Alice.Admin, Alice.Member"
   }
   Add-Roles $State.webAuthClientId 'Alice web sign-in'
+  foreach ($r in $roles) {        # the IDs the web sign-in app really has (an existing role keeps its own)
+    $r.id = "$(AzCli ad app show --id $State.webAuthClientId --query "appRoles[?value=='$($r.value)'].id | [0]" -o tsv)".Trim()
+    if (-not $r.id) { throw "The web sign-in app has no $($r.value) role after the update. Nothing was assigned." }
+  }
   if ($State.connectorClientId) { Add-Roles $State.connectorClientId 'Alice connector sign-in' }
   # The web sign-in's enterprise application (service principal)
   $sp = AzTry ad sp show --id $State.webAuthClientId --query id -o tsv
@@ -582,7 +595,7 @@ if (Want 'demo') {
   }
   # the same sign-in app (only you): add the demo's callback to its addresses, keeping live's
   $demoWeb = 'https://alice-demo-web.' + $State.environmentDomain
-  $uris = @(AzCli ad app show --id $State.webAuthClientId --query 'web.redirectUris' -o json | ConvertFrom-Json)
+  $uris = Json-Array (AzCli ad app show --id $State.webAuthClientId --query 'web.redirectUris' -o json)
   $cb = "$demoWeb/.auth/login/aad/callback"
   if ($uris -notcontains $cb) { $uris += $cb; AzCli ad app update --id $State.webAuthClientId --web-redirect-uris @uris | Out-Null; Write-Host 'Demo address added to the sign-in app.' }
   Deploy-Demo
