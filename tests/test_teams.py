@@ -12,6 +12,7 @@ cl = TestClient(app.app); H = {'x-admin-token': app.ADMIN_TOKEN}
 teams.BACKGROUND = False
 temple.save_settings(False, 'claude')
 TID, JT = team_qs.TEAM_ID, 'cost-estimate'
+teams.set_missing_info(TID, 'ask')        # these checks cover members asking Stefan (test_team_files covers Assume and flag)
 
 # ---------------- stand-in models ----------------
 SEEN = []          # (workload, system, payload) for every member call

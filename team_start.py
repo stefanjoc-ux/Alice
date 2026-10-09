@@ -13,7 +13,8 @@ import teams
 
 ROLES = {'drawing': 'Drawing', 'spec': 'Specification', 'schedule': 'Schedule', 'template': 'Cost/pricing template', 'brief': 'Other'}
 SCALE = re.compile(r'\b1\s*:\s*\d{1,4}\b|\bscale\b|\bscaled\b', re.I)
-TYPES = {'.pdf': 'PDF', '.docx': 'Word', '.xlsx': 'Excel', '.xlsm': 'Excel', '.xls': 'Excel (old format)', '.csv': 'CSV', '.txt': 'Text', '.md': 'Text'}
+TYPES = {'.pdf': 'PDF', '.docx': 'Word', '.xlsx': 'Excel', '.xlsm': 'Excel', '.xls': 'Excel (old format)', '.csv': 'CSV', '.txt': 'Text', '.md': 'Text',
+         '.png': 'Image', '.jpg': 'Image', '.jpeg': 'Image', '.webp': 'Image'}
 
 
 def page(tid):
@@ -107,7 +108,7 @@ def inspect(tid, name='', data=None, path=''):
     else:
         try:
             text = teams._doc_text(name, raw)
-            if ext == '.pdf': out['pages'] = text.count('[Page ')
+            if ext == '.pdf' or ext in ('.png', '.jpg', '.jpeg', '.webp'): out['pages'] = text.count('[Page ')
             elif ext in ('.xlsx', '.xlsm'):
                 import openpyxl
                 wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True)
@@ -126,7 +127,8 @@ def inspect(tid, name='', data=None, path=''):
             if m: out['template'] = {'looks_like': _looks_like_template(raw, name, m), 'mode': m['mode'], 'sheets': len(m['sheets'])}
         except Exception: pass
     out['guess'] = guess(name, text, out)
-    if out['guess'] == 'drawing': out['scale'] = bool(SCALE.search(text or ''))
+    if out['guess'] == 'drawing':        # a drawing with no text to search (an image or a scan): the team reads its scale from the image
+        out['scale'] = bool(SCALE.search(text or '')) or (None if len(re.sub(r'\[Page \d+\]', '', text or '').strip()) < 20 else False)
     return out
 
 
@@ -150,6 +152,7 @@ def guess(name, text, info=None):
     """Alice's guess at a file's role, from its name and contents; Stefan can change it."""
     n = (name or '').lower()
     if info and (info.get('template') or {}).get('looks_like'): return 'template'
+    if Path(n).suffix in ('.png', '.jpg', '.jpeg', '.webp'): return 'drawing'      # an image: read visually as a drawing
     if re.search(r'template|pricing|cost plan|boq|bill of quant', n) and Path(n).suffix in ('.xlsx', '.xlsm', '.csv', '.xls'): return 'template'
     if re.search(r'draw|\bplan\b|plans|elevation|section|\.dwg|layout|\bga\b', n): return 'drawing'
     if re.search(r'spec', n): return 'spec'

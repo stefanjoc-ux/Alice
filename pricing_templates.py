@@ -1013,6 +1013,9 @@ def _alice_sheet(wb, job, plan, items, excluded=()):
             [f'Fees {plan["percentages"]["fees_pct"]}%', plan.get('fees')], ['Total excluding VAT', plan.get('total')], [],
             ['Unpriced items (excluded from the total)', ', '.join(i['ref'] for i in items if i.get('rate') is None) or 'none'],
             ['Excluded: not in scope', '; '.join(f'{i["ref"]} {i["description"]} ({(i.get("exclusion") or {}).get("reason", "")})' for i in excluded) or 'none']]
+    import teams
+    flagged = teams.assumed_lines(job.get('outputs') or {})       # Assume and flag: what the team assumed where information was missing
+    if flagged: rows += [[], ['Assumed where information was missing (Assume and flag)']] + [[x] for x in flagged]
     for r in rows: ws.append(r)
 
 

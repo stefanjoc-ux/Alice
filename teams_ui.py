@@ -178,6 +178,8 @@ SECTION = r'''<style>
 .tm-diff ins::before{content:' [added: '}.tm-diff del::before{content:' [removed: '}.tm-diff ins::after,.tm-diff del::after{content:'] '}
 .tm-edfoot{display:flex;gap:8px;flex-wrap:wrap;align-items:center;width:100%}.tm-edfoot button{margin:0}.tm-edfoot .tm-rm{margin-left:auto}.tm-edmsg{flex-basis:100%;margin:0;color:#b42318}.tm-edmsg:empty{display:none}
 @media(max-width:640px){.tm-mgrid{grid-template-columns:minmax(0,1fr)}.tm-period{display:flex;flex-wrap:wrap}.tm-period button.ghost{flex:1 1 auto}}
+#tm-app .tm-answer{display:flex;gap:8px;align-items:flex-start}#tm-app .tm-answer textarea{flex:1}#tm-app .tm-answer button{margin:6px 0 0;flex:none}
+.tm-asm{margin:0;padding-left:20px;display:grid;gap:8px;font-size:13.5px}.tm-assumed{border-left:4px solid #e8b27a}
 @media(max-width:1000px){.ts-grid{grid-template-columns:minmax(0,1fr)}.ts-next{position:static}}
 @media(max-width:640px){.ts-step .row{grid-template-columns:minmax(0,1fr)}.ts-file{grid-template-columns:minmax(0,1fr)}.ts-file select{min-width:0;width:100%}}
 @media(max-width:1100px){.tm-cols{grid-template-columns:minmax(0,1fr)}}
@@ -555,7 +557,10 @@ if(PAGE==='teams'){
    a.append(h('label',null,r,h('span',null,h('strong',null,l),h('div',{class:'small muted'},k==='approve'?'Every hand-off waits for you (here and on Actions) with Approve, Send back and Discuss with Temple.':'Hand-offs go ahead on their own; questions and the final output still wait for you.'))))}
   const keys=Object.keys(t.settings||{});if(keys.length){const row=h('div',{class:'tm-acts'});const ins={};for(const k of keys){const i=h('input',{type:'number',step:'0.5',min:'0',max:'50',value:String(t.settings[k]),style:'width:90px'});ins[k]=i;row.append(h('label',{style:'display:grid;gap:4px;margin:0'},k.replace('_pct','').replace(/^./,c=>c.toUpperCase())+' %',i))}
    row.append(btn('Save percentages',async()=>{const s={};for(const k of keys)s[k]=+ins[k].value;await api('/admin/api/teams/'+enc(t.id)+'/settings','PUT',{settings:s});$('notice').textContent='Saved as a new team version.';await loadTeam()},'secondary'));a.append(h('h4',null,'Percentages applied by Alice'),row)}
-  p.append(a,rulesPanel(true));const jts=h('section',{class:'tm-panel'},h('h3',null,'Job types and hand-offs'),h('p',{class:'small muted'},'Each stage says who works, what they hand on, and what the next member checks before accepting it. The receiver can send work back with reasons.'));drawTypes(jts);p.append(jts)}
+  const mi=h('section',{class:'tm-panel tm-auto'},h('h3',null,'When information is missing'));
+  for(const [k,l] of Object.entries(d.missing_info_options)){const r=h('input',{type:'radio',name:'tm-missing',value:k});r.checked=d.missing_info===k;r.onchange=()=>run(async()=>{await api('/admin/api/teams/'+enc(t.id)+'/missing-info','PUT',{mode:k});$('notice').textContent='Saved as a new team version: '+l+'. Jobs already started keep the version they started on.';await loadTeam()});
+   mi.append(h('label',null,r,h('span',null,h('strong',null,l),h('div',{class:'small muted'},k==='ask'?'A member that lacks something it needs asks you, and waits for your answer.':'A member states a reasonable assumption and carries on; every assumption is listed in the cost plan, the outputs and the filled templates. It asks only when an assumption would change the result materially, and says why.'))))}
+  p.append(a,mi,rulesPanel(true));const jts=h('section',{class:'tm-panel'},h('h3',null,'Job types and hand-offs'),h('p',{class:'small muted'},'Each stage says who works, what they hand on, and what the next member checks before accepting it. The receiver can send work back with reasons.'));drawTypes(jts);p.append(jts)}
  function drawTypes(box){const t=V.d.team;const mopts=t.members.map(m=>[m.id,m.role]);const sel=(opts,v)=>{const s=h('select');for(const [k,l] of opts)s.append(h('option',{value:k},l));s.value=v;return s};
   for(const jt of t.job_types){const c=h('div',{class:'tm-mem'},h('h3',null,jt.name));const name=h('input',{type:'text',maxlength:'80',value:jt.name}),desc=h('textarea',{maxlength:'600',rows:'2'});desc.value=jt.description||'';c.append(field('Name',name),field('Description',desc));
    const cf=h('input',{type:'checkbox'});cf.checked=jt.client_facing!==undefined?!!jt.client_facing:jt.finish==='cost_estimate';c.append(h('label',{class:'r-check',style:'display:flex;gap:8px;font-weight:400'},cf,'Client-facing output: uses only General material and the job’s own client (rule “Client-facing documents use only that client’s material” on the Rules page). Unticked, the Client separation rule applies.'));
@@ -590,11 +595,45 @@ if(PAGE==='teams'){
    run(async()=>{try{const r=await api('/admin/api/teams/'+enc(tid)+'/talk','POST',{message:msg,job:jid||''});show(r.messages);if(r.routed_to&&jid)await loadJob()}catch(err){wait.remove();ta.value=msg;throw err}finally{send.disabled=false}})};return box}
  // ---------- Screen 3: a job ----------
  const J={src:'all',panel:'',sel:null,els:null,est:false,trends:false,order:null,note:'',client:null,title:''};
- async function loadJob(){const d=await api('/admin/api/teams/jobs/'+V.jid+'/page');V.d=d;setIconsFrom(d.nav);if(d.team_id!==V.tid){location.replace(d.url);return}drawJob();clearTimeout(V.timer);if(d.status==='running')V.timer=setTimeout(()=>run(loadJob),2500)}
+ async function loadJob(){const d=await api('/admin/api/teams/jobs/'+V.jid+'/page');V.d=d;setIconsFrom(d.nav);if(d.team_id!==V.tid){location.replace(d.url);return}
+  const qa=new URLSearchParams(location.search).get('add');if(qa!==null&&!J.addOpened){J.addOpened=true;if(d.can.add_files){J.panel='files';J.add={docs:[],els:[],note:'',answers:/^[0-9a-f]{32}$/.test(qa)&&d.pending.some(x=>x.id===qa)?qa:''}}}
+  drawJob();clearTimeout(V.timer);if(d.status==='running')V.timer=setTimeout(()=>run(loadJob),2500)}
+ // ---- Add files to a job that has started (Stefan, 9 Oct 2026): the Start screen's roles; re-runs only what depends on them ----
+ const ROLE_NAMES={drawing:'Drawing',spec:'Specification',schedule:'Schedule',template:'Cost/pricing template',brief:'Other'};
+ function filesPanel(){const d=V.d;const s=h('section',{class:'tm-rp',id:'tm-rp','aria-labelledby':'tm-rp-h'});J.add=J.add||{docs:[],els:[],note:''};const A=J.add;
+  const q=A.answers?d.pending.find(x=>x.id===A.answers):null;
+  s.append(h('h3',{id:'tm-rp-h'},q?'Add a file to answer '+(q.role||'the member'):'Add files to this job'),
+   h('p',{class:'small muted'},q?'The file answers the question: '+(q.content.questions||[]).join(' ')+' The member carries on with it.':
+    'Same roles and checks as the Start screen. Only the work that depends on the new files is done again, as a new version'+(d.status==='running'?' (once the team stops for you)':'')+'; work not done yet simply uses them.'));
+  const file=h('input',{type:'file',multiple:true,accept:'.pdf,.docx,.xlsx,.xlsm,.csv,.txt,.md,.png,.jpg,.jpeg,.webp','aria-label':'Files to add'});
+  file.onchange=()=>run(async()=>{for(const fl of file.files){if(fl.size>15*1024*1024)throw Error(fl.name+' is larger than 15 MB.');const data=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]);r.onerror=()=>no(Error('Could not read '+fl.name));r.readAsDataURL(fl)});
+    const doc={name:fl.name,data,role:'brief'};try{const info=await api('/admin/api/teams/'+enc(d.team_id)+'/inspect','POST',{name:fl.name,data});doc.role=info.guess;doc.info=info}catch(e){doc.info={problem:e.message}}A.docs.push(doc)}file.value='';drawJob()});
+  s.append(h('div',{class:'tm-acts'},h('label',{class:'small'},'Choose files ',file)));
+  const ul=h('div',{class:'ts-files'});for(const doc of A.docs){const sel=h('select',{'aria-label':'Role of '+doc.name});for(const [k,l] of Object.entries(ROLE_NAMES)){if(q&&k==='template')continue;sel.append(h('option',{value:k},l))}sel.value=doc.role;sel.onchange=()=>{doc.role=sel.value};
+   const rm=h('button',{type:'button',class:'secondary'},'Remove');rm.onclick=()=>{A.docs=A.docs.filter(x=>x!==doc);drawJob()};
+   ul.append(h('div',{class:'ts-file'+(doc.role==='template'?' tpl':'')},h('div',null,h('div',{class:'nm'},doc.name),h('div',{class:'meta'},[(doc.info||{}).type,(doc.info||{}).pages?plural(doc.info.pages,'page'):'',(doc.info||{}).label?'Label: '+doc.info.label:''].filter(Boolean).join(' · ')),(doc.info||{}).problem?h('div',{class:'prob'},doc.info.problem):null),sel,rm))}
+  if(A.docs.length)s.append(ul);
+  if(!q&&d.elements.length){const box=h('div',{class:'items',role:'group','aria-label':'Elements these files concern'});for(const e of d.elements){const c=h('input',{type:'checkbox',value:e});c.checked=A.els.includes(e);c.onchange=()=>{A.els=c.checked?[...A.els,e]:A.els.filter(x=>x!==e)};box.append(h('label',null,c,e))}
+   s.append(h('p',{class:'small',style:'margin:8px 0 0'},h('b',null,'Which elements do they concern? '),'Those measured already are measured again from the documents, and only their items priced again. None ticked = every element.'),box)}
+  const note=h('textarea',{maxlength:'1000',placeholder:'A note for the team (optional), e.g. revision B replaces the first floor plan','aria-label':'A note for the team'});note.value=A.note;note.oninput=()=>{A.note=note.value};s.append(note);
+  const cancel=h('button',{type:'button',class:'secondary'},'Cancel');cancel.onclick=()=>{J.panel='';J.add=null;drawJob()};
+  s.append(h('div',{class:'tm-acts'},btn(q?'Add and answer':'Add to the job',async()=>{if(!A.docs.length)throw Error('Choose a file to add.');let msg=[];
+   for(const doc of A.docs.filter(x=>x.role==='template')){const x=await api('/admin/api/teams/'+enc(d.team_id)+'/pricing-templates','POST',{name:doc.name,data:doc.data});await api('/admin/api/teams/jobs/'+d.id+'/template','PUT',{path:x.path});msg.push(doc.name+' is now this job\'s pricing template and has been filled again.')}
+   const rest=A.docs.filter(x=>x.role!=='template');if(rest.length){const r=await api('/admin/api/teams/jobs/'+d.id+'/files','POST',{uploads:rest.map(x=>({name:x.name,data:x.data,kind:x.role})),elements:A.els,answers:A.answers||'',note:A.note});msg.push(r.message)}
+   J.panel='';J.add=null;$('notice').textContent=msg.join(' ');await loadJob()}),cancel));return s}
+ function openAdd(answers){J.panel='files';J.add={docs:[],els:[],note:'',answers:answers||''};drawJob();const x=$('tm-rp');if(x)x.scrollIntoView({block:'nearest'})}
+ function assumedPanel(){const d=V.d;if(!d.assumed.length)return null;const s=h('section',{class:'tm-panel tm-assumed','aria-labelledby':'tm-asm-h'},h('h3',{id:'tm-asm-h'},'Assumed where information was missing'),
+   h('p',{class:'small muted'},d.missing_info.mode==='assume'?'The team is set to Assume and flag: it carried on with these instead of asking you. Each is listed in the cost plan, the workbook and the filled template.':'Assumptions the team still made, listed in the outputs.'));
+  const ul=h('ul',{class:'tm-asm'});for(const a of d.assumed)ul.append(h('li',null,a.assumption,a.why?h('div',{class:'small muted'},'Missing: '+a.why):null,a.affects?h('div',{class:'small muted'},'Affects: '+a.affects):null,h('div',{class:'small muted'},a.role+' · '+a.stage_title)));s.append(ul);return s}
+ function drawingsPanel(){const d=V.d,x=d.drawings;if(!x||!x.pages.length)return null;const s=h('section',{class:'tm-panel','aria-labelledby':'tm-dr-h'},h('h3',{id:'tm-dr-h'},'Pages read as images'),
+   h('p',{class:'small muted'},plural(x.read,'page')+' read by a vision model'+(x.total?', '+x.total.text+' ('+x.total.note+')':'')+'. Each reading is under its page in the documents the team reads.'));
+  const ul=h('ul',{class:'tm-ver'});for(const p of x.pages)ul.append(h('li',null,h('div',{class:'h'},h('b',null,p.doc+' p.'+p.page),p.drawing_no?h('span',{class:'small'},'Drawing '+p.drawing_no):null,h('span',{class:'c'},p.cost?money(p.cost):'')),
+   h('div',{class:'small'+(p.status==='read'?'':' tm-state blocked')},p.status==='read'?(p.scale?'Scale '+p.scale:'No scale shown')+' · '+p.model+' · for '+p.role:'Not read: '+p.reason)));s.append(ul);return s}
  function briefCard(){const d=V.d;openCard({ref:d.ref,kind_label:'Digital team · Brief and files',title:d.title,subtitle:d.team.name+' · '+d.job_type_name,
   sections:[{key:'what',title:'Brief',text:d.brief},{key:'what',title:'Documents',rows:d.documents.length?d.documents.map(x=>[d.doc_kinds[x.kind]||x.kind,x.source==='library'?x.name+' (document source: '+x.path+')':x.name]):null,text:d.documents.length?'':'No documents.'},
    {key:'where',title:'Where',rows:[['Location',d.location||'Not given (national rates)'],['Client',d.client||'None (General material only for client-facing work)']]},{key:'when',title:'When',rows:[['Started',{time:d.created_at}],['Last change',{time:d.updated_at}]]},
-   {key:'who',title:'Who',text:'Started by '+(d.created_by||'you')+'. Team version v'+d.team_version+'.'}],actions:[]})}
+   {key:'who',title:'Who',text:'Started by '+(d.created_by||'you')+'. Team version v'+d.team_version+'.'}],actions:[]},
+   {footer:()=>d.can.add_files?(()=>{const b=h('button',{type:'button'},'Add files');b.onclick=()=>{closeCard();openAdd('')};return b})():null})}
  function drawJob(){keepScroll(drawJobNow)}
  function drawJobNow(){const d=V.d;$('tv-split').hidden=false;drawNav(d.nav,d.team_id);const main=$('tm-main');main.replaceChildren();
   main.append(h('nav',{class:'tm-crumbs','aria-label':'Breadcrumb'},h('a',{href:'/admin/teams'},'Digital teams'),'›',h('a',{href:d.team.href},d.team.name),'›',h('span',{'aria-current':'page'},d.ref+' '+d.title)));
@@ -604,6 +643,7 @@ if(PAGE==='teams'){
   const toggle=(k,label)=>{const b=h('button',{type:'button',class:J.panel===k?'':'secondary','aria-expanded':String(J.panel===k)},label);b.onclick=()=>{J.panel=J.panel===k?'':k;drawJob();const x=$('tm-rp');if(x)x.scrollIntoView({block:'nearest'})};return b};
   if(d.can.reprice)acts.append(toggle('reprice','Re-price'));if(d.can.remeasure)acts.append(toggle('remeasure','Re-measure'));
   if(d.can.resume)acts.append(btn('Resume',async()=>{if(!confirm('Resume '+d.ref+' as v'+((d.version||1)+1)+'? It carries on where it stopped; nothing done so far is run again.'))return;await api('/admin/api/teams/jobs/'+d.id+'/resume','POST',{});$('notice').textContent='Resumed as v'+((d.version||1)+1)+': it carries on where it stopped.';await loadJob()}));
+  if(d.can.add_files){const b=h('button',{type:'button',class:J.panel==='files'?'':'secondary','aria-expanded':String(J.panel==='files')},'Add files');b.onclick=()=>{if(J.panel==='files'){J.panel='';J.add=null;drawJob()}else openAdd('')};acts.append(b)}
   acts.append(toggle('copy','Copy as a new job'));
   if(!['done','stopped'].includes(d.status))acts.append(btn('Stop job',async()=>{if(!confirm('Stop '+d.ref+'? Its work so far is kept.'))return;await api('/admin/api/teams/jobs/'+d.id+'/stop','POST',{});await loadJob()},'secondary'));
   const desc=[plural(d.documents.length,'document')+' provided',d.location||null,'started '+when(d.created_at)+(d.created_by?' by '+d.created_by:'')].filter(Boolean).join(' · ');
@@ -613,15 +653,16 @@ if(PAGE==='teams'){
   if(pp&&!['done','stopped'].includes(d.status))main.append(h('p',{class:'tm-partprog',role:'status'},pp.text+(failedPart?' · stopped at '+pp.failed.label:'')));
   if(d.error)main.append(h('div',{class:'tm-err',role:'alert'},h('strong',null,'Stopped: '),d.error,failedPart?h('div',{class:'small'},'Try again redoes only '+pp.failed.label+(pp.kept?'; the '+plural(pp.kept,'part')+' already done '+(pp.kept===1?'is':'are')+' kept.':'.')):null));
   const cols=h('div',{class:'tm-cols'});const left=h('div'),side=h('div',{class:'tm-side'});cols.append(left,side);main.append(cols);
-  if(J.panel)left.append(rerunPanel(J.panel));
+  if(J.panel)left.append(J.panel==='files'?filesPanel():rerunPanel(J.panel));
+  if(d.files_pending)left.append(h('div',{class:'tm-rerun',role:'status'},h('b',null,'New files waiting: '),d.files_pending.names.join(', ')+'. The work that depends on them is done again as soon as the team stops for you.'));
   if(d.rerun)left.append(h('div',{class:'tm-rerun',role:'status'},h('b',null,'v'+d.rerun.version+' in progress: '),(d.versions.versions.find(x=>x.current)||{}).what||'',d.rerun.by?' Asked by '+d.rerun.by+'.':''));
   if(d.copied_from)left.append(h('p',{class:'small muted'},'Copied from ',h('a',{href:'/admin/teams/'+enc(d.team_id)+'/jobs/'+d.copied_from.job},d.copied_from.ref+' v'+d.copied_from.version),': documents, plan and settings kept; the client was chosen again.'));
   for(const c of (d.view&&d.view.conflicts)||[])left.append(h('div',{class:'tm-conflict',role:'note'},h('strong',null,(d.view.lead||'The lead')+': '),c.text,h('div',{style:'margin-top:6px'},...(c.links||[]).map(l=>h('a',{href:l.href},l.label+' ↗')))));
   if(d.view&&d.view.decision)left.append(decisionPanel(d.view.decision));for(const s of d.pending)left.append(pendingBox(s));
-  left.append(outputPanel());
+  left.append(outputPanel());const ap=assumedPanel();if(ap)left.append(ap);
   const tl=h('section',{class:'tm-panel','aria-labelledby':'tm-tl-h'},h('h3',{id:'tm-tl-h'},'What the team did'));tl.append(timeline());side.append(tl);
   side.append(h('section',{class:'tm-panel','aria-labelledby':'tm-talk-h'},h('h3',{id:'tm-talk-h'},'Talk to the team'),h('p',{class:'small muted'},'Messages go to '+(d.lead.role||'the lead')+', who answers and passes them to whoever should act.'),talkPanel(d.team_id,d.id)));
-  const tc=templateCard();if(tc)side.append(tc);side.append(thisJob())}
+  const tc=templateCard();if(tc)side.append(tc);const dp=drawingsPanel();if(dp)side.append(dp);side.append(thisJob())}
  function thisJob(){const d=V.d,C=d.costs,Vs=d.versions;const s=h('section',{class:'tm-panel','aria-labelledby':'tm-this-h'},h('h3',{id:'tm-this-h'},'This job'));
   s.append(h('dl',{class:'tm-kv'},h('dt',null,'AI cost'),h('dd',null,h('b',null,money(C.total)),d.status==='done'?'':' so far'),h('dt',null,'Version'),h('dd',null,'v'+(d.version||1)),h('dt',null,'Autonomy'),h('dd',null,d.autonomy_label),h('dt',null,'Team version'),h('dd',null,'v'+d.team_version),h('dt',null,'Client'),h('dd',null,d.client||'None')));
   if(C.members.length){const ul=h('ul',{class:'tm-ver','aria-label':'Each member’s share'});for(const m of C.members)ul.append(h('li',null,h('div',{class:'h'},h('b',null,m.role),h('span',{class:'small muted'},m.share_pct+'%'),h('span',{class:'c'},money(m.cost))),m.your_figures?h('div',{class:'tm-yours'},h('b',null,m.your_figures.label+': '),m.your_figures.text,m.your_figures.note?' '+m.your_figures.note:''):null));s.append(h('h4',{style:'margin:10px 0 0'},'Each member’s share'),ul)}
@@ -703,7 +744,9 @@ if(PAGE==='teams'){
   else{b.append(btn('Use these',()=>submit(false)));if(x.state==='signoff')b.append(btn('Send back to '+x.lead,async()=>{if(!note.value.trim())throw Error('Say what needs to change in the note, so '+x.lead+' can act on it.');await api('/admin/api/teams/steps/'+x.step_id,'POST',{action:'send_back',note:note.value});$('notice').textContent='Sent back to '+x.lead+' with your note.';await loadJob()},'secondary'))}
   s.append(b,ask);return s}
  function pendingBox(s){const d=V.d;const w=h('div',{class:'tm-wait'});const who=s.role||'A member';
-  if(s.kind==='question'){w.append(h('strong',null,who+' asks you'));for(const x of (s.content.questions||[]))w.append(h('p',null,x));const ta=h('textarea',{maxlength:'2000',placeholder:'Your answer','aria-label':'Your answer to '+who});w.append(ta,h('div',{class:'tm-acts'},btn('Send answer',async()=>{if(!ta.value.trim())throw Error('Type your answer.');await api('/admin/api/teams/steps/'+s.id,'POST',{action:'answer',note:ta.value});$('notice').textContent='Answer sent. '+who+' carries on.';await loadJob()}),btn('Discuss with Temple',()=>openStep(s),'secondary')));return w}
+  if(s.kind==='question'){w.append(h('strong',null,who+' asks you'));for(const x of (s.content.questions||[]))w.append(h('p',null,x));if(s.content.why)w.append(h('p',{class:'small'},h('b',null,'Why it matters: '),s.content.why));const ta=h('textarea',{maxlength:'2000',placeholder:'Your answer','aria-label':'Your answer to '+who});
+   const add=s.content.asks_file&&d.can.add_files?h('button',{type:'button',class:'secondary'},'Add a file'):null;if(add)add.onclick=()=>openAdd(s.id);
+   w.append(h('div',{class:'tm-answer'},ta,add),h('div',{class:'tm-acts'},btn('Send answer',async()=>{if(!ta.value.trim())throw Error('Type your answer.');await api('/admin/api/teams/steps/'+s.id,'POST',{action:'answer',note:ta.value});$('notice').textContent='Answer sent. '+who+' carries on.';await loadJob()}),btn('Discuss with Temple',()=>openStep(s),'secondary')));return w}
   w.append(h('strong',null,s.kind==='signoff'?'Ready for your sign-off':who+' → '+(s.to_role||'next')+': approve the hand-off?'));if(s.note)w.append(h('p',null,s.note));if(s.kind==='signoff'&&d.outputs.summary)w.append(h('p',{class:'small'},d.outputs.summary));
   const note=h('textarea',{maxlength:'2000',placeholder:'Your note (needed to send it back)','aria-label':'Your note'});w.append(note);
   w.append(h('div',{class:'tm-acts'},btn(s.kind==='signoff'?'Approve and finish':'Approve',async()=>{const x=await api('/admin/api/teams/steps/'+s.id,'POST',{action:'approve',note:note.value});$('notice').textContent=s.kind==='signoff'?'Signed off'+(x.knowledge_id?' and saved to Knowledge.':'.'):'Approved: '+(s.to_role||'the next member')+' starts now.';await loadJob()}),
@@ -794,7 +837,7 @@ if(PAGE==='teams'){
    h('div',{class:'row'},h('label',null,'Client',client,dl,h('span',{class:'hint'},'A client keeps the job to its own material and its default pricing template.')),h('label',null,'Location',loc,h('span',{class:'hint'},'Market Trends uses it for regional costs.'))),
    d.job_types.length?types:h('p',{class:'tm-empty'},'This team has no job types yet: add one on the team’s Rules and autonomy tab.'),h('label',null,'Brief',brief)));
   // 2 documents
-  const file=h('input',{type:'file',multiple:true,accept:'.pdf,.docx,.xlsx,.xlsm,.csv,.txt,.md',hidden:true,'aria-hidden':'true',tabindex:'-1'});file.onchange=()=>run(async()=>{await addFiles(file.files);file.value=''});
+  const file=h('input',{type:'file',multiple:true,accept:'.pdf,.docx,.xlsx,.xlsm,.csv,.txt,.md,.png,.jpg,.jpeg,.webp',hidden:true,'aria-hidden':'true',tabindex:'-1'});file.onchange=()=>run(async()=>{await addFiles(file.files);file.value=''});
   const drop=h('div',{class:'ts-drop',role:'button',tabindex:'0','aria-label':'Add documents: drop files here or press Enter to choose them'},h('b',null,'Drop the documents here'),'or click to choose: specification, schedules, drawings, and a cost or pricing template');
   drop.onclick=()=>file.click();drop.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();file.click()}};
   drop.ondragover=e=>{e.preventDefault();drop.classList.add('over')};drop.ondragleave=()=>drop.classList.remove('over');drop.ondrop=e=>{e.preventDefault();drop.classList.remove('over');run(()=>addFiles(e.dataTransfer.files))};
