@@ -15,12 +15,13 @@ teams.BACKGROUND = False
 
 # ---------------- the rule ----------------
 rs = rules_engine.rate_sources()
-t('the rate-source rule is on the Rules page: published, library, built up allowed; estimate only when asked',
-  rs == {'on': True, 'order': ['published', 'library', 'built_up', 'estimate'], 'allowed': ['published', 'library', 'built_up']}
+t('the rate-source rule is on the Rules page: published, library, built up and provisional sums allowed; estimate only when asked',
+  rs == {'on': True, 'order': ['published', 'library', 'built_up', 'estimate', 'provisional'], 'allowed': ['published', 'library', 'built_up', 'provisional']}
   and rules_engine.rule('rate_sources')['kind'] == 'enforced')
 r = cl.put('/admin/api/rules/rate_sources', json={'params': {'order': ['library', 'nonsense', 'published'], 'allowed': ['library', 'estimate', 'bogus']}}, headers=H)
 t('its order and permissions are edited there, cleaned in code', r.status_code == 200
-  and rules_engine.rate_sources()['order'] == ['library', 'published', 'built_up', 'estimate'] and rules_engine.rate_sources()['allowed'] == ['library', 'estimate'])
+  and rules_engine.rate_sources()['order'] == ['library', 'published', 'built_up', 'estimate', 'provisional']
+  and rules_engine.rate_sources()['allowed'] == ['library', 'estimate', 'provisional'])
 DEFAULT = {'order': ['published', 'library', 'built_up', 'estimate'], 'allowed': ['published', 'library', 'built_up']}
 rules_engine.update_rule('rate_sources', new_params=DEFAULT)
 page = cl.get('/admin/rules').text

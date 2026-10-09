@@ -77,6 +77,8 @@ LABELS = {
     'team_job_copied': ('teams', 'Team job copied as a new job'), 'team_costs_rate_set': ('teams', 'Exchange rate for team costs set'),
     'team_staff_figures': ('teams', 'Your figures for a team member changed'),
     'team_job_resumed': ('teams', 'Stopped team job resumed (new version)'),
+    'team_provisional_asked': ('teams', 'Provisional sums asked for on a team job'),
+    'team_provisional_switched': ('teams', 'Provisional sums switched on or off for a team job'),
     'pricing_template_hidden': ('teams', 'Pricing template removed from a team\'s list'),
     'pricing_template_restored': ('teams', 'Pricing template added back to a team\'s list'),
     'access_refused': ('blocks', 'Access refused (permissions)'), 'user_first_signin': ('rules', 'Person signed in for the first time'),

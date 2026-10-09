@@ -358,6 +358,7 @@ ROUTES = {
     'POST /admin/api/teams/suggestions/{sid}': 'full',
     'GET /admin/api/teams/jobs/{jid}': 'job:view', 'GET /admin/api/teams/jobs/{jid}/page': 'job:view',
     'POST /admin/api/teams/jobs/{jid}/rates': 'job:use:reprice', 'POST /admin/api/teams/jobs/{jid}/estimate': 'job:use:reprice',
+    'POST /admin/api/teams/jobs/{jid}/provisional': 'job:use:reprice', 'PUT /admin/api/teams/jobs/{jid}/provisional': 'job:use:reprice',
     'POST /admin/api/teams/jobs/{jid}/reprice': 'job:use:reprice', 'POST /admin/api/teams/jobs/{jid}/remeasure': 'job:use:reprice',
     'POST /admin/api/teams/jobs/{jid}/copy': 'job:use:run', 'GET /admin/api/teams/jobs/{jid}/versions': 'job:view',
     'GET /admin/api/teams/jobs/{jid}/versions/{v}': 'job:view', 'PUT /admin/api/teams/jobs/{jid}/template': 'job:use:run',
