@@ -64,10 +64,13 @@ BUILTIN = [
     ('rate_sources', 'organisation', 'Where digital teams\' rates come from', 'enforced',
      'Which sources a digital team\'s Cost Surveyor may price an item from, and in what order: a published rate (a cited page and its date), '
      'your rate library, a built-up rate (worked out by Alice from cited published rates for its parts, working shown) or a team estimate '
-     '(the Cost Surveyor\'s judgement, with its reasoning, the assumptions it made and any comparable rates it found, cited). An item no '
-     'allowed source can price is left unpriced. Estimates can also be allowed for chosen items on one job (Ask the team to estimate these). '
-     'Estimates are always badged and listed as assumptions. Switched off, every source may be used, in the order set here.', True,
-     {'order': ['published', 'library', 'built_up', 'estimate'], 'allowed': ['published', 'library', 'built_up']}, '', False),
+     '(the Cost Surveyor\'s judgement, with its reasoning, the assumptions it made and any comparable rates it found, cited), or a provisional '
+     'sum (a lump sum for work the documents do not let the team measure, from typical UK costs for the job\'s location and date found on the '
+     'web, with the range found, the reasoning and every page cited with its date). An item no allowed source can price is left unpriced. '
+     'Estimates can also be allowed for chosen items on one job (Ask the team to estimate these); provisional sums can be switched on or off '
+     'for one job (the Start a job screen and the job page). Estimates and provisional sums are always badged; estimates are listed as '
+     'assumptions and provisional sums in their own section. Switched off, every source may be used, in the order set here.', True,
+     {'order': ['published', 'library', 'built_up', 'estimate', 'provisional'], 'allowed': ['published', 'library', 'built_up', 'provisional']}, '', False),
     ('ai_disclosure', 'organisation', 'AI disclosure', 'guidance', '', True, {},
      'When drafting material that will go to a client, remind me once that AI assisted so I can declare it if required.',
      False),
@@ -101,13 +104,18 @@ BUILTIN = [
 
 
 # Where a digital team's rates may come from (rule rate_sources). 'Unpriced' is not a source: it is always last.
-RATE_SOURCES = {'published': 'Published rate', 'library': 'Your rate library', 'built_up': 'Built-up rate', 'estimate': 'Team estimate'}
+RATE_SOURCES = {'published': 'Published rate', 'library': 'Your rate library', 'built_up': 'Built-up rate', 'estimate': 'Team estimate',
+                'provisional': 'Provisional sum'}
+RATE_SOURCES_DEFAULT_ALLOWED = ('published', 'library', 'built_up', 'provisional')
+# Sources added after the rule first shipped, with whether they are allowed until the saved settings name them (Stefan, 9 Oct 2026:
+# provisional sums are allowed by default, so a rule saved before they existed allows them until it is changed and saved again).
+RATE_SOURCES_ADDED = {'provisional': True}
 
 
 def rate_sources():
     """The rate-source rule as features use it: {'on', 'order', 'allowed'} (switched off: every source, in the order set)."""
     r = rule('rate_sources') or {'enabled': True, 'params': {}}
-    p = _clean_params('rate_sources', r['params'] or {'order': list(RATE_SOURCES), 'allowed': ['published', 'library', 'built_up']})
+    p = _clean_params('rate_sources', r['params'] or {'order': list(RATE_SOURCES), 'allowed': list(RATE_SOURCES_DEFAULT_ALLOWED)})
     return {'on': bool(r['enabled']), 'order': p['order'], 'allowed': p['allowed'] if r['enabled'] else list(p['order'])}
 
 
@@ -145,6 +153,8 @@ def _load_rules():
     for r in rows:
         r['params'] = json.loads(r['params'] or '{}'); r['enabled'] = bool(r['enabled'])
         r['builtin'] = bool(r['builtin']); r['locked'] = bool(r['locked'])
+        if r['id'] == 'rate_sources' and r['params']:          # a source added since the settings were saved shows, in its default state
+            r['params'] = _clean_params('rate_sources', r['params'])
     return sorted(rows, key=lambda r: (RANK.get(r['set_key'], 99), not r['builtin'], r['created_at'], r['name']))
 
 
@@ -249,9 +259,9 @@ def _clean_params(rid, p):
         except (TypeError, ValueError): months = 12
         return {'review_months': max(1, min(24, months))}
     if rid == 'rate_sources':
-        order = [k for k in dict.fromkeys(p.get('order') or []) if k in RATE_SOURCES]
-        order += [k for k in RATE_SOURCES if k not in order]
-        allowed = [k for k in order if k in set(p.get('allowed') or [])]
+        named = [k for k in dict.fromkeys(p.get('order') or []) if k in RATE_SOURCES]
+        order = named + [k for k in RATE_SOURCES if k not in named]
+        allowed = [k for k in order if k in set(p.get('allowed') or []) or (k not in named and RATE_SOURCES_ADDED.get(k))]
         return {'order': order, 'allowed': allowed}
     if rid == 'external_scope':
         return {'allowed_categories': [str(x).strip() for x in p.get('allowed_categories', []) if str(x).strip()][:50]}

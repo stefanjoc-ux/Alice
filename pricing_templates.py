@@ -48,8 +48,10 @@ HEADERS = {
     'source': ('notes', 'source', 'comments', 'remarks', 'basis', 'rate source', 'note', 'notes / source', 'source / notes'),
 }
 SKIP_SHEETS = ('read me', 'readme', 'notes', 'instructions', 'cover', 'summary', "alice's figures")
-BADGES = {'web': 'Published', 'library': 'Library', 'built_up': 'Built up', 'estimate': 'Estimate', 'yours': 'Your rate', 'unpriced': 'Unpriced'}
+BADGES = {'web': 'Published', 'library': 'Library', 'built_up': 'Built up', 'estimate': 'Estimate', 'provisional': 'PS', 'yours': 'Your rate', 'unpriced': 'Unpriced'}
 OTHER = 'Other items (no matching element in the template)'
+PS_AREA = 'Provisional sums'                    # where provisional sums go when the template has no section of its own for them
+PS_NAME = re.compile(r'provisional|\bp\.?\s?s\.?(?:s)?\b', re.I)       # the template's own provisional sums section or sheet
 
 with store.db() as c:
     c.execute('''CREATE TABLE IF NOT EXISTS pricing_templates (path TEXT PRIMARY KEY, client TEXT NOT NULL DEFAULT '', mapping TEXT NOT NULL DEFAULT '',
@@ -823,6 +825,10 @@ def _source_text(i):
     if src == 'built_up': return f'{badge}: ' + '; '.join(f'{w["description"]} {w["quantity_per_unit"]:g} × £{w["rate"]:,.2f} ({w["source_url"]})' for w in i.get('working') or [])
     if src == 'estimate': return f'{badge}: {(i.get("estimate") or {}).get("reasoning", "")}'
     if src == 'yours': return f'{badge}: entered by {(i.get("decision") or {}).get("by", "you")}'
+    if src == 'provisional':
+        pv = i.get('provisional') or {}
+        return (f'{badge}: provisional sum (range £{pv.get("low", 0):,.2f} to £{pv.get("high", 0):,.2f}). {pv.get("reasoning", "")} Sources: '
+                + '; '.join(f'{x["source_url"]} ({x["source_date"]})' for x in pv.get('sources') or []))
     return f'{badge}: {i.get("rate_note") or "no allowed source priced it"}'
 
 
@@ -862,14 +868,21 @@ def fill(job, items, plan, mapping_, raw, name):
         for a in _areas(wb[sm['sheet']], sm, mode):
             slots.append({**a, 'sheet': sm['sheet'], 'map': sm})
     names = [s['element'] for s in slots if s['element']]
+    ps_area = next((n for n in names if PS_NAME.search(n)), None)  # the template's own provisional sums section or sheet
     groups, placed = {}, {}
+    excluded = [it for it in items if it.get('rate_source') == 'excluded']
+    items = [it for it in items if it.get('rate_source') != 'excluded']   # excluded (not in scope): listed on Alice's figures, never in the rows
     for it in items:
-        target = _match(it['element'], names) if names else None
-        key = target if target else (OTHER if names else None)
+        if it.get('rate_source') == 'provisional' and names:
+            key = ps_area or PS_AREA
+        else:
+            target = _match(it['element'], [n for n in names if n != ps_area]) if names else None
+            key = target if target else (OTHER if names else None)
         groups.setdefault(key, []).append(it)
-    if OTHER in groups:                                         # items for elements the template does not have: after the last area
-        last = slots[-1]
-        slots.append({'element': OTHER, 'sheet': last['sheet'], 'map': last['map'], 'start': None, 'end': None, 'total_row': None, 'other': True})
+    for label in (OTHER, PS_AREA):                              # items the template has no place for: after the last area, under a heading
+        if label in groups:
+            last = slots[-1]
+            slots.append({'element': label, 'sheet': last['sheet'], 'map': last['map'], 'start': None, 'end': None, 'total_row': None, 'other': True})
     item_rows = {}
     for s in slots:
         mine = groups.pop(s['element'] if names else None, None)
@@ -878,7 +891,7 @@ def fill(job, items, plan, mapping_, raw, name):
         cols = {k: ci(v) for k, v in s['map']['columns'].items()}
         if s.get('other'):
             at = _last_used(ws, s['map']) + 2
-            ws.cell(at - 1, cols['description']).value = OTHER
+            ws.cell(at - 1, cols['description']).value = s['element']
             rows = list(range(at, at + len(mine)))
         else:
             free = [r for r in range(s['start'], s['end'] + 1) if ws.cell(r, cols['description']).value in (None, '')]
@@ -907,11 +920,15 @@ def fill(job, items, plan, mapping_, raw, name):
             item_rows[it['ref']] = (s['sheet'], r, s)
             placed.setdefault(s['sheet'], []).append(it['ref'])
     diffs = _check(wb, slots, item_rows, amounts)
-    other = [k for k, (sh, r, s) in item_rows.items() if s.get('other')]
+    other = [k for k, (sh, r, s) in item_rows.items() if s.get('other') and s['element'] == OTHER]
     if other: diffs.append({'where': OTHER, 'formula': '', 'alice': None, 'template': None,
                             'note': f'{len(other)} item(s) ({", ".join(other)}) had no matching element in the template: they are listed after its rows, '
                                     'outside its own totals; Alice\'s figures include them.'})
-    _alice_sheet(wb, job, plan, items)
+    psx = [k for k, (sh, r, s) in item_rows.items() if s.get('other') and s['element'] == PS_AREA]
+    if psx: diffs.append({'where': PS_AREA, 'formula': '', 'alice': None, 'template': None,
+                          'note': f'The template has no provisional sums section, so {len(psx)} provisional sum(s) ({", ".join(psx)}) are listed after its rows '
+                                  'under “Provisional sums”, outside its own totals; Alice\'s figures include them.'})
+    _alice_sheet(wb, job, plan, items, excluded)
     out = io.BytesIO()
     wb.save(out)
     return _keep_label(raw, name, out.getvalue()), diffs
@@ -979,7 +996,7 @@ def _compare(wb, sheet, formula, want, where):
              'note': f'The template\'s formula gives £{got:,.2f}; Alice\'s figure is £{want:,.2f} (difference £{(got - want):,.2f}).'}]
 
 
-def _alice_sheet(wb, job, plan, items):
+def _alice_sheet(wb, job, plan, items, excluded=()):
     """Alice's own figures, as values, on a sheet of their own: the elements, preliminaries, contingency, fees, the total."""
     import team_qs
     title = "Alice's figures"
@@ -987,11 +1004,15 @@ def _alice_sheet(wb, job, plan, items):
     ws = wb.create_sheet(title)
     rows = [[team_qs.DRAFT_MARK], [f'Job {job.get("ref", "")}: {job.get("title", "")}, version v{job.get("version") or 1}'],
             ['Worked out by Alice from the quantities and rates; the template\'s own formulas are left as they were and checked against these.'], [],
-            ['Element', 'GBP']] + [[e['element'], e['subtotal']] for e in plan.get('elements') or []] + [
+            ['Element', 'GBP']] + [[e['element'], e['subtotal']] for e in plan.get('elements') or []] + (
+            [['Measured works', plan.get('works', plan.get('construction'))], [], ['Provisional sums', 'GBP']]
+            + [[f'{p["ref"]} {p["description"]} (range £{p["low"]:,.2f} to £{p["high"]:,.2f})', p['amount']] for p in plan.get('provisional') or []]
+            + [['Provisional sums subtotal', plan.get('provisional_total')], []] if plan.get('provisional') else []) + [
             ['Construction', plan.get('construction')]] + ([['Market adjustment', plan.get('market_adjustment')]] if plan.get('market_adjustment') else []) + [
             [f'Preliminaries {plan["percentages"]["prelims_pct"]}%', plan.get('prelims')], [f'Contingency {plan["percentages"]["contingency_pct"]}%', plan.get('contingency')],
             [f'Fees {plan["percentages"]["fees_pct"]}%', plan.get('fees')], ['Total excluding VAT', plan.get('total')], [],
-            ['Unpriced items (excluded)', ', '.join(i['ref'] for i in items if i.get('rate') is None) or 'none']]
+            ['Unpriced items (excluded from the total)', ', '.join(i['ref'] for i in items if i.get('rate') is None) or 'none'],
+            ['Excluded: not in scope', '; '.join(f'{i["ref"]} {i["description"]} ({(i.get("exclusion") or {}).get("reason", "")})' for i in excluded) or 'none']]
     for r in rows: ws.append(r)
 
 

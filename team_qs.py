@@ -27,8 +27,9 @@ TEAM_ID = 'quantity-surveying'
 DRAFT_MARK = 'Draft: AI-assisted, for review by a qualified quantity surveyor'
 DEMO_DIR = Path(__file__).resolve().parent / 'demo_content' / 'teams' / 'community_hall'
 SOURCE_LABELS = {'web': 'Published rate (web)', 'library': 'Your rate library', 'built_up': 'Built-up rate (from cited published rates)',
-                 'estimate': 'Team estimate (judgement)', 'yours': 'Your rate', 'unpriced': 'Unpriced: flagged as an assumption'}
-RULE_SOURCE = {'published': 'web', 'library': 'library', 'built_up': 'built_up', 'estimate': 'estimate'}     # rule key -> the item's rate_source
+                 'estimate': 'Team estimate (judgement)', 'provisional': 'Provisional sum (lump sum from cited typical costs)', 'yours': 'Your rate',
+                 'unpriced': 'Unpriced: flagged as an assumption', 'excluded': 'Excluded: not in scope'}
+RULE_SOURCE = {'published': 'web', 'library': 'library', 'built_up': 'built_up', 'estimate': 'estimate', 'provisional': 'provisional'}   # rule key -> the item's rate_source
 # What each source means, shown on the team page in the order and with the allowed state read from the rule (price_rules), never retyped.
 # 'yours' is not in it: a rate you enter for an unpriced item is your decision afterwards, recorded as "Your rate".
 SOURCE_DETAIL = {
@@ -37,6 +38,9 @@ SOURCE_DETAIL = {
     'built_up': 'Built up from published rates for its parts (labour, materials, plant), each part cited with its page and date; Alice adds them up and shows the working.',
     'estimate': 'The Cost Surveyor\'s professional judgement, with its reasoning, the assumptions it made and any comparable rates it found online, cited. '
                 'Badged Estimate and listed as an assumption.',
+    'provisional': 'For work the documents do not let the team measure: a lump sum from typical UK costs for the job\'s location and date found on the web, '
+                   'with the range found, the reasoning and every page cited with its date. Badged PS and listed in its own Provisional sums section, '
+                   'with a subtotal Alice works out; included in the total.',
 }
 UNPRICED_RULE = {'key': 'unpriced', 'title': 'Flagged as unpriced', 'allowed': True,
                  'detail': 'Otherwise the item is left unpriced and listed as an assumption: a rate is never invented. You can enter your own rate for it on the job page.'}
@@ -275,7 +279,10 @@ MEASURE_BATCH = 3            # elements per part of the take-off
 PRICE_ITEMS = 20             # items per part of the pricing (and of the comparison)
 MEASURE_SPEC = ('{"accept": true, "reasons": [], "items": [{"ref": "Q1", "element": "", "description": "", "quantity": 0, "unit": "m2|m3|m|nr|item", '
                 '"source": {"document": "exact document name", "page": "page number if the document has pages", "line": "schedule line, e.g. Line 4"}, '
-                '"from_drawing": false, "note": ""}], "summary": "one sentence", "note": "hand-off note to the Cost Surveyor", "questions": [], "what_changed": ""}')
+                '"from_drawing": false, "unmeasured": false, "note": ""}], "summary": "one sentence", "note": "hand-off note to the Cost Surveyor", "questions": [], "what_changed": ""}')
+UNMEASURED_NOTE = ('PROVISIONAL SUMS ARE ALLOWED on this job: work the documents call for but do not let you measure (for example a connection to an '
+                   'existing sewer, or statutory services) is listed as ONE item: quantity 1, unit item, "unmeasured": true, with the document and page '
+                   'that name the work. The Cost Surveyor prices it as a provisional sum. Never use this for work you can measure.')
 
 
 def _doc_named(docs, name):
@@ -310,14 +317,16 @@ def qs_measure(job, stage, member, ctx):
     rr = (ctx['outputs'] or {}).get('_rerun') or {}
     only = rr.get('elements') if rr.get('kind') == 'remeasure' else None        # Re-measure: only the elements Stefan chose
     if only is not None: pieces = [p for p in pieces if p['label'] in only]
+    ps_on = ps_allowed(ctx['outputs'])
 
     def run(part, info):
         mine = list(dict.fromkeys(p['label'] for p in part))
         names = list(dict.fromkeys(d for p in part for d in p['docs']))
         extra = (f'WHOLE PLAN: elements {every}.\nTHIS PART: take off ONLY these elements: {", ".join(mine)}, from the DOCUMENTS given '
-                 f'({", ".join(names) or "none"}). The other elements are measured separately: do not measure them here.')
+                 f'({", ".join(names) or "none"}). The other elements are measured separately: do not measure them here.'
+                 + ('\n' + UNMEASURED_NOTE if ps_on else ''))
         return _ask(job, member, ctx, stage, MEASURE_SPEC, extra=extra, what='the list of measured items', docs_only=names)
-    done, stats = teams.in_parts(job, stage, pieces, run, _split_docs, batch=MEASURE_BATCH, extra=_extra_key(ctx, member))
+    done, stats = teams.in_parts(job, stage, pieces, run, _split_docs, batch=MEASURE_BATCH, extra={**_extra_key(ctx, member), 'ps': ps_on})
     out = _merge_common([d for _, d in done])
     if not out['accept'] and not ctx.get('must_accept'): return out
     items, rejected, seen = [], [], set()
@@ -327,6 +336,8 @@ def qs_measure(job, stage, member, ctx):
             if not isinstance(it, dict): continue
             desc = teams._clean(it.get('description'), 300)
             q, unit = _num(it.get('quantity')), unit_key(it.get('unit'))
+            unmeasured = ps_on and it.get('unmeasured') is True
+            if unmeasured: q, unit = 1.0, 'item'                 # unmeasured work: one item, priced as a provisional sum
             src = it.get('source') if isinstance(it.get('source'), dict) else {}
             docname = teams._clean(src.get('document'), 120)
             doc = _doc_named(docs, docname)
@@ -342,7 +353,7 @@ def qs_measure(job, stage, member, ctx):
             seen.add(key)
             approx = bool(it.get('from_drawing')) or doc['kind'] == 'drawing'
             items.append({'ref': f'Q{len(items) + 1}', 'element': el, 'description': desc,
-                          'quantity': round(q, 3), 'unit': unit, 'approximate': approx,
+                          'quantity': round(q, 3), 'unit': unit, 'approximate': approx and not unmeasured, **({'unmeasured': True} if unmeasured else {}),
                           'source': {'document': doc['name'], 'page': page, 'line': line},
                           'source_text': doc['name'] + (f', page {page}' if page else '') + (f', {line}' if line else ''), 'note': teams._clean(it.get('note'), 300)})
     out['output'] = {'items': items, 'rejected': rejected}
@@ -397,15 +408,20 @@ and that you can support; never use a source marked not allowed, and never inven
   goes into one unit of the item, its own published rate, the page that states it and the page's date. Alice adds them up; do not total them.
 - estimate: only for items marked ESTIMATE ALLOWED: your professional judgement of the rate, with your reasoning, the assumptions you made
   (for example a wall height the drawings do not give) and any comparable rates you found online, each with its page and date.
+- provisional: only where provisional sums are allowed (or the item is marked PROVISIONAL SUM ALLOWED), for work that cannot be measured from
+  the documents (items marked UNMEASURED, or work whose extent the documents do not give): search the web for typical UK costs of that work
+  for the LOCATION and the DATE given, and propose ONE lump sum for the whole item, with the low and high of the range you found, your
+  reasoning, and every page you relied on with its date (and the cost it gives, if it states one). Alice checks the pages; do not total anything.
 If Stefan's FEEDBACK asks for a source that is not allowed, do not use it: say so in not_allowed, in one plain sentence each.
 If a LOCATION is given and this part asks for it, look for a published regional adjustment factor (location factor) and cite it; if none is
 found, leave location_factor empty.
 Return JSON only, no prose:
 {spec}'''
-PRICE_SPEC = ('{"accept": true, "reasons": [], "rates": [{"ref": "Q1", "source": "published|library|built_up|estimate", "rate": 0, "unit": "", '
+PRICE_SPEC = ('{"accept": true, "reasons": [], "rates": [{"ref": "Q1", "source": "published|library|built_up|estimate|provisional", "rate": 0, "unit": "", '
               '"source_url": "", "source_title": "", "source_date": "YYYY-MM-DD or YYYY-MM", "library_id": "", '
               '"built_up": {"components": [{"description": "", "quantity_per_unit": 1, "unit": "", "rate": 0, "source_url": "", "source_title": "", "source_date": ""}]}, '
               '"estimate": {"rate": 0, "reasoning": "", "assumptions": [""], "comparables": [{"rate": 0, "unit": "", "source_url": "", "source_date": "", "note": ""}]}, '
+              '"provisional": {"sum": 0, "low": 0, "high": 0, "reasoning": "", "sources": [{"source_url": "", "source_title": "", "source_date": "", "cost": 0, "note": ""}]}, '
               '"note": ""}], "location_factor": {"factor": 1.0, "region": "", "source_url": "", "source_title": "", "source_date": ""}, '
               '"not_allowed": [], "searches": ["the searches you ran"], "summary": "one sentence", "note": "hand-off note to the Lead QS", "questions": [], "what_changed": ""}')
 
@@ -426,11 +442,59 @@ def estimates_on_job(outputs):
     return bool(((outputs or {}).get('_estimates') or {}).get('all'))
 
 
-def _source_lines(rs, allow_refs):
+# ---- provisional sums (Stefan, 9 Oct 2026) ----
+def ps_setting(outputs):
+    """The job's own switch for provisional sums (the Start a job screen, the job page): True or False, or None when the rule decides."""
+    v = ((outputs or {}).get('_ps') or {}).get('on')
+    return v if isinstance(v, bool) else None
+
+
+def ps_refs(outputs):
+    """Items Stefan asked the team to give provisional sums for (Ask the team for provisional sums): allowed whatever the switch says."""
+    return set(((outputs or {}).get('_ps') or {}).get('refs') or [])
+
+
+def ps_rule_on(rs=None):
+    import rules_engine
+    return 'provisional' in (rs or rules_engine.rate_sources())['allowed']
+
+
+def ps_allowed(outputs, ref=None, rs=None):
+    """May the Cost Surveyor give a provisional sum (for this item) on this job? An item Stefan asked one for: yes; else the job's own
+    switch when it is set; else the rule "Where digital teams' rates come from"."""
+    if ref is not None and ref in ps_refs(outputs): return True
+    on = ps_setting(outputs)
+    return on if on is not None else ps_rule_on(rs)
+
+
+def set_provisional(jid, on):
+    """Switch provisional sums on or off for this job (the decision panel; the Start a job screen sets it when the job starts). It applies
+    from the next pricing pass; nothing is priced again by itself. Logged with who."""
+    j = teams._row(jid)
+    if j['status'] == 'done': raise ValueError('This job is signed off: re-price it to use provisional sums.')
+    outs = j['outputs']
+    cur = outs.get('_ps') or {}
+    outs['_ps'] = {**cur, 'on': bool(on), 'by': teams._actor(), 'at': store.now()}
+    teams._set(jid, outputs=outs)
+    word = 'allowed' if on else 'switched off'
+    with store.db() as c:
+        store.audit(c, 'team_provisional_switched', jid, 'human_review', f'{teams.ref(jid)} {j["title"]}: provisional sums {word} on this job')
+    team, jt = teams._job_team(j)
+    ps = _price_stage(jt)
+    teams._add_step(jid, 'note', ps['key'] if ps else '', 'stefan', status='done',
+                    note=f'You {"allowed" if on else "switched off"} provisional sums on this job' + (' (the rule allows them).' if on and ps_rule_on() else
+                         ' (the rule does not allow them; this job only).' if on else '.') + ' It applies from the next pricing.')
+    return teams.job_page(jid)
+
+
+def _source_lines(rs, allow_refs, ps=None):
+    """ps: (allowed on the whole job, any items marked PROVISIONAL SUM ALLOWED) for this job; None = the rule decides."""
     lines = []
     for n, k in enumerate(rs['order'], 1):
-        ok = k in rs['allowed']
-        note = 'allowed' if ok else ('not allowed, except for items marked ESTIMATE ALLOWED' if k == 'estimate' and allow_refs else 'not allowed')
+        ok = k in rs['allowed'] if k != 'provisional' or ps is None else ps[0]
+        note = ('allowed' if ok else 'not allowed, except for items marked ESTIMATE ALLOWED' if k == 'estimate' and allow_refs else
+                'not allowed on this job, except for items marked PROVISIONAL SUM ALLOWED' if k == 'provisional' and ps and ps[1] else
+                'not allowed on this job' if k == 'provisional' and ps is not None and k in rs['allowed'] else 'not allowed')
         lines.append(f'{n}. {k}: {note}')
     return '\n'.join(lines + [f'{len(rs["order"]) + 1}. otherwise leave the rate empty (unpriced)'])
 
@@ -481,6 +545,30 @@ def _estimate(r, seen_norm):
             'comparables': comps, 'comparables_dropped': dropped}, ''
 
 
+def _provisional(r, seen_norm):
+    """A provisional sum checked here: a lump sum above zero inside the range found (low to high), the reasoning, and at least one page the
+    search returned, with its date; pages that were not returned, or have no date, are dropped."""
+    p = r.get('provisional') if isinstance(r.get('provisional'), dict) else None
+    if not p: return None, ''
+    total, low, high = _num(p.get('sum')), _num(p.get('low')), _num(p.get('high'))
+    why = teams._block(p.get('reasoning'), 1200)
+    if not total or total <= 0: return None, 'no lump sum'
+    if not low or not high or low <= 0 or high < low: return None, 'no range (low and high) from what was found'
+    if not low <= total <= high: return None, 'the sum is outside the range found'
+    if not why: return None, 'no reasoning given'
+    src, dropped = [], 0
+    for c_ in (p.get('sources') or [])[:8]:
+        if not isinstance(c_, dict): continue
+        url, when = str(c_.get('source_url') or '').strip(), _date_ok(c_.get('source_date'))
+        hit = _cited(seen_norm, url, when)
+        if not hit: dropped += 1; continue                       # every page must be one the search returned, with its date
+        cost = _num(c_.get('cost'))
+        src.append({'source_url': hit[0], 'source_title': teams._clean(c_.get('source_title') or hit[1], 200), 'source_date': when,
+                    **({'cost': float(money(cost))} if cost and cost > 0 else {}), 'note': teams._clean(c_.get('note'), 200)})
+    if not src: return None, 'no page the search returned, with a date'
+    return {'sum': float(money(total)), 'low': float(money(low)), 'high': float(money(high)), 'reasoning': why, 'sources': src, 'sources_dropped': dropped}, ''
+
+
 def qs_price(job, stage, member, ctx):
     import assistants, org_research, rules_engine, rule_packs
     outs = ctx['outputs'] or {}
@@ -506,6 +594,10 @@ def qs_price(job, stage, member, ctx):
     if rr.get('order'):                                       # a different order for this re-run only; what is allowed stays the rule's
         rs = {**rs, 'order': list(rr['order']) + [k for k in rs['order'] if k not in rr['order']]}
     allow_refs = estimates_allowed(outs) | (set(redo) if partial and rr.get('estimates') else set()) | ({i['ref'] for i in items} if estimates_on_job(outs) else set())
+    ps_job = ps_allowed(outs, rs=rs)                          # provisional sums: the job's own switch, else the rule
+    ps_ok_refs = ps_refs(outs) | (set(redo) if partial and rr.get('provisional') else set())
+    ps_ok = lambda ref: ps_job or ref in ps_ok_refs
+    excluded = (outs.get('_excluded') or {})                  # items Stefan excluded (not in scope): never priced again
     lib = library(job['team_id'])
     prov = member['provider'] if member.get('provider') in assistants.PROVIDERS else 'claude_sonnet'
     fam = assistants.family(prov)
@@ -513,7 +605,7 @@ def qs_price(job, stage, member, ctx):
     fam = fam if fam in org_research.KEYS else 'claude'
     target = f'Digital team: {member["role"]}'
     byref = {i['ref']: i for i in items}
-    todo = [i for i in items if i['ref'] in redo] if partial else items
+    todo = [i for i in items if (i['ref'] in redo if partial else True) and i['ref'] not in excluded]
     elements = ', '.join(dict.fromkeys(i['element'] for i in items))
     pieces = _item_pieces(todo)
     if pieces and not partial: pieces[0]['factor'] = True     # the regional factor is looked for once, in the first part
@@ -530,10 +622,13 @@ def qs_price(job, stage, member, ctx):
         query = (f'JOB: {job["title"]}\nBRIEF\n{job["brief"][:3000]}\n\nLOCATION: {location or "not given (use national rates)"}\n'
                  f'ALL ELEMENTS OF THE ESTIMATE: {elements}\n'
                  + ('' if factor else 'THIS PART: leave location_factor empty; it is looked for separately.\n')
-                 + f'RATE SOURCES (in this order)\n{_source_lines(rs, allow_refs)}\n\n'
+                 + f'DATE: {date.today().isoformat()}\n'
+                 + f'RATE SOURCES (in this order)\n{_source_lines(rs, allow_refs, (ps_job, any(i["ref"] in ps_ok_refs for i in mine)))}\n\n'
                  + 'MEASURED ITEMS IN THIS PART (ref | element | description | quantity | unit)\n'
                  + '\n'.join(f'{i["ref"]} | {i["element"]} | {i["description"]} | {i["quantity"]} | {i["unit"]}'
-                             + (' | ESTIMATE ALLOWED' if i['ref'] in allow_refs and 'estimate' not in rs['allowed'] else '') for i in mine)
+                             + (' | UNMEASURED' if i.get('unmeasured') else '')
+                             + (' | ESTIMATE ALLOWED' if i['ref'] in allow_refs and 'estimate' not in rs['allowed'] else '')
+                             + (' | PROVISIONAL SUM ALLOWED' if not ps_job and i['ref'] in ps_ok_refs else '') for i in mine)
                  + '\n\nRATE LIBRARY (id | description | unit | region | as of)\n'
                  + ('\n'.join(f'{r["id"]} | {r["description"]} | {r["unit"]} | {r["region"]} | {r["as_of"]}' for r in cands) or '(empty)')
                  + ('\n\nPAST COST PLANS IN ALICE (for comparison only, e.g. as comparables for an estimate; never a rate source)\n' + past if past else '')
@@ -559,7 +654,7 @@ def qs_price(job, stage, member, ctx):
         return {'data': d, 'seen': found['seen'], 'used': found['used'], 'failures': found['failures'], 'factor': factor}
     done, stats = teams.in_parts(job, stage, pieces, run, _split_refs, batch=PRICE_ITEMS,
                                  extra={**_extra_key(ctx, member), 'location': location, 'rules': rs, 'allow': sorted(allow_refs), 'redo': redo,
-                                        'partial': partial, 'web': web},
+                                        'partial': partial, 'web': web, 'ps': [ps_job, sorted(ps_ok_refs)], 'excluded': sorted(excluded)},
                                  size=lambda p: len(p['refs']))
     out = _merge_common([r['data'] for _, r in done])
     if not out['accept'] and not ctx.get('must_accept'): return out
@@ -576,14 +671,21 @@ def qs_price(job, stage, member, ctx):
     seen_norm = {org_research._norm_url(u): (u, t) for u, t in seen.items()}
     by_ref = {str(r.get('ref')): r for r in d.get('rates') or [] if isinstance(r, dict)}
     libmap = {r['id']: r for r in lib}
-    priced, cited, blocked_est = [], set(), []
+    priced, cited, blocked_est, blocked_ps = [], set(), [], []
     refused = [x for x in prev.get('refused_rates') or [] if x.get('ref') not in set(redo)] if partial else []
     for it in items:
         if partial and it['ref'] not in redo:
             priced.append(it); continue                          # a partial pass prices only the items chosen
+        if it['ref'] in excluded:                                # excluded by Stefan: not in scope, never priced, listed as an exclusion
+            base = {k: v for k, v in it.items() if k not in ('rate', 'rate_source', 'source_url', 'source_title', 'source_date', 'rate_note', 'library_row',
+                                                              'working', 'estimate', 'decision', 'provisional', 'measured', 'exclusion')}
+            base.update(it.get('measured') or {})
+            priced.append({**base, 'rate': None, 'rate_source': 'excluded', 'exclusion': excluded[it['ref']],
+                           'rate_note': f'Excluded by {excluded[it["ref"]].get("by") or "you"}: {excluded[it["ref"]].get("reason", "")}'}); continue
         r = by_ref.get(it['ref']) or {}
         row = {k: v for k, v in it.items() if k not in ('rate', 'rate_source', 'source_url', 'source_title', 'source_date', 'rate_note', 'library_row',
-                                                         'working', 'estimate', 'decision')}
+                                                         'working', 'estimate', 'decision', 'provisional', 'measured', 'exclusion')}
+        row.update(it.get('measured') or {})                     # an item priced as a provisional sum before goes back to its measured quantity
         cands, why = {}, {}
         rate, url = _num(r.get('rate')), str(r.get('source_url') or '').strip()
         when = _date_ok(r.get('source_date'))
@@ -611,12 +713,20 @@ def qs_price(job, stage, member, ctx):
         if es: cands['estimate'] = {'rate': es['rate'], 'rate_source': 'estimate', 'estimate': es, 'source_title': f'Estimate by the {member["role"]}',
                                     'source_date': date.today().isoformat(), 'rate_note': es['reasoning'][:300]}
         elif es_why: why['estimate'] = es_why
-        ok = lambda k: k in rs['allowed'] or (k == 'estimate' and it['ref'] in allow_refs)
+        pv, pv_why = _provisional(r, seen_norm)
+        if pv: cands['provisional'] = {'rate': pv['sum'], 'rate_source': 'provisional', 'provisional': pv, 'quantity': 1.0, 'unit': 'item',
+                                       'measured': {'quantity': row['quantity'], 'unit': row['unit']},
+                                       'source_title': f'Provisional sum by the {member["role"]}', 'source_date': max(x['source_date'] for x in pv['sources']),
+                                       'rate_note': pv['reasoning'][:300]}
+        elif pv_why: why['provisional'] = pv_why
+        ok = lambda k: (ps_ok(it['ref']) if k == 'provisional' else k in rs['allowed'] or (k == 'estimate' and it['ref'] in allow_refs))
         pick = next((k for k in rs['order'] if k in cands and ok(k)), None)
         for k in cands:
             if k != pick and not ok(k):
-                refused.append({'ref': it['ref'], 'rate': cands[k]['rate'], 'source': k, 'reason': 'not allowed by the rule “Where digital teams\' rates come from”'})
+                refused.append({'ref': it['ref'], 'rate': cands[k]['rate'], 'source': k, 'reason': 'not allowed by the rule “Where digital teams\' rates come from”'
+                                if k != 'provisional' or ps_setting(outs) is None else 'provisional sums are switched off on this job'})
                 if k == 'estimate': blocked_est.append(it['ref'])
+                if k == 'provisional': blocked_ps.append(it['ref'])
         for k, w in why.items():
             refused.append({'ref': it['ref'], 'rate': rate if k == 'published' else None, 'source_url': url if k == 'published' else '', 'source': k, 'reason': w})
         if pick:
@@ -625,6 +735,7 @@ def qs_price(job, stage, member, ctx):
             if pick == 'library': agents.note('read', 'team_rate', row['library_row']['id'], f'{member["role"]}: {it["ref"]}')
             for w in row.get('working') or []: cited.add(w['source_url'])
             for c_ in (row.get('estimate') or {}).get('comparables') or []: cited.add(c_['source_url'])
+            for c_ in (row.get('provisional') or {}).get('sources') or []: cited.add(c_['source_url'])
         else:
             row.update({'rate': None, 'rate_source': 'unpriced', 'rate_note': 'No allowed source could price it: ' + (
                 '; '.join(f'{rules_engine.RATE_SOURCES[k].lower()}: {w}' for k, w in why.items()) or 'none was found') + '.'})
@@ -652,7 +763,7 @@ def qs_price(job, stage, member, ctx):
     counts = {k: sum(1 for x in priced if x['rate_source'] == k) for k in SOURCE_LABELS}
     out['output'] = {'items': priced, 'location': loc, 'refused_rates': refused,
                      'searched_with': org_research.searched_with(used, failures) if web else 'no web search (switched off for this member)',
-                     'conflicts': _conflicts(asked, blocked_est, ctx, rs)}
+                     'conflicts': _conflicts(asked, blocked_est, ctx, rs, blocked_ps, outs)}
     out['searches'] = searches
     out['parts'] = stats
     out['accept'] = True
@@ -663,21 +774,39 @@ def qs_price(job, stage, member, ctx):
 
 
 SUMMARY_WORDS = {'web': 'priced from published rates', 'library': 'from your rate library', 'built_up': 'built up from cited rates',
-                 'estimate': 'estimated by the team', 'yours': 'your rates', 'unpriced': 'unpriced'}
+                 'estimate': 'estimated by the team', 'provisional': 'as provisional sums', 'yours': 'your rates', 'unpriced': 'unpriced',
+                 'excluded': 'excluded (not in scope)'}
+RULE_HREF = '/admin/rules?rule=rate_sources#rules'
 
 
-def _conflicts(asked, blocked_est, ctx, rs):
+def conflict(what, kind, outs=None, rs=None, refs=None):
+    """One plain line saying which rule (or this job's own switch) does not allow what was asked, with where to change it."""
+    rs = rs or __import__('rules_engine').rate_sources()
+    if kind == 'provisional':
+        off_here = ps_setting(outs) is False
+        text = (f'{what}: provisional sums are switched off on this job, so those items stay unpriced. To use them, switch them on for this job '
+                f'or use “Ask the team for provisional sums” on the items.' if off_here else
+                f'{what}: the rule “Where digital teams\' rates come from” does not allow provisional sums at the moment, so those items stay unpriced. '
+                'To allow them, change the rule, switch them on for this job, or use “Ask the team for provisional sums” on the items.')
+        links = ([] if off_here else [{'label': 'Open the rule', 'href': RULE_HREF}]) + [{'label': 'Ask the team for provisional sums', 'href': '#provisional'}]
+    else:
+        text = (f'{what}: the rule “Where digital teams\' rates come from” does not allow '
+                + ('team estimates' if 'estimate' not in rs['allowed'] else 'this source')
+                + ' at the moment, so those items stay unpriced. To allow it, change the rule, or use “Ask the team to estimate these” on the items.')
+        links = [{'label': 'Open the rule', 'href': RULE_HREF}, {'label': 'Ask the team to estimate these', 'href': '#estimate'}]
+    return {'what': what, 'rule': 'rate_sources', 'kind': kind, **({'refs': list(refs)} if refs else {}), 'text': text, 'links': links}
+
+
+def _conflicts(asked, blocked_est, ctx, rs, blocked_ps=(), outs=None):
     """What Stefan asked for that the current rules do not allow, said plainly, with where to allow it (the rule, or the per-job button).
-    Raised when the Cost Surveyor reports it (not_allowed), or when it offered estimates the rule refused after Stefan's feedback."""
-    out = [{'what': a, 'rule': 'rate_sources'} for a in dict.fromkeys(asked)]
+    Raised when the Cost Surveyor reports it (not_allowed), or when it offered estimates or provisional sums that were refused after
+    Stefan's feedback."""
+    out = [conflict(a, 'provisional' if re.search(r'provisional', a, re.I) else 'estimate', outs, rs) for a in dict.fromkeys(asked)]
     stefan = any(f.get('from') == 'Stefan' or str(f.get('from', '')).startswith('Stefan') for f in ctx.get('feedback') or [])
     if blocked_est and (stefan or out):
-        out.append({'what': f'Estimates for {", ".join(blocked_est)}', 'rule': 'rate_sources', 'refs': blocked_est})
-    for c_ in out:
-        c_['text'] = (f'{c_["what"]}: the rule “Where digital teams\' rates come from” does not allow '
-                      + ('team estimates' if 'estimate' not in rs['allowed'] else 'this source')
-                      + ' at the moment, so those items stay unpriced. To allow it, change the rule, or use “Ask the team to estimate these” on the items.')
-        c_['links'] = [{'label': 'Open the rule', 'href': '/admin/rules?rule=rate_sources#rules'}, {'label': 'Ask the team to estimate these', 'href': '#estimate'}]
+        out.append(conflict(f'Estimates for {", ".join(blocked_est)}', 'estimate', outs, rs, blocked_est))
+    if blocked_ps and (stefan or out):
+        out.append(conflict(f'Provisional sums for {", ".join(blocked_ps)}', 'provisional', outs, rs, blocked_ps))
     return out
 
 
@@ -686,21 +815,32 @@ def compute(items, factor=1.0, settings=None, market_pct=0.0):
     contingency and fees as percentages, the total. Money to the penny, rounded half up."""
     s = {**SETTINGS, **(settings or {})}
     f = Decimal(str(factor or 1))
-    lines, elements, estimated = [], {}, Decimal('0')
+    lines, elements, estimated, provisional, ps_total = [], {}, Decimal('0'), [], Decimal('0')
     for it in items:
-        if it.get('rate_source') == 'unpriced' or it.get('rate') is None: continue
+        if it.get('rate_source') in ('unpriced', 'excluded') or it.get('rate') is None: continue
+        if it.get('rate_source') == 'provisional':
+            # a provisional sum is a lump sum already for the job's location and date: no regional factor; its own section and subtotal
+            amount = money(Decimal(str(it['quantity'])) * Decimal(str(it['rate'])))
+            lines.append({'ref': it['ref'], 'element': it['element'], 'amount': float(amount), 'provisional': True})
+            p = it.get('provisional') or {}
+            provisional.append({'ref': it['ref'], 'element': it['element'], 'description': it['description'], 'amount': float(amount),
+                                'low': p.get('low'), 'high': p.get('high')})
+            ps_total += amount
+            continue
         amount = money(Decimal(str(it['quantity'])) * Decimal(str(it['rate'])) * f)
         lines.append({'ref': it['ref'], 'element': it['element'], 'amount': float(amount)})
         elements[it['element']] = elements.get(it['element'], Decimal('0')) + amount
         if it.get('rate_source') == 'estimate': estimated += amount
-    construction = sum(elements.values(), Decimal('0'))
-    market = money(construction * Decimal(str(market_pct or 0)) / 100)     # an accepted market adjustment, on the construction cost
+    works = sum(elements.values(), Decimal('0'))
+    construction = works + ps_total                             # measured works plus provisional sums
+    market = money(works * Decimal(str(market_pct or 0)) / 100)     # an accepted market adjustment, on the measured works (not on the sums)
     base = construction + market
     prelims = money(base * Decimal(str(s['prelims_pct'])) / 100)
     contingency = money((base + prelims) * Decimal(str(s['contingency_pct'])) / 100)
     fees = money((base + prelims + contingency) * Decimal(str(s['fees_pct'])) / 100)
     total = base + prelims + contingency + fees
     return {'lines': lines, 'elements': [{'element': k, 'subtotal': float(v)} for k, v in elements.items()],
+            'works': float(works), 'provisional': provisional, 'provisional_total': float(ps_total),
             'construction': float(construction), 'prelims': float(prelims), 'contingency': float(contingency), 'fees': float(fees),
             'total': float(total), 'factor': float(f), 'percentages': {k: s[k] for k in SETTINGS},
             'market_pct': float(market_pct or 0), 'market_adjustment': float(market),
@@ -714,12 +854,21 @@ def estimated_line(cp):
     return f'{_gbp(cp["estimated"])} of the {_gbp(cp["construction"])} construction cost ({cp["estimated_pct"]:g}%) comes from team estimates.'
 
 
+def provisional_line(cp):
+    """The provisional sums in one sentence (or '' when there are none)."""
+    if not cp.get('provisional'): return ''
+    n = len(cp['provisional'])
+    return (f'{_gbp(cp["provisional_total"])} of the {_gbp(cp["construction"])} construction cost is {n} provisional sum{"s" if n != 1 else ""} for work '
+            'the documents do not let the team measure (lump sums from cited typical costs; see Provisional sums).')
+
+
 def _sourced(i):
     """Every priced item says where its rate came from, with what that source needs (a code check the Lead QS makes before accepting)."""
     src = i.get('rate_source')
     return src in SOURCE_LABELS and not (
         (src == 'web' and not (i.get('source_url') and i.get('source_date'))) or (src == 'built_up' and not i.get('working'))
-        or (src == 'estimate' and not (i.get('estimate') or {}).get('reasoning')))
+        or (src == 'estimate' and not (i.get('estimate') or {}).get('reasoning'))
+        or (src == 'provisional' and not ((i.get('provisional') or {}).get('reasoning') and (i.get('provisional') or {}).get('sources'))))
 
 
 def estimate_assumptions(items, plan):
@@ -736,7 +885,89 @@ def estimate_assumptions(items, plan):
     return out + ([line] if line else [])
 
 
+REQUEST_SPEC = '{"provisional_sums": [], "estimates": [], "reply": "one sentence to Stefan saying what happens next"}'
+
+
+def _note_key(f):
+    import hashlib
+    return hashlib.sha1(json.dumps(f, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:16]
+
+
+def note_requests(job, stage, member, ctx):
+    """Stefan's note (a send-back or an answer) asking for provisional sums or team estimates for unpriced items (Stefan, 9 Oct 2026): the
+    lead reads it once; Alice then sends the items it names back to the Cost Surveyor when this job allows that source for them, or says
+    plainly which rule (or this job's own switch) stops it, with where to change it. The lead never just returns the same question.
+    Returns None (no such note), or {'goto': …} to send items back to pricing, or {'conflicts': […], 'summary': …}."""
+    import rules_engine
+    outs = ctx['outputs'] or {}
+    notes = [f for f in ctx.get('feedback') or [] if f.get('from') == 'Stefan']
+    done = set(outs.get('_notes_done') or [])
+    new = [f for f in notes if _note_key(f) not in done]
+    open_ = undecided(outs)
+    if not new or not open_: return None
+    team = teams.get(job['team_id'], job['team_version'])
+    jt = next((x for x in team['job_types'] if x['id'] == job['job_type']), {})
+    ps = _price_stage(jt)
+    if not ps: return None
+    extra = ('STEFAN\'S NOTE TO ACT ON\n' + json.dumps(new, ensure_ascii=False) + '\n\nITEMS STILL UNPRICED (ref | element | description)\n'
+             + '\n'.join(f'{i["ref"]} | {i["element"]} | {i["description"]}' for i in open_)
+             + '\n\nDoes Stefan\'s note ask for provisional sums or team estimates for any of these items? List their refs under provisional_sums '
+               'and estimates ("all" for every item listed). You cannot price them yourself: Alice sends them to the Cost Surveyor when the rules '
+               'allow it, or tells Stefan which rule stops it. Leave both empty when the note asks for something else.')
+    d = _ask(job, member, ctx, stage, REQUEST_SPEC, extra=extra, include_docs=False, what='what Stefan\'s note asks for')
+    cur = teams._row(job['id'])['outputs']                   # read once, acted on once
+    cur['_notes_done'] = list(done | {_note_key(f) for f in new})[-50:]
+    teams._set(job['id'], outputs=cur)
+    have = [i['ref'] for i in open_]
+    pick = lambda xs: have if any(str(x).strip().lower() == 'all' for x in xs or []) else [r for r in dict.fromkeys(str(x).strip() for x in xs or []) if r in have]
+    want = {'provisional': pick(d.get('provisional_sums')), 'estimate': [r for r in pick(d.get('estimates')) if r not in pick(d.get('provisional_sums'))]}
+    if not any(want.values()): return None
+    rs = rules_engine.rate_sources()
+    est_ok = lambda r: 'estimate' in rs['allowed'] or r in estimates_allowed(outs) or estimates_on_job(outs)
+    send, blocked = {}, []
+    for kind, refs in want.items():
+        ok = [r for r in refs if (ps_allowed(outs, r, rs) if kind == 'provisional' else est_ok(r))]
+        bad = [r for r in refs if r not in ok]
+        if ok: send[kind] = ok
+        if bad: blocked.append(conflict(f'{"Provisional sums" if kind == "provisional" else "Estimates"} for {", ".join(bad)} (asked for in your note)', kind, outs, rs, bad))
+    words = {'provisional': 'provisional sums', 'estimate': 'team estimates'}
+    if send:
+        refs = list(dict.fromkeys(r for v in send.values() for r in v))
+        price = dict(outs.get('price') or {})
+        price['estimate_pass'] = refs
+        if blocked: price['conflicts'] = (price.get('conflicts') or []) + blocked
+        what = '; '.join(f'{words[k]} for {", ".join(v)}' for k, v in send.items())
+        said = ' '.join(f'“{teams._clean(f.get("sent_back_because") and "; ".join(f["sent_back_because"]) or f.get("answer"), 400)}”' for f in new)
+        note = (f'Stefan asked for {what}: {said}. Price ONLY these items again'
+                + (', each provisional sum with its range, reasoning and every page cited with its date' if 'provisional' in send else '')
+                + (', each estimate with its reasoning and assumptions' if 'estimate' in send else '') + '.')
+        return {'accept': True, 'summary': teams._clean(f'Sent {", ".join(refs)} back to the Cost Surveyor for {" and ".join(words[k] for k in send)}, as Stefan asked.', 300),
+                'goto': {'stage': ps['key'], 'set': {'price': price}, 'note': note,
+                         'content': {'kind': ', '.join(words[k] for k in send), 'refs': refs, 'note': note, 'by_role': member['role'],
+                                     'stefan': [f.get('sent_back_because') or f.get('answer') for f in new]}}}
+    price = dict(outs.get('price') or {})
+    price['conflicts'] = (price.get('conflicts') or []) + blocked
+    cur = teams._row(job['id'])['outputs']
+    cur['price'] = price
+    teams._set(job['id'], outputs=cur)
+    ctx['outputs']['price'] = price
+    return {'conflicts': blocked, 'summary': teams._clean(' '.join(c_['text'] for c_ in blocked), 600)}
+
+
+def exclusion_lines(items):
+    """Items Stefan excluded as not in scope, as exclusions (never assumptions), with his reason and who decided."""
+    return [f'{i["ref"]} {i["description"]}: not in scope ({(i.get("exclusion") or {}).get("reason", "")}); excluded by {(i.get("exclusion") or {}).get("by") or "you"}.'
+            for i in items if i.get('rate_source') == 'excluded']
+
+
+def exclusions_of(asm, items):
+    """The cost plan's exclusions: the items Stefan excluded first (also when he excluded them after the plan was assembled), then the rest."""
+    return list(dict.fromkeys(exclusion_lines(items) + list(asm.get('exclusions') or [])))
+
+
 def qs_assemble(job, stage, member, ctx):
+    req = note_requests(job, stage, member, ctx)                    # Stefan asked for provisional sums or estimates: acted on first
+    if req and req.get('goto'): return req
     price = (ctx['outputs'] or {}).get('price') or {}
     items = price.get('items') or []
     if not ctx.get('must_accept'):
@@ -748,9 +979,11 @@ def qs_assemble(job, stage, member, ctx):
     loc = price.get('location') or {}
     plan = compute(items, loc.get('factor', 1.0), ctx.get('settings'))
     view = [{'ref': i['ref'], 'element': i['element'], 'description': i['description'], 'quantity': i['quantity'], 'unit': i['unit'],
-             'approximate': i.get('approximate'), 'rate_source': SOURCE_LABELS[i['rate_source']]} for i in items]
-    extra = ('COST PLAN FIGURES (calculated by Alice; do not recalculate)\n' + json.dumps({'items': view, 'totals': {k: plan[k] for k in ('construction', 'prelims', 'contingency', 'fees', 'total')},
-                                                                                           'location': loc.get('note')}, ensure_ascii=False))
+             'approximate': i.get('approximate'), 'rate_source': SOURCE_LABELS[i['rate_source']],
+             **({'excluded_because': (i.get('exclusion') or {}).get('reason', '')} if i['rate_source'] == 'excluded' else {})} for i in items]
+    extra = ('COST PLAN FIGURES (calculated by Alice; do not recalculate)\n' + json.dumps({'items': view, 'totals': {k: plan[k] for k in ('works', 'provisional_total', 'construction', 'prelims', 'contingency', 'fees', 'total')},
+                                                                                           'location': loc.get('note')}, ensure_ascii=False)
+             + '\nProvisional sums are listed in their own section and excluded items under exclusions by Alice: do not list them as assumptions.')
     spec = ('{"accept": true, "reasons": [], "summary": "two or three sentences describing the estimate (no figures)", "assumptions": [], "exclusions": [], '
             '"risks": [{"risk": "", "mitigation": ""}], "note": "hand-off note to the Market Trends QS", "questions": [], "what_changed": ""}')
     d = _ask(job, member, ctx, stage, spec, extra=extra, include_docs=False, what='the cost plan\'s assumptions, exclusions and risks')
@@ -761,11 +994,13 @@ def qs_assemble(job, stage, member, ctx):
     auto += estimate_assumptions(items, plan)
     auto += [f'{i["ref"]} {i["description"]}: quantity read from a drawing, approximate.' for i in items if i.get('approximate')]
     auto.append(loc.get('note') or 'National rates used.')
+    excl = exclusion_lines(items)
     out['output'] = {'cost_plan': plan, 'summary': teams._block(d.get('summary'), 1500),
                      'assumptions': auto + [teams._clean(x, 400) for x in d.get('assumptions') or [] if teams._clean(x, 400)][:30],
-                     'exclusions': [teams._clean(x, 400) for x in d.get('exclusions') or [] if teams._clean(x, 400)][:30],
+                     'exclusions': excl + [teams._clean(x, 400) for x in d.get('exclusions') or [] if teams._clean(x, 400)][:30],
                      'risks': [{'risk': teams._clean(r.get('risk'), 300), 'mitigation': teams._clean(r.get('mitigation'), 300)} for r in d.get('risks') or [] if isinstance(r, dict) and r.get('risk')][:20]}
-    if not out['output']['exclusions']: out['output']['exclusions'] = ['VAT.', 'Land, legal and planning costs.']
+    if len(out['output']['exclusions']) == len(excl): out['output']['exclusions'] += ['VAT.', 'Land, legal and planning costs.']
+    if req: out['summary'] = teams._clean((out.get('summary') or '') + ' ' + req['summary'], 600); out['questions'] = []
     out['accept'] = True
     out['summary'] = out['summary'] or f'Cost plan assembled: £{plan["total"]:,.2f} including preliminaries, contingency and fees'
     return out
@@ -802,7 +1037,7 @@ def history(job, member):
                 if 'RATE |' not in text: continue
                 if not keep(i.get('client') or ''): withheld += 1; continue
                 for m in RATE_LINE.finditer(text):
-                    if m.group('kind').strip() == 'estimate': continue        # a team's estimate is not a market rate to compare with
+                    if m.group('kind').strip() in ('estimate', 'provisional'): continue     # an estimate or a lump sum is not a market rate to compare with
                     rate = _num(m.group('rate'))
                     if rate: out.append({'description': m.group('desc').strip(), 'unit': unit_key(m.group('unit')), 'rate': rate, 'date': m.group('date').strip(),
                                          'source': i['title'], 'kind': m.group('kind').strip()})
@@ -888,7 +1123,7 @@ def qs_trends(job, stage, member, ctx):
     if not ctx.get('must_accept') and not asm.get('cost_plan'):
         return {'accept': False, 'reasons': ['The cost plan was not handed on.'], 'summary': 'Sent back: no cost plan.'}
     outs = ctx['outputs'] or {}
-    items = [i for i in (outs.get('price') or {}).get('items') or [] if i.get('rate') is not None]
+    items = [i for i in (outs.get('price') or {}).get('items') or [] if i.get('rate') is not None and i.get('rate_source') != 'provisional']   # a lump sum is not a rate
     location = teams._clean(((outs.get('plan') or {}).get('location')) or job.get('location'), 120)
     market = _market(job, stage, member, ctx, location, asm.get('cost_plan') or {}) if teams.tool_on(member, 'web_search', 'qs_trends') else None
     past = history(job, member)
@@ -961,11 +1196,15 @@ ADJUST_SPEC = '{"accept": true, "reason": "one or two sentences", "summary": "on
 
 
 def qs_adjust(job, stage, member, ctx):
-    """The Lead QS accepts or rejects the market adjustment the Market Trends QS suggested; Alice applies it (in code) only when accepted."""
+    """The Lead QS accepts or rejects the market adjustment the Market Trends QS suggested; Alice applies it (in code) only when accepted.
+    A note Stefan sent back at sign-off asking for provisional sums or estimates is acted on first (note_requests)."""
+    req = note_requests(job, stage, member, ctx)
+    if req and req.get('goto'): return req
     tr = (ctx['outputs'] or {}).get('trends') or {}
     adj = (tr.get('market') or {}).get('adjustment')
     if not adj:
-        return {'accept': True, 'summary': 'No market adjustment was suggested.', 'output': {'decision': 'none', 'accepted': False, 'pct': 0.0}}
+        return {'accept': True, 'summary': req['summary'] if req else 'No market adjustment was suggested.',
+                'output': {'decision': 'none', 'accepted': False, 'pct': 0.0}}
     cp = ((ctx['outputs'] or {}).get('assemble') or {}).get('cost_plan') or {}
     extra = ('SUGGESTED MARKET ADJUSTMENT (from the Market Trends QS)\n' + json.dumps({'pct': adj['pct'], 'reasoning': adj['reasoning'], 'sources': adj['sources'],
              'findings': (tr.get('market') or {}).get('findings') or []}, ensure_ascii=False)
@@ -973,7 +1212,8 @@ def qs_adjust(job, stage, member, ctx):
     d = _ask(job, member, ctx, stage, ADJUST_SPEC, extra=extra, include_docs=False, what='your decision on the market adjustment')
     ok = d.get('accept') is True
     reason = teams._clean(d.get('reason'), 400) or ('Accepted.' if ok else 'Rejected.')
-    return {'accept': True, 'summary': teams._clean(d.get('summary'), 300) or f'{"Accepted" if ok else "Rejected"} the {adj["pct"]:+g}% market adjustment.',
+    return {'accept': True, 'summary': teams._clean((teams._clean(d.get('summary'), 300) or f'{"Accepted" if ok else "Rejected"} the {adj["pct"]:+g}% market adjustment.')
+                                                    + (' ' + req['summary'] if req else ''), 600),
             'output': {'decision': 'accepted' if ok else 'rejected', 'accepted': ok, 'pct': adj['pct'] if ok else 0.0, 'suggested_pct': adj['pct'],
                        'reason': reason, 'by': member['role'], 'sources': adj['sources']}}
 
@@ -1005,14 +1245,30 @@ def _md(job, out):
     items = price.get('items') or []
     md = [f'**{DRAFT_MARK}**', '', f'Job {teams.ref(job["id"])} · prepared {date.today().strftime("%d %B %Y")}' + (f' · {job["location"]}' if job.get('location') else ''), '',
           '# Summary', asm.get('summary') or '', '', '# Cost summary',
-          '| Element | Subtotal |', '|---|---|'] + [f'| {e["element"]} | {_gbp(e["subtotal"])} |' for e in cp['elements']] + [
+          '| Element | Subtotal |', '|---|---|'] + [f'| {e["element"]} | {_gbp(e["subtotal"])} |' for e in cp['elements']] + (
+          [f'| Measured works subtotal | {_gbp(cp.get("works"))} |', f'| Provisional sums | {_gbp(cp.get("provisional_total"))} |'] if cp.get('provisional') else []) + [
           f'| Construction subtotal | {_gbp(cp["construction"])} |'] + ([f'| Market adjustment ({cp["market_pct"]:+g}%, accepted by the Lead QS) | {_gbp(cp["market_adjustment"])} |']
                                                                       if cp.get('market_adjustment') else []) + [f'| Preliminaries ({cp["percentages"]["prelims_pct"]}%) | {_gbp(cp["prelims"])} |',
           f'| Contingency ({cp["percentages"]["contingency_pct"]}%) | {_gbp(cp["contingency"])} |', f'| Fees ({cp["percentages"]["fees_pct"]}%) | {_gbp(cp["fees"])} |',
-          f'| **Total (excluding VAT)** | **{_gbp(cp["total"])}** |', '', estimated_line(cp), '', (price.get('location') or {}).get('note', ''), '', '# Measured and priced items',
+          f'| **Total (excluding VAT)** | **{_gbp(cp["total"])}** |', '', estimated_line(cp), '', provisional_line(cp), '', (price.get('location') or {}).get('note', ''), '']
+    if cp.get('provisional'):
+        pmap = {i['ref']: i for i in items}
+        md += ['# Provisional sums', 'Lump sums for work the documents do not let the team measure, from typical UK costs found on the web for this '
+               'location and date. Each is included in the total; the range is what the pages found.', '',
+               '| Ref | Element | Work | Range found | Provisional sum |', '|---|---|---|---|---|']
+        md += [f'| {p["ref"]} | {p["element"]} | {p["description"]} | {_gbp(p["low"])} to {_gbp(p["high"])} | {_gbp(p["amount"])} |' for p in cp['provisional']]
+        md += [f'| **Provisional sums subtotal** | | | | **{_gbp(cp["provisional_total"])}** |', '']
+        for p in cp['provisional']:
+            pv = pmap[p['ref']].get('provisional') or {}
+            md.append(f'- {p["ref"]} {p["description"]}: {pv.get("reasoning", "")} Sources: '
+                      + '; '.join(f'{x.get("source_title") or x["source_url"]}, {x["source_url"]} (dated {x["source_date"]}' + (f', {_gbp(x["cost"])}' if x.get('cost') else '') + ')'
+                                  for x in pv.get('sources') or []) + '.')
+        md.append('')
+    md += ['# Measured and priced items',
           '| Ref | Element | Description | Qty | Unit | Rate | Amount | Rate source |', '|---|---|---|---|---|---|---|---|']
     amounts = {l['ref']: l['amount'] for l in cp['lines']}
     for i in items:
+        if i['rate_source'] in ('provisional', 'excluded'): continue          # in their own sections
         md.append(f'| {i["ref"]} | {i["element"]} | {i["description"]}{" (approx.)" if i.get("approximate") else ""} | {i["quantity"]:g} | {i["unit"]} | '
                   f'{_gbp(i.get("rate"))} | {_gbp(amounts.get(i["ref"]))} | {SOURCE_LABELS[i["rate_source"]]} |')
     md += ['', '# Where each rate came from']
@@ -1028,10 +1284,12 @@ def _md(job, out):
             e = i.get('estimate') or {}
             md.append(f'- {i["ref"]}: ESTIMATE by the team (professional judgement), {_gbp(i["rate"])} per {i["unit"]}. {e.get("reasoning", "")}'
                       + (f' Comparables: {"; ".join(_gbp(c_["rate"]) + " " + c_["source_url"] + " (" + c_["source_date"] + ")" for c_ in e["comparables"])}.' if e.get('comparables') else ''))
+        elif i['rate_source'] == 'provisional': md.append(f'- {i["ref"]}: provisional sum of {_gbp(i["rate"])}: see Provisional sums.')
+        elif i['rate_source'] == 'excluded': md.append(f'- {i["ref"]}: excluded, not in scope: see Exclusions.')
         else: md.append(f'- {i["ref"]}: unpriced. {i.get("rate_note", "")}')
     md += ['', '# Where each quantity came from'] + [f'- {i["ref"]}: {i["source_text"]}' + (' (from a drawing: approximate)' if i.get('approximate') else '') for i in items]
     md += ['', '# Assumptions'] + [f'- {a}' for a in asm.get('assumptions') or []]
-    md += ['', '# Exclusions'] + [f'- {a}' for a in asm.get('exclusions') or []]
+    md += ['', '# Exclusions'] + [f'- {a}' for a in exclusions_of(asm, items)]
     md += ['', '# Risks'] + [f'- {r["risk"]}' + (f' Mitigation: {r["mitigation"]}' if r.get('mitigation') else '') for r in asm.get('risks') or []]
     md += ['', '# Market trends']
     mk = tr.get('market') or {}
@@ -1050,7 +1308,7 @@ def _md(job, out):
         md.append(f'- {cmp_["ref"]} {cmp_["description"]}: {_gbp(cmp_["rate_now"])} now; ' + '; '.join(f'{_gbp(p["rate"])} ({p["date"]}, {p["source"]}): {p["difference_pct"]:+.1f}%' for p in cmp_['past']))
     if plan_o.get('plan'): md += ['', '# How the team approached it', plan_o['plan']]
     md += ['', f'*{DRAFT_MARK}. All arithmetic was done by Alice from the team\'s structured answers. Rates without a source are not used; '
-               'team estimates are marked ESTIMATE and listed as assumptions.*']
+               'team estimates are marked ESTIMATE and listed as assumptions; provisional sums are in their own section.*']
     return '\n'.join(md), cp
 
 
@@ -1070,8 +1328,14 @@ def finish(job, team, jt):
          + [[i['ref'], i['element'], i['description'], i['quantity'], i['unit'], 'Yes' if i.get('approximate') else '', i.get('rate'), amounts.get(i['ref']),
              SOURCE_LABELS[i['rate_source']], i.get('source_url') or (i.get('library_row') or {}).get('source')
              or '; '.join(w['source_url'] for w in i.get('working') or []) or (i.get('estimate') or {}).get('reasoning') or i.get('rate_note', ''),
-             i.get('source_date', '')] for i in items]},
+             i.get('source_date', '')] for i in items if i['rate_source'] not in ('provisional', 'excluded')]},
+        *([{'name': 'Provisional sums', 'rows': [['Ref', 'Element', 'Work', 'Range low (GBP)', 'Range high (GBP)', 'Provisional sum (GBP)', 'Reasoning', 'Sources (page, date)']]
+            + [[i['ref'], i['element'], i['description'], (i.get('provisional') or {}).get('low'), (i.get('provisional') or {}).get('high'), amounts.get(i['ref']),
+                (i.get('provisional') or {}).get('reasoning', ''),
+                '; '.join(f'{x["source_url"]} ({x["source_date"]})' for x in (i.get('provisional') or {}).get('sources') or [])] for i in items if i['rate_source'] == 'provisional']
+            + [['Provisional sums subtotal', '', '', '', '', cp.get('provisional_total', 0.0), '', '']]}] if cp.get('provisional') else []),
         {'name': 'Summary', 'rows': [['Line', 'GBP']] + [[e['element'], e['subtotal']] for e in cp['elements']]
+         + ([['Measured works subtotal', cp.get('works', cp['construction'])], ['Provisional sums', cp.get('provisional_total', 0.0)]] if cp.get('provisional') else [])
          + [['Construction subtotal', cp['construction']], [f'Preliminaries {cp["percentages"]["prelims_pct"]}%', cp['prelims']],
             [f'Contingency {cp["percentages"]["contingency_pct"]}%', cp['contingency']], [f'Fees {cp["percentages"]["fees_pct"]}%', cp['fees']],
             ['Market adjustment (accepted by the Lead QS)', cp.get('market_adjustment', 0.0)],
@@ -1083,7 +1347,7 @@ def finish(job, team, jt):
          + [[c_['ref'], c_['description'], c_['unit'], c_['rate_now'], p['rate'], p['date'], p['source'], p['difference_pct']] for c_ in tr.get('comparisons') or [] for p in c_['past']]
          + [[tr.get('report') or '']]
          + [['Market finding', f['finding'], f['kind'], '', '', f['source_date'], f['source_url'], ''] for f in (tr.get('market') or {}).get('findings') or []]},
-        {'name': 'Assumptions', 'rows': [['Type', 'Text']] + [['Assumption', a] for a in asm.get('assumptions') or []] + [['Exclusion', a] for a in asm.get('exclusions') or []]
+        {'name': 'Assumptions', 'rows': [['Type', 'Text']] + [['Assumption', a] for a in asm.get('assumptions') or []] + [['Exclusion', a] for a in exclusions_of(asm, items)]
          + [['Risk', r['risk'] + (' Mitigation: ' + r['mitigation'] if r.get('mitigation') else '')] for r in asm.get('risks') or []]},
     ]
     ver = job.get('version') or 1
@@ -1111,7 +1375,7 @@ def _rate_lines(items):
     return ['RATE | ref | description | unit | rate | source type | source | date'] + [
         f'RATE | {i["ref"]} | {i["description"].replace("|", "/")} | {i["unit"]} | {i["rate"]} | {i["rate_source"]} | '
         f'{(i.get("source_url") or (i.get("library_row") or {}).get("source") or "; ".join(w["source_url"] for w in i.get("working") or [])).replace("|", "/")} | '
-        f'{i.get("source_date") or ""}' for i in items if i.get('rate') is not None]
+        f'{i.get("source_date") or ""}' for i in items if i.get('rate') is not None and i.get('rate_source') != 'provisional']
 
 
 def summary_note(job, team_name):
@@ -1133,7 +1397,12 @@ def summary_note(job, team_name):
              + (f'; market adjustment {cp["market_pct"]:+g}% accepted by {adj.get("by", "the Lead QS")}' if cp.get('market_adjustment') else '') + '.',
              estimated_line(cp) or 'No item was priced by a team estimate.',
              'Estimated: ' + ('; '.join(f'{i["ref"]} {i["description"]} ({_gbp(i["rate"])} per {i["unit"]}): {(i.get("estimate") or {}).get("reasoning", "")[:200]}' for i in est) or 'none') + '.',
+             'Provisional sums: ' + ('; '.join(f'{i["ref"]} {i["description"]} {_gbp(i["rate"])} (range {_gbp((i.get("provisional") or {}).get("low"))} to '
+                                               f'{_gbp((i.get("provisional") or {}).get("high"))})' for i in items if i.get('rate_source') == 'provisional') or 'none')
+             + (f'; subtotal {_gbp(cp.get("provisional_total"))}' if cp.get('provisional') else '') + '.',
              'Left unpriced: ' + ('; '.join(f'{i["ref"]} {i["description"]}' for i in unp) or 'none') + '.',
+             'Excluded (not in scope): ' + ('; '.join(f'{i["ref"]} {i["description"]} ({(i.get("exclusion") or {}).get("reason", "")})' for i in items
+                                                     if i.get('rate_source') == 'excluded') or 'none') + '.',
              f'{DRAFT_MARK}.', '', '# RATES USED'] + _rate_lines(items)
     return f'Cost plan summary: {job["title"]} ({teams.ref(job["id"])})', '\n'.join(lines)
 
@@ -1183,6 +1452,10 @@ def _describe_price(o):
         if i['rate_source'] == 'yours': return 'your rate'
         if i['rate_source'] == 'built_up': return 'built up: ' + '; '.join(f'{w["description"]} {w["quantity_per_unit"]:g} × {_gbp(w["rate"])}' for w in i.get('working') or [])
         if i['rate_source'] == 'estimate': return 'ESTIMATE: ' + (i.get('estimate') or {}).get('reasoning', '')[:300]
+        if i['rate_source'] == 'provisional':
+            pv = i.get('provisional') or {}
+            return f'PROVISIONAL SUM (range {_gbp(pv.get("low"))} to {_gbp(pv.get("high"))}): ' + pv.get('reasoning', '')[:300]
+        if i['rate_source'] == 'excluded': return 'excluded, not in scope: ' + (i.get('exclusion') or {}).get('reason', '')
         return 'unpriced'
     lines = [f'{i["ref"]} {i["description"]}: {_gbp(i["rate"]) + " per " + i["unit"] if i.get("rate") is not None else "no rate"} ({src(i)})' for i in o.get('items') or []]
     return '\n'.join(lines + [(o.get('location') or {}).get('note', '')] + [c_['text'] for c_ in o.get('conflicts') or []])
@@ -1231,8 +1504,8 @@ def load_demo_rates(tid=TEAM_ID):
 
 # ---------------- the job page: unpriced items you decide, and the cost plan so far (Stefan, 7 Oct 2026) ----------------
 # The badges on the job page, one per source (fixed: they protect the output, so an estimate is never shown as anything else).
-VIEW_SOURCES = {'web': 'Published', 'library': 'Library', 'built_up': 'Built up', 'estimate': 'Estimate', 'yours': 'Your rate', 'unpriced': 'Unpriced',
-                'to_price': 'Not priced yet'}
+VIEW_SOURCES = {'web': 'Published', 'library': 'Library', 'built_up': 'Built up', 'estimate': 'Estimate', 'provisional': 'PS', 'yours': 'Your rate',
+                'unpriced': 'Unpriced', 'excluded': 'Excluded', 'to_price': 'Not priced yet'}
 
 
 def undecided(outputs):
@@ -1249,7 +1522,8 @@ def job_view(d, team, jt):
     """For the job page: the decision panel (unpriced items while the job waits on you) and the cost plan so far: each item
     with its quantity, rate, where the rate came from and its amount (worked out here), and a total only once every item is
     priced or marked unpriced."""
-    outs = d['outputs']
+    # the job's own settings (_estimates, _ps, _excluded) are not in the page's outputs, which leave out '_' keys: read them from the job
+    outs = {**{k: v for k, v in teams._row(d['id'])['outputs'].items() if k.startswith('_')}, **d['outputs']}
     members = {m['id']: m for m in team['members']}
     ps = _price_stage(jt)
     lead = (members.get(teams.lead_id(team)) or {}).get('role', 'The lead')
@@ -1259,18 +1533,30 @@ def job_view(d, team, jt):
     decision = None
     if open_ and d['status'] == 'waiting' and d['pending']:
         p = d['pending'][0]
-        state = 'handoff' if p['kind'] == 'handoff' and ps and p['stage'] == ps['key'] else 'signoff' if p['kind'] == 'signoff' else 'other'
+        keys = [x['key'] for x in jt['stages']]
+        later = ps and p['kind'] == 'handoff' and p['stage'] in keys and keys.index(p['stage']) > keys.index(ps['key'])
+        state = ('handoff' if p['kind'] == 'handoff' and ps and p['stage'] == ps['key'] else 'later' if later
+                 else 'signoff' if p['kind'] == 'signoff' else 'other')
         import rules_engine
-        allowed = [rules_engine.RATE_SOURCES[k].lower() for k in rules_engine.rate_sources()['allowed']]
+        rs = rules_engine.rate_sources()
+        allowed = [rules_engine.RATE_SOURCES[k].lower() for k in rs['allowed']]
+        who = (members.get(p['member']) or {}).get('role', 'A member')
         decision = {'lead': lead, 'pricer': pricer, 'step_id': p['id'], 'state': state, 'count': len(open_),
                     'title': f'{lead} needs a decision on {len(open_)} item{"s" if len(open_) != 1 else ""}',
-                    'why': (f'{pricer} could not price these from the sources your rules allow ({", ".join(allowed) or "none"}). '
-                            'Enter a rate for an item, leave it unpriced (excluded from the total and listed as an assumption), or ask the team to '
-                            'estimate them: a team estimate is badged Estimate and listed as an assumption with its reasoning.'),
-                    'can_estimate': state in ('handoff', 'signoff'), 'estimate_rule_on': 'estimate' in rules_engine.rate_sources()['allowed'] or estimates_on_job(outs),
-                    'rule_href': '/admin/rules?rule=rate_sources#rules',
+                    'why': (f'{pricer} could not price these from the sources this job allows ({", ".join(allowed) or "none"}). '
+                            'For each item, enter a rate, leave it unpriced (excluded from the total and listed as an assumption), or exclude it as not '
+                            'in scope (listed under exclusions, with your reason); or ask the team to estimate them (badged Estimate, listed as an '
+                            'assumption) or to give provisional sums (badged PS, in their own section, included in the total).'),
+                    # Ask the team to estimate these / for provisional sums: possible at the hand-off out of pricing, any later hand-off, or at sign-off
+                    'can_estimate': state in ('handoff', 'later', 'signoff'),
+                    'cannot_ask_why': '' if state in ('handoff', 'later', 'signoff') else
+                                      (f'Answer {who}\'s question first' if p['kind'] == 'question' else f'Decide the hand-off from {who} first')
+                                      + ': then you can ask the team to estimate these or give provisional sums.',
+                    'estimate_rule_on': 'estimate' in rs['allowed'] or estimates_on_job(outs),
+                    'ps_on': ps_allowed(outs, rs=rs), 'ps_rule_on': ps_rule_on(rs), 'ps_setting': ps_setting(outs),
+                    'rule_href': RULE_HREF,
                     'items': [{'ref': i['ref'], 'element': i['element'], 'description': i['description'], 'quantity': i['quantity'], 'unit': i['unit'],
-                               'approximate': bool(i.get('approximate'))} for i in open_]}
+                               'approximate': bool(i.get('approximate')), 'unmeasured': bool(i.get('unmeasured'))} for i in open_]}
     price, measure = outs.get('price') or {}, outs.get('measure') or {}
     plan = None
     if price.get('items'):
@@ -1284,16 +1570,20 @@ def job_view(d, team, jt):
             rows.append({'ref': i['ref'], 'element': i['element'], 'description': i['description'], 'quantity': i['quantity'], 'unit': i['unit'],
                          'approximate': bool(i.get('approximate')), 'rate': i.get('rate'), 'source': src, 'source_label': VIEW_SOURCES.get(src, src),
                          'source_url': i.get('source_url') if src == 'web' else '', 'source_title': i.get('source_title') or lib.get('source') or '',
-                         'working': i.get('working') or None, 'estimate': i.get('estimate') or None,
+                         'working': i.get('working') or None, 'estimate': i.get('estimate') or None, 'provisional': i.get('provisional') or None,
+                         'measured': i.get('measured') or None, 'exclusion': i.get('exclusion') or None,
                          'source_date': i.get('source_date') or '', 'note': i.get('rate_note') or '', 'amount': amounts.get(i['ref']),
                          'quantity_source': i.get('source_text') or '', 'decided_by': (i.get('decision') or {}).get('by', ''),
                          'undecided': src == 'unpriced' and not i.get('decision') and not done})
         n_open = sum(1 for r in rows if r['undecided'])
         plan = {'stage': 'price', 'rows': rows, 'counts': {k: sum(1 for r in rows if r['source'] == k) for k in VIEW_SOURCES if k != 'to_price'},
                 'undecided': n_open, 'location_note': loc.get('note', ''), 'factor': cp.get('factor', 1.0),
-                'totals': None if n_open else {k: cp.get(k, 0.0) for k in ('construction', 'prelims', 'contingency', 'fees', 'total', 'estimated', 'estimated_pct',
-                                                                          'market_pct', 'market_adjustment')},
+                'totals': None if n_open else {**{k: cp.get(k, 0.0) for k in ('construction', 'prelims', 'contingency', 'fees', 'total', 'estimated', 'estimated_pct',
+                                                                             'market_pct', 'market_adjustment', 'provisional_total')},
+                                               'works': cp.get('works', cp.get('construction', 0.0))},
                 'estimated_line': '' if n_open else estimated_line(cp),
+                'provisional': cp.get('provisional') or [], 'provisional_total': cp.get('provisional_total', 0.0), 'provisional_line': provisional_line(cp),
+                'exclusions': exclusion_lines(price['items']), 'ps_on': ps_allowed(outs), 'ps_setting': ps_setting(outs), 'ps_rule_on': ps_rule_on(),
                 'elements': None if n_open else cp['elements'], 'percentages': cp.get('percentages'),
                 'assembled': bool(outs.get('assemble')), 'labels': VIEW_SOURCES}
     elif measure.get('items'):
@@ -1307,13 +1597,23 @@ def job_view(d, team, jt):
     conflicts = [] if done else [dict(c_, links=[dict(l, href=here + l['href'] if l['href'].startswith('#') else l['href']) for l in c_.get('links') or []])
                                  for c_ in price.get('conflicts') or []]
     return {'decision': decision, 'plan': plan, 'documents': outs.get('documents') or [], 'conflicts': conflicts, 'lead': lead,
-            'estimates': (outs.get('_estimates') or {}).get('refs') or []}
+            'estimates': (outs.get('_estimates') or {}).get('refs') or [], 'provisional_refs': sorted(ps_refs(outs))}
 
 
 def ask_estimates(jid, refs, note=''):
     """Ask the team to estimate these (Stefan, 8 Oct 2026): allows a team estimate for the chosen unpriced items on THIS job only, whatever
     the rate-source rule says; sends them back to the Cost Surveyor (only those items are priced again), then the Lead QS assembles the
     cost plan again with them listed as estimates, and it comes back for sign-off. Recorded in the job's history with who asked."""
+    return _ask_pass(jid, refs, note, 'estimate')
+
+
+def ask_provisional(jid, refs, note=''):
+    """Ask the team for provisional sums (Stefan, 9 Oct 2026): as Ask the team to estimate these, for a provisional sum on the chosen items
+    of THIS job (allowed for them whatever the rule or this job's switch says)."""
+    return _ask_pass(jid, refs, note, 'provisional')
+
+
+def _ask_pass(jid, refs, note, kind):
     import rules_engine
     j = teams._row(jid)
     if j['status'] != 'waiting': raise ValueError('The team is working on this job: wait until it needs you.')
@@ -1330,25 +1630,34 @@ def ask_estimates(jid, refs, note=''):
     note = teams._block(note, 1000)
     if note: rules_engine.check_outbound(note, 'Digital team note', packs=False)
     p = next((s_ for s_ in teams._steps(jid) if s_['status'] == 'pending'), None)
-    if not p or p['kind'] not in ('handoff', 'signoff') or (p['kind'] == 'handoff' and p['stage'] != ps['key']):
-        raise ValueError('Estimates can be asked for when the pricing is handed on, or at sign-off.')
-    who = teams._actor()
     keys = [s_['key'] for s_ in jt['stages']]
     i = keys.index(ps['key'])
-    allow = outs.get('_estimates') or {'refs': []}
-    allow = {'refs': list(dict.fromkeys(allow['refs'] + refs)), 'by': who, 'at': store.now()}
-    outs['_estimates'] = allow
+    later = p and p['kind'] == 'handoff' and p['stage'] in keys and keys.index(p['stage']) >= i
+    if not p or p['kind'] not in ('handoff', 'signoff') or (p['kind'] == 'handoff' and not later):
+        raise ValueError(('Estimates' if kind == 'estimate' else 'Provisional sums') + ' can be asked for when the pricing is handed on, at a later '
+                         'hand-off, or at sign-off' + (': answer the team\'s question first.' if p and p['kind'] == 'question' else '.'))
+    who = teams._actor()
+    if kind == 'estimate':
+        allow = outs.get('_estimates') or {'refs': []}
+        outs['_estimates'] = {**allow, 'refs': list(dict.fromkeys((allow.get('refs') or []) + refs)), 'by': who, 'at': store.now()}
+        msg = (f'Estimate {", ".join(refs)}: no allowed source priced {"them" if len(refs) != 1 else "it"}, so give your professional judgement of the rate '
+               'with your reasoning, the assumptions you make and any comparable rates you find, cited.' + (f' {note}' if note else ''))
+    else:
+        cur = outs.get('_ps') or {}
+        outs['_ps'] = {**cur, 'refs': list(dict.fromkeys((cur.get('refs') or []) + refs)), 'by': who, 'at': store.now()}
+        msg = (f'Provisional sums for {", ".join(refs)}: search for typical UK costs of this work for the location and date, and propose a lump sum '
+               'for each with the range you found, your reasoning and every page cited with its date.' + (f' {note}' if note else ''))
     outs['price']['estimate_pass'] = refs
     for k in keys[i + 1:] + ['_finished', 'documents', 'summary', 'total']: outs.pop(k, None)
-    msg = (f'Estimate {", ".join(refs)}: no allowed source priced {"them" if len(refs) != 1 else "it"}, so give your professional judgement of the rate '
-           'with your reasoning, the assumptions you make and any comparable rates you find, cited.' + (f' {note}' if note else ''))
     with store.db() as c:
         c.execute("UPDATE team_steps SET status='sent_back', stage=?, decided_at=?, decided_by=?, decision_note=? WHERE id=? AND status='pending'",
                   (ps['key'], store.now(), who, msg, p['id']))
-        store.audit(c, 'team_estimates_asked', jid, 'human_review', f'{teams.ref(jid)} {j["title"]}: estimates allowed on this job for {", ".join(refs)}')
+        store.audit(c, 'team_estimates_asked' if kind == 'estimate' else 'team_provisional_asked', jid, 'human_review',
+                    f'{teams.ref(jid)} {j["title"]}: ' + ('estimates' if kind == 'estimate' else 'provisional sums') + f' allowed on this job for {", ".join(refs)}')
     pm = next((m for m in team['members'] if m['id'] == ps['member']), {})
-    teams._add_step(jid, 'estimates', ps['key'], 'stefan', to_member=ps['member'], status='done',
-                    note=f'You asked {pm.get("role", "the Cost Surveyor")} to estimate {", ".join(refs)} (allowed on this job only).' + (f' Your note: {note}' if note else ''),
+    teams._add_step(jid, 'estimates' if kind == 'estimate' else 'provisional', ps['key'], 'stefan', to_member=ps['member'], status='done',
+                    note=f'You asked {pm.get("role", "the Cost Surveyor")} ' + (f'to estimate {", ".join(refs)}' if kind == 'estimate' else f'for provisional sums for {", ".join(refs)}')
+                         + ' (allowed on this job only).' + (f' Your note: {note}' if note else ''),
                     content={'by': who, 'refs': refs, 'note': note})
     teams._set(jid, status='running', error='', stage=i, outputs=outs)
     teams.kick(jid)
@@ -1398,7 +1707,8 @@ def _restart(jid, j, jt, kind, stage_key, rerun, what, note, refs=None, elements
     teams._add_step(jid, kind, stage_key, 'stefan', to_member=stage['member'], status='done',
                     note=f'You asked for v{v}: {what}' + (f' Your note: {note}' if note else ''),
                     content={'by': who, 'version': v, 'refs': refs or [], 'elements': elements or [], 'note': note,
-                             'order': rerun.get('order'), 'estimates': rerun.get('estimates', False), 'trends': rerun.get('trends', False)})
+                             'order': rerun.get('order'), 'estimates': rerun.get('estimates', False), 'provisional': rerun.get('provisional', False),
+                             'trends': rerun.get('trends', False)})
     teams._set(jid, status='running', error='', holder='', stage=i, outputs=outs)
     teams.kick(jid)
     return teams.job_detail(jid)
@@ -1411,7 +1721,7 @@ def _stage_of(jt, handler):
     return next((s_ for s_ in jt['stages'] if s_.get('handler') == handler), None)
 
 
-def reprice(jid, refs=None, estimates=False, order=None, trends=False, note=''):
+def reprice(jid, refs=None, estimates=False, order=None, trends=False, note='', provisional=False):
     """Re-price a job (waiting, stopped, or signed off) as a new version: only the Cost Surveyor works again, on the chosen
     items (default: every unpriced and estimated item), keeping the measured quantities and every other item's price; Market Trends
     again only if asked; then the Lead QS reassembles the cost plan and it comes back for sign-off. `estimates` allows team estimates
@@ -1424,24 +1734,25 @@ def reprice(jid, refs=None, estimates=False, order=None, trends=False, note=''):
     if not items: raise ValueError('Nothing has been priced on this job yet.')
     have = [i['ref'] for i in items]
     refs = [r for r in dict.fromkeys(str(x) for x in refs or []) if r]
-    if not refs: refs = [i['ref'] for i in items if i.get('rate_source') in ('unpriced', 'estimate')]
+    if not refs: refs = [i['ref'] for i in items if i.get('rate_source') in ('unpriced', 'estimate', 'provisional')]
     if not refs: raise ValueError('Every item has a rate that is not an estimate: choose the items to re-price.')
     bad = [r for r in refs if r not in have]
     if bad: raise ValueError(f'{", ".join(bad)}: not an item on this job.')
     order = _clean_order(order)
     ts, ad = _stage_of(jt, 'qs_trends'), _stage_of(jt, 'qs_adjust')
     keep = [x['key'] for x in (ts, ad) if x] if not trends else []
-    rerun = {'refs': refs, 'order': order, 'estimates': bool(estimates), 'trends': bool(trends) and bool(ts), 'keep': keep,
+    rerun = {'refs': refs, 'order': order, 'estimates': bool(estimates), 'provisional': bool(provisional), 'trends': bool(trends) and bool(ts), 'keep': keep,
              'previous': {'price': outs.get('price'), **({'trends': outs['trends']} if trends and outs.get('trends') else {})}}
     bits = [f're-price {", ".join(refs)}']
     if estimates: bits.append('team estimates allowed for them')
+    if provisional: bits.append('provisional sums allowed for them')
     if order: bits.append('rate sources in the order ' + ', '.join(order))
     if trends and ts: bits.append('Market Trends again')
     keys = [s_['key'] for s_ in jt['stages']]
     return _restart(jid, j, jt, 'reprice', ps['key'], rerun, '; '.join(bits) + '.', note, refs=refs, clear=keys[keys.index(ps['key']) + 1:])
 
 
-def remeasure(jid, elements, estimates=False, order=None, trends=False, note=''):
+def remeasure(jid, elements, estimates=False, order=None, trends=False, note='', provisional=False):
     """Re-measure chosen elements as a new version: the Measurement Surveyor takes them off again (the other elements' items are kept),
     the Cost Surveyor prices only the items measured again, then the cost plan is reassembled and comes back for sign-off."""
     j, team, jt = _rerun_ready(jid)
@@ -1458,10 +1769,11 @@ def remeasure(jid, elements, estimates=False, order=None, trends=False, note='')
     order = _clean_order(order)
     ts, ad = _stage_of(jt, 'qs_trends'), _stage_of(jt, 'qs_adjust')
     keep = [x['key'] for x in (ts, ad) if x] if not trends else []
-    rerun = {'elements': elements, 'order': order, 'estimates': bool(estimates), 'trends': bool(trends) and bool(ts), 'keep': keep,
+    rerun = {'elements': elements, 'order': order, 'estimates': bool(estimates), 'provisional': bool(provisional), 'trends': bool(trends) and bool(ts), 'keep': keep,
              'previous': {'measure': outs.get('measure'), 'price': outs.get('price'), **({'trends': outs['trends']} if trends and outs.get('trends') else {})}}
     bits = [f're-measure {", ".join(elements)}, then price the items measured again']
     if estimates: bits.append('team estimates allowed for them')
+    if provisional: bits.append('provisional sums allowed for them')
     if order: bits.append('rate sources in the order ' + ', '.join(order))
     if trends and ts: bits.append('Market Trends again')
     keys = [s_['key'] for s_ in jt['stages']]
@@ -1480,16 +1792,28 @@ def decide_rates(jid, entries, save_to_library=True, go_on=False):
     items = price.get('items') or []
     open_ = {i['ref']: i for i in undecided(outs)}
     if not open_: raise ValueError('No unpriced items are waiting for a decision.')
-    rates, leave = {}, []
+    rates, leave, exclude = {}, [], {}
+    import rules_engine
     for e in entries or []:
         r = str(e.get('ref') or '')
         if r not in open_: raise ValueError(f'{r or "An item"} is not an unpriced item waiting for a decision.')
+        if e.get('exclude') not in (None, '', False):
+            why = teams._clean(e.get('exclude') if isinstance(e.get('exclude'), str) else e.get('reason'), 200)
+            if not why: raise ValueError(f'{r}: say briefly why it is not in scope (for example: existing manhole, not new work).')
+            rules_engine.check_outbound(why, 'Digital team note', packs=False)
+            exclude[r] = why; continue
         if e.get('unpriced'): leave.append(r); continue
         if e.get('rate') in (None, ''): continue
         v = _num(e.get('rate'))
         if v is None or not 0 < v < 10_000_000: raise ValueError(f'{r}: give a rate above zero in pounds per {open_[r]["unit"]}.')
         rates[r] = float(money(v))
-    if not rates and not leave: raise ValueError('Enter a rate, or tick Leave unpriced, for at least one item.')
+    if not rates and not leave and not exclude:
+        raise ValueError(f'Nothing was decided for {", ".join(open_)}. For each item, enter a rate, tick Leave unpriced or Exclude (with a reason), '
+                         'or ask the team to estimate them or give provisional sums.')
+    rest = [r for r in open_ if r not in rates and r not in leave and r not in exclude]
+    if go_on and rest:                                    # carrying on would silently leave them unpriced: ask instead
+        raise ValueError(f'{", ".join(rest)} {"has" if len(rest) == 1 else "have"} no rate and no decision. For each, enter a rate, tick Leave unpriced '
+                         'or Exclude (with a reason), or ask the team to estimate them or give provisional sums, before carrying on.')
     who, now, today = teams._actor(), store.now(), date.today().isoformat()
     saved = 0
     if rates and save_to_library:                         # through the rate library's own import and checks; a refusal changes nothing
@@ -1504,6 +1828,12 @@ def decide_rates(jid, entries, save_to_library=True, go_on=False):
                       'rate_note': f'Entered by {who}' + (' and saved to the rate library' if saved else ''), 'decision': {'by': who, 'at': now, 'action': 'rate'}})
         elif i['ref'] in leave:
             i.update({'rate_note': f'Left unpriced by {who}', 'decision': {'by': who, 'at': now, 'action': 'unpriced'}})
+        elif i['ref'] in exclude:
+            ex = {'reason': exclude[i['ref']], 'by': who, 'at': now}
+            i.update({'rate': None, 'rate_source': 'excluded', 'exclusion': ex, 'rate_note': f'Excluded by {who}: {exclude[i["ref"]]}',
+                      'decision': {'by': who, 'at': now, 'action': 'excluded'}})
+    if exclude:                                           # kept for the job, so a later pricing pass never prices them again
+        outs['_excluded'] = {**(outs.get('_excluded') or {}), **{r: {'reason': w, 'by': who, 'at': now} for r, w in exclude.items()}}
     outs['price'] = price
     asm = outs.get('assemble')
     if asm:                                               # already assembled: the cost plan is recalculated in code
@@ -1514,6 +1844,9 @@ def decide_rates(jid, entries, save_to_library=True, go_on=False):
             if i['ref'] in leave:
                 asm['assumptions'] = [a for a in asm['assumptions'] if not (a.startswith(i['ref'] + ' ') and 'unpriced' in a)]
                 asm['assumptions'].insert(0, f'{i["ref"]} {i["description"]}: left unpriced by {who}; excluded from the total.')
+            elif i['ref'] in exclude:                     # an exclusion, never an assumption
+                asm['assumptions'] = [a for a in asm['assumptions'] if not (a.startswith(i['ref'] + ' ') and 'unpriced' in a)]
+        asm['exclusions'] = exclusions_of(asm, items)
     rebuild = bool(outs.pop('_finished', None))
     if rebuild: outs.pop('documents', None)
     teams._set(jid, outputs=outs)
@@ -1530,12 +1863,13 @@ def decide_rates(jid, entries, save_to_library=True, go_on=False):
                 c.execute('UPDATE team_steps SET content=? WHERE id=?', (json.dumps(content, ensure_ascii=False), r[0]))
     parts = [f'{len(rates)} rate{"s" if len(rates) != 1 else ""} entered as Your rate ({", ".join(f"{r} £{v:,.2f}" for r, v in rates.items())})'] if rates else []
     if leave: parts.append(f'{len(leave)} left unpriced ({", ".join(leave)})')
+    if exclude: parts.append(f'{len(exclude)} excluded as not in scope ({"; ".join(f"{r}: {w}" for r, w in exclude.items())})')
     if saved: parts.append(f'{saved} saved to the rate library')
     note = '; '.join(parts) + '.'
     ps = _price_stage(jt)
     sid = teams._add_step(jid, 'rates', ps['key'] if ps else 'price', 'stefan', status='done', note=note,
                           content={'by': who, 'rates': [{'ref': r, 'description': open_[r]['description'], 'unit': open_[r]['unit'], 'rate': v} for r, v in rates.items()],
-                                   'unpriced': leave, 'saved_to_library': saved})
+                                   'unpriced': leave, 'excluded': [{'ref': r, 'reason': w} for r, w in exclude.items()], 'saved_to_library': saved})
     with store.db() as c:
         c.execute('UPDATE team_steps SET decided_at=?, decided_by=? WHERE id=?', (now, who, sid))
         store.audit(c, 'team_rates_decided', jid, 'human_review', f'{teams.ref(jid)} {j["title"]}: {note}')
@@ -1561,7 +1895,10 @@ def _talk_rules(team, job):
     return {'rate_sources': f'Rates may come from, in this order: {", ".join(rules_engine.RATE_SOURCES[k] for k in rs["allowed"]) or "nothing"}; '
                             f'not allowed: {", ".join(rules_engine.RATE_SOURCES[k] for k in rs["order"] if k not in rs["allowed"]) or "nothing"}.'
                             + (f' On this job Stefan has allowed estimates for {", ".join(allow)}.' if allow else '')
-                            + (' Stefan has allowed team estimates for every item on this job.' if job and estimates_on_job(job.get('outputs')) else '')}
+                            + (' Stefan has allowed team estimates for every item on this job.' if job and estimates_on_job(job.get('outputs')) else '')
+                            + ((' Provisional sums are allowed on this job.' if ps_allowed(job.get('outputs'), rs=rs) else ' Provisional sums are not allowed on this job'
+                                + (' (switched off for it).' if ps_setting(job.get('outputs')) is False else '.')) if job else '')
+                            + (f' Stefan asked for provisional sums for {", ".join(sorted(ps_refs(job.get("outputs"))))}.' if job and ps_refs(job.get('outputs')) else '')}
 
 
 teams.TALK_RULES['qs_price'] = _talk_rules

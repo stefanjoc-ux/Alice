@@ -45,6 +45,7 @@ class RateEntry(BaseModel):
     ref: str = Field(min_length=1, max_length=20)
     rate: float | None = None
     unpriced: bool = False
+    exclude: str = Field('', max_length=200)          # a short reason: the item is not in scope (listed under exclusions)
 
 
 class EstimateIn(BaseModel):
@@ -52,9 +53,14 @@ class EstimateIn(BaseModel):
     note: str = Field('', max_length=1000)
 
 
+class ProvisionalSwitchIn(BaseModel):
+    on: bool
+
+
 class RepriceIn(BaseModel):
     refs: list[str] = Field(default_factory=list, max_length=500)
     estimates: bool = False
+    provisional: bool = False
     order: list[str] = Field(default_factory=list, max_length=6)
     trends: bool = False
     note: str = Field('', max_length=1000)
@@ -63,6 +69,7 @@ class RepriceIn(BaseModel):
 class RemeasureIn(BaseModel):
     elements: list[str] = Field(min_length=1, max_length=40)
     estimates: bool = False
+    provisional: bool = False
     order: list[str] = Field(default_factory=list, max_length=6)
     trends: bool = False
     note: str = Field('', max_length=1000)
@@ -179,6 +186,7 @@ class JobIn(BaseModel):
     template: str | None = Field(None, max_length=400)          # None = the client's or the team's default; '' = Alice's own layout
     autonomy: str = Field('', pattern='^(|approve|signoff)$')
     estimates: bool = False
+    provisional: bool | None = None                              # None = the rule decides; True/False = this job's own switch
 
 
 class InspectIn(BaseModel):
@@ -341,14 +349,24 @@ def teams_job_estimate(d: EstimateIn, jid: str = FPath(pattern=HEX)):
     return _do(team_qs.ask_estimates, jid, d.refs, d.note)
 
 
+@router.post('/admin/api/teams/jobs/{jid}/provisional')
+def teams_job_provisional(d: EstimateIn, jid: str = FPath(pattern=HEX)):
+    return _do(team_qs.ask_provisional, jid, d.refs, d.note)
+
+
+@router.put('/admin/api/teams/jobs/{jid}/provisional')
+def teams_job_provisional_switch(d: ProvisionalSwitchIn, jid: str = FPath(pattern=HEX)):
+    return _do(team_qs.set_provisional, jid, d.on)
+
+
 @router.post('/admin/api/teams/jobs/{jid}/reprice')
 def teams_job_reprice(d: RepriceIn, jid: str = FPath(pattern=HEX)):
-    return _do(team_qs.reprice, jid, d.refs, d.estimates, d.order, d.trends, d.note)
+    return _do(team_qs.reprice, jid, d.refs, d.estimates, d.order, d.trends, d.note, d.provisional)
 
 
 @router.post('/admin/api/teams/jobs/{jid}/remeasure')
 def teams_job_remeasure(d: RemeasureIn, jid: str = FPath(pattern=HEX)):
-    return _do(team_qs.remeasure, jid, d.elements, d.estimates, d.order, d.trends, d.note)
+    return _do(team_qs.remeasure, jid, d.elements, d.estimates, d.order, d.trends, d.note, d.provisional)
 
 
 @router.post('/admin/api/teams/jobs/{jid}/copy')
@@ -556,7 +574,7 @@ async def teams_member_talk(q: TalkIn, tid: str = FPath(pattern=ID), mid: str = 
 @router.post('/admin/api/teams/{tid}/jobs')
 def teams_job_start(j: JobIn, tid: str = FPath(pattern=ID)):
     return _do(teams.start_job, tid, j.job_type, j.title, j.brief, j.location, j.client,
-               [u.model_dump() for u in j.uploads], [p.model_dump() for p in j.library], j.template, j.autonomy, j.estimates)
+               [u.model_dump() for u in j.uploads], [p.model_dump() for p in j.library], j.template, j.autonomy, j.estimates, j.provisional)
 
 
 @router.get('/admin/api/teams/{tid}/rates')

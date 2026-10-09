@@ -531,7 +531,7 @@ def _docs_in(job_id):
         return [dict(r) for r in c.execute('SELECT id, name, kind, source, path, text FROM team_job_docs WHERE job_id=? ORDER BY added_at, name', (job_id,))]
 
 
-def start_job(tid, job_type, title, brief, location='', client='', uploads=(), library=(), template=None, autonomy='', estimates=False):
+def start_job(tid, job_type, title, brief, location='', client='', uploads=(), library=(), template=None, autonomy='', estimates=False, provisional=None):
     """Start a job: uploads are [{name, kind, data (base64) | text}], library [{path, kind}] (pointers into the document sources;
     their text is read at each turn, never stored). Every document is checked before anything is kept. template: a pricing template's
     path ('' = Alice's own layout; None = the client's default, else the team's, else Alice's own). autonomy: 'approve' or 'signoff'
@@ -579,6 +579,7 @@ def start_job(tid, job_type, title, brief, location='', client='', uploads=(), l
         raise ValueError('That template is removed from this team\'s list: add it back on the team\'s Knowledge tab first.')
     if tpath: _template_ok(tpath, cl or org, jt)
     outs = {'_estimates': {'all': True, 'refs': [], 'by': _actor(), 'at': store.now()}} if estimates else {}
+    if provisional is not None: outs['_ps'] = {'on': bool(provisional), 'refs': [], 'by': _actor(), 'at': store.now()}   # this job's own switch
     jid = uuid.uuid4().hex
     with store.db() as c:
         c.execute('INSERT INTO team_jobs(id,team_id,job_type,team_version,title,brief,location,client,status,stage,holder,outputs,created_by,created_at,'
@@ -590,7 +591,8 @@ def start_job(tid, job_type, title, brief, location='', client='', uploads=(), l
                       (uuid.uuid4().hex, jid, name, kind, source, path, text, store.now()))
         store.audit(c, 'team_job_started', jid, 'human_review', f'{ref(jid)} {title} · {team["name"]} v{team["version"]} · {len(docs)} document(s)'
                     + (f' · pricing template {tpath.rsplit("/", 1)[-1]}' if tpath else '') + (' · team estimates allowed' if estimates else '')
-                    + (f' · {AUTONOMY[autonomy].lower()}' if autonomy else ''))
+                    + (f' · {AUTONOMY[autonomy].lower()}' if autonomy else '')
+                    + ('' if provisional is None else f' · provisional sums {"allowed" if provisional else "switched off"} on this job'))
     store.stamp('team_job', jid, space=_job_space(tid))   # who started it, and its space: the team's, if they may add to it
     kick(jid)
     return job(jid)
@@ -726,6 +728,9 @@ def _feedback(steps, stage_key):
             out.append({'from': 'Stefan', 'sent_back_because': [s['decision_note'] or 'No reason given.']})
         elif s['kind'] == 'question' and s['stage'] == stage_key and s['status'] == 'answered':
             out.append({'from': 'Stefan', 'question': s['content'].get('questions', []), 'answer': s['decision_note']})
+        elif s['kind'] == 'request' and s['stage'] == stage_key:
+            out.append({'from': 'Stefan (passed on by the ' + (s['content'].get('by_role') or 'lead') + ')', 'asked_for': s['content'].get('kind', ''),
+                        'refs': s['content'].get('refs') or [], 'note': s['content'].get('note') or s['note']})
         elif s['kind'] in ('reprice', 'remeasure') and s['stage'] == stage_key and s['content'].get('note'):
             out.append({'from': 'Stefan', 'asked_to_' + s['kind']: s['content'].get('refs') or s['content'].get('elements') or [],
                         'version': s['content'].get('version'), 'note': s['content']['note']})
@@ -812,6 +817,9 @@ def _run(jid):
         _add_step(jid, 'turn', st['key'], member['id'], status='done', note=res.get('summary', ''),
                   content={k: res.get(k) for k in ('accept', 'reasons', 'output', 'note', 'questions', 'searches', 'checks', 'concerns', 'parts') if res.get(k) not in (None, '', [])},
                   run_id=res.get('run_id', ''), cost=cost)
+        go = res.get('goto')
+        if go and go.get('stage') in [x['key'] for x in stages]:      # the member sends work back to an earlier stage on Stefan's behalf
+            _goto(jid, stages, go, member); continue
         qs, repeats = _fresh_questions(steps, member['id'], [q for q in (res.get('questions') or []) if _clean(q, 600)], res.get('what_changed'))
         if repeats:                                    # never the same question twice unchanged: the earlier answer stands
             _add_step(jid, 'note', st['key'], member['id'], status='done',
@@ -861,6 +869,20 @@ def _run(jid):
             _set(jid, status='waiting', holder='Stefan'); return
         _set(jid, stage=i + 1)
     _set(jid, status='blocked', error='The team took too many turns without finishing. Look at the steps, then Resume.')
+
+
+def _goto(jid, stages, go, member):
+    """A member sends work back to an earlier stage, for something Stefan asked in a note (e.g. the Lead QS sending unpriced items back to
+    the Cost Surveyor for provisional sums): `set` is merged into the outputs, later stages' work is cleared, and the request is in the
+    job's history as a 'request' step, which reaches that stage as feedback."""
+    keys = [x['key'] for x in stages]
+    t = keys.index(go['stage'])
+    outs = _row(jid)['outputs']
+    outs.update(go.get('set') or {})
+    for k in keys[t + 1:] + ['_finished', 'documents', 'summary', 'total']: outs.pop(k, None)
+    _set(jid, stage=t, outputs=outs)
+    _add_step(jid, 'request', go['stage'], member['id'], to_member=stages[t]['member'], status='done', note=_clean(go.get('note'), 1000),
+              content=go.get('content') or {})
 
 
 def _carry(jid, stages, i):
@@ -1476,6 +1498,7 @@ def copy_job(jid, client='', title=''):
     outs = {first['key']: plan} if keep_plan else {}
     outs['_copied_from'] = {'job': jid, 'ref': ref(jid), 'version': j.get('version') or 1}
     if (j['outputs'].get('_estimates') or {}).get('all'): outs['_estimates'] = {'all': True, 'refs': [], 'by': _actor(), 'at': store.now()}
+    if isinstance((j['outputs'].get('_ps') or {}).get('on'), bool): outs['_ps'] = {'on': j['outputs']['_ps']['on'], 'refs': [], 'by': _actor(), 'at': store.now()}
     import pricing_templates                     # the pricing template is a setting too, if the new client may use it; else that client's default
     tpath, tfrom = j.get('pricing_template') or '', j.get('pricing_template_from') or ''
     try:
