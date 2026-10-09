@@ -11,12 +11,14 @@ Internal until you map it. Alice never writes, changes or removes Purview labels
 import io
 import re
 import zipfile
+import xml.etree.ElementTree as ET
 
 import substrate_store as store
 
 ACTIONS = ('general', 'internal', 'client', 'local', 'block')
 ORDER = {'general': 0, 'internal': 1, 'client': 2, 'local': 3}
 DEFAULT_UNMAPPED = 'internal'
+OFFICE = ('docx', 'docm', 'dotx', 'dotm', 'xlsx', 'xlsm', 'xltx', 'xltm', 'pptx', 'pptm', 'potx', 'potm', 'ppsx', 'ppsm')
 _GUID = r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
 
 with store.db() as c:
@@ -24,26 +26,88 @@ with store.db() as c:
         action TEXT NOT NULL DEFAULT '', files INTEGER NOT NULL DEFAULT 0, first_seen TEXT NOT NULL, last_seen TEXT NOT NULL)''')
 
 
+MAX_PART = 5 * 1024 * 1024        # a label part larger than this is not a real label part: not read
+
+
+def _local(name):
+    """An XML tag or attribute name without its namespace ('{ns}lpwstr' or 'vt:lpwstr' → 'lpwstr')."""
+    return name.rsplit('}', 1)[-1].rsplit(':', 1)[-1]
+
+
+def _attrs(el):
+    return {_local(k): v for k, v in el.attrib.items()}
+
+
+def _part(z, names, wanted, rel_type=None):
+    """The bytes of a package part, found by its relationship type in _rels/.rels when there is one, else by its usual name,
+    ignoring case and a leading slash. None when the part is missing or too large."""
+    by_lower = {n.lower().lstrip('/'): n for n in names}
+    found = None
+    if rel_type and '_rels/.rels' in by_lower:
+        try:
+            root = ET.fromstring(z.read(by_lower['_rels/.rels']))
+            for el in root.iter():
+                a = _attrs(el)
+                if _local(el.tag) == 'Relationship' and a.get('Type', '').rstrip('/').endswith(rel_type) and a.get('Target'):
+                    found = by_lower.get(a['Target'].lower().lstrip('/'))
+                    if found: break
+        except (ET.ParseError, KeyError, zipfile.BadZipFile): found = None
+    found = found or by_lower.get(wanted.lower())
+    if not found or z.getinfo(found).file_size > MAX_PART: return None
+    return z.read(found)
+
+
+def _custom_props(data):
+    """{(guid, key): value} for every MSIP_Label_<guid>_<key> custom property. Read as XML whatever the namespace prefixes, where
+    the vt namespace is declared (on the root, as Office and openpyxl without lxml write it, or on each value, as openpyxl with
+    lxml writes it) and however it is laid out; text that is not well-formed XML is read with a tolerant pattern instead."""
+    found = {}
+    try:
+        for el in ET.fromstring(data).iter():
+            if _local(el.tag) != 'property': continue
+            m = re.fullmatch(r'MSIP_Label_(' + _GUID + r')_(\w+)', (_attrs(el).get('name') or '').strip())
+            if not m: continue
+            value = next((child.text or '' for child in el), el.text or '')
+            found[(m.group(1).lower(), m.group(2))] = value.strip()
+        return found
+    except ET.ParseError:
+        pass
+    xml = data.decode('utf-8', 'replace')
+    for m in re.finditer(r'name\s*=\s*["\']MSIP_Label_(' + _GUID + r')_(\w+)["\'][^>]*>\s*<[\w:.-]+(?:\s[^>]*)?>([^<]*)</', xml):
+        found[(m.group(1).lower(), m.group(2))] = m.group(3).strip()
+    return found
+
+
+def _true(v, default=False):
+    v = (v or '').strip().lower()
+    return default if not v else v in ('true', '1', 'yes')
+
+
 def _from_office(raw):
+    """The label on a Word, Excel or PowerPoint file (any of their template and macro-enabled forms). Read straight from the
+    zip with the standard library, so the result never depends on which XML library wrote or reads the file."""
     try: z = zipfile.ZipFile(io.BytesIO(raw))
-    except zipfile.BadZipFile: return None
+    except (zipfile.BadZipFile, ValueError): return None
     with z:
-        names = set(z.namelist())
-        found = {}
-        if 'docProps/custom.xml' in names:
-            xml = z.read('docProps/custom.xml').decode('utf-8', 'replace')
-            for m in re.finditer(r'name="MSIP_Label_(' + _GUID + r')_(\w+)"[^>]*>\s*<vt:\w+>([^<]*)</vt:\w+>', xml):
-                found.setdefault(m.group(1).lower(), {})[m.group(2)] = m.group(3).strip()
-            enabled = [g for g, v in found.items() if v.get('Enabled', '').lower() == 'true' and v.get('Removed', '').lower() != 'true']
+        names = z.namelist()
+        data = _part(z, names, 'docProps/custom.xml', '/custom-properties')
+        if data:
+            labels = {}
+            for (g, k), v in _custom_props(data).items(): labels.setdefault(g, {})[k] = v
+            enabled = [g for g, v in labels.items() if _true(v.get('Enabled')) and not _true(v.get('Removed'))]
             if enabled:
                 g = enabled[0]
-                return {'id': g, 'name': found[g].get('Name', '')}
-        if 'docMetadata/LabelInfo.xml' in names:
-            xml = z.read('docMetadata/LabelInfo.xml').decode('utf-8', 'replace')
-            for m in re.finditer(r'<clbl:label\b([^>]*)/?>', xml):
-                attrs = dict(re.findall(r'(\w+)="([^"]*)"', m.group(1)))
-                if attrs.get('enabled', '1') in ('1', 'true') and attrs.get('removed', '0') not in ('1', 'true') and attrs.get('id'):
-                    return {'id': attrs['id'].strip('{}').lower(), 'name': ''}
+                return {'id': g, 'name': labels[g].get('Name', '')}
+        data = _part(z, names, 'docMetadata/LabelInfo.xml', '/classificationlabels')
+        if data:
+            try: labels = [_attrs(el) for el in ET.fromstring(data).iter() if _local(el.tag) == 'label']
+            except ET.ParseError:
+                labels = [dict(re.findall(r'(\w+)\s*=\s*["\']([^"\']*)["\']', m.group(1)))
+                          for m in re.finditer(r'<(?:\w+:)?label\b([^>]*)/?>', data.decode('utf-8', 'replace'))]
+            for a in labels:
+                lid = (a.get('id') or '').strip().strip('{}').lower()
+                if re.fullmatch(_GUID, lid) and _true(a.get('enabled'), True) and not _true(a.get('removed')):
+                    return {'id': lid, 'name': ''}
     return None
 
 
@@ -65,7 +129,7 @@ def _from_pdf(raw):
 def read_label(name, raw):
     """The Purview label on a file, as {'id', 'name'}, or None."""
     ext = name.lower().rsplit('.', 1)[-1] if '.' in name else ''
-    if ext in ('docx', 'xlsx', 'pptx', 'docm', 'xlsm'): return _from_office(raw)
+    if ext in OFFICE: return _from_office(raw)
     if ext == 'pdf': return _from_pdf(raw)
     return None
 
