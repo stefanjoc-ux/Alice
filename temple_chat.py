@@ -99,6 +99,10 @@ def analyse(cid,tid):
             vc,va=store.viewer_clause('record','records.id')    # only what this chat's person may see
             memories=[dict(r) for r in c.execute("SELECT id,title,content FROM records WHERE status='approved' AND NOT EXISTS (SELECT 1 FROM memory_archive WHERE record_id=records.id)"+vc+"ORDER BY created_at DESC LIMIT 10",va)]
             existing=[dict(r) for r in c.execute('SELECT kind,title,content FROM temple_suggestions WHERE chat_id=? ORDER BY created_at DESC LIMIT 20',(cid,))]
+        # Each approved memory through the same checks as anything else leaving Alice for a model: one that fails is left out
+        # (never sent) and its rule logs the block. The chat turns were checked when they were sent to the chat model.
+        import rules_engine
+        memories,_=rules_engine.check_each(memories,lambda m:f"{m['title']}\n{m['content']}",'Temple conversation')
         # Complete user messages; assistant text bounded. Newest context wins.
         turns=[];budget=24000
         for r in rows:

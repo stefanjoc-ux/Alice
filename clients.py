@@ -401,7 +401,7 @@ def run_tagging(manual=False, use_model=True):
     try:
         if manual:
             with store.db() as c: c.execute("UPDATE client_tags SET checked_at=NULL WHERE client='' AND suggestion=''")
-        totals = {'checked': 0, 'applied': 0, 'suggested': 0, 'by_alias': 0}
+        totals = {'checked': 0, 'applied': 0, 'suggested': 0, 'by_alias': 0, 'skipped': 0}
         # 1. alias matching: a single unambiguous match is applied; several become a suggestion for review.
         batch = _candidates(limit=5000)
         alias_results, rest = [], []
@@ -421,7 +421,14 @@ def run_tagging(manual=False, use_model=True):
                 return {'status': 'paused', 'message': str(e), **totals}
             valid = {c['name'].lower(): c['name'] for c in clients}
             for i in range(0, min(len(rest), 400), 40):
-                chunk = rest[i:i + 40]
+                whole = rest[i:i + 40]
+                # Each memory or file through the same checks as anything else leaving Alice for a model (as tagging does): one
+                # that fails is never sent, its rule logs the block, and it is marked checked with no client.
+                chunk, skipped = rules_engine.check_each(whole, lambda x: f"{x['title']}\n{x['content']}", 'Temple client tagging')
+                totals['skipped'] += skipped
+                if not chunk:
+                    a, s = _record([(x['type'], x['id'], None, 0.0, '', 'temple') for x in whole], 'suggest' if mode == 'suggest' else 'auto')
+                    totals['checked'] += len(whole); continue
                 payload = json.dumps({'clients': [{'name': c['name'], 'aliases': c['aliases']} for c in clients],
                                       'items': [{'type': x['type'], 'id': x['id'], 'title': x['title'], 'content': x['content']} for x in chunk]},
                                      ensure_ascii=False)
@@ -433,7 +440,7 @@ def run_tagging(manual=False, use_model=True):
                     if (p.type, p.id) not in allowed_ids: continue
                     seen.add((p.type, p.id))
                     results.append((p.type, p.id, valid.get((p.client or '').strip().lower()), p.confidence, p.reason, 'temple'))
-                results += [(t, i2, None, 0.0, '', 'temple') for t, i2 in allowed_ids - seen]
+                results += [(t, i2, None, 0.0, '', 'temple') for t, i2 in {(x['type'], x['id']) for x in whole} - seen]
                 a, s = _record(results, 'suggest' if mode == 'suggest' else 'auto')
                 totals['applied'] += a; totals['suggested'] += s; totals['checked'] += len(results)
         return {'status': 'complete', **totals}

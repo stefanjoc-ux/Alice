@@ -447,6 +447,28 @@ def check_outbound(text, target='chat message', provider=None, packs=True):
             rule_packs.live_check(text, provider, target, redact_text=False)
 
 
+def passes(text, target, provider=None, packs=True):
+    """check_outbound as a yes/no for one item of a batch: False means it must not be sent (its rule has logged the block)."""
+    try:
+        check_outbound(text, target, provider=provider, packs=packs)
+        return True
+    except RuleViolation:
+        return False
+
+
+def check_each(items, text_of, target, provider=None, packs=True):
+    """Before a batch of memories (or other items) goes to a model: check_outbound on EACH one, as Temple's tagging does.
+    Returns (the items that pass, how many were left out). Each one left out is logged by the rule that stopped it (log_block)
+    and is never sent. The rules are read once for the whole batch (speed.scope), not once per item."""
+    import speed
+    kept, skipped = [], 0
+    with speed.scope():
+        for it in items:
+            if passes(text_of(it), target, provider, packs): kept.append(it)
+            else: skipped += 1
+    return kept, skipped
+
+
 def check_file(text, name):
     check_outbound(text, 'upload ' + name, packs=False)
 

@@ -303,9 +303,12 @@ def _review_chat(cid, manual=False):
             rules_engine.check_spend('chat' if manual else 'automation')
         except ValueError as e:
             _finish(cid, 'blocked', error=str(e)); return {'status': 'blocked', 'message': str(e)}
+        vc, va = store.viewer_clause('record', 'r.id')      # only memories the chat's person may see (spaces)
         with store.db() as c:
             memories = [dict(r) for r in c.execute("SELECT title,content FROM records r WHERE status='approved' AND NOT EXISTS "
-                                                   "(SELECT 1 FROM memory_archive a WHERE a.record_id=r.id) ORDER BY created_at DESC LIMIT 25")]
+                                                   "(SELECT 1 FROM memory_archive a WHERE a.record_id=r.id)" + vc + "ORDER BY created_at DESC LIMIT 25", va)]
+        # Each memory through the same checks as the chat itself: one that fails is left out (never sent), its rule logs the block
+        memories, _ = rules_engine.check_each(memories, lambda m: f"{m['title']}\n{m['content']}", 'Temple chat review')
         payload = text + '\n\nEXISTING_MEMORIES: ' + json.dumps(memories, ensure_ascii=False)[:8000]
         try:
             raw, provider = _ask(payload)

@@ -80,31 +80,54 @@ def _review_record(rid):
     kind=(store.record_kinds([rid]).get(rid) or {})
     try: import clients   # loaded before the write transaction below (its first import creates tables)
     except Exception: pass
+    # Read and check first, outside the write transaction: a memory the rules stop is logged (log_block writes), and a write
+    # inside BEGIN IMMEDIATE would wait on itself (CLAUDE.md lessons). The checks are the same as for anything else leaving
+    # Alice for a model: the proposal itself, then each memory it is compared with (one that fails is left out, never sent).
     with store.db() as c:
-        c.execute('BEGIN IMMEDIATE');expire(c)
         record=c.execute('SELECT * FROM records WHERE id=?',(rid,)).fetchone()
-        if not record: raise ValueError('Record not found.')
-        if record['status']!='proposed': raise ValueError('Only proposed records can be reviewed.')
-        if c.execute("SELECT 1 FROM temple_reviews WHERE record_id=? AND status='running'",(rid,)).fetchone():
-            return {'status':'running','message':'A review is already running.'}
         vc,va=store.viewer_clause('record','records.id')
         candidates=[dict(r) for r in c.execute("SELECT id,title,content,source FROM records WHERE status='approved' AND NOT EXISTS (SELECT 1 FROM memory_archive WHERE record_id=records.id)"+vc+"ORDER BY created_at DESC,id",va)]
-        terms=set(re.findall(r'\w{3,}',record['title'].lower()+' '+record['content'].lower()))
-        candidates.sort(key=lambda r:len(terms & set(re.findall(r'\w{3,}',r['title'].lower()+' '+r['content'].lower()))),reverse=True)
-        chosen=[];budget=30000
-        for row in candidates:
-            size=len(json.dumps(row))
-            if len(chosen)>=20:break
-            if size<=budget:chosen.append(row);budget-=size
-        try:
-            import clients
-            owners=clients.clients_for('memory',[rid]+[m['id'] for m in chosen])
-            record=dict(record)|{'client':owners.get(rid,'') or 'General'}
-            chosen=[m|{'client':owners.get(m['id'],'') or 'General'} for m in chosen]
-        except Exception: record=dict(record)
-        if kind.get('kind')=='decision': record=dict(record)|{'kind':'decision','decision':kind.get('decision')}
-        context={'proposal':dict(record),'compared_memories':chosen,'total_approved':len(candidates),
-                 'compared_count':len(chosen),'selection':'Word overlap, then recent; up to 20 complete records within 30,000 JSON characters'}
+    if not record: raise ValueError('Record not found.')
+    if record['status']!='proposed': raise ValueError('Only proposed records can be reviewed.')
+    import speed
+    blocked=''
+    try: rules_engine.check_outbound(f"{record['title']}\n{record['content']}\n{record['source']}",'Temple record review')
+    except rules_engine.RuleViolation as e: blocked=str(e)
+    terms=set(re.findall(r'\w{3,}',record['title'].lower()+' '+record['content'].lower()))
+    candidates.sort(key=lambda r:len(terms & set(re.findall(r'\w{3,}',r['title'].lower()+' '+r['content'].lower()))),reverse=True)
+    chosen=[];budget=30000;left_out=0
+    if not blocked:
+        with speed.scope():
+            for row in candidates:
+                size=len(json.dumps(row))
+                if len(chosen)>=20:break
+                if size>budget:continue
+                if not rules_engine.passes(f"{row['title']}\n{row['content']}\n{row['source']}",'Temple record review'):left_out+=1;continue
+                chosen.append(row);budget-=size
+    try:
+        import clients
+        owners=clients.clients_for('memory',[rid]+[m['id'] for m in chosen])
+        record=dict(record)|{'client':owners.get(rid,'') or 'General'}
+        chosen=[m|{'client':owners.get(m['id'],'') or 'General'} for m in chosen]
+    except Exception: record=dict(record)
+    if kind.get('kind')=='decision': record=dict(record)|{'kind':'decision','decision':kind.get('decision')}
+    context={'proposal':dict(record),'compared_memories':chosen,'total_approved':len(candidates),
+             'compared_count':len(chosen),'selection':'Word overlap, then recent; up to 20 complete records within 30,000 JSON characters'
+             +(f'; {left_out} left out by the rules check (never sent)' if left_out else '')}
+    if blocked: context={'proposal':{'id':rid,'title':record['title']},'compared_memories':[],'not_sent':blocked}
+    with store.db() as c:
+        c.execute('BEGIN IMMEDIATE');expire(c)
+        current=c.execute('SELECT status FROM records WHERE id=?',(rid,)).fetchone()
+        if not current: raise ValueError('Record not found.')
+        if current['status']!='proposed': raise ValueError('Only proposed records can be reviewed.')
+        if c.execute("SELECT 1 FROM temple_reviews WHERE record_id=? AND status='running'",(rid,)).fetchone():
+            return {'status':'running','message':'A review is already running.'}
+        if blocked:
+            error=f'Not reviewed: {blocked} Nothing was sent to Temple\'s model.'
+            c.execute('INSERT INTO temple_reviews(id,record_id,status,provider,model,created_at,finished_at,context,error) VALUES (?,?,?,?,?,?,?,?,?)',
+                      (review_id,rid,'failed',provider,model,store.now(),store.now(),json.dumps(context),error))
+            store.audit(c,'temple_failed',rid,'advisory_only','Review '+review_id+'; record status unchanged: '+error[:300])
+            return {'id':review_id,'status':'failed','error':error}
         c.execute('INSERT INTO temple_reviews(id,record_id,status,provider,model,created_at,context) VALUES (?,?,?,?,?,?,?)',
                   (review_id,rid,'running',provider,model,store.now(),json.dumps(context)))
     for m in chosen: agents.note('read','memory',m['id'],'compared')   # after the transaction: lineage for the Agents page
