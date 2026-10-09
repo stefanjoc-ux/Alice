@@ -2939,6 +2939,12 @@ PAGES['users'] = ('Users and permissions', 'Who can use Alice and what each pers
 SECTIONS['users'] = r'''<section><div class="mem-head"><h2>People</h2><span class="small muted" id="us-mode"></span></div>
 <div id="us-tiles" class="mi-tiles"></div><div class="table-wrap"><table id="us-people" class="mem-table"></table></div>
 <p class="small muted">A person appears here after their first sign-in. Their role is the lower of their Entra role and the role set here; the owner of Alice always has full access.</p></section>
+<section id="us-ho" hidden aria-labelledby="us-ho-title"><div class="mem-head"><h2 id="us-ho-title">Hand over</h2><button type="button" id="us-ho-close" class="secondary">Close</button></div>
+<p class="small muted" id="us-ho-why"></p><div id="us-ho-held"></div><div id="us-ho-list" class="us-ho-list"></div><div id="us-ho-open" class="us-ho-open" hidden></div>
+<form id="us-ho-form" class="us-form"><label>Hand the ticked items over to <select id="us-ho-space" required></select></label>
+<label>Why (kept in the activity log) <input id="us-ho-note" maxlength="500" required placeholder="For example: Mira left on 9 October; her bid notes go to the Bid team"></label>
+<p class="small muted">Each ticked item goes through the sharing check first (personal details, special-category details, anything marked private). What it holds waits on Actions for you to decide. Nothing is deleted.</p>
+<button type="submit" id="us-ho-go">Hand over the ticked items</button></form><div id="us-ho-result" class="small"></div></section>
 <section><div class="mem-head"><h2>Permission profiles</h2><button type="button" id="us-new">New profile</button></div>
 <div id="us-profiles" class="us-profiles"></div></section>
 <section id="us-edit" hidden><div class="mem-head"><h2 id="us-edit-title">Profile</h2><button type="button" id="us-cancel" class="secondary">Close</button></div>
@@ -2956,7 +2962,11 @@ CSS += r'''
 .us-card h3{margin:0 0 4px;font-size:15px}.us-card p{margin:4px 0;font-size:13px}.us-form label{display:block;margin:8px 0;font-size:14px}.us-form input[type=text],.us-form input:not([type]){width:min(480px,100%)}
 .us-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px 16px}.us-grid .us-row{display:flex;gap:8px;align-items:center;justify-content:space-between;font-size:14px;flex-wrap:wrap}
 .us-row select{min-width:96px}.us-caps{display:flex;gap:8px;flex-wrap:wrap;font-size:12px;width:100%}.us-badge{font-size:11px;padding:1px 6px;border-radius:4px;background:#eef3f6;margin-left:6px}
-#us-edit[hidden],#us-delete[hidden]{display:none!important}#us-people td{vertical-align:middle}#us-people select{font-size:13px}
+#us-edit[hidden],#us-delete[hidden],#us-ho[hidden],.us-ho-open[hidden]{display:none!important}
+.us-ho-list h3{margin:14px 0 4px;font-size:15px}.us-ho-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:4px 0;border-bottom:1px solid var(--line);font-size:14px}
+.us-ho-row label{display:flex;gap:8px;align-items:center;flex:1 1 260px;min-width:0}.us-ho-row select{font-size:13px;max-width:100%}
+.us-ho-open{border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:10px 0;background:#fff;max-height:50vh;overflow:auto}
+.us-ho-open pre{white-space:pre-wrap;font:inherit;font-size:14px;margin:6px 0 0}.us-ho-held{border-left:3px solid #eb6834;padding:6px 10px;margin:6px 0;background:#fff8f3;font-size:14px}#us-people td{vertical-align:middle}#us-people select{font-size:13px}
 '''
 SCRIPT += r"""
 if(PAGE==='users'){
@@ -2982,6 +2992,7 @@ if(PAGE==='users'){
    const st=el('td','');const b=el('button',u.status==='active'?'Suspend':'Restore access','secondary');b.type='button';b.disabled=fixed;
    b.onclick=()=>{if(u.status==='active'&&!confirm('Suspend '+(u.name||u.email)+'? They are refused at once, everywhere in Alice.'))return;run(async()=>{try{await api('/admin/api/users/'+u.oid,'PUT',{status:u.status==='active'?'suspended':'active'})}finally{await load()}})};
    st.append(el('span',u.status==='active'?'Active ':'Suspended ','badge '+(u.status==='active'?'v-ok':'v-bad')),b);
+   if(D.handover&&u.oid in D.handover){const ho=el('button','Hand over ('+D.handover[u.oid]+')','secondary');ho.type='button';ho.title='Their personal space stays private until you hand items over';ho.onclick=()=>handOver(u.oid);st.append(' ',ho)}
    tr.append(who,rc,pc,st,el('td',when(u.first_seen)),el('td',when(u.last_seen)));t.append(tr)}
   if(!D.users.length){const tr=document.createElement('tr');const td=el('td',D.owner_configured?'Nobody has signed in yet.':'Alice is running on this computer only: there is no sign-in, so whoever is here is the owner.');td.colSpan=6;tr.append(td);t.append(tr)}
   $('us-profiles').replaceChildren(...D.profiles.map(p=>{const c=el('div','','us-card');c.append(el('h3',p.name),el('p',p.description||'','muted'),el('p',summary(p.levels),'small'),el('p',p.people+(p.people===1?' person':' people'),'small muted'));
@@ -3009,6 +3020,38 @@ if(PAGE==='users'){
  $('us-form').onsubmit=e=>{e.preventDefault();run(async()=>{const body={name:$('us-name').value,description:$('us-desc').value,levels:collect()};
   if(editing)await api('/admin/api/permission-profiles/'+editing.id,'PUT',body);else await api('/admin/api/permission-profiles','POST',body);
   $('notice').textContent='Profile saved.';$('us-edit').hidden=true;await load()})};
+ // Hand over (handover.py): a departing person's personal-space items, titles only; content only when you open one
+ let HO=null;
+ async function handOver(oid){HO=await api('/admin/api/users/'+encodeURIComponent(oid)+'/handover');drawHO();$('us-ho').hidden=false;$('us-ho').scrollIntoView({behavior:'smooth',block:'start'})}
+ function drawHO(){const p=HO.person;$('us-ho-title').textContent='Hand over: '+(p.name||p.email||p.oid);
+  $('us-ho-why').textContent=p.why+'. '+HO.total+(HO.total===1?' item':' items')+' in their personal space. '+HO.note;
+  $('us-ho-held').replaceChildren(...(HO.held.length?[el('h3','Held by the sharing check')]:[]),...HO.held.map(h=>{const d=el('div','','us-ho-held');
+   d.append(el('b',h.title+' → '+(h.to_name||'a shared space')),el('div','Held because: '+(h.reasons.join(' ')||'personal or private details.'),'small'));
+   const sh=el('button','Share anyway','secondary'),kp=el('button','Keep in their personal space','secondary');sh.type=kp.type='button';
+   sh.onclick=()=>{const note=prompt('Why share it anyway? (kept in the activity log)');if(!note)return;run(async()=>{await api('/admin/api/handover/held/'+h.id,'POST',{action:'share',note});await handOver(p.oid)})};
+   kp.onclick=()=>run(async()=>{await api('/admin/api/handover/held/'+h.id,'POST',{action:'keep'});await handOver(p.oid)});d.append(sh,' ',kp);return d}));
+  const L=$('us-ho-list');L.replaceChildren();
+  if(!HO.groups.length)L.append(el('p','Nothing left in their personal space to hand over.','small muted'));
+  for(const g of HO.groups){L.append(el('h3',g.label+' ('+g.items.length+')'));
+   for(const it of g.items){const r=el('div','','us-ho-row');const lb=el('label','');const cb=document.createElement('input');cb.type='checkbox';cb.dataset.type=it.type;cb.dataset.id=it.id;
+    lb.append(cb,el('span',(it.ref?it.ref+' ':'')+it.title));r.append(lb);
+    if(!it.classified){const c=document.createElement('select');c.dataset.cat=it.id;c.setAttribute('aria-label','Category for '+it.title);const o0=el('option','No category: choose one to hand it over');o0.value='';c.append(o0);
+     for(const n of HO.categories){const o=el('option',n);o.value=n;c.append(o)}r.append(c)}
+    if(it.private)r.append(el('span','Marked private','badge v-bad'));
+    const op=el('button','Open','secondary');op.type='button';op.onclick=()=>run(async()=>{const x=await api('/admin/api/users/'+encodeURIComponent(p.oid)+'/handover/item?type='+encodeURIComponent(it.type)+'&id='+encodeURIComponent(it.id));
+     const b=$('us-ho-open');b.replaceChildren(el('b',x.title),el('pre',x.text));const c=el('button','Close','secondary');c.type='button';c.onclick=()=>{b.hidden=true};b.append(c);b.hidden=false;b.scrollIntoView({behavior:'smooth',block:'nearest'})});
+    r.append(op);L.append(r)}}
+  const s=$('us-ho-space');s.replaceChildren(...(HO.spaces.length?HO.spaces.map(x=>{const o=el('option',x.name+(x.client?' (tied to '+x.client+')':''));o.value=x.id;return o}):[el('option','No shared space you manage: make one on Spaces first')]));
+  $('us-ho-go').disabled=!HO.spaces.length||!HO.groups.length;$('us-ho-result').textContent=''}
+ $('us-ho-close').onclick=()=>{$('us-ho').hidden=true;HO=null};
+ $('us-ho-form').onsubmit=e=>{e.preventDefault();if(!HO)return;const items=[...document.querySelectorAll('#us-ho-list input[type=checkbox]:checked')].map(c=>({type:c.dataset.type,id:c.dataset.id}));
+  const categories={};for(const c of document.querySelectorAll('#us-ho-list select[data-cat]'))if(c.value)categories[c.dataset.cat]=c.value;
+  if(!items.length){$('notice').textContent='Tick the items to hand over.';return}
+  run(async()=>{const r=await api('/admin/api/users/'+encodeURIComponent(HO.person.oid)+'/handover','POST',{items,space:$('us-ho-space').value,note:$('us-ho-note').value,categories});
+   const oid=HO.person.oid;await handOver(oid);await load();
+   const res=$('us-ho-result');res.replaceChildren(el('p',r.moved.length+' handed over, '+r.held.length+' held by the sharing check (listed above and on Actions), '+r.refused.length+' not moved.'));
+   for(const x of r.refused)res.append(el('div','Not moved: '+(x.title||x.id)+': '+x.reasons.join(' '),'small'))})};
+ const hm=location.hash.match(/^#handover=([0-9a-z-]+)$/);if(hm)run(()=>handOver(hm[1]));
  $('us-new').onclick=()=>edit(null);$('us-cancel').onclick=()=>{$('us-edit').hidden=true};
  $('us-delete').onclick=()=>{if(!editing||!confirm('Delete the profile '+editing.name+'?'))return;run(async()=>{await api('/admin/api/permission-profiles/'+editing.id,'DELETE');$('us-edit').hidden=true;await load()})};
  run(load);

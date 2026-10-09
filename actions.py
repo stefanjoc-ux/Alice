@@ -222,6 +222,17 @@ def _summary():
                         'Before anything enters a shared space, Alice and Temple check it for personal details about you or anyone else, '
                         'special-category details and anything marked private. Open Spaces to share it anyway or keep it personal.' if sh else ''))
 
+    # 10c. Hand-over items the sharing check held (handover.py): an Owner decides, on Users and permissions
+    try: ho = spaces.handover_held() if me.full and me.role == 'owner' else []
+    except Exception: ho = []
+    out.append(_section('handover', 'Hand-over items the sharing check held', len(ho), '/admin/users',
+                        [{'type': 'link', 'id': h['id'], 'title': f"{h['title']} → {h['to_name'] or 'a shared space'}",
+                          'detail': f"From {h['from_name']}'s personal space ({h['type_label']}). Held because: " + ' '.join(h['reasons'] or ['personal or private details.'])
+                                    + (f" Your reason for handing it over: {h['note']}" if h.get('note') else ''),
+                          'href': '/admin/users#handover=' + h['author_key']} for h in ho],
+                        'When you hand over a departing person\'s work, each item goes through the same sharing check as any share. '
+                        'These were held: open Users and permissions to share one anyway (with a reason) or keep it in their personal space.' if ho else ''))
+
     # 11. Research guidance Temple suggested in a discussion about a run: saved only when you approve it on the organisation's page
     try:
         from urllib.parse import quote

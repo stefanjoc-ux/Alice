@@ -244,6 +244,9 @@ ROUTES = {
     'GET /admin/api/users': 'admin', 'PUT /admin/api/users/{oid}': 'admin', 'POST /admin/api/permission-profiles': 'admin',
     'PUT /admin/api/permission-profiles/{pid}': 'admin', 'DELETE /admin/api/permission-profiles/{pid}': 'admin',
     'GET /admin/api/permissions/catalogue': 'admin', 'GET /admin/api/my-access': 'any',
+    # hand over a departing person's personal-space work (handover.py): Owner role only
+    'GET /admin/api/users/{oid}/handover': 'full', 'GET /admin/api/users/{oid}/handover/item': 'full',
+    'POST /admin/api/users/{oid}/handover': 'full', 'POST /admin/api/handover/held/{mid}': 'full',
     # what's new (changelog.py): the change log, releases and setup steps run (Admin or Owner)
     'GET /admin/api/whats-new': 'admin',
     # spaces: everyone has at least their personal space; spaces.py decides who may manage, share or move what
