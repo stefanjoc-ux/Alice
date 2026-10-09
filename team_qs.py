@@ -1357,9 +1357,9 @@ def ask_estimates(jid, refs, note=''):
 
 # ---------------- Re-price and Re-measure: a new version of the job (Stefan, 8 Oct 2026) ----------------
 def _rerun_ready(jid):
-    """The job and its team for a re-run: only when the team is not working on it (waiting for you, stopped by a failure, or signed off)."""
+    """The job and its team for a re-run: only when the team is not working on it (waiting for you, stopped by a failure or by you,
+    or signed off). A stopped job re-runs as a new version like any other (Stefan, 9 Oct 2026)."""
     j = teams._row(jid)
-    if j['status'] == 'stopped': raise ValueError('This job was stopped. Copy it as a new job instead.')
     if j['status'] == 'running' or jid in teams._ACTIVE: raise ValueError('The team is working on this job: wait until it needs you or is signed off.')
     team, jt = teams._job_team(j)
     return j, team, jt
@@ -1412,7 +1412,7 @@ def _stage_of(jt, handler):
 
 
 def reprice(jid, refs=None, estimates=False, order=None, trends=False, note=''):
-    """Re-price a job (waiting, stopped by a failure, or signed off) as a new version: only the Cost Surveyor works again, on the chosen
+    """Re-price a job (waiting, stopped, or signed off) as a new version: only the Cost Surveyor works again, on the chosen
     items (default: every unpriced and estimated item), keeping the measured quantities and every other item's price; Market Trends
     again only if asked; then the Lead QS reassembles the cost plan and it comes back for sign-off. `estimates` allows team estimates
     for these items on this re-run; `order` is a different order of the rate sources for this re-run (what is allowed stays the rule's)."""

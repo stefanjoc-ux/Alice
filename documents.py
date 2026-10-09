@@ -17,6 +17,7 @@ import substrate_store as store
 
 FORMATS = {'docx': ('Word', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'),
            'xlsx': ('Excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
+           'xlsm': ('Excel (macro-enabled)', 'application/vnd.ms-excel.sheet.macroEnabled.12'),     # filled pricing templates only (keep)
            'pdf': ('PDF', 'application/pdf')}
 MAX_TEXT, MAX_ROWS, MAX_SHEETS, MAX_COLS = 200_000, 20_000, 20, 60
 
@@ -342,7 +343,7 @@ def to_pdf(title, content):
 def create(fmt, title, content='', sheets=None, chat_id=''):
     """Build, check and keep a document. Returns {id, name, format, size}."""
     import rules_engine
-    if fmt not in FORMATS: raise ValueError('Format must be docx, xlsx or pdf.')
+    if fmt not in ('docx', 'xlsx', 'pdf'): raise ValueError('Format must be docx, xlsx or pdf.')
     title = ' '.join((title or '').split())[:150]
     if not title: raise ValueError('Give the document a title.')
     content = content or ''

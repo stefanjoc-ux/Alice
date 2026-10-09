@@ -575,6 +575,8 @@ def start_job(tid, job_type, title, brief, location='', client='', uploads=(), l
         docs.append((p.name, l.get('kind') if l.get('kind') in DOC_KINDS else 'spec', 'library', rel, ''))
     if template is None: tpath, tfrom = pricing_templates.default_for(team, cl or org)
     else: tpath, tfrom = pricing_templates._rel(template), 'chosen' if template else ''
+    if tpath and template is not None and tpath in pricing_templates.hidden_paths(tid):
+        raise ValueError('That template is removed from this team\'s list: add it back on the team\'s Knowledge tab first.')
     if tpath: _template_ok(tpath, cl or org, jt)
     outs = {'_estimates': {'all': True, 'refs': [], 'by': _actor(), 'at': store.now()}} if estimates else {}
     jid = uuid.uuid4().hex
@@ -608,16 +610,18 @@ def set_job_template(jid, path):
     """Change a job's pricing template ('' = Alice's own layout). Before measuring it is simply used; once the items are priced the
     template is filled again from the same items, without re-running the team."""
     import pricing_templates
-    j = _row(jid)
-    if j['status'] == 'stopped': raise ValueError('This job was stopped.')
+    j = _row(jid)           # a stopped job may change its template too: no member works again (Stefan, 9 Oct 2026)
     team, jt = _job_team(j)
     path = pricing_templates._rel(path)
-    if path: _template_ok(path, j['client'], jt)
+    if path:
+        if path != (j.get('pricing_template') or '') and path in pricing_templates.hidden_paths(j['team_id']):
+            raise ValueError('That template is hidden from this team\'s list: add it back on the team\'s Knowledge tab first.')
+        _template_ok(path, j['client'], jt)
     _set(jid, pricing_template=path, pricing_template_from='chosen' if path else '')
     with store.db() as c:
         store.audit(c, 'team_job_template', jid, 'human_review', f'{ref(jid)} {j["title"]}: pricing template ' + (path.rsplit('/', 1)[-1] if path else "Alice's own layout"))
     j = _row(jid)
-    if j['outputs'].get('_finished') or j['status'] == 'done':
+    if j['outputs'].get('_finished') or j['status'] in ('done', 'stopped'):
         refill_template(jid)
     return job_page(jid)
 
@@ -1292,27 +1296,71 @@ def _complete(job, team, jt):
     return job_detail(job['id'])
 
 
-def resume(jid):
+def resume(jid, note=''):
     job = _row(jid)
-    if job['status'] in ('done', 'stopped'): raise ValueError('This job has finished.')
+    if job['status'] == 'done': raise ValueError('This job has finished.')
+    if job['status'] == 'stopped': return _resume_stopped(jid, job, note)
     if job['status'] == 'running' and jid in _ACTIVE: return job_detail(jid)
     _set(jid, status='running', error='')
     kick(jid)
     return job_detail(jid)
 
 
+STOP_NOTE = 'Withdrawn when the job stopped'
+
+
 def stop(jid):
     job = _row(jid)
     if job['status'] in ('done', 'stopped'): raise ValueError('This job has already finished.')
     with store.db() as c:
-        c.execute("UPDATE team_steps SET status='withdrawn' WHERE job_id=? AND status='pending'", (jid,))
+        c.execute("UPDATE team_steps SET status='withdrawn', decided_at=?, decided_by=?, decision_note=? WHERE job_id=? AND status='pending'",
+                  (store.now(), _actor(), STOP_NOTE, jid))
         store.audit(c, 'team_job_stopped', jid, 'human_control', f'{ref(jid)} {job["title"]} stopped')
     _set(jid, status='stopped', holder='')
     return job_detail(jid)
 
 
+def _resume_stopped(jid, job, note=''):
+    """Resume a stopped job as a new version (Stefan, 9 Oct 2026): it carries on exactly where it stopped. A hand-off or question
+    withdrawn by the stop waits for you again; a sign-off rebuilds the documents under the new version and waits for your sign-off;
+    a job stopped while a member worked (or after a failure) goes on from that stage. Nothing done so far is run again."""
+    import rules_engine
+    if jid in _ACTIVE: raise ValueError('The team is still finishing a turn on this job: try again in a moment.')
+    team, jt = _job_team(job)
+    note = _block(note, 1000)
+    if note: rules_engine.check_outbound(note, 'Digital team note', packs=False)
+    cur = job.get('version') or 1
+    # the decisions the stop withdrew (older stops left no note; a re-price or re-measure's withdrawals say "Replaced by …")
+    held = [s for s in _steps(jid) if s['status'] == 'withdrawn' and (s.get('version') or 1) == cur and s['kind'] in ('handoff', 'question', 'signoff')
+            and (s.get('decision_note') or '') in ('', STOP_NOTE)]
+    v = new_version(jid, 'resume', 'Resumed where it stopped', note)
+    outs = _row(jid)['outputs']
+    upd = {'status': 'running', 'error': '', 'holder': ''}
+    again = []
+    for s in held:
+        if s['kind'] == 'signoff':                       # rebuilt by _finish for this version (documents named vN), then your sign-off
+            for k in ('_finished', 'documents', 'summary', 'total'): outs.pop(k, None)
+            upd.update(stage=len(jt['stages']), outputs=outs)
+            again.append('your sign-off')
+        else:
+            _add_step(jid, s['kind'], s['stage'], s['member'], to_member=s['to_member'], status='pending', note=s['note'], content=s['content'])
+            again.append({'handoff': 'the hand-off', 'question': 'the question'}[s['kind']])
+    with store.db() as c:
+        for s in held: c.execute('UPDATE team_steps SET decision_note=? WHERE id=?', (f'Waiting again in v{v} (resumed)', s['id']))
+        store.audit(c, 'team_job_resumed', jid, 'human_control', f'{ref(jid)} {job["title"]}: resumed as v{v}' + (f' · {note[:200]}' if note else ''))
+    keys = [s_['key'] for s_ in jt['stages']]
+    i = upd.get('stage', job['stage'])
+    where_ = (keys[i] if i < len(keys) else (keys[-1] if keys else ''))
+    _add_step(jid, 'resume', where_, 'stefan', status='done',
+              note=f'You resumed the job as v{v}: ' + (f'{" and ".join(dict.fromkeys(again))} waits for you again.' if again else 'the team carries on where it stopped.')
+                   + (f' Your note: {note}' if note else ''), content={'by': _actor(), 'version': v, 'note': note})
+    _set(jid, **upd)
+    kick(jid)
+    return job_detail(jid)
+
+
 # ---------------- versions of a job, and copying one (Stefan, 8 Oct 2026) ----------------
-VERSION_KINDS = {'first': 'First run', 'reprice': 'Re-priced', 'remeasure': 'Re-measured'}
+VERSION_KINDS = {'first': 'First run', 'reprice': 'Re-priced', 'remeasure': 'Re-measured', 'resume': 'Resumed'}
 
 
 def _signed_off(c, jid):
@@ -1431,6 +1479,7 @@ def copy_job(jid, client='', title=''):
     import pricing_templates                     # the pricing template is a setting too, if the new client may use it; else that client's default
     tpath, tfrom = j.get('pricing_template') or '', j.get('pricing_template_from') or ''
     try:
+        if tpath in pricing_templates.hidden_paths(j['team_id']): raise ValueError('removed from the team\'s list')
         if tpath: _template_ok(tpath, new_client, jt)
     except ValueError:
         tpath, tfrom = pricing_templates.default_for(get(j['team_id']), new_client)
@@ -2002,7 +2051,8 @@ def _job_template(j):
     import pricing_templates
     t = pricing_templates.for_job(j)
     team = get(j['team_id'])
-    choices = pricing_templates.in_folder(pricing_templates.team_settings(team)['folder'])
+    gone = pricing_templates.hidden_paths(j['team_id'])            # removed from the team's list; the job keeps its own template
+    choices = [x for x in pricing_templates.in_folder(pricing_templates.team_settings(team)['folder']) if x['path'] not in gone]
     fills = pricing_templates.fills(j['id'])
     return {**t, 'choices': choices, 'fill': j['outputs'].get('template_fill'), 'fills': [{k: f[k] for k in ('version', 'doc_id', 'library_path', 'client', 'differences', 'created_at')} for f in fills][-6:],
             'measured': bool((j['outputs'].get('measure') or {}).get('items'))}
@@ -2172,11 +2222,11 @@ def job_page(jid):
     raw = raw_job['outputs']
     rr = raw.get('_rerun') or {}
     handlers = {s.get('handler') for s in jt['stages']}
-    idle = d['status'] in ('waiting', 'blocked', 'done') and not d['busy']
+    idle = d['status'] in ('waiting', 'blocked', 'done', 'stopped') and not d['busy']
     figs = team_costs.staff(d['team_id'])
     can = {'reprice': idle and 'qs_price' in handlers and bool((raw.get('price') or {}).get('items')),
            'remeasure': idle and 'qs_measure' in handlers and bool((raw.get('measure') or {}).get('items')) and bool((raw.get('plan') or {}).get('elements')),
-           'copy': True}
+           'resume': d['status'] == 'stopped' and not d['busy'], 'copy': True}
     return {**d, 'identity': identity(now), 'team': {'id': now['id'], 'name': now['name'], 'href': team_url(now['id'])},
             'costs': team_costs.job(jid) if _cap(d['team_id'], 'costs') else None, 'versions': job_versions(jid), 'can': can, 'elements': (raw.get('plan') or {}).get('elements') or [],
             'rerun': {k: rr.get(k) for k in ('kind', 'version', 'from_version', 'refs', 'elements', 'by', 'note', 'order', 'estimates', 'trends')} if rr else None,
