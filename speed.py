@@ -11,6 +11,7 @@ Kept in memory and written to the database once a minute by a background thread 
   speed_slow    the last 500 slow requests (> 1 s), each with its breakdown
 Shown on the Speed page (Records and settings); 30 days kept.
 """
+import contextlib
 import contextvars
 import threading
 import time
@@ -42,6 +43,17 @@ def memo(key, fn):
     if m is None: return fn()
     if key not in m.cache: m.cache[key] = fn()
     return m.cache[key]
+
+
+@contextlib.contextmanager
+def scope():
+    """Work outside a web request that reads the rules many times (a batch checked item by item before it goes to a model)
+    reuses what it loaded, as a request does. Inside a request it changes nothing."""
+    if CURRENT.get() is not None:
+        yield; return
+    token = CURRENT.set(Meter())
+    try: yield
+    finally: CURRENT.reset(token)
 
 
 def forget(key):

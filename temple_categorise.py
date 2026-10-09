@@ -75,23 +75,28 @@ def run(ids=None, manual=False):
         cats = store.list_categories()['categories']
         if not cats: return {'status': 'no_categories'}
         names = {c['name'].lower(): c['name'] for c in cats}
-        totals = {'checked': 0, 'applied': 0, 'suggested': 0}
+        totals = {'checked': 0, 'applied': 0, 'suggested': 0, 'skipped': 0}
         if manual: store.reset_temple_checks(ids)          # re-examine earlier 'no fit' results
         for _ in range(10):                                   # at most 400 memories per run
             batch = store.temple_candidates(ids, limit=BATCH)
             if not batch: break
-            payload = json.dumps({'categories': [{'name': c['name'], 'description': c['description']} for c in cats],
-                                  'memories': batch}, ensure_ascii=False)
-            raw = _ask(payload).strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
-            parsed = Assignments.model_validate_json(raw)
-            allowed = {b['id'] for b in batch}
+            # Each memory through the same checks as anything else leaving Alice for a model (as tagging does): one that fails
+            # is never sent, its rule logs the block, and it is marked checked with no category so it is not tried again.
+            send, skipped = rules_engine.check_each(batch, lambda m: f"{m['title']}\n{m['content']}", 'Temple categorise')
+            totals['skipped'] += skipped
             results = []
-            for a in parsed.assignments:
-                if a.id not in allowed: continue                # ignore invented IDs
-                name = names.get((a.category or '').strip().lower()) if a.category else None
-                results.append((a.id, name, a.confidence, a.reason))   # unknown category -> treated as no fit
+            if send:
+                payload = json.dumps({'categories': [{'name': c['name'], 'description': c['description']} for c in cats],
+                                      'memories': send}, ensure_ascii=False)
+                raw = _ask(payload).strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
+                parsed = Assignments.model_validate_json(raw)
+                allowed = {b['id'] for b in send}
+                for a in parsed.assignments:
+                    if a.id not in allowed: continue                # ignore invented IDs
+                    name = names.get((a.category or '').strip().lower()) if a.category else None
+                    results.append((a.id, name, a.confidence, a.reason))   # unknown category -> treated as no fit
             seen = {r[0] for r in results}
-            results += [(i, None, 0.0, '') for i in allowed - seen]  # mark omitted ones as checked
+            results += [(i, None, 0.0, '') for i in {b['id'] for b in batch} - seen]  # omitted and left-out ones marked checked
             counts = store.record_temple_results(results, 'suggest' if current == 'suggest' else 'auto')
             for k in ('checked', 'applied', 'suggested'): totals[k] += counts[k]
             if ids: break

@@ -5,7 +5,7 @@ tried again; every screening records which model did it; the evaluation scores b
 local model and the cloud models are stand-ins: nothing real is called."""
 import _util  # first: throwaway data folder, dummy keys, no real model calls
 from _util import t
-import json, os, re
+import json, os, re, time
 import substrate_store as store
 import app
 import agents, assistants, memory_tags, spaces, temple, temple_categorise, temple_model, temple_tags, temple_taxonomy
@@ -168,10 +168,13 @@ with store.db() as c:
 t('…marked as held for the local model', mv['screened_by'] == 'held:local')
 u = store.propose('Invoice terms', 'Invoices go out on the last working day of the month with 30-day terms.', 'said')
 store.review(u['id'], 'approved')
-try:
-    temple_categorise.run([u['id']], manual=True); held_cat = False
-except temple_model.LocalModelHeld:
-    held_cat = True
+held_cat = False
+for _ in range(100):          # a new memory starts background categorising; wait until that run lets go of the lock
+    try:
+        if (temple_categorise.run([u['id']], manual=True) or {}).get('status') != 'busy': break
+    except temple_model.LocalModelHeld:
+        held_cat = True; break
+    time.sleep(0.1)
 t('categorising waits too (nothing to the cloud)', held_cat and not CLOUD)
 with store.db() as c:
     run = c.execute("SELECT status, error FROM agent_runs WHERE agent_id='temple-categorise' ORDER BY started_at DESC").fetchone()

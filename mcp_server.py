@@ -391,6 +391,11 @@ def search_records(query: Annotated[str, Field(max_length=200)] = '',
     rf = refs.of('record', [r['id'] for r in result['records']])
     for r in result['records']:
         if rf.get(r['id']): r['ref'] = rf[r['id']]
+    # Each memory through the same checks as anything else leaving Alice for a model (secrets, protective markings): one that
+    # fails is withheld, never returned, and its rule logs the block.
+    result['records'], n = rules_engine.check_each(result['records'], lambda r: f"{r.get('title', '')}\n{r.get('content', '')}\n{r.get('source', '')}",
+                                                   'connector search_records', packs=False)
+    if n: result['withheld_by_checks'] = f'{n} memories are not sent: they fail the secret or protective marking check.'
     who = _who()
     if who:   # external apps: their provider's allow-list, then the categories allowed by External client scope
         result['records'], blocked = rules_engine.filter_records_for_provider(result['records'], who.provider)
