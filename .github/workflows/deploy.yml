@@ -1,4 +1,5 @@
-# On a pull request into main: run all the tests only (nothing is deployed), so a change can be checked before Stefan merges it.
+# On a pull request into main: run all the tests only (nothing is deployed), so a change can be checked before Stefan merges it,
+# and check that a change to code adds its line to CHANGELOG.md (job changelog).
 # On every push to main (a merged pull request): run all the tests (SQLite and PostgreSQL) INSIDE the container image, push the image, and
 # deploy it to Azure as a new revision with NO traffic, then put it live automatically (same health checks as the Go live
 # button; switch off with the repository variable AUTO_PROMOTE=false). Rollback = the Go live button, rollback. Azure sign-in is OIDC (federated credential), so no Azure secrets are stored in GitHub.
@@ -21,11 +22,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Pull requests only: a change to code carries its line in CHANGELOG.md (deploy/changelog_check.py). Documentation-only
+  # and test-only changes pass without one. The release's own entries are read by Alice when it starts (changelog.py).
+  changelog:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
+      - name: A code change carries its CHANGELOG.md entry
+        run: python3 deploy/changelog_check.py --base "origin/${{ github.base_ref }}"
+
   test-image:
     runs-on: ubuntu-24.04
     services:
       postgres:
-        image: postgres:16
+        # Docker's official image from Amazon's public mirror (the same image): Docker Hub refuses anonymous pulls from GitHub's
+        # runners once its shared limit is reached (9 Oct 2026), which failed pull requests before any test ran.
+        image: public.ecr.aws/docker/library/postgres:16
         env: { POSTGRES_USER: alice, POSTGRES_PASSWORD: alice-test-only, POSTGRES_DB: alice_test }
         ports: ['5432:5432']
         options: >-
@@ -81,7 +95,8 @@ jobs:
             az containerapp update -n "$APP" -g "$RG" --image "$IMAGE" --revision-suffix "r$TAG" --only-show-errors -o none
             echo "$APP: new revision $APP--r$TAG (no traffic); live stays $LIVE"
           done
-          for JOB in alice-migrate-check alice-migrate-apply; do
+          # alice-backup (the nightly off-site copy) and alice-drill (the restore drill), from azure-setup -Step backup, run the same image
+          for JOB in alice-migrate-check alice-migrate-apply alice-backup alice-drill; do
             az containerapp job update -n "$JOB" -g "$RG" --image "$IMAGE" --only-show-errors -o none || true
           done
           echo "### Deployed (no traffic yet): alice:$TAG" >> "$GITHUB_STEP_SUMMARY"
