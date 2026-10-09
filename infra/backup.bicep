@@ -56,8 +56,9 @@ param mailFrom string = ''
 param publicUrl string = ''
 param backupNotify string = ''
 
+// Built-in role IDs, exactly as Microsoft publishes them (tests/test_infra_roles.py checks every one against its list).
 var roles = {
-  reader: 'acdd72a7-3b8d-4880-a14c-c6b6b1c4f1e4'
+  reader: 'acdd72a7-3385-48ef-bd42-f606fba81ae7'
   blobContributor: 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
   blobReader: '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
 }

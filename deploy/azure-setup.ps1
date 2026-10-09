@@ -50,6 +50,9 @@ Steps (all by default, or one with -Step):
            retention, the nightly job and its last run, the drill; app roles) and flags anything missing or different.
   -DatabaseHost <server address>  (any step; remembered) after a point-in-time restore into a new server (docs/restore.md part B),
            so redeploys keep database-url pointing at it. -DatabaseHost '' goes back to this template's own server.
+           Every deployment of main.bicep names the database: when databaseHost is not set it is set to the address of the
+           resource group's own server (read from Azure), and the step stops if that cannot be read. Only the first -Step
+           infra, before any server exists, deploys without one.
 The setup state (what every step set up and every later step keeps) lives IN AZURE: the blob alice-setup/azure-state.json in
 Alice's own storage account (deploy/azure_state.py). Every step reads it first and writes it back whenever it saves; each saved
 version is also kept under alice-setup/history/. deploy\azure-state.json is only a cache of it. If the Azure copy is missing or
@@ -168,7 +171,18 @@ $State = Load-State
 if ($PSBoundParameters.ContainsKey('DatabaseHost')) { Set-Prop $State 'databaseHost' $DatabaseHost.Trim(); Save-State $State }   # '' clears it
 Write-Host "Subscription $SubscriptionId, tenant $Tenant, resource group $ResourceGroup ($Location), you: $Me"
 
+function Ensure-DatabaseHost {
+  # main.bicep is never deployed with an empty databaseHost once a database server exists: not set = the address of the
+  # resource group's own server (the one Alice uses), read from Azure; the step stops if it cannot be read.
+  if ("$($State.databaseHost)".Trim()) { return }
+  & $StatePy $StateHelper database-host --resource-group $ResourceGroup --file $StateFile | Out-Host
+  if ($LASTEXITCODE -ne 0) { throw 'Stopped before deploying: the database server Alice uses is not known (see above). Nothing was changed.' }
+  $h = "$((Load-State).databaseHost)".Trim()
+  if ($h) { Set-Prop $State 'databaseHost' $h; Save-State $State }
+}
+
 function Deploy($stage, $extra) {
+  Ensure-DatabaseHost
   $kv = $State.keyVault
   $pw = if ($kv -and (Kv-Has $kv 'pg-admin-password')) { Kv-Get $kv 'pg-admin-password' } elseif ($State.pendingPassword) { $State.pendingPassword } else { New-Password }
   if (-not $kv) { Set-Prop $State 'pendingPassword' $pw; Save-State $State }   # kept only until it is in Key Vault
@@ -197,6 +211,7 @@ function Deploy($stage, $extra) {
   if (-not (Kv-Has $State.keyVault 'pg-admin-password')) { Kv-Set $State.keyVault 'pg-admin-password' $pw }
   if ($State.pendingPassword) { $State.PSObject.Properties.Remove('pendingPassword') }
   Save-State $State
+  if ($State.postgresServer) { Ensure-DatabaseHost }     # the first -Step infra has just created the server: name it now
 }
 
 function Grant-MailSend($principalId, $label) {
