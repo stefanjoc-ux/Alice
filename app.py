@@ -1893,6 +1893,33 @@ def admin_rule_packs_test(req: RulePackTest):
     try: return rule_packs.evaluate(req.pack, req.text, req.provider)
     except ValueError as e: raise HTTPException(400, str(e)) from None
 
+# Temple's model for screening and categories (temple_model.py): Cloud or Local, held work, the evaluation
+class TempleModelSet(BaseModel):
+    choice: Optional[Literal['cloud', 'local']] = None
+    fallback: Optional[bool] = None
+
+@app.get('/admin/api/temple-model')
+def admin_temple_model():
+    import temple_model
+    return temple_model.status()
+
+@app.put('/admin/api/temple-model')
+def admin_temple_model_set(req: TempleModelSet):
+    import temple_model
+    try: return temple_model.set_choice(req.choice, req.fallback)
+    except ValueError as e: raise HTTPException(400, str(e)) from None
+
+@app.post('/admin/api/temple-model/retry')
+def admin_temple_model_retry():
+    import temple_model
+    return temple_model.retry()
+
+@app.post('/admin/api/temple-model/evaluate')
+def admin_temple_model_evaluate():
+    import temple_model
+    try: return temple_model.start_evaluation()
+    except ValueError as e: raise HTTPException(400, str(e)) from None
+
 @app.get('/admin/api/agents')
 def admin_agents():
     d=agents.listing();d['categories']=[c['name'] for c in store.list_categories()['categories']];return d

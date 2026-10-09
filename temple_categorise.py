@@ -37,6 +37,13 @@ def mode():
 
 
 def _ask(payload):
+    """Temple's answer, from the model chosen for screening and categories (temple_model: Cloud or Local; Local may hold the work)."""
+    import temple_model
+    items = [('record', m.get('id')) for m in json.loads(payload).get('memories', [])]
+    return temple_model.answer('categorise', PROMPT, payload, 3000, lambda: _cloud(payload), items=items)[0]
+
+
+def _cloud(payload):
     provider = temple.reviewer()
     key = 'OPENAI_API_KEY' if provider == 'openai' else 'ANTHROPIC_API_KEY'
     if not os.getenv(key): raise ValueError('Missing ' + key + ' for Temple.')

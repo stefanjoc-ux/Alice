@@ -35,6 +35,12 @@ Steps (all by default, or one with -Step):
            Lift the lock deliberately: az lock delete --name alice-do-not-delete --resource-group <rg>, then -Step backup -NoLock.
            Also sets up the restore drill: its own resource group (<rg>-drill, throwaway resources only), identity and the
            alice-drill job (Admin > Backups > Run a restore drill now, or the Restore drill workflow).
+  localmodel  (run on its own) Temple's local model: a small open model (default qwen3:4b, served by Ollama) in Alice's own
+           Container Apps environment, INTERNAL INGRESS ONLY (no public address), with its own file share for the downloaded
+           model. Alice then offers Local under Agents > Temple's model for screening and categories (the sharing check,
+           categories, tags and keeping them tidy); choosing it is still yours, on that page. Remembered: every later step keeps it.
+             -Step localmodel -LocalModel on [-LocalModelName qwen3:4b]
+             -Step localmodel -LocalModel off      Alice stops using it, and it is scaled to zero (no charge while idle)
   users    (run on its own) people and roles: adds the app roles Alice.Owner, Alice.Admin and Alice.Member to the "Alice web
            sign-in" app registration (and the "Alice connector sign-in" one if it exists), sets "Assignment required" on the web
            sign-in's enterprise application, and assigns the roles. ENTRA DECIDES THE OWNER: anyone with Alice.Owner is an owner
@@ -100,8 +106,10 @@ param(
   [ValidateSet('', 'on', 'off')][string]$UseAppRoles = '',   # -Step users: switch who gets in to Entra app roles (on) or back (off); remembered
   [string]$OwnerObjectId = '',        # the owner of Alice (object ID, or user@domain); remembered as ownerObjectId; default: you
   [string]$AdminObjectIds = '',       # -Step users: accounts given Alice.Admin (comma separated); remembered as adminObjectIds
+  [ValidateSet('', 'on', 'off')][string]$LocalModel = '',   # -Step localmodel: Temple's local model on or off; remembered
+  [string]$LocalModelName = '',       # -Step localmodel: the Ollama model tag (default qwen3:4b); remembered
   [switch]$UseLocalState,             # use deploy\azure-state.json even though it differs from the Azure copy (it then replaces it)
-  [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github', 'connector', 'demo', 'copilot', 'mail', 'backup', 'recover', 'users', 'check')][string]$Step = 'all'
+  [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github', 'connector', 'demo', 'copilot', 'mail', 'backup', 'recover', 'users', 'localmodel', 'check')][string]$Step = 'all'
 )
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
@@ -123,7 +131,7 @@ $StatePy = Find-Python
 function Say($text) { Write-Host "`n== $text" -ForegroundColor Cyan }
 function AzCli { $out = & az @args; if ($LASTEXITCODE -ne 0) { throw "az $($args -join ' ') failed" }; return $out }   # not named Az: PowerShell names ignore case, so it would call itself
 function AzTry { $ErrorActionPreference = 'Continue'; & az @args 2>$null }   # may fail (e.g. "does it exist?"): Windows PowerShell 5.1 otherwise turns az's error text into a stop
-function Want($name) { return (($Step -eq 'all' -and $name -notin @('connector', 'demo', 'copilot', 'mail', 'backup', 'recover', 'users')) -or $Step -eq $name) }
+function Want($name) { return (($Step -eq 'all' -and $name -notin @('connector', 'demo', 'copilot', 'mail', 'backup', 'recover', 'users', 'localmodel')) -or $Step -eq $name) }
 function Public-Url { if ($State.customDomain) { return "https://$($State.customDomain)" } else { return "$($State.webUrl)" } }
 function Audiences { return (@($State.extAudiences | Where-Object { $_ }) -join ',') }   # Copilot's SSO audiences, kept on every redeploy
 function Add-AlsoAllow {
@@ -248,6 +256,10 @@ function Deploy($stage, $extra) {
   if ($State.pgGeoBackup) { $values['pgGeoRedundantBackup'] = $true }
   if ($State.databaseHost) { $values['databaseHost'] = "$($State.databaseHost)" }
   if ($State.useAppRoles) { $values['useAppRoles'] = $true }     # -Step users -UseAppRoles on: kept by every later step
+  # Temple's local model (-Step localmodel): kept by every later step; switched off = parked at zero replicas
+  if ($State.localModel) { $values['localModel'] = $true }
+  elseif ($State.localModelParked) { $values['localModelParked'] = $true }
+  if ($State.localModelName) { $values['localModelName'] = "$($State.localModelName)" }
   if ($State.backup) {
     $values['backup'] = $true; $values['backupNotify'] = "$($State.backupNotify)"
     $values['lockResourceGroup'] = -not $State.noLock; $values['offsiteImmutabilityLocked'] = [bool]$State.offsiteImmutabilityLocked
@@ -774,6 +786,40 @@ if (Want 'backup') {
   else { Write-Host "Resource group lock: alice-do-not-delete. To lift it deliberately: az lock delete --name alice-do-not-delete --resource-group $ResourceGroup   then -Step backup -NoLock" -ForegroundColor Green }
   Write-Host "Restore drill: resource group $ResourceGroup-drill (throwaway resources only). Start one from the Backup page, or the Restore drill workflow." -ForegroundColor Green
   Write-Host "Backup page: $(Public-Url)/admin/backup"
+}
+
+if (Want 'localmodel') {
+  Say "Temple's local model: screening and categories inside Alice's own environment (internal ingress only)"
+  if (-not $State.webAuthClientId -or -not $State.extAppId -or -not $State.extCallers) { throw 'Run -Step apps first.' }
+  if (-not $LocalModel) { throw 'Say -LocalModel on or -LocalModel off.' }
+  if ($LocalModelName) {
+    if ($LocalModelName -notmatch '^[a-z0-9][a-z0-9._-]*(:[a-z0-9._-]+)?$') { throw '-LocalModelName must be an Ollama model tag such as qwen3:4b.' }
+    Set-Prop $State 'localModelName' $LocalModelName
+  }
+  if (-not $State.localModelName) { Set-Prop $State 'localModelName' 'qwen3:4b' }
+  if ($LocalModel -eq 'on') { Set-Prop $State 'localModel' $true; Set-Prop $State 'localModelParked' $false }
+  else { $was = [bool]$State.localModel -or [bool]$State.localModelParked; Set-Prop $State 'localModel' $false; Set-Prop $State 'localModelParked' $was }
+  Save-State $State
+  Write-Host 'Deploying (do not run this while a test-and-deploy run is in progress)...'
+  $also = @($State.alsoAllow | Where-Object { $_ })
+  $users = (@($Me) + $also | Select-Object -Unique) -join ','
+  $certId = ''
+  if ($State.customDomain) {
+    $envName = AzCli containerapp env list -g $ResourceGroup --query '[0].name' -o tsv
+    $certId = AzCli containerapp env certificate list -g $ResourceGroup -n $envName --managed-certificates-only --query "[?properties.subjectName=='$($State.customDomain)'].id | [0]" -o tsv
+  }
+  Deploy 'apps' @{ image = (Image-Ref); webAuthClientId = $State.webAuthClientId; keyVaultSecretNames = (Key-Names)
+                   extAppId = $State.extAppId; extAllowedUsers = $users; extCallers = $State.extCallers; extAudiences = (Audiences); mailFrom = "$($State.mailFrom)"; publicUrl = (Public-Url)
+                   allowedUserObjectIds = $also; customDomain = "$($State.customDomain)"; customDomainCertificateId = "$certId"
+                   connectorClientId = "$($State.connectorClientId)" }
+  if ($State.localModel) {
+    Write-Host ''
+    Write-Host "Local model: alice-local-model, serving $($State.localModelName), internal ingress only. It downloads the model when it first starts (a few minutes)." -ForegroundColor Green
+    Write-Host "In Alice: Agents > Temple's model for screening and categories > Run the evaluation, then choose Local if you are happy with the scores." -ForegroundColor Green
+  } else {
+    Write-Host 'Local model switched off: Alice no longer uses it (anything set to Local goes back to waiting until you choose Cloud), and it is scaled to zero.' -ForegroundColor Green
+    Write-Host 'In Alice: Agents > Temple''s model for screening and categories > Cloud.' -ForegroundColor Yellow
+  }
 }
 
 if (Want 'recover') {

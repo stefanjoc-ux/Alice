@@ -478,3 +478,26 @@ t('setup: every deployment of main.bicep first makes sure databaseHost is set, a
   and re.search(r'function Ensure-DatabaseHost \{.*?StateHelper database-host .*?LASTEXITCODE -ne 0\) \{ throw', setup, re.S)
   and setup.count('deployment group create') == 2 and "-f $Template" in dep)
 t('setup: the helper is stdlib only (it runs in Cloud Shell)', not re.search(r'^(import|from) (requests|azure|psycopg)', open(os.path.join(ROOT, 'deploy', 'azure_state.py')).read(), re.M))
+
+# ---------------- Temple's local model (-Step localmodel): rebuilt from alice-web, checked, internal ingress only ----------------
+az = FakeAzure()
+live_state, src = S.rebuild(S.Live(az, RG))
+t('rebuild: no local model when alice-web is not told about one', live_state.get('localModel') is False and 'localModelParked' not in live_state)
+az.apps['alice-web']['properties']['template']['containers'][0]['env'] += env({'ALICE_LOCAL_MODEL_URL': 'http://alice-local-model', 'ALICE_LOCAL_MODEL': 'qwen3:4b'})
+az.resources.append(res('Microsoft.App/containerApps', 'alice-local-model'))
+az.apps['alice-local-model'] = {'name': 'alice-local-model', 'properties': {'configuration': {'ingress': {'external': False, 'targetPort': 11434}}}}
+live_state, src = S.rebuild(S.Live(az, RG))
+t('rebuild: the local model and its name from alice-web', live_state.get('localModel') is True and live_state.get('localModelName') == 'qwen3:4b'
+  and 'ALICE_LOCAL_MODEL_URL' in src['localModel'])
+az.blob_put(S.BLOB, json.dumps({**FULL, 'localModel': True, 'localModelName': 'qwen3:4b', 'deployedAt': '2026-10-07T21:14:03.5551234+00:00'}))
+p = path('local-model.json'); write(p, {**FULL, 'localModel': True, 'localModelName': 'qwen3:4b'})
+code, text = run(S.check, az, RG, p, who=ME)
+t('check: the local model app, internal ingress only, and Alice using it are ok', re.search(r'ok\s+Local model app', text)
+  and re.search(r'ok\s+Internal ingress only', text) and re.search(r'ok\s+Alice uses it\s+qwen3:4b', text) and not az.writes())
+az.apps['alice-local-model']['properties']['configuration']['ingress']['external'] = True
+code, text = run(S.check, az, RG, p, who=ME)
+t('check: a public address on the local model is flagged', re.search(r'DIFFERS\s+Internal ingress only', text))
+setup = open(os.path.join(ROOT, 'deploy', 'azure-setup.ps1'), encoding='utf-8').read()
+t('setup: -Step localmodel is remembered and kept by every deployment (switched off = parked at zero replicas)',
+  "[ValidateSet('', 'on', 'off')][string]$LocalModel" in setup and "$values['localModel'] = $true" in setup
+  and "$values['localModelParked'] = $true" in setup and "Set-Prop $State 'localModelParked' $was" in setup)

@@ -154,7 +154,8 @@ SECTIONS = {
 <div id="ask-starters" class="mem-cats"></div><div id="ask-log" class="ask-log" aria-live="polite"></div>
 <form id="ask-form" class="ask-form"><textarea id="ask-q" rows="2" maxlength="4000" placeholder="e.g. How are the assistants being used this month? Which agents failed this week?" aria-label="Question for Temple"></textarea><div class="arc-actions"><button id="ask-go">Ask</button><button id="ask-clear" type="button" class="secondary">Clear conversation</button></div></form>
 <p class="muted small">Temple looks things up with read-only tools and shows what it checked. It can't approve or change anything; it tells you where to do that. The conversation is kept on this page only.</p></section>''',
-'agents': r'''<div id="ag-list"><div id="ag-view" class="mem-tabs ag-view"></div>
+'agents': r'''<section id="tm-card" class="card tm-card" hidden></section>
+<div id="ag-list"><div id="ag-view" class="mem-tabs ag-view"></div>
 <section id="ag-map-wrap" hidden><div class="mem-head"><h2>System map</h2><span id="ag-map-note" class="muted small"></span></div><div id="ag-map"></div></section>
 <div id="ag-cards-wrap"><div class="ag-tools"><input id="ag-search" type="search" placeholder="Find an agent by name or what it does" aria-label="Find an agent"><span id="ag-summary" class="muted small"></span></div>
 <p class="muted small">Agents only propose; nothing they do is approved without you, and the rules apply on top of their limits. An agent pauses itself after 3 failed runs in a row or at its monthly budget. Agents are grouped by the job they share; ones needing attention are listed first.</p>
@@ -476,6 +477,7 @@ section.mem-setup{grid-template-columns:repeat(3,minmax(0,1fr))}@media(max-width
 .ag-card-purpose{font-size:13px;color:var(--muted);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 .ag-card-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:auto}.ag-card-stat{margin-left:auto}
 .ag-card-flags{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;color:#6b4406}
+.tm-card{margin:0 0 16px;padding:16px 18px}.tm-card h2{margin:0 0 4px;font-size:18px}.tm-row{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin:10px 0}.tm-row label{display:flex;gap:6px;align-items:center}.tm-held{border-left:4px solid var(--warn,#b45309);padding:8px 12px;margin:10px 0;background:var(--warn-bg,#fff7ed)}.tm-eval table{width:100%;border-collapse:collapse;margin-top:8px}.tm-eval td,.tm-eval th{padding:4px 8px;border-bottom:1px solid var(--line,#e5e7eb);text-align:left}.tm-eval .num{text-align:right}
 .ag-head{padding-bottom:6px}.ag-head>button{margin:0 0 10px}.ag-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.ag-title h2{margin:0;font-size:20px}
 .si-list{display:grid;gap:10px;margin-top:12px}.si-row{display:grid;grid-template-columns:40px 1fr auto;gap:12px;align-items:center;padding:12px 14px;border:1px solid #d3dee6;border-radius:12px;background:#fff}.si-row.me{border-color:#075e79;box-shadow:0 0 0 1px #075e79}.si-row.old{background:#f7f9fb;color:#5d7385}.si-ico{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:#e3f1f6;color:#075e79}.si-ico svg{width:22px;height:22px}.si-row.old .si-ico{background:#eef2f5;color:#8aa0b0}.si-row b{display:block;color:#102b40}.si-row.old b{color:#3d5566}.si-meta{font-size:13px;color:#5d7385}.si-tag{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600;background:#075e79;color:#fff;vertical-align:1px}@media(max-width:600px){.si-row{grid-template-columns:34px 1fr}.si-row>button{grid-column:1/-1;justify-self:start}}
 .tp-hero-grid{display:grid;grid-template-columns:minmax(220px,300px) 1fr;gap:18px;align-items:stretch}@media(max-width:900px){.tp-hero-grid{grid-template-columns:1fr}}
@@ -2562,8 +2564,28 @@ if(PAGE==='agents'){
  function readUrl(){const q=new URLSearchParams(location.search);st.sel=q.get('agent')||'';st.tab=q.get('tab')||'overview'}
  function go(sel,tab='overview',push=true){st.sel=sel;st.tab=tab;const url=sel?'?agent='+sel+(tab!=='overview'?'&tab='+tab:''):location.pathname;push?history.pushState(null,'',url):history.replaceState(null,'',url);render()}
  window.addEventListener('popstate',()=>{readUrl();render()});
- async function load(){st.L=await api('/admin/api/agents');render()}
- function render(){const a=st.L.agents.find(x=>x.id===st.sel);$('ag-list').hidden=!!a;$('ag-detail').hidden=!a;if(a)detail(a);else list();window.scrollTo(0,0);document.querySelector('.content').scrollTop=0}
+ async function load(){st.L=await api('/admin/api/agents');render();tmLoad()}
+ // ---- Temple's model for screening and categories (temple_model.py): Cloud or Local, held work, the evaluation
+ let tmTimer=null;
+ async function tmLoad(){try{st.T=await api('/admin/api/temple-model')}catch(e){st.T=null}tmDraw()}
+ function tmDraw(){const d=st.T,box=$('tm-card');if(!d){box.hidden=true;return}box.hidden=!!st.sel;box.replaceChildren();
+  box.append(el('h2',"Temple's model for screening and categories"),el('p','Used for the sharing check, categories, tags and keeping them tidy. Writing, judgement, Temple\'s reviews, Argus and digital teams always use the cloud models. The same rules check what is sent either way.','muted small'));
+  const row=el('div','','tm-row');
+  for(const [k,l] of [['cloud','Cloud ('+d.cloud_model+')'],['local','Local'+(d.local_model?' ('+d.local_model+')':'')]]){const lab=document.createElement('label');const r=document.createElement('input');r.type='radio';r.name='tm-choice';r.value=k;r.checked=d.choice===k;r.disabled=k==='local'&&!d.configured;r.onchange=()=>run(async()=>{st.T=await api('/admin/api/temple-model','PUT',{choice:k});tmLoad()});lab.append(r,document.createTextNode(' '+l));row.append(lab)}
+  const fl=document.createElement('label');const fb=document.createElement('input');fb.type='checkbox';fb.checked=d.fallback;fb.onchange=()=>run(async()=>{st.T=await api('/admin/api/temple-model','PUT',{fallback:fb.checked});tmLoad()});fl.append(fb,document.createTextNode(' If the local model does not answer, use the cloud model (off: the work waits)'));row.append(fl);box.append(row);
+  box.append(el('div',!d.configured?'No local model is set up. To add one: azure-setup.ps1 -Step localmodel -LocalModel on (see the pull request for the model and its cost).':('Local model '+d.local_model+' at '+d.local_url+': '+(d.reachable?'answering':'not answering'+(d.reachable_reason?' ('+d.reachable_reason+')':''))),'small'+(d.configured&&!d.reachable?' warn':' muted')));
+  const h=d.held||{};if(h.count){const w=el('div','','tm-held');w.append(el('strong',h.count+' item'+(h.count===1?' is':'s are')+' waiting because Temple\'s local model did not answer'),el('div',(h.by_task||[]).map(x=>x.label+': '+x.count).join(' · ')+(h.last_reason?' · last reason: '+h.last_reason:''),'small'),btn('Try again now',async()=>{const r=await api('/admin/api/temple-model/retry','POST',{});$('notice').textContent=Object.entries(r.results||{}).map(([k,v])=>k+': '+v).join(' · ')||'Nothing was waiting.';tmLoad()},'secondary'));box.append(w)}
+  const rc=d.recent||[];if(rc.length){box.append(el('div','Last 30 days: '+rc.map(x=>x.count+' '+x.label.toLowerCase()+' by '+x.place+' '+x.model+(x.fallback?' (fallback)':'')+(x.outcome==='held'?' (held)':'')).join(' · '),'small muted'))}
+  const ev=el('div','','tm-eval');const ed=d.evaluation;
+  ev.append(btn(ed&&ed.running?'Evaluation running…':'Run the evaluation',async()=>{await api('/admin/api/temple-model/evaluate','POST',{});tmLoad()},'secondary'));
+  ev.append(el('span',' Fixed, fictional examples only (8 sharing checks, 6 memories to categorise), on both models. A small model on CPU can take a few minutes.','small muted'));
+  if(ed&&ed.results){ev.append(el('div','Last evaluation: '+when(ed.at),'small'));const t=document.createElement('table');const hr=document.createElement('tr');for(const x of ['Model','Sharing check','Categories','Overall'])hr.append(el('th',x));t.append(hr);
+   for(const r of ed.results){const tr=document.createElement('tr');const f=k=>{const x=(r.tasks||[]).find(y=>y.task===k);return x?x.right+'/'+x.total+' ('+x.seconds+' s)':'—'};tr.append(el('td',(r.place==='local'?'Local ':'Cloud ')+(r.model||'')),el('td',f('share_gate')),el('td',f('categorise')),el('td',r.error?r.error:r.right+'/'+r.total));t.append(tr)}ev.append(t);
+   const det=document.createElement('details');det.append(el('summary','Each example'));for(const r of ed.results)for(const x of (r.tasks||[]))for(const e of x.rows)det.append(el('div',(r.place==='local'?'Local':'Cloud')+' · '+x.label+' · '+e.item+': expected '+e.expected+', got '+e.got+(e.right?' ✓':' ✗'),'small'));ev.append(det)}
+  else if(ed&&ed.error)ev.append(el('div','The evaluation did not finish: '+ed.error,'small warn'));
+  box.append(ev);
+  clearTimeout(tmTimer);if(ed&&ed.running)tmTimer=setTimeout(tmLoad,5000)}
+ function render(){const a=st.L.agents.find(x=>x.id===st.sel);$('ag-list').hidden=!!a;if(st.T!==undefined)$('tm-card').hidden=!!a||!st.T;$('ag-detail').hidden=!a;if(a)detail(a);else list();window.scrollTo(0,0);document.querySelector('.content').scrollTop=0}
  // ---- list: two groups of compact cards
  function card(a){const c=el('button','','ag-card'+(a.status!=='active'?' off':'')+(a.review_overdue?' due':''));c.type='button';c.onclick=()=>go(a.id);
   const top=el('div','','ag-card-top');top.append(el('strong',a.name),pill(a));c.append(top);

@@ -62,6 +62,10 @@ BUILTIN = [
      'Tags memories with the tags you created (Work, Personal or both); confident matches applied, the rest suggested. Never re-adds a tag you removed.',
      'In the background after a new memory or a tag change, or Tag with Temple', ['Temple memory tags'],
      'Titles, the start and the category of memories not yet looked at', 'Tags (by your Temple mode) or suggestions', False),
+    ('temple-model-eval', 'Temple: model evaluation', 'internal',
+     'Scores the local and cloud models for Temple\'s screening on fixed, fictional examples (sharing checks and categories), so you can compare them before choosing.',
+     'When you ask (Agents > Temple\'s model > Run the evaluation)', ['Temple model evaluation'],
+     'Fixed fictional examples only (never your data)', 'Scores for each model, kept on the Agents page', False),
     ('temple-share-gate', 'Temple: sharing check', 'internal',
      'Before an item goes into a shared space, reads it for personal or special category details and anything private; a hit waits for its author.',
      'When someone shares or moves an item into a shared space', ['Temple sharing check'],
@@ -195,6 +199,9 @@ ANATOMY = {
     'temple-memory-tags': {'model': 'temple', 'instructions': 'Choose which of your tags apply to each memory (usually one to three), with a confidence; respects each tag\'s area.',
                            'tools': ['None'], 'data': ['memories'], 'guardrails': ['spend_cap', 'secret_detection', 'protective_marking'],
                            'outputs': ['Tags when 75%+ confident, otherwise suggestions'], 'gate': 'Your tags always win; a tag you remove is never put back'},
+    'temple-model-eval': {'model': 'temple', 'instructions': 'The same prompts as the sharing check and categorising, on fixed fictional examples.',
+                          'tools': ['None'], 'data': [], 'guardrails': ['spend_cap', 'secret_detection', 'protective_marking'],
+                          'outputs': ['Right answers out of the examples, per model'], 'gate': 'Scores only: it changes nothing'},
     'temple-share-gate': {'model': 'temple', 'instructions': 'Say whether the item holds personal data about its author or others, special category data, or anything private.',
                           'tools': ['Personal identifier and special category checks (free, no model)'], 'data': ['memories', 'knowledge', 'organisations'],
                           'guardrails': ['spend_cap', 'secret_detection', 'protective_marking', 'share_gate'],
@@ -307,7 +314,7 @@ GROUPS = [
     ('conversations', 'Learning from conversations', 'Suggest memories, decisions and knowledge from chats, saved conversations and meetings.',
      ['temple-chat', 'temple-chat-review', 'temple-meeting']),
     ('stewardship', 'Keeping memory and knowledge tidy', 'Review proposed memories, categorise and tag them, tag clients and spot replaced knowledge.',
-     ['temple-review', 'temple-discuss', 'temple-taxonomy', 'temple-categorise', 'temple-memory-tags', 'temple-tagging', 'temple-replacements', 'temple-share-gate']),
+     ['temple-review', 'temple-discuss', 'temple-taxonomy', 'temple-categorise', 'temple-memory-tags', 'temple-tagging', 'temple-replacements', 'temple-share-gate', 'temple-model-eval']),
     ('apps_agents', 'Inside your apps', 'Agents that do one job inside an app, such as reading a lab report for Health Insights.',
      ['health-extract']),
     ('teams', 'Digital teams', 'Members of your digital teams working jobs stage by stage, and Temple suggesting how to refine them.',
@@ -858,7 +865,7 @@ def tracked(aid, trigger='automatic', subject=None):
                 status = 'skipped'; raise
             except ValueError as e:
                 # a rule stopped it (e.g. spending caps pause automations): not a failure of the agent
-                status, error = ('blocked' if type(e).__name__ == 'RuleViolation' else 'failed'), str(e)[:500]
+                status, error = ('blocked' if type(e).__name__ in ('RuleViolation', 'LocalModelHeld') else 'failed'), str(e)[:500]   # LocalModelHeld: the work waits (temple_model)
                 raise
             except Exception as e:
                 name = type(e).__name__

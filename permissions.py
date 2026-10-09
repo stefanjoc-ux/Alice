@@ -309,6 +309,8 @@ ROUTES = {
     'GET /admin/api/rule-packs/applied': 'admin', 'POST /admin/api/rule-packs/apply': 'admin', 'POST /admin/api/rule-packs/services': 'admin',
     'GET /admin/api/rule-packs': 'admin', 'POST /admin/api/rule-packs/state': 'admin', 'POST /admin/api/rule-packs/test': 'admin',
     # agents (what an agent touched lists everyone's items: Owner role)
+    'GET /admin/api/temple-model': 'full', 'PUT /admin/api/temple-model': 'full', 'POST /admin/api/temple-model/retry': 'full',
+    'POST /admin/api/temple-model/evaluate': 'full',
     'GET /admin/api/agents': 'agents:view', 'GET /admin/api/agents/{aid}/runs': 'full', 'GET /admin/api/agents/{aid}/touched': 'full',
     'GET /admin/api/agents/{aid}/versions': 'agents:view', 'GET /admin/api/agent-runs/{rid}': 'full', 'PUT /admin/api/agents/{aid}': 'full',
     'POST /admin/api/agents/{aid}/acknowledge': 'agents:manage', 'POST /admin/api/agents/{aid}/status': 'agents:manage',
