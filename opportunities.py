@@ -381,13 +381,15 @@ def _finish_watch(org, status, summary):
 def tracker(status='', org=''):
     try: expire_stale()
     except Exception: pass
+    vc, va = store.viewer_clause('organisation', 'opportunities.org')    # organisations in this person's spaces
+    nc, na = store.viewer_clause('organisation', 'org_news.org')
     with store.db() as c:
         rows = [dict(r) for r in c.execute(
-            "SELECT * FROM opportunities WHERE (?='' OR status=?) AND (?='' OR org=?) ORDER BY CASE status WHEN 'suggested' THEN 0 WHEN 'pursuing' THEN 1 "
-            "WHEN 'tracking' THEN 2 WHEN 'won' THEN 3 WHEN 'lost' THEN 4 ELSE 5 END, coalesce(confidence,0) DESC, updated_at DESC LIMIT 300", (status, status, org, org))]
-        counts = {r['status']: r['n'] for r in c.execute('SELECT status,count(*) AS n FROM opportunities GROUP BY status')}
-        news = [dict(r) for r in c.execute("SELECT * FROM org_news WHERE (?='' OR org=?) ORDER BY coalesce(nullif(published,''),substr(created_at,1,10)) DESC LIMIT 40",
-                                           (org, org))]
+            "SELECT * FROM opportunities WHERE (?='' OR status=?) AND (?='' OR org=?)" + vc + "ORDER BY CASE status WHEN 'suggested' THEN 0 WHEN 'pursuing' THEN 1 "
+            "WHEN 'tracking' THEN 2 WHEN 'won' THEN 3 WHEN 'lost' THEN 4 ELSE 5 END, coalesce(confidence,0) DESC, updated_at DESC LIMIT 300", (status, status, org, org, *va))]
+        counts = {r['status']: r['n'] for r in c.execute('SELECT status,count(*) AS n FROM opportunities WHERE 1=1' + vc + 'GROUP BY status', va)}
+        news = [dict(r) for r in c.execute("SELECT * FROM org_news WHERE (?='' OR org=?)" + nc + "ORDER BY coalesce(nullif(published,''),substr(created_at,1,10)) DESC LIMIT 40",
+                                           (org, org, *na))]
     with store.db() as c:
         mgr = {r['name'].lower(): r['account_manager'] for r in c.execute('SELECT name,account_manager FROM organisations')}
     for r in rows:

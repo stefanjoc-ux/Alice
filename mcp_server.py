@@ -56,7 +56,8 @@ TOOL_SECTIONS = {
     'search_records': ('memories', 'view'), 'propose_record': ('memories', 'use'), 'propose_decision': ('memories', 'use'),
     'propose_knowledge': ('knowledge', 'use'), 'save_conversation': ('archive', 'use'), 'append_conversation': ('archive', 'use'),
     'list_proposals': ('proposals', 'use'), 'get_proposal': ('proposals', 'use'), 'propose_proposal_changes': ('proposals', 'use'),
-    'get_organisation': ('full', ''), 'list_organisations': ('full', ''), 'search_opportunities': ('full', ''), 'propose_org_fact': ('full', ''),
+    'get_organisation': ('organisations', 'view'), 'list_organisations': ('organisations', 'view'), 'search_opportunities': ('organisations', 'view'),
+    'propose_org_fact': ('organisations', 'use'), 'list_spaces': ('any', ''),
     'get_health_context': ('owner', ''), 'propose_health_note': ('owner', ''),
 }
 
@@ -85,12 +86,27 @@ def _allowed(tool, v):
     if section == 'owner': return '' if permissions.is_owner_person(v) or (v is None and EXTERNAL is None) else 'This belongs to the owner of Alice only.'
     if permissions.full(v): return ''
     if section == 'full': return permissions.FULL_ONLY_REASON
+    if section == 'any': return ''
     if permissions.level(v, 'chat') >= permissions.USE: return ''          # using Alice through a chat app counts as Chat
     if section == 'proposals':
         import assistants
         ok = any(permissions.level(v, 'assistant', a['id']) >= permissions.USE for a in assistants.listing()['assistants'] if a.get('kind') == 'proposal')
         return '' if ok else 'You do not have access to the proposal writer.'
     return '' if permissions.level(v, section) >= permissions.RANK[need] else f'You do not have permission to use {tool}.'
+
+
+def _place(item_type, item_id, space):
+    """Put a new item in the space the caller chose (spaces.place_new): a personal space at once, a shared one through the
+    sharing check. Never fails the proposal: it stays in the caller's default space and says why."""
+    import spaces
+    try:
+        r = spaces.place_new(item_type, item_id, space)
+    except (PermissionError, LookupError, ValueError) as e:
+        return {'status': 'not_moved', 'message': f'It stays in your default space: {e}'}
+    msg = {'moved': 'It is in the space you chose.', 'unchanged': 'It is in the space you chose.',
+           'held': 'It stays in your default space for now: Alice\'s sharing check found something for you to confirm first (Spaces page).',
+           'refused': 'It stays in your default space: ' + ' '.join(r.get('reasons') or [])}.get(r['status'], '')
+    return {**r, 'message': msg}
 
 
 def _app(tool):
@@ -101,6 +117,8 @@ def _app(tool):
     import permissions
     v = _viewer()
     store.VIEWER.set(v)
+    import spaces
+    spaces.prepare(v)                      # outside any transaction: the migration (once) and their personal space
     why = _allowed(tool, v)
     if why:
         permissions.log_refusal(v, 'MCP', tool, why)
@@ -393,8 +411,11 @@ def search_records(query: Annotated[str, Field(max_length=200)] = '',
 def propose_record(title: Annotated[str, Field(min_length=1, max_length=200)],
                    content: Annotated[str, Field(min_length=1, max_length=8000)],
                    source: Annotated[str, Field(min_length=1, max_length=2000)],
-                   category: Annotated[str, Field(max_length=40)] = '') -> dict:
+                   category: Annotated[str, Field(max_length=40)] = '',
+                   space: Annotated[str, Field(max_length=40)] = '') -> dict:
     """Propose a fact or preference worth remembering when the user asks (for a decision, use propose_decision).
+    space: optional, a space id from list_spaces the user asked for (default: their own default space, usually personal);
+    a shared space only after Alice's sharing check, and only once the memory has a category the user confirmed.
     Include a source description: user statement/quote or filename and location.
     The source is a claim for human review, not independently verified provenance.
     Optionally give a category only if it is one of the user's existing categories; unknown
@@ -421,6 +442,7 @@ def propose_record(title: Annotated[str, Field(min_length=1, max_length=200)],
                              'Alice approves it automatically once Temple has checked it does not clash with what she already holds; '
                              'if it clashes, it waits for the user on the Actions page.')
     if who and not result.get('duplicate'): _captured('memory', result.get('id')); agents.app_note(run, 'wrote', 'memory', result.get('id'), 'proposed')
+    if space and result.get('id') and not result.get('duplicate'): result['space'] = _place('record', result['id'], space)
     return result
 
 
@@ -434,8 +456,9 @@ def propose_decision(title: Annotated[str, Field(min_length=1, max_length=200)],
                      revisit_when: Annotated[str, Field(max_length=1000)] = '',
                      revisit_date: Annotated[str, Field(max_length=10)] = '',
                      decided_on: Annotated[str, Field(max_length=10)] = '',
-                     category: Annotated[str, Field(max_length=40)] = '') -> dict:
-    """Propose a DECISION the user made. Temple checks it and Alice records it as made, with who made it and through which app,
+                     category: Annotated[str, Field(max_length=40)] = '',
+                     space: Annotated[str, Field(max_length=40)] = '') -> dict:
+    """Propose a DECISION the user made. space: optional, as for propose_record. Temple checks it and Alice records it as made, with who made it and through which app,
     and Temple's impact rating; a clash with an earlier decision is noted on it, never held. It waits for the user's approval (and
     its owner is emailed) only when their decision policy holds it: a category that always needs approval, or an impact at or above
     a level (with the policy switched off, every decision waits). Pass on the message returned.
@@ -455,6 +478,7 @@ def propose_decision(title: Annotated[str, Field(min_length=1, max_length=200)],
     msg = ('Decision proposed. Temple checks it and records it with who made it, unless the user\'s settings ask for approval '
            '(then it waits on their Actions page).' if autoapprove.managing_decisions() else
            'Decision proposed. Decisions wait for the user: they approve it on the Actions page, with Temple\'s recommendation.')
+    if space and r.get('id') and not r.get('duplicate'): r = r | {'space': _place('record', r['id'], space)}
     return r | {'message': msg}
 
 
@@ -470,7 +494,8 @@ def propose_knowledge(title: Annotated[str, Field(min_length=1, max_length=200)]
                       attendees: Annotated[list[str], Field(max_length=40)] = [],
                       decisions: Annotated[list[str], Field(max_length=40)] = [],
                       actions: Annotated[list[str], Field(max_length=60)] = [],
-                      supersedes: Annotated[list[str], Field(max_length=10)] = []) -> dict:
+                      supersedes: Annotated[list[str], Field(max_length=10)] = [],
+                      space: Annotated[str, Field(max_length=40)] = '') -> dict:
     """Save a summary, note or meeting extract to the user's knowledge library. Alice approves it automatically after her
     checks; it waits for the user when it may replace or overlap something Alice already holds, or when the user has
     switched off automatic approval for notes from this app. Pass on the message returned.
@@ -505,6 +530,9 @@ def propose_knowledge(title: Annotated[str, Field(min_length=1, max_length=200)]
     held = autoapprove.held().get(('knowledge', result.get('id')), '') if auto == 'held' else ''
     msg = ('Saved and approved automatically after Alice\'s checks: it is now in the knowledge library.' if auto == 'approved' else
            'Saved as a draft, waiting for the user on the Actions page' + (f' ({held})' if held else '') + '. No model can read it until it is approved.')
+    if space and result.get('id'):
+        placed = _place('file', result['id'], space)
+        msg += ' ' + placed['message']
     if supersedes:
         n = len(result.get('replaces') or [])
         msg += (f' It is marked as replacing {n} existing item(s); the user can retire them when approving.' if n else
@@ -807,6 +835,20 @@ def propose_health_note(kind: Annotated[str, Field(pattern='^(decision|experimen
     r = health.add_entry(kind, title, detail, '', review_date, source=f'Proposed in {who.label}', proposed_by=who.label, markers=markers)
     agents.app_note(run, 'wrote', 'health_note', r['id'], 'proposed')
     return {'id': r['id'], 'status': 'proposed', 'message': 'Waiting for the user to approve it in Health Insights.' + (' ' + r['caution'] if r['caution'] else '')}
+
+
+@mcp.tool(annotations={'readOnlyHint': True, 'destructiveHint': False})
+@_marked
+def list_spaces() -> dict:
+    """The user's spaces in Alice (their personal space and the shared spaces they belong to), with their role in each. Pass a
+    space id as `space` to propose_record, propose_decision or propose_knowledge when the user asks for something to go into a
+    particular space; otherwise leave it out and it goes to their default space."""
+    agent, run = _app('list_spaces')
+    import spaces
+    v = store.viewer(); nm = spaces.names()
+    mine = spaces.my_spaces(v)
+    return {'spaces': [{'id': s, 'name': nm.get(s, {}).get('name', s), 'kind': nm.get(s, {}).get('kind', ''), 'your_role': r}
+                       for s, r in mine.items()], 'default': spaces.default_for(v)}
 
 
 @mcp.tool(annotations={'readOnlyHint': False, 'destructiveHint': False})

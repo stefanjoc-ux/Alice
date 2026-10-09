@@ -47,6 +47,8 @@ own_mem = store.propose('Owner secret plan', 'The owner prefers the Larkspur bud
 store.review(own_mem['id'], 'approved')
 own_file = knowledge.create('note', 'Owner strategy note', 'Larkspur strategy: the owner plans a confidential bid next spring.', 'typed', 'you')
 own_chat = store.create_chat()['id']
+import organisations, spaces
+organisations.create('Larkspur Council', 'council', 'A fictional council the owner works with.')
 t('the owner\'s items carry no author (they are the owner\'s)', store.author_of('record', own_mem['id']) == '' and store.author_of('chat', own_chat) == '')
 
 # ---------------- behind sign-in, with Entra app roles ----------------
@@ -73,9 +75,9 @@ t('a new Member gets in to the chat, recorded with the default Member profile', 
   and p['profile'] == users.DEFAULT_PROFILE and p['status'] == 'active')
 acc = cl.get('/admin/api/my-access', headers=M).json()
 t('…their access: Chat and their own saved chats, nothing else', acc['role'] == 'member' and acc['restricted']
-  and {k for k, v in acc['levels']['sections'].items() if v != 'none'} == {'chat', 'archive'} and set(acc['pages']) == {'archive'})
+  and {k for k, v in acc['levels']['sections'].items() if v != 'none'} == {'chat', 'archive'} and set(acc['pages']) == {'archive', 'spaces'})
 r = cl.get('/admin', headers=M, follow_redirects=False)
-t('Console home is not theirs: they are sent to what they can use', r.status_code == 303 and r.headers['location'] == '/admin/archive')
+t('Console home is not theirs: they are sent to what they can use', r.status_code == 303 and r.headers['location'] in ('/admin/spaces', '/admin/archive'))
 mine = cl.post('/chats', headers=M).json()['id']
 lst = cl.get('/chats', headers=M).json()
 t('they see their own chats and never the owner\'s', [x['id'] for x in lst] == [] or own_chat not in [x['id'] for x in lst])
@@ -118,9 +120,11 @@ sf = mcp_server.search_files('Larkspur')
 t('search_files: no match in the owner\'s files', own_file['id'] not in json.dumps(sf) and 'confidential bid' not in json.dumps([m for m in sf['matches'] if m['file_id'] == own_file['id']]))
 try: mcp_server.read_file(own_file['id']); t('read_file refuses the owner\'s file', False)
 except ValueError: t('read_file refuses the owner\'s file', True)
-for tool, args in (('list_organisations', ()), ('get_organisation', ('Larkspur',)), ('search_opportunities', ())):
-    try: getattr(mcp_server, tool)(*args); t(f'{tool} is an Owner\'s until Spaces', False)
-    except ValueError as e: t(f'{tool} is an Owner\'s until Spaces', 'Owner' in str(e))
+lo = mcp_server.list_organisations()
+t('list_organisations: none of the organisations in the owner\'s spaces', 'Larkspur' not in json.dumps(lo))
+try: mcp_server.get_organisation('Larkspur'); t('get_organisation: an organisation outside their spaces is not found', False)
+except ValueError as e: t('get_organisation: an organisation outside their spaces is not found', 'Larkspur Council' not in str(e))
+t('search_opportunities: none of the owner\'s', 'Larkspur' not in json.dumps(mcp_server.search_opportunities()))
 try: mcp_server.get_health_context(); t('health is the owner\'s alone, through any connector', False)
 except ValueError: t('health is the owner\'s alone, through any connector', True)
 store.VIEWER.set(None)
@@ -144,7 +148,8 @@ t('with Memories (Use) they can propose a memory', r.status_code == 200, )
 mid = r.json().get('id', '')
 mem = cl.get('/admin/api/memories?status=all', headers=M).json()
 t('the Memories page lists their own memory and none of the owner\'s', [x['id'] for x in mem['records']] == [mid] and 'Larkspur' not in json.dumps(mem))
-t('…and the owner still sees both', {mid, own_mem['id']} <= {x['id'] for x in cl.get('/admin/api/memories?status=all', headers=O).json()['records']})
+om = {x['id'] for x in cl.get('/admin/api/memories?status=all', headers=O).json()['records']}
+t('…and the owner sees their own but not Mira\'s personal memory (personal spaces are their person\'s)', own_mem['id'] in om and mid not in om)
 t('the owner\'s memory cannot be retired or reviewed by them', cl.post(f"/admin/api/records/{own_mem['id']}/retire", headers=M, json={'reason': 'x'}).status_code == 403
   and cl.get(f"/admin/api/records/{own_mem['id']}/history", headers=M).status_code == 403)
 with store.as_viewer(users.viewer_for(MEMBER)):
@@ -173,6 +178,17 @@ with store.as_viewer(users.viewer_for(OWNER)):
 users.save_profile(prof['id'], 'Researcher', {'sections': {'chat': 'use', 'archive': 'use', 'memories': 'use', 'teams': 'view'},
                                               'teams': {TID: {'level': 'use', 'run': True}}})
 users._forget()
+t('the team lives in the owner\'s work space, so it is not theirs yet', cl.get(f'/admin/api/teams/{TID}/page', headers=M).status_code == 403)
+assistants._call = lambda *a, **k: ('{"personal_data": false, "special_category": false, "private": false, "reasons": []}'
+                                    if 'sharing check' in json.dumps([str(x) for x in a] + [str(x) for x in k.values()])
+                                    else (_ for _ in ()).throw(RuntimeError('no model in tests')))
+with store.as_viewer(users.owner_viewer()):
+    SP = spaces.create('Estimating', 'Shared estimating work')['id']
+    spaces.set_member(SP, MEMBER, 'contribute')
+    mv = spaces.move('team', TID, SP)
+t('the owner shares the team into a space Mira contributes to', mv['status'] == 'moved')
+if mv['status'] != 'moved': print('   move:', mv)
+assistants._call = lambda *a, **k: (_ for _ in ()).throw(RuntimeError('no model in tests'))
 r = cl.post(f'/admin/api/teams/{TID}/jobs', headers=M, json={'job_type': 'cost-estimate', 'title': 'Mira job',
             'brief': 'Price a fictional garden room of about twenty square metres for Mira.', 'uploads': UP})
 t('with the team (Use, run jobs) they can start a job', r.status_code == 200, )
@@ -187,7 +203,7 @@ t('the owner\'s job is refused to them', cl.get(f'/admin/api/teams/jobs/{oj}/pag
   and cl.get(f'/admin/teams/{TID}/jobs/{oj}', headers=M).status_code == 403)
 t('re-pricing needs the re-price switch', cl.post(f'/admin/api/teams/jobs/{mj}/reprice', headers=M, json={}).status_code == 403)
 t('another team they were not given is refused', cl.get('/admin/api/teams/other-team/page', headers=M).status_code == 403)
-t('the owner still sees both jobs', {oj, mj} <= {j['id'] for j in cl.get(f'/admin/api/teams/{TID}/page', headers=O).json()['jobs']})
+t('the owner sees both jobs: their own and Mira\'s in the space they share', {oj, mj} <= {j['id'] for j in cl.get(f'/admin/api/teams/{TID}/page', headers=O).json()['jobs']})
 
 # ---------------- Admins: Users, Rules, Rule packs; never the owner-only areas ----------------
 cl.get('/', headers=A)

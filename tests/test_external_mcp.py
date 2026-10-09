@@ -93,7 +93,7 @@ async def signed_in():
         except Exception: local_read = False
         return names, files, recs, p, local_read
 names, files, recs, p, local_read = asyncio.run(signed_in())
-t('signed in: all eighteen tools offered', len(names) == 18 and {'get_organisation', 'list_organisations', 'search_opportunities', 'get_health_context', 'propose_health_note', 'list_proposals', 'get_proposal', 'propose_proposal_changes'} <= set(names))
+t('signed in: all nineteen tools offered (list_spaces too)', len(names) == 19 and 'list_spaces' in names and {'get_organisation', 'list_organisations', 'search_opportunities', 'get_health_context', 'propose_health_note', 'list_proposals', 'get_proposal', 'propose_proposal_changes'} <= set(names))
 t('General knowledge readable', gen in files)
 t('Local only and client-confidential knowledge withheld', loc not in files and fife not in files and not local_read)
 ids = [x['id'] for x in recs['records']]

@@ -406,7 +406,7 @@ def knowledge_filter(name, output, provider):
 MCP_URL = "http://127.0.0.1:8001/mcp"
 ALLOWED_TOOLS = {"list_files", "search_files", "read_file", "search_records", "propose_record", "propose_knowledge",
                  "list_proposals", "get_proposal", "propose_proposal_changes",
-                 "get_organisation", "list_organisations", "search_opportunities"}
+                 "get_organisation", "list_organisations", "search_opportunities", "list_spaces"}
 MAX_CALLS = 10
 HEALTH_TOOL_DESCRIPTION = ("Stefan's blood test results from Health Insights (confirmed values only, with the lab's own ranges, status, history and change) "
                            "and the decisions, experiments, supplements and clinician advice he is tracking. Use it when he asks about his health or results. "
@@ -443,7 +443,8 @@ async def chat_events(request):
         yield {"type": "error", "message": f"Set {key} in .env and restart."}
         return
     messages = [message.model_dump() for message in request.messages]
-    chat_owner = clients.chat_client(request.chat_id) if request.chat_id and store.restricted() is None else ""
+    chat_owner = clients.chat_client(request.chat_id) if request.chat_id else ""
+    if chat_owner and not store.can_see('organisation', chat_owner): chat_owner = ""     # a client outside this person's spaces
     image_rule = (" Image generation is enabled for this message: use the image_generation tool when the user "
         "asks for a picture. Generated images are shown to the user automatically, so never include links, "
         "file paths or Markdown image syntax for them; describe briefly what you made."
@@ -687,9 +688,7 @@ def spend(): return rules_engine.spend_status()
 def chats(): return store.active_chats()   # inactive chats live on the Archive screen
 
 @app.get('/clients-list')
-def clients_list():
-    if store.restricted() is not None: return []      # clients are organisations: everyone's, so an Owner's only until Spaces
-    return clients.names()
+def clients_list(): return clients.names()             # the clients in this person's spaces
 
 class ChatClient(BaseModel):
     client: str = Field(default='',max_length=60)
@@ -697,8 +696,8 @@ class ChatClient(BaseModel):
 
 @app.put('/chats/{cid}/client')
 def chat_set_client(cid: str, change: ChatClient):
-    if change.client and store.restricted() is not None:
-        raise HTTPException(403, 'Clients are organisations, which only an Owner can use until shared Spaces arrive.')
+    if change.client and change.client.strip().lower() not in {n.lower() for n in clients.names()}:
+        raise HTTPException(400, f'No client called "{change.client.strip()[:60]}" in your spaces.')
     try: return clients.set_chat_client(cid,change.client,change.force)
     except ValueError as e: raise HTTPException(400,str(e)) from None
 
@@ -3272,6 +3271,58 @@ def admin_profile_delete(pid: str = FPath(pattern=r'^[a-z0-9][a-z0-9-]{1,39}$'))
 @app.get('/admin/api/permissions/catalogue')
 def admin_permissions_catalogue(): return permissions.catalogue()
 
+# ---- spaces (spaces.py): shared team memory with explicit membership ----
+import spaces
+spaces.ensure_migrated()          # at start-up, outside any transaction: the owner's existing items placed once (logged with counts)
+
+class SpaceIn(BaseModel):
+    name: str = Field(min_length=2, max_length=80)
+    description: str = Field(default='', max_length=300)
+    client: str = Field(default='', max_length=60)
+
+class SpaceMemberIn(BaseModel):
+    member: str = Field(min_length=1, max_length=64)
+    role: Literal['view','contribute','manage']
+
+class SpaceMoveIn(BaseModel):
+    item_type: Literal['record','file','organisation','proposal','team','team_job','pricing_template']
+    item_id: str = Field(min_length=1, max_length=400)
+    space: str = Field(min_length=1, max_length=40)
+
+class SpaceDefaultIn(BaseModel):
+    space: str = Field(default='', max_length=40)
+
+class SpaceDecideIn(BaseModel):
+    action: Literal['share','keep']
+
+@app.get('/admin/api/spaces')
+def admin_spaces(): return _people(spaces.listing)
+
+@app.get('/admin/api/spaces/mine')
+def admin_spaces_mine():
+    v = store.viewer(); nm = spaces.names()
+    return {'spaces': [{'id': s, 'name': nm.get(s, {}).get('name', s), 'kind': nm.get(s, {}).get('kind', ''), 'role': r}
+                       for s, r in spaces.my_spaces(v).items()], 'can_add_to': spaces.options(v), 'default': spaces.default_for(v)}
+
+@app.post('/admin/api/spaces')
+def admin_space_add(q: SpaceIn): return _people(spaces.create, q.name, q.description, q.client)
+
+@app.put('/admin/api/spaces/default')
+def admin_space_default(q: SpaceDefaultIn): return _people(spaces.set_default, q.space)
+
+@app.post('/admin/api/spaces/move')
+def admin_space_move(q: SpaceMoveIn): return _people(spaces.move, q.item_type, q.item_id, q.space)
+
+@app.post('/admin/api/spaces/held/{mid}')
+def admin_space_decide(q: SpaceDecideIn, mid: str = FPath(pattern=r'^[0-9a-f]{32}$')): return _people(spaces.decide, mid, q.action)
+
+@app.put('/admin/api/spaces/{sid}/members')
+def admin_space_member(q: SpaceMemberIn, sid: str = FPath(pattern=r'^[ps]-[0-9a-f]{12}$')): return _people(spaces.set_member, sid, q.member, q.role)
+
+@app.delete('/admin/api/spaces/{sid}/members/{member}')
+def admin_space_member_remove(sid: str = FPath(pattern=r'^[ps]-[0-9a-f]{12}$'), member: str = FPath(pattern=r'^[0-9a-z][0-9a-z-]{0,63}$')):
+    return _people(spaces.remove_member, sid, member)
+
 @app.get('/admin/api/my-access')
 def admin_my_access(): return permissions.my_access(store.viewer(), list(PAGES))
 
@@ -3325,17 +3376,19 @@ async def people_and_permissions(request: Request, call_next):
     acting = store.ACTOR.set(who) if who else None          # refusals below are logged as this person, never the owner
     try:
         viewer = await asyncio.to_thread(users.identify, request.headers)
+        await asyncio.to_thread(spaces.prepare, viewer)          # outside any transaction: the migration (once) and their personal space
     except users.Refused as e:
         permissions.log_refusal(None, method, path, f'{e.reason}: {who}')
         if acting is not None: store.ACTOR.reset(acting)
         if _wants_page(request, path): return _refused_page('No access to Alice', str(e))
         return JSONResponse({'detail': str(e)}, status_code=403)
     token = store.VIEWER.set(viewer)
+    picked = store.SPACE.set(' '.join(request.headers.get('x-alice-space', '').split())[:40])   # the space switcher ('' = all mine)
     try:
         if spec is None:
             reason = None if viewer.full else 'This part of Alice has no permission set yet, so only an Owner can use it.'
         else:
-            reason = await asyncio.to_thread(permissions.check, viewer, spec, params, dict(request.query_params))
+            reason = await asyncio.to_thread(permissions.check, viewer, spec, params, dict(request.query_params), method)
         if reason:
             permissions.log_refusal(viewer, method, route.path, reason)
             if _wants_page(request, path):
@@ -3346,6 +3399,7 @@ async def people_and_permissions(request: Request, call_next):
             return JSONResponse({'detail': reason}, status_code=403)
         return await call_next(request)
     finally:
+        store.SPACE.reset(picked)
         store.VIEWER.reset(token)
         if acting is not None: store.ACTOR.reset(acting)
 

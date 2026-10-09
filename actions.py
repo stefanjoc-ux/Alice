@@ -22,7 +22,8 @@ def summary(cached=False):
     """Everything waiting. cached=True (the menu badges, Home, the Activity picture): the last answer is reused for up to
     CACHE_SECONDS while nothing has changed in this process (store.AUDIT_GEN); the Actions page itself always rebuilds."""
     import copy, time
-    key = store.DATASET.get()
+    v = store.viewer()
+    key = (store.DATASET.get(), v.oid if v is not None else '', store.SPACE.get())     # what each person sees is their own
     if cached and not _FULL.get():
         hit = _CACHED.get(key)
         if hit and time.monotonic() - hit[0] < CACHE_SECONDS and hit[1] == store.AUDIT_GEN[0]: return copy.deepcopy(hit[2])
@@ -148,9 +149,10 @@ def _summary():
 
     # 4. Category and client suggestions from Temple
     with store.db() as c:
+        rc, ra = store.viewer_clause('record', 'r.id')
         mem_cat = [dict(r) for r in c.execute(
             "SELECT r.id,r.title,m.suggestion FROM record_meta m JOIN records r ON r.id=m.record_id LEFT JOIN memory_archive a ON a.record_id=r.id "
-            "WHERE m.suggestion<>'' AND coalesce(a.state,r.status) IN ('approved','proposed') ORDER BY r.created_at DESC")]
+            "WHERE m.suggestion<>'' AND coalesce(a.state,r.status) IN ('approved','proposed')" + rc + "ORDER BY r.created_at DESC", ra)]
     kn = knowledge.listing(status='active', category='__suggested__', limit=100)
     cm, cf = clients.items('memory', '__suggested__', limit=100), clients.items('file', '__suggested__', limit=100)
     tag_items = ([{'type': 'category', 'id': r['id'], 'title': r['title'], 'detail': 'Category: ' + r['suggestion']} for r in mem_cat]
@@ -164,8 +166,9 @@ def _summary():
     # 5. Past their review-by date (memories, decisions to revisit, knowledge)
     due_mem = store.organised_records('approved', category='__expired__', limit=TOP)
     with store.db() as c:
+        kc, ka = store.viewer_clause('file', 'knowledge_meta.file_id')
         due_kn = [dict(r) for r in c.execute("SELECT file_id AS id,title,review_by,owner FROM knowledge_meta WHERE status='active' "
-                                             "AND review_by IS NOT NULL AND review_by<? ORDER BY review_by", (today,))]
+                                             "AND review_by IS NOT NULL AND review_by<?" + kc + "ORDER BY review_by", (today, *ka))]
     due_items = ([{'type': 'link', 'id': r['id'], 'title': r['title'], 'detail': ('Decision to revisit' if r.get('kind') == 'decision' else 'Memory')
                    + ' · review by ' + (r['review_by'] or '') + (' · owner ' + r['owner'] if r.get('owner') else ''), 'href': '/admin/memories?status=approved'} for r in due_mem['records']]
                  + [{'type': 'link', 'id': r['id'], 'title': r['title'], 'detail': 'Knowledge · review by ' + r['review_by'] + (' · owner ' + r['owner'] if r.get('owner') else ''), 'href': '/admin/knowledge'} for r in due_kn])
@@ -204,8 +207,20 @@ def _summary():
         tw = teams.waiting()
     except Exception:
         tw = []
+    if store.viewer() is not None: tw = [w for w in tw if not w.get('job_id') or store.can_see('team_job', w['job_id'])]
     out.append(_section('teams', 'Digital teams: waiting for you', len(tw), '/admin/teams', tw,
                         'Open an item for the full hand-off, and to discuss it with Temple.' if tw else '', top=10))
+
+    # 10b. Shares the sharing check held (spaces.py): only the item's author decides, on the Spaces page
+    import spaces
+    me = spaces._actor()
+    sh = [h for h in spaces.held(me) if h['author_key'] == spaces.person_key(me)]
+    out.append(_section('shares', 'Shares the sharing check held', len(sh), '/admin/spaces',
+                        [{'type': 'link', 'id': h['id'], 'title': f"{h['title']} → {h['to_name'] or 'a shared space'}",
+                          'detail': f"Your {h['type_label']} was held before it entered a shared space: " + ' '.join(h['reasons'] or ['personal or private details.']),
+                          'href': '/admin/spaces'} for h in sh],
+                        'Before anything enters a shared space, Alice and Temple check it for personal details about you or anyone else, '
+                        'special-category details and anything marked private. Open Spaces to share it anyway or keep it personal.' if sh else ''))
 
     # 11. Research guidance Temple suggested in a discussion about a run: saved only when you approve it on the organisation's page
     try:

@@ -169,6 +169,7 @@ def can(v, section, need=VIEW, item=None):
 
 def page_allowed(v, page):
     """May this person open the Console page (the menu shows only these)?"""
+    if page == 'spaces': return True                       # everyone has their personal space
     if page in OWNER_ONLY: return is_owner_person(v)
     if page in ROLE_SECTIONS: return full(v) or v.role == 'admin'
     if page in FULL_ONLY_PAGES: return full(v)
@@ -243,6 +244,10 @@ ROUTES = {
     'GET /admin/api/users': 'admin', 'PUT /admin/api/users/{oid}': 'admin', 'POST /admin/api/permission-profiles': 'admin',
     'PUT /admin/api/permission-profiles/{pid}': 'admin', 'DELETE /admin/api/permission-profiles/{pid}': 'admin',
     'GET /admin/api/permissions/catalogue': 'admin', 'GET /admin/api/my-access': 'any',
+    # spaces: everyone has at least their personal space; spaces.py decides who may manage, share or move what
+    'GET /admin/api/spaces': 'any', 'GET /admin/api/spaces/mine': 'any', 'POST /admin/api/spaces': 'any', 'PUT /admin/api/spaces/default': 'any',
+    'POST /admin/api/spaces/move': 'any', 'POST /admin/api/spaces/held/{mid}': 'any', 'PUT /admin/api/spaces/{sid}/members': 'any',
+    'DELETE /admin/api/spaces/{sid}/members/{member}': 'any',
     # sign-ins (the handler shows other people's sessions to Admins and Owners only)
     'GET /admin/api/signins': 'signins:view', 'POST /admin/api/signins/{sid}/signout': 'signins:use', 'POST /admin/api/signout-everywhere': 'full',
     # memories (lists show a person without the Owner role only their own)
@@ -378,17 +383,17 @@ ROUTES = {
 LEVEL_WORD = {'view': 'see', 'use': 'use', 'manage': 'manage'}
 
 
-def _item_ok(item_type, ident):
-    """For a person without the Owner role: did they create this item?"""
+def _item_ok(item_type, ident, write=False):
+    """Is this item in one of the person's spaces (chats and documents: theirs), and for a change, may they contribute there?"""
     if item_type == 'suggestion':          # Temple's suggestion after a chat answer: the chat must be theirs
         with store.db() as c:
             r = c.execute('SELECT chat_id FROM temple_suggestions WHERE id=?', (ident,)).fetchone()
         return bool(r) and store.can_see('chat', r[0])
-    if item_type == 'step':                # a digital team's step: its job must be theirs
+    if item_type == 'step':                # a digital team's step: its job must be in their spaces
         with store.db() as c:
             r = c.execute('SELECT job_id FROM team_steps WHERE id=?', (ident,)).fetchone()
-        return bool(r) and store.can_see('team_job', r[0])
-    return store.can_see(item_type, ident)
+        return bool(r) and (store.can_change if write else store.can_see)('team_job', r[0])
+    return (store.can_change if write else store.can_see)(item_type, ident)
 
 
 def step_job(sid):
@@ -410,20 +415,23 @@ def _section_label(key):
     return ROLE_SECTIONS.get(key) or OWNER_ONLY.get(key) or key
 
 
-def check(v, spec, params, query=None, pages=None):
-    """None if this person may go ahead, else the plain reason they may not. v: store.Viewer (None = the system)."""
+def check(v, spec, params, query=None, method='GET'):
+    """None if this person may go ahead, else the plain reason they may not. v: store.Viewer (None = the system).
+    Owners skip the section levels, never the spaces: an item outside their spaces is refused to them too."""
     if spec in ('open', 'any'): return None
     if spec == 'owner' or (spec == 'page' and (params.get('page') or 'home') in OWNER_ONLY):     # owner-only pages too, whatever the role
         return None if is_owner_person(v) else 'This part of Alice belongs to its owner only.'
-    if v is None or v.full:
-        return None
-    if spec == 'full': return FULL_ONLY_REASON
-    if spec == 'admin': return None if v.role == 'admin' else 'Only an Admin or an Owner of Alice can do this.'
+    if v is None: return None
+    whole = v.full
+    if spec == 'full': return None if whole else FULL_ONLY_REASON
+    if spec == 'admin': return None if whole or v.role == 'admin' else 'Only an Admin or an Owner of Alice can do this.'
+    write = method not in ('GET', 'HEAD')
     head, *owns = spec.split()
     parts = head.split(':')
     kind = parts[0]
     if kind == 'any': parts = ['any', 'none']
     elif kind == 'page':
+        if whole: return None
         page = params.get('page') or 'home'
         return None if page_allowed(v, page) else (FULL_ONLY_REASON if page in FULL_ONLY_PAGES and level(v, page) >= VIEW
                                                     else f'You do not have access to {_section_label(page)}.')
@@ -431,25 +439,27 @@ def check(v, spec, params, query=None, pages=None):
     if kind == 'any': pass
     elif kind == 'assistant':
         aid = params.get('aid', '')
-        if level(v, 'assistant', aid) < need: return 'You do not have access to this assistant.'
+        if not whole and level(v, 'assistant', aid) < need: return 'You do not have access to this assistant.'
     elif kind in ('team', 'job'):
         tid = params.get('tid') or (query or {}).get('team', '')
         if kind == 'job':
             jid = params.get('jid') or step_job(params.get('sid', ''))
             tid = job_team(jid)
-            if not tid or not store.can_see('team_job', jid):
-                return 'This job is not yours. Until shared Spaces arrive you see only the jobs you started.'
-        if not tid: return FULL_ONLY_REASON
-        if level(v, 'team', tid) < need: return f'You do not have permission to {LEVEL_WORD[parts[1]]} this team.'
-        if len(parts) > 2 and not team_cap(v, tid, parts[2]):
-            return f'Your access to this team does not include permission to {CAP_LABEL[parts[2]]}.'
-    else:
-        if level(v, kind) < need:
-            return f'You do not have permission to {LEVEL_WORD[parts[1]]} {_section_label(kind)}.'
+            if not tid: return None if whole and not write else 'No such job in your spaces.'     # the route itself says "not found"
+            if not (store.can_change if write else store.can_see)('team_job', jid):
+                return 'This job is not in any of your spaces.'
+        if not tid: return None if whole else FULL_ONLY_REASON
+        if not store.can_see('team', tid): return 'This team is not in any of your spaces.'
+        if not whole:
+            if level(v, 'team', tid) < need: return f'You do not have permission to {LEVEL_WORD[parts[1]]} this team.'
+            if len(parts) > 2 and not team_cap(v, tid, parts[2]):
+                return f'Your access to this team does not include permission to {CAP_LABEL[parts[2]]}.'
+    elif not whole and level(v, kind) < need:
+        return f'You do not have permission to {LEVEL_WORD[parts[1]]} {_section_label(kind)}.'
     for o in owns:
         item_type, param = o[4:].split(':')
-        if not _item_ok(item_type, params.get(param, '')):
-            return 'That is not yours. Until shared Spaces arrive you see only what you created yourself.'
+        if not _item_ok(item_type, params.get(param, ''), write):
+            return 'That is not in a space you may change.' if write else 'That is not yours, or not in any of your spaces.'
     return None
 
 

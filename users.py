@@ -113,6 +113,23 @@ def local_owner():
     return store.Viewer('', '', store.owner_name(), 'owner', True, True)
 
 
+def owner_oids():
+    """The object IDs that count as the owner of Alice now, by the one owner check (is_owner): everyone whose last sign-in
+    carried Alice.Owner, and the fallback ID while app roles are off. Spaces key all of them as the owner ('owner')."""
+    out = {fallback_oid()} - {''}
+    with store.db() as c:
+        out |= {r[0] for r in c.execute('SELECT oid FROM users WHERE entra_owner=1')}
+    return sorted(out)
+
+
+def owner_viewer():
+    """The owner, for background work on the owner's own items: on the PC the owner here; in Azure an owner by is_owner
+    (never ALICE_OWNER_OBJECT_ID on its own once app roles are on)."""
+    if not trusted(): return local_owner()
+    o = owner_oids()
+    return store.Viewer(o[0] if o else '', '', store.owner_name(), 'owner', True, True)
+
+
 # ---------------- the sign-in headers ----------------
 def principal(headers):
     """{oid, email, name, roles} from Container Apps sign-in headers ({} when not behind trusted sign-in)."""

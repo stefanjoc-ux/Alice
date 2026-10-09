@@ -108,28 +108,26 @@ def canonical(name):
     import clients
     name = _clean(name, 60)
     if not name: raise ValueError('Name the organisation.')
-    if store.restricted() is not None: raise ValueError(f'No organisation called "{name}" that you can use.')
     with store.db() as c:
-        row = c.execute('SELECT name FROM organisations WHERE name=?', (name,)).fetchone()
-        if row: return row[0]
-        row = c.execute('SELECT name FROM clients WHERE name=?', (name,)).fetchone()
-        if row: return row[0]
-    hits = clients.detect(name)      # a client alias, e.g. "SBC"
+        row = c.execute('SELECT name FROM organisations WHERE name=?', (name,)).fetchone() or \
+            c.execute('SELECT name FROM clients WHERE name=?', (name,)).fetchone()
+    if row and store.can_see('organisation', row[0]): return row[0]          # only organisations in this person's spaces
+    hits = clients.detect(name)      # a client alias, e.g. "SBC" (only clients this person may see)
     if len(hits) == 1: return hits[0]
     raise ValueError(f'No organisation called "{name}". Add it on the Organisations page (clients are included automatically).')
 
 
 def create(name, kind='other', description='', client=False, aliases=()):
-    if store.restricted() is not None: raise ValueError('Organisations are kept by an Owner of Alice until shared Spaces arrive.')
     import clients
     name, description = _clean(name, 60), _clean(description, 500)
     if not name: raise ValueError('Enter a name.')
     if kind not in KINDS: raise ValueError('Choose a type: ' + ', '.join(KINDS) + '.')
     with store.db() as c:
         if c.execute('SELECT 1 FROM organisations WHERE name=?', (name,)).fetchone() or \
-                c.execute('SELECT 1 FROM clients WHERE name=?', (name,)).fetchone(): raise ValueError(f'"{name}" already exists.')
+                c.execute('SELECT 1 FROM clients WHERE name=?', (name,)).fetchone(): raise ValueError(f'"{name}" is already used. Pick another name.')
         c.execute('INSERT INTO organisations(name,kind,description,created_at) VALUES (?,?,?,?)', (name, kind, description, store.now()))
         store.audit(c, 'org_created', name, 'human_review', f'{kind}: {description[:200]}')
+    store.stamp('organisation', name)            # in the creator's default space (spaces.py)
     if client: clients.create_client(name, aliases)      # after the insert: clients opens its own write transaction
     return {'name': name, 'client': bool(client)}
 
@@ -176,12 +174,10 @@ def update(name, kind=None, description=None, website=None, account_manager=None
 
 def listing():
     import clients
-    if store.restricted() is not None:        # organisations are an Owner's until shared Spaces arrive (users.py)
-        return {'organisations': [], 'sections': [{'key': k, 'name': n, 'hint': h} for k, n, h in SECTIONS], 'kinds': KINDS,
-                'review_months': _review_months(), 'managers': [], 'demo': store.demo_active()}
     today = _today()
+    vc, va = store.viewer_clause('organisation', 'organisations.name')      # the organisations in this person's spaces
     with store.db() as c:
-        orgs = {r['name'].lower(): dict(r) for r in c.execute('SELECT * FROM organisations')}
+        orgs = {r['name'].lower(): dict(r) for r in c.execute('SELECT * FROM organisations WHERE 1=1' + vc, va)}
         counts = {}
         for r in c.execute("SELECT lower(org) AS o,status,count(*) AS n,sum(CASE WHEN review_by<? THEN 1 ELSE 0 END) AS due FROM org_facts GROUP BY lower(org),status", (today,)):
             d = counts.setdefault(r['o'], {'approved': 0, 'proposed': 0, 'retired': 0, 'rejected': 0, 'due': 0})
@@ -203,9 +199,9 @@ def listing():
 # ---------------- facts ----------------
 def propose_fact(org, section, statement, source_system, source_ref='', as_of='', review_by='', label='general', by='you'):
     """Models propose (status 'proposed'); facts you add yourself on the Organisations page are approved at once."""
-    if store.restricted() is not None: raise ValueError('Organisations are kept by an Owner of Alice until shared Spaces arrive.')
     import rules_engine
     org = canonical(org)
+    if not store.can_change('organisation', org): raise ValueError('You can only add facts to organisations in a space you contribute to.')
     if section not in SECTION_NAMES: raise ValueError('Section must be one of: ' + ', '.join(SECTION_NAMES) + '.')
     statement = _clean(statement, MAX_STATEMENT + 1)
     if len(statement) < 12: raise ValueError('Write the fact as a short sentence (at least 12 characters).')
@@ -310,8 +306,9 @@ def facts(org, status='approved', section=''):
 
 
 def pending(limit=50):
+    vc, va = store.viewer_clause('organisation', 'org_facts.org')     # facts about organisations in this person's spaces
     with store.db() as c:
-        return [dict(r) for r in c.execute("SELECT * FROM org_facts WHERE status='proposed' ORDER BY created_at DESC LIMIT ?", (limit,))]
+        return [dict(r) for r in c.execute("SELECT * FROM org_facts WHERE status='proposed'" + vc + "ORDER BY created_at DESC LIMIT ?", (*va, limit))]
 
 
 def by_source(source_system, source_ref=''):

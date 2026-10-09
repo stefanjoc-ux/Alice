@@ -375,7 +375,7 @@ def gather(a, title, brief, org, client, use_memory=True, providers=None):
     def ok(text):
         try: rules_engine.check_outbound(text, 'Proposal writer', packs=False); return True
         except rules_engine.RuleViolation: return False
-    if org and store.restricted() is None:           # organisations are an Owner's until shared Spaces arrive
+    if org and store.can_see('organisation', org):    # only an organisation in this person's spaces
         try:
             b = organisations.brief(org, provider=fam)
             for other in fams[1:]:                                            # the stricter of the two models' rules

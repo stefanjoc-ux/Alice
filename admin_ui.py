@@ -1133,7 +1133,7 @@ if(PAGE==='knowledge'){
   if(r.kind!=='file'){const wd=document.createElement('a');wd.href='/admin/api/knowledge/'+r.id+'/docx';wd.textContent='Download as Word';wd.className='button-link';act.append(wd)}
   const dl=document.createElement('a');dl.href='/files/'+r.id+'/download';dl.textContent=r.kind==='file'?'Download original':'Download text';dl.className='button-link';act.append(dl);
   const del=el('button','Delete');del.type='button';del.className='secondary';del.onclick=()=>run(async()=>{if(!confirm('Delete “'+r.title+'” permanently?'))return;await api('/files/'+r.id,'DELETE');$('notice').textContent='Deleted.';await load()});act.append(del);
-  box.append(act);return box}
+  box.append(act,spaceControl('file',r.id,r.space,load));return box}
  async function render(){const t=$('k-table');t.replaceChildren();const h=document.createElement('thead'),hr=document.createElement('tr');const all=document.createElement('input');all.type='checkbox';all.setAttribute('aria-label','Select all shown');all.checked=st.rows.length>0&&st.rows.every(r=>st.picked.has(r.id));all.onchange=()=>{for(const r of st.rows)all.checked?st.picked.add(r.id):st.picked.delete(r.id);run(render)};const th0=document.createElement('th');th0.append(all);hr.append(th0);for(const x of ['Item','Type','Label','Tags','Added']){const th=el('th',x);th.scope='col';hr.append(th)}h.append(hr);t.append(h);
   const b=document.createElement('tbody');if(!st.rows.length){const tr=document.createElement('tr'),td=el('td',st.status==='draft'?'No drafts waiting.':'Nothing matches.','muted');td.colSpan=6;tr.append(td);b.append(tr)}
   for(const r of st.rows){const tr=document.createElement('tr');tr.className='mem-row'+(st.open.has(r.id)?' open':'');const c0=document.createElement('td');const cb=document.createElement('input');cb.type='checkbox';cb.checked=st.picked.has(r.id);cb.setAttribute('aria-label','Select '+r.title);cb.onchange=()=>{cb.checked?st.picked.add(r.id):st.picked.delete(r.id);bulk()};c0.append(cb);
@@ -1493,7 +1493,7 @@ function fillOwners(sel,owners,value){if(sel){sel.replaceChildren();for(const [v
  const dl=$('owner-list');if(dl)dl.replaceChildren(...owners.map(o=>{const x=document.createElement('option');x.value=o;return x}))}
 function askReason(decision){if(decision!=='rejected')return '';const r=prompt('Why reject it? Optional; kept in the activity log.');return r===null?null:r.trim()}
 '''
-SCRIPT += "\nfunction memoryControls(record){\n const wrap=el('div','');\n const historyButton=el('button','View memory history');historyButton.className='secondary';\n historyButton.onclick=()=>run(async()=>{const items=await api('/admin/api/records/'+record.id+'/history');const box=el('div','');for(const item of items){box.append(el('h4',item.title+' · '+item.status),el('pre',item.content),el('p','Source: '+item.source));if(item.reason)box.append(el('p','Reason: '+item.reason));for(const event of item.events)box.append(el('p',event.created_at+' · '+event.action+' · '+event.detail,'muted'));}historyBody.replaceChildren(el('summary','Memory history'),box);historyBody.open=true;});\n const historyBody=document.createElement('details');historyBody.append(el('summary','History'));\n wrap.append(historyButton,historyBody);\n async function reload(){if(PAGE==='memories')await records();else location.reload();}\n if(record.status==='approved'){const retire=el('button','Retire memory');retire.className='secondary';retire.onclick=()=>run(async()=>{const reason=prompt('Why is this memory no longer relevant?');if(!reason||!reason.trim())return;if(!confirm('Retire “'+record.title+'”? It will stop appearing in active memory searches, but its history remains.'))return;await api('/admin/api/records/'+record.id+'/retire','POST',{reason});await reload()});wrap.append(retire);}\n if(record.status==='proposed'){\n const open=el('button','Resolve friction / replace');const form=el('div','');\n open.onclick=()=>run(async()=>{open.disabled=true;try{let offset=0,all=[];do{const data=await api('/admin/api/records?status=approved&offset='+offset);all.push(...data.records);offset=data.next_offset;}while(offset!==null);form.replaceChildren();if(!all.length){form.textContent='No active approved memory to replace.';return;}\n form.append(el('h4','Resolve friction'),el('p','Choose the current memory this proposal replaces. Approval and replacement happen together.'));\n const choose=document.createElement('select');choose.setAttribute('aria-label','Memory to replace');choose.style.maxWidth='100%';const initial=document.createElement('option');initial.value='';initial.textContent='Choose an active memory…';choose.append(initial);for(const m of all){const o=document.createElement('option');o.value=m.id;o.textContent=m.title+' · '+m.id.slice(0,8);choose.append(o)}\n const preview=el('pre','');choose.onchange=()=>{const old=all.find(m=>m.id===choose.value);preview.textContent=old?'CURRENT: '+old.content+'\\n\\nSource: '+old.source+'\\n\\nREPLACEMENT: '+record.content:''};const reason=document.createElement('textarea');reason.maxLength=2000;reason.placeholder='Why should this replace the current memory?';reason.setAttribute('aria-label','Friction resolution reason');\n const submit=el('button','Approve as replacement');submit.onclick=()=>run(async()=>{if(!choose.value||!reason.value.trim())throw Error('Select a memory and enter a reason.');if(!confirm('Approve this proposal and supersede the selected memory?'))return;submit.disabled=true;try{await api('/admin/api/records/'+record.id+'/replace','POST',{old_id:choose.value,reason:reason.value});await reload()}finally{submit.disabled=false}});\n form.append(choose,preview,reason,submit);\n }finally{open.disabled=false}});wrap.append(open,form);\n }\n return wrap;\n}\n"
+SCRIPT += "\nfunction memoryControls(record){\n const wrap=el('div','');\n const historyButton=el('button','View memory history');historyButton.className='secondary';\n historyButton.onclick=()=>run(async()=>{const items=await api('/admin/api/records/'+record.id+'/history');const box=el('div','');for(const item of items){box.append(el('h4',item.title+' · '+item.status),el('pre',item.content),el('p','Source: '+item.source));if(item.reason)box.append(el('p','Reason: '+item.reason));for(const event of item.events)box.append(el('p',event.created_at+' · '+event.action+' · '+event.detail,'muted'));}historyBody.replaceChildren(el('summary','Memory history'),box);historyBody.open=true;});\n const historyBody=document.createElement('details');historyBody.append(el('summary','History'));\n wrap.append(historyButton,historyBody);\n async function reload(){if(PAGE==='memories')await records();else location.reload();}\n wrap.append(spaceControl('record',record.id,record.space,reload));\n if(record.status==='approved'){const retire=el('button','Retire memory');retire.className='secondary';retire.onclick=()=>run(async()=>{const reason=prompt('Why is this memory no longer relevant?');if(!reason||!reason.trim())return;if(!confirm('Retire “'+record.title+'”? It will stop appearing in active memory searches, but its history remains.'))return;await api('/admin/api/records/'+record.id+'/retire','POST',{reason});await reload()});wrap.append(retire);}\n if(record.status==='proposed'){\n const open=el('button','Resolve friction / replace');const form=el('div','');\n open.onclick=()=>run(async()=>{open.disabled=true;try{let offset=0,all=[];do{const data=await api('/admin/api/records?status=approved&offset='+offset);all.push(...data.records);offset=data.next_offset;}while(offset!==null);form.replaceChildren();if(!all.length){form.textContent='No active approved memory to replace.';return;}\n form.append(el('h4','Resolve friction'),el('p','Choose the current memory this proposal replaces. Approval and replacement happen together.'));\n const choose=document.createElement('select');choose.setAttribute('aria-label','Memory to replace');choose.style.maxWidth='100%';const initial=document.createElement('option');initial.value='';initial.textContent='Choose an active memory…';choose.append(initial);for(const m of all){const o=document.createElement('option');o.value=m.id;o.textContent=m.title+' · '+m.id.slice(0,8);choose.append(o)}\n const preview=el('pre','');choose.onchange=()=>{const old=all.find(m=>m.id===choose.value);preview.textContent=old?'CURRENT: '+old.content+'\\n\\nSource: '+old.source+'\\n\\nREPLACEMENT: '+record.content:''};const reason=document.createElement('textarea');reason.maxLength=2000;reason.placeholder='Why should this replace the current memory?';reason.setAttribute('aria-label','Friction resolution reason');\n const submit=el('button','Approve as replacement');submit.onclick=()=>run(async()=>{if(!choose.value||!reason.value.trim())throw Error('Select a memory and enter a reason.');if(!confirm('Approve this proposal and supersede the selected memory?'))return;submit.disabled=true;try{await api('/admin/api/records/'+record.id+'/replace','POST',{old_id:choose.value,reason:reason.value});await reload()}finally{submit.disabled=false}});\n form.append(choose,preview,reason,submit);\n }finally{open.disabled=false}});wrap.append(open,form);\n }\n return wrap;\n}\n"
 
 SCRIPT += r"""
 if(PAGE==='usage'){
@@ -3155,3 +3155,76 @@ SCRIPT += r"""
  new MutationObserver(()=>{clearTimeout(t);n.classList.remove('leaving');const len=n.textContent.trim().length;if(len)t=setTimeout(clear,Math.min(15000,4500+len*45))}).observe(n,{childList:true,characterData:true,subtree:true});
  n.addEventListener('click',()=>{clearTimeout(t);clear()});})();
 """
+
+SCRIPT += r"""
+// ---- Spaces (spaces.py): which space an item is in; Share to space… / Move to space…; the switcher in the top bar ----
+let SPACES_MINE=null;
+async function mySpaces(){if(!SPACES_MINE)SPACES_MINE=await api('/admin/api/spaces/mine');return SPACES_MINE}
+function spaceControl(type,id,current,after){const box=el('div','','space-ctl');box.append(el('span','Space: …','small muted'));
+ (async()=>{try{const m=await mySpaces();const name=s=>(m.spaces.find(x=>x.id===s)||{name:'another space'}).name;const kind=s=>(m.spaces.find(x=>x.id===s)||{}).kind;
+  box.replaceChildren(el('span','Space: '+name(current),'small muted'));
+  const targets=m.can_add_to.filter(x=>x.id!==current);if(!targets.length)return;
+  const sel=document.createElement('select');sel.setAttribute('aria-label','Space to share or move it to');const o0=document.createElement('option');o0.value='';o0.textContent='Share or move to…';sel.append(o0);
+  for(const t of targets){const o=document.createElement('option');o.value=t.id;o.textContent=(t.kind==='shared'?'Share to ':'Move to ')+t.name;sel.append(o)}
+  const go=el('button','Go','secondary mini');go.type='button';
+  go.onclick=()=>run(async()=>{if(!sel.value)return;const shared=kind(sel.value)==='shared';
+   if(shared&&!confirm('Share it to '+name(sel.value)+'? Everyone in that space will see it. Alice checks it for personal details first.'))return;
+   const x=await api('/admin/api/spaces/move','POST',{item_type:type,item_id:id,space:sel.value});
+   $('notice').textContent=x.status==='moved'?'Now in '+name(sel.value)+'.':x.status==='held'?'Held for you: '+x.reasons.join(' ')+' Decide on the Spaces page.':x.status==='refused'?'Not shared: '+x.reasons.join(' '):'No change.';
+   if(after)await after()});
+  box.append(sel,go)}catch(e){box.replaceChildren()}})();
+ return box}
+(async()=>{const bar=document.querySelector('.topbar .sp');if(!bar)return;try{const m=await mySpaces();if(m.spaces.length<2)return;
+ const sel=document.createElement('select');sel.id='space-switch';sel.className='space-switch';sel.setAttribute('aria-label','Show items from');
+ const all=document.createElement('option');all.value='';all.textContent='All my spaces';sel.append(all);
+ for(const x of m.spaces){const o=document.createElement('option');o.value=x.id;o.textContent=x.name;sel.append(o)}
+ let cur='';try{cur=localStorage.getItem('alice-space')||''}catch{}sel.value=m.spaces.some(x=>x.id===cur)?cur:'';
+ sel.onchange=()=>{try{sel.value?localStorage.setItem('alice-space',sel.value):localStorage.removeItem('alice-space')}catch{}location.reload()};
+ bar.after(sel)}catch{}})();
+if(PAGE==='spaces'){
+ const RL={view:'View',contribute:'Contribute',manage:'Manage'};
+ async function load(){const d=await api('/admin/api/spaces');SPACES_MINE=null;
+  $('sp-new').hidden=!d.can_create;
+  const w=$('sp-waiting');w.replaceChildren();
+  if(!d.waiting.length)w.append(el('p','Nothing waiting for you.','muted small'));
+  for(const h of d.waiting){const c=el('div','','sp-held');c.append(el('b',h.title),el('div',h.type_label+' → '+h.to_name,'small muted'));const ul=el('ul','');for(const r of h.reasons)ul.append(el('li',r));c.append(ul);
+   const a=el('button','Share anyway');a.type='button';a.onclick=()=>run(async()=>{if(!confirm('Share “'+h.title+'” to '+h.to_name+' anyway? Everyone in that space will see it.'))return;await api('/admin/api/spaces/held/'+h.id,'POST',{action:'share'});await load()});
+   const k=el('button','Keep it personal','secondary');k.type='button';k.onclick=()=>run(async()=>{await api('/admin/api/spaces/held/'+h.id,'POST',{action:'keep'});await load()});c.append(a,k);w.append(c)}
+  const def=$('sp-default');def.replaceChildren();for(const x of d.spaces.filter(x=>x.my_role&&x.my_role!=='view')){const o=document.createElement('option');o.value=x.id;o.textContent=x.name;def.append(o)}def.value=d.default;
+  const list=$('sp-list');list.replaceChildren();
+  for(const x of d.spaces){const c=el('section','','sp-card');const h=el('h3',x.name);h.append(el('span',x.kind==='personal'?'Personal':'Shared','badge v-none'));if(x.client)h.append(el('span','Client: '+x.client,'badge v-warn'));c.append(h);
+   if(x.description)c.append(el('p',x.description,'small muted'));
+   c.append(el('p',x.my_role?'Your role: '+RL[x.my_role]:'You are not a member (you can manage its members as an Owner of Alice).','small'));
+   const cnt=Object.entries(x.counts||{});if(cnt.length)c.append(el('p',cnt.map(([k,v])=>v+' '+k+(v===1?'':'s')).join(' · '),'small'));
+   if(x.kind==='shared'&&x.members.length){const ul=el('ul','','sp-members');for(const m of x.members){const li=el('li',m.name+' · '+RL[m.role]);
+     if(x.can_manage&&!(m.role==='manage'&&x.members.filter(y=>y.role==='manage').length<2)){const rm=el('button','Remove','mini secondary');rm.type='button';rm.onclick=()=>run(async()=>{if(!confirm('Remove '+m.name+' from '+x.name+'? They stop seeing everything in it at once.'))return;await api('/admin/api/spaces/'+x.id+'/members/'+(m.key==='owner'?'owner':m.key),'DELETE');await load()});li.append(rm)}
+     ul.append(li)}c.append(ul)}
+   if(x.can_manage&&d.people.length){const f=el('div','','sp-add');const ps=document.createElement('select');ps.setAttribute('aria-label','Person to add');for(const p of d.people){const o=document.createElement('option');o.value=p.key;o.textContent=p.name+(p.email&&p.email!==p.name?' ('+p.email+')':'');ps.append(o)}
+    const rs=document.createElement('select');rs.setAttribute('aria-label','Their role');for(const r of d.roles){const o=document.createElement('option');o.value=r.key;o.textContent=r.label;rs.append(o)}rs.value='view';
+    const b=el('button','Add to this space');b.type='button';b.onclick=()=>run(async()=>{if(!confirm('Add them to '+x.name+'? They will see everything in it.'))return;await api('/admin/api/spaces/'+x.id+'/members','PUT',{member:ps.value,role:rs.value});$('notice').textContent='Added.';await load()});
+    f.append(ps,rs,b);c.append(f)}
+   list.append(c)}
+  const mg=$('sp-migration');mg.replaceChildren();if(d.migration&&d.migration.counts){mg.append(el('p','When spaces arrived, Alice placed your items (nothing was copied or deleted): '+Object.entries(d.migration.counts).map(([k,v])=>v+' '+k.replace(':',' → ')).join(', ')+'.','small muted'))}}
+ $('sp-default').onchange=()=>run(async()=>{await api('/admin/api/spaces/default','PUT',{space:$('sp-default').value});$('notice').textContent='New items now go to that space.'});
+ $('sp-create').onsubmit=e=>{e.preventDefault();run(async()=>{await api('/admin/api/spaces','POST',{name:$('sp-name').value,description:$('sp-desc').value,client:$('sp-client').value});$('sp-name').value='';$('notice').textContent='Space created. Only you are in it until you add people.';await load()})};
+ run(load);
+}
+"""
+PAGES['spaces'] = ('Spaces', 'Where your memories, decisions, knowledge, organisations, proposals and digital teams live. Your personal space is yours alone; '
+                   'a shared space shows everything in it to its members. Sharing is always deliberate: Alice checks an item for personal details '
+                   'before it enters a shared space, and adding someone to Alice never adds them to a space.')
+SECTIONS['spaces'] = r'''<section><div class="mem-head"><h2>Waiting for you</h2><span class="small muted">Items the sharing check held: share anyway or keep personal</span></div><div id="sp-waiting"></div></section>
+<section><div class="mem-head"><h2>Your spaces</h2><label class="small">New items go to <select id="sp-default"></select></label></div><div id="sp-list" class="sp-grid"></div><div id="sp-migration"></div></section>
+<section id="sp-new" hidden><div class="mem-head"><h2>New shared space</h2></div><form id="sp-create" class="sp-form"><label>Name <input id="sp-name" maxlength="80" required></label>
+<label>What it is for <input id="sp-desc" maxlength="300"></label><label>Tied to a client (optional) <input id="sp-client" maxlength="60" placeholder="Only this space's members then see that client's material"></label>
+<button type="submit">Create space</button></form></section>'''
+NAV_GROUPS[1][1].append('spaces')
+NAV_ICONS['spaces'] = _I('<rect x="3" y="4" width="8" height="7" rx="1.5"/><rect x="13" y="4" width="8" height="7" rx="1.5"/><rect x="3" y="13" width="8" height="7" rx="1.5"/><rect x="13" y="13" width="8" height="7" rx="1.5"/>')
+CSS += r'''
+.space-ctl{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px}.space-ctl select{max-width:260px}
+.space-switch{margin-right:10px;max-width:220px;background:#11233a;color:#fff;border:1px solid #33506a;border-radius:8px;padding:4px 8px}
+.sp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}.sp-card{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:0}
+.sp-card h3{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 6px;font-size:16px}.sp-members{margin:6px 0;padding-left:18px;font-size:14px}.sp-members li{margin:3px 0}
+.sp-members .mini{margin-left:8px}.sp-add{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.sp-held{border:1px solid #e2bf85;background:#fdf3e1;border-radius:8px;padding:10px 12px;margin:8px 0}
+.sp-held ul{margin:6px 0 8px;padding-left:18px;font-size:14px}.sp-form label{display:block;margin:8px 0}.sp-form input{width:min(480px,100%)}#sp-new[hidden]{display:none}
+'''
