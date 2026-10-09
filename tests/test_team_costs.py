@@ -108,6 +108,7 @@ by_run = {}
 for r in R: by_run[r['run_id']] = by_run.get(r['run_id'], D(0)) + D(r['usd'])
 t('each agent run\'s cost on the Agents page is exactly the sum of its recorded calls', by_run and all(abs(D(runs[k]) - v) < D('1e-9') for k, v in by_run.items()))
 C = team_costs.team(TID)
+CALLS_AT_C = len(CALLS) + len(SEARCHES)            # each later call or search adds $0.03 to the team's figures
 tot30 = D(C['total']['30d']['usd'])
 t('the team total is the sum of its members', tot30 == sum((D(m['costs']['30d']['usd']) for m in C['members']), D(0)))
 t('…and matches the Agents page and Usage', abs(tot30 - sum((D(v) for v in runs.values()), D(0))) < D('1e-9') and abs(tot30 - D(usage)) < D('1e-9'))
@@ -195,14 +196,24 @@ t('…and say the AI side is in dollars until a rate is set', 'US dollars' in cs
 t('a bad day rate is refused', cl.put(f'/admin/api/teams/{TID}/staff/cost-surveyor', json={'on': True, 'day_rate': -5, 'days': 2}, headers=H).status_code == 400)
 jp = cl.get(f'/admin/api/teams/jobs/{j["id"]}/page').json()
 t('the job page shows Your figures beside that member\'s share only', [m['role'] for m in jp['costs']['members'] if m['your_figures']] == ['Cost Surveyor'])
-t('your figures are never sent to a model', not any('450' in c_['payload'] or '900' in c_['payload'] for c_ in CALLS))
+# Your figures never reach a model: figures nobody would hit by chance, switched on, then a real model call made while they are
+# on (Talk to the team sends the lead the team's context), and every call and search checked for the exact values.
+cl.put(f'/admin/api/teams/{TID}/staff/cost-surveyor', json={'on': True, 'day_rate': 437.13, 'days': 3}, headers=H)
+FIGURES = ('437.13', '1311.39', '1,311.39')
+n_calls = len(CALLS)
+r = cl.post(f'/admin/api/teams/{TID}/talk', json={'message': 'What does the Cost Surveyor cost us?', 'job': j['id']}, headers=H)
+sent = ' '.join(str(c_['payload']) + ' ' + str(c_['system']) for c_ in CALLS) + ' ' + ' '.join(str(x['query']) for x in SEARCHES)
+t('your figures are never sent to a model (a call made while they are on carries none of them)',
+  team_costs.staff(TID).get('cost-surveyor', {}).get('day_rate') == 437.13 and r.status_code == 200 and len(CALLS) > n_calls
+  and not any(f_ in sent for f_ in FIGURES))
 cl.put(f'/admin/api/teams/{TID}/staff/cost-surveyor', json={'on': False}, headers=H)
 t('switched off again: no comparison', all(m['your_figures'] is None for m in team_costs.team(TID)['members']))
 
 # ---------------- the pages carry the figures ----------------
 b = cl.get('/admin/api/teams/board').json()
 mine = next(x for x in b['teams'] if x['id'] == TID)
-t('All teams: each team\'s cost for the last 30 days and a total', abs(mine['cost']['usd'] - C['total']['30d']['usd'] - 0.03) < 1e-9
+since_c = 0.03 * (len(CALLS) + len(SEARCHES) - CALLS_AT_C)          # Talk to the team twice since C
+t('All teams: each team\'s cost for the last 30 days and a total', since_c > 0 and abs(mine['cost']['usd'] - C['total']['30d']['usd'] - since_c) < 1e-9
   and D(b['costs']['total']['usd']) == sum((D(x['cost']['usd']) for x in b['teams']), D(0)) and b['costs']['label'] == 'Last 30 days')
 pg = cl.get(f'/admin/api/teams/{TID}/page').json()
 t('the team page carries the running cost: members × periods, total, run rate', [p_['key'] for p_ in pg['costs']['periods']] == ['7d', '30d', 'quarter', '12m']
