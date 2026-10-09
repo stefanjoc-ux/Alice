@@ -32,13 +32,13 @@ t('badge offers "Sign out of Alice" first, Microsoft sign-out as the second opti
 cl.cookies.set('AppServiceAuthSession', 'session-value-not-real'); cl.cookies.set('AppServiceAuthSession1', 'part-two')
 r = cl.get('/signout', follow_redirects=False)
 sc = r.headers.get_list('set-cookie')
-t('sign out of Alice: her sign-in cookies are expired, then the signed-out page', r.status_code == 303 and r.headers['location'] == '/signed-out'
+t('sign out of Alice: her sign-in cookies are expired, then the signed-out page', r.status_code == 303 and r.headers['location'] == '/signed-out?out=1'
   and any(c.startswith('AppServiceAuthSession=') and ('Max-Age=0' in c or 'expires=' in c.lower()) for c in sc)
   and any(c.startswith('AppServiceAuthSession1=') for c in sc) and all('Path=/' in c and 'Secure' in c and 'HttpOnly' in c for c in sc))
 t('it does not send you to Microsoft sign-out', 'login.microsoftonline' not in r.headers['location'] and '/.auth/logout' not in r.headers['location'])
-p = cl.get('/signed-out')
+p = cl.get('/signed-out?out=1')
 t('signed-out page: plain, no data, offers sign in again and the full sign-out', p.status_code == 200 and 'Signed out of Alice' in p.text
-  and 'href="/"' in p.text and '/.auth/logout?post_logout_redirect_uri=/signed-out' in p.text and 'no-store' in p.headers.get('cache-control', '')
+  and 'href="/signed-out?go=1"' in p.text and '/.auth/logout?post_logout_redirect_uri=/signed-out' in p.text and 'no-store' in p.headers.get('cache-control', '')
   and 'stefan' not in p.text.lower())
 import re as _re
 bicep = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'infra', 'main.bicep')).read()
@@ -148,3 +148,98 @@ t('version: anything odd is not shown', version_info({'ALICE_VERSION': '<script>
 h = cl.get('/admin/memories').text
 t('the menu shows the version at the bottom', 'class="nav-version"' in h and h.index('class="nav-version"') > h.index('aria-label="Console"')
   and '>' + version_info()['version'] + '</b>' in h)
+
+
+# ---------------- "Sign in to Alice": the front page on /signed-out (the bookmark) ----------------
+import re as _re2, shutil, subprocess, tempfile
+os.environ.pop('ALICE_TRUST_EASYAUTH', None)
+p = cl.get('/signed-out')
+page = p.text
+t('the front page is "Sign in to Alice" with one primary button, Sign in with Microsoft', p.status_code == 200 and '<title>Sign in to Alice</title>' in page
+  and '<h1>Sign in to Alice</h1>' in page and page.count('class="go"') == 1 and '>Sign in with Microsoft</a>' in page
+  and 'href="/signed-out?go=1"' in page)
+t('…Microsoft asks who you are, every time', 'Microsoft will ask who you are (password, Windows Hello or passkey), every time.' in page)
+t('no username, email or password fields: Alice never asks for credentials on her own pages',
+  not _re2.search(r'<(input|form|textarea|select)\b', page, _re2.I) and 'type="password"' not in page)
+t('the note: padlock, the address, Microsoft\'s own sign-in page, and who may get in',
+  'Check the address bar shows a padlock' in page and 'login.microsoftonline.com' in page
+  and 'Secured by Microsoft Entra ID. Only approved accounts can open Alice.' in page)
+t('Alice\'s look: the shared theme, the Alice mark in the top bar and a padlock badge', '--teal:' in page and 'class="si-bar"' in page
+  and '<img src="/static/favicon.png" alt="">ALICE' in page and 'id="si-secure"' in page and '<svg' in page)
+t('no host is typed into the page: the badge and the note read it from the page\'s own address', 'location.hostname' in page
+  and 'testserver' not in page and 'azurecontainerapps' not in page and 'example.org' not in page)
+owner = app.store.owner_name()
+t('wording for any user: no owner\'s name, no data', owner.lower() not in page.lower() and 'stefan' not in page.lower() and '@' not in page.replace('@media', ''))
+t('holds no data and makes no call except the /me check', page.count('fetch(') == 1 and "fetch('/me'" in page and 'no-store' in p.headers.get('cache-control', ''))
+t('on the bare page no signed-out message shows, and the Microsoft sign-out waits for a session', 'id="so-t"' not in page
+  and 'id="so-ms" hidden' in page and 'id="so-warn" class="warn" hidden' in page)
+t('phone and tablet: a 16 px gutter under 520 px and nothing wider than the screen', '@media(max-width:520px)' in page and 'margin:16px 16px 24px' in page
+  and 'name="viewport"' in page)
+t('Trouble signing in? still links the reset', 'Trouble signing in?' in page and 'href="/signed-out?reset=1"' in page)
+
+# the existing messages appear above the button when they apply
+for q, head in (('out=1', 'Signed out of Alice'), ('everywhere=1', 'Signed out of Alice everywhere')):
+    pg = cl.get('/signed-out?' + q).text
+    t(f'?{q}: "{head}" shows above the button, with the sign-out of Microsoft offered', f'<b id="so-t">{head}</b>' in pg
+      and pg.index('id="so-t"') < pg.index('id="si-go"') and 'id="so-ms">' in pg and 'Sign out of Microsoft in this browser too' in pg)
+t('"this browser still has a session" is kept, above the button, shown when /me says so', 'This browser still has an Alice session.' in page
+  and page.index('id="so-warn"') < page.index('id="si-go"') and "getElementById('so-warn').hidden=false" in page)
+
+# ?go=1: the sign-in cookies are expired and you go to Alice (Microsoft then asks who you are)
+cl.cookies.clear()
+for name, val in (('AppServiceAuthSession', 'secret-a'), ('AppServiceAuthSession3', 'secret-b'), ('Nonce', 'secret-n'),
+                  ('NonceAbc', 'secret-n2'), ('alice_pref', 'keep')):
+    cl.cookies.set(name, val)
+r = cl.get('/signed-out?go=1', follow_redirects=False)
+sc = r.headers.get_list('set-cookie')
+gone = {c.split('=', 1)[0] for c in sc if 'Max-Age=0' in c}
+t('?go=1 expires every AppServiceAuth and Nonce cookie for path / and goes to /', r.status_code == 303 and r.headers['location'] == '/'
+  and {'AppServiceAuthSession', 'AppServiceAuthSession1', 'AppServiceAuthSession2', 'AppServiceAuthSession3', 'Nonce', 'NonceAbc'} <= gone
+  and 'alice_pref' not in gone and all('Path=/' in c and 'Secure' in c for c in sc) and 'no-store' in r.headers.get('cache-control', ''))
+cl.cookies.clear()
+os.environ['ALICE_TRUST_EASYAUTH'] = '1'
+t('the page and ?go=1 open for a session that was signed out everywhere (outside sign-in)', cl.get('/signed-out', headers=old_phone).status_code == 200
+  and cl.get('/signed-out?go=1', headers=old_phone, follow_redirects=False).status_code == 303)
+os.environ.pop('ALICE_TRUST_EASYAUTH', None)
+t('it stays outside sign-in and nothing about sign-in settings changed', _re.search(r"excludedPaths: \['/healthz', '/signed-out', '/hooks/tradingview'\]", bicep) is not None
+  and app.permissions.ROUTES['GET /signed-out'] == 'open')
+
+# in a browser: the host shown is the page's own, the button clears any service worker before going on, and only /me is fetched
+node = shutil.which('node')
+if node:
+    script = _re2.findall(r'<script>(.*?)</script>', page, _re2.S)[-1]
+    harness = r"""
+const calls=[],els={};let nav=null,unreg=0;
+class El{constructor(id){this.id=id;this.textContent='';this.hidden=true;this.classList={add:c=>this.cls=c};this.svg={remove:()=>{this.svgGone=true}};this.handlers={};this.href='/signed-out?go=1'}
+ querySelector(){return this.svg}addEventListener(k,f){this.handlers[k]=f}}
+for(const id of ['si-secure','si-secure-t','si-go','so-warn','so-ms'])els[id]=new El(id);
+const hosts=[new El('h1')];
+global.document={getElementById:id=>els[id],querySelectorAll:()=>hosts};
+global.location={hostname:process.argv[2],protocol:process.argv[3],set href(v){nav=v},get href(){return nav}};
+Object.defineProperty(globalThis,'navigator',{configurable:true,value:{serviceWorker:{getRegistrations:async()=>[{unregister:async()=>{unreg++;return true}}]}}});
+global.fetch=(u,o)=>{calls.push(u);return Promise.resolve({ok:true,json:async()=>({signed_in:process.argv[4]==='1'})})};
+eval(require('fs').readFileSync(process.argv[5],'utf8'));
+setTimeout(async()=>{await els['si-go'].handlers.click({preventDefault(){},currentTarget:els['si-go']});
+ setTimeout(()=>console.log(JSON.stringify({badge:els['si-secure-t'].textContent,note:hosts[0].textContent,cls:els['si-secure'].cls||'',lock:!els['si-secure'].svgGone,
+  calls,nav,unreg,warn:!els['so-warn'].hidden,ms:!els['so-ms'].hidden})),20)},20);
+"""
+    d = tempfile.mkdtemp()
+    open(os.path.join(d, 'page.js'), 'w').write(script); open(os.path.join(d, 'h.js'), 'w').write(harness)
+    run = lambda host, proto, signed: json.loads(subprocess.run([node, os.path.join(d, 'h.js'), host, proto, signed, os.path.join(d, 'page.js')],
+                                                                capture_output=True, text=True, timeout=60).stdout or '{}')
+    a = run('alice-web.fictional-tenant.uksouth.example', 'https:', '0')
+    t('in a browser: the badge says Secure connection with the page\'s own host and keeps its padlock',
+      a.get('badge') == 'Secure connection · alice-web.fictional-tenant.uksouth.example' and a.get('lock') is True)
+    t('…the note names the same host', a.get('note') == 'alice-web.fictional-tenant.uksouth.example')
+    t('…Sign in with Microsoft clears any service worker, then goes to ?go=1', a.get('unreg') == 1 and a.get('nav') == '/signed-out?go=1')
+    t('…its only request is /me', a.get('calls') == ['/me'])
+    t('…no session: no warning and no Microsoft sign-out offered', a.get('warn') is False and a.get('ms') is False)
+    b = run('alice-web.fictional-tenant.uksouth.example', 'https:', '1')
+    t('a session still in this browser: the warning and the Microsoft sign-out show', b.get('warn') is True and b.get('ms') is True)
+    c = run('phish.example.net', 'http:', '0')
+    t('an address without https never claims a secure connection', c.get('badge') == 'Not a secure connection · phish.example.net'
+      and c.get('lock') is False and c.get('cls') == 'bad')
+    l = run('127.0.0.1', 'http:', '0')
+    t('on the PC it says this computer only', l.get('badge') == 'This computer only · 127.0.0.1' and l.get('cls') == 'plain')
+else:
+    print('  (node not installed: the in-browser checks of the sign-in page were skipped)')
