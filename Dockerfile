@@ -3,7 +3,9 @@
 #   alice-mcp  (ALICE_ROLE=mcp): the signed-in external MCP endpoint on :8002 (Entra token on every request)
 #   alice-backup (ALICE_ROLE=backup): the nightly off-site copy, a Container Apps job
 # Settings come from the environment (Key Vault references in Azure); no secrets in the image. Logs go to stdout.
-FROM python:3.13-slim
+# Docker's official images are pulled from Amazon's public mirror of them (the same images, byte for byte), never from Docker Hub
+# directly: GitHub's runners share Docker Hub's anonymous pull limit and were refused (9 Oct 2026). tests/test_image_sources.py checks it.
+FROM public.ecr.aws/docker/library/python:3.13-slim
 
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1 \
     AISUBSTRATE_DATA_DIR=/mnt/alice/data ALICE_DOCUMENT_LIBRARY=/mnt/alice/Documents ALICE_ROLE=web

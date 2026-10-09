@@ -37,7 +37,9 @@ jobs:
     runs-on: ubuntu-24.04
     services:
       postgres:
-        image: postgres:16
+        # Docker's official image from Amazon's public mirror (the same image): Docker Hub refuses anonymous pulls from GitHub's
+        # runners once its shared limit is reached (9 Oct 2026), which failed pull requests before any test ran.
+        image: public.ecr.aws/docker/library/postgres:16
         env: { POSTGRES_USER: alice, POSTGRES_PASSWORD: alice-test-only, POSTGRES_DB: alice_test }
         ports: ['5432:5432']
         options: >-
