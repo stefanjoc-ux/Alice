@@ -7,6 +7,7 @@ becomes a knowledge item in the category "Alice changes".
 
 ## 2026-10-09
 
+- #36 Digital teams: drawings are read as images (dimensions, levels, notes, scale and drawing number, each citing its page, with the cost shown per member and on the job), a team setting for when information is missing (Ask me, or Assume and flag with every assumption listed in the outputs), and files can be added to a job that has started, re-running only the work that depends on them. You need to: to use Assume and flag on your existing Quantity surveying team, choose it on the team's Rules and autonomy tab (new teams from the template start on it).
 - #35 Digital teams: the Members tab is now a card per member in hand-off order, with each member's cost for the period you choose, warnings where a member is set up to fail, an editor in the side panel (with what changed in its instructions), Add a member from a template, and drag or keyboard reordering.
 - #34 A change log: this file, Admin › What's new (the running release, when each release went live, and the setup steps run in Azure), a knowledge item per release in "Alice changes", and Ask Temple can say what changed recently. You need to: copy deploy/github/deploy.yml over .github/workflows/deploy.yml, so pull requests are checked for their change log line.
 - #33 Every memory is checked on its own before any model sees it: one that fails the rules is left out and logged, and the rest still go.

@@ -164,7 +164,7 @@ def seed():
 def _seed_team():
     t = _template()
     teams.create(t['name'], t['description'], t['autonomy'], tid=TEAM_ID, members=t['members'], settings=t['settings'], job_types=t['job_types'],
-                 colour=t['colour'], icon=t['icon'], discipline=t['discipline'], filing=t.get('filing'))
+                 colour=t['colour'], icon=t['icon'], discipline=t['discipline'], filing=t.get('filing'), missing_info=t.get('missing_info'))
 
 
 # ---------------- rate library ----------------
@@ -315,7 +315,7 @@ def qs_measure(job, stage, member, ctx):
     pieces = _element_pieces(plan, docs) or [{'label': 'General', 'docs': [x['name'] for x in docs.values()]}]
     every = ', '.join(p['label'] for p in pieces)
     rr = (ctx['outputs'] or {}).get('_rerun') or {}
-    only = rr.get('elements') if rr.get('kind') == 'remeasure' else None        # Re-measure: only the elements Stefan chose
+    only = rr.get('elements') if rr.get('kind') in REMEASURE_KINDS else None    # Re-measure (or new files): only the elements Stefan chose
     if only is not None: pieces = [p for p in pieces if p['label'] in only]
     ps_on = ps_allowed(ctx['outputs'])
 
@@ -578,7 +578,7 @@ def qs_price(job, stage, member, ctx):
     # Re-measure (the items measured again); every other item keeps its price exactly, and the measured quantities are never changed.
     if prev.get('items') and prev.get('estimate_pass'): redo, partial = list(prev['estimate_pass']), True
     elif prev.get('items') and rr.get('kind') == 'reprice': redo, partial = list(rr.get('refs') or []), True
-    elif prev.get('items') and rr.get('kind') == 'remeasure': redo, partial = list(((outs.get('measure') or {}).get('remeasured') or {}).get('refs') or []), True
+    elif prev.get('items') and rr.get('kind') in REMEASURE_KINDS: redo, partial = list(((outs.get('measure') or {}).get('remeasured') or {}).get('refs') or []), True
     else: redo, partial = [], False
     if partial:
         old = {i['ref']: i for i in prev['items']}
@@ -1289,6 +1289,9 @@ def _md(job, out):
         else: md.append(f'- {i["ref"]}: unpriced. {i.get("rate_note", "")}')
     md += ['', '# Where each quantity came from'] + [f'- {i["ref"]}: {i["source_text"]}' + (' (from a drawing: approximate)' if i.get('approximate') else '') for i in items]
     md += ['', '# Assumptions'] + [f'- {a}' for a in asm.get('assumptions') or []]
+    flagged = teams.assumed_lines(out)
+    if flagged: md += ['', '# Assumed where information was missing', 'The team carried on with these assumptions instead of asking (Assume and flag). '
+                       'Check each one: a different answer may change the estimate.'] + [f'- {a}' for a in flagged]
     md += ['', '# Exclusions'] + [f'- {a}' for a in exclusions_of(asm, items)]
     md += ['', '# Risks'] + [f'- {r["risk"]}' + (f' Mitigation: {r["mitigation"]}' if r.get('mitigation') else '') for r in asm.get('risks') or []]
     md += ['', '# Market trends']
@@ -1347,7 +1350,8 @@ def finish(job, team, jt):
          + [[c_['ref'], c_['description'], c_['unit'], c_['rate_now'], p['rate'], p['date'], p['source'], p['difference_pct']] for c_ in tr.get('comparisons') or [] for p in c_['past']]
          + [[tr.get('report') or '']]
          + [['Market finding', f['finding'], f['kind'], '', '', f['source_date'], f['source_url'], ''] for f in (tr.get('market') or {}).get('findings') or []]},
-        {'name': 'Assumptions', 'rows': [['Type', 'Text']] + [['Assumption', a] for a in asm.get('assumptions') or []] + [['Exclusion', a] for a in exclusions_of(asm, items)]
+        {'name': 'Assumptions', 'rows': [['Type', 'Text']] + [['Assumption', a] for a in asm.get('assumptions') or []]
+         + [['Assumed (information missing)', a] for a in teams.assumed_lines(out)] + [['Exclusion', a] for a in exclusions_of(asm, items)]
          + [['Risk', r['risk'] + (' Mitigation: ' + r['mitigation'] if r.get('mitigation') else '')] for r in asm.get('risks') or []]},
     ]
     ver = job.get('version') or 1
@@ -1714,7 +1718,7 @@ def _restart(jid, j, jt, kind, stage_key, rerun, what, note, refs=None, elements
     return teams.job_detail(jid)
 
 
-VERSION_WORD = {'reprice': 'a re-price', 'remeasure': 'a re-measure'}
+VERSION_WORD = {'reprice': 'a re-price', 'remeasure': 'a re-measure', 'files': 'new files'}
 
 
 def _stage_of(jt, handler):
@@ -1752,9 +1756,10 @@ def reprice(jid, refs=None, estimates=False, order=None, trends=False, note='', 
     return _restart(jid, j, jt, 'reprice', ps['key'], rerun, '; '.join(bits) + '.', note, refs=refs, clear=keys[keys.index(ps['key']) + 1:])
 
 
-def remeasure(jid, elements, estimates=False, order=None, trends=False, note='', provisional=False):
+def remeasure(jid, elements, estimates=False, order=None, trends=False, note='', provisional=False, kind='remeasure', why=''):
     """Re-measure chosen elements as a new version: the Measurement Surveyor takes them off again (the other elements' items are kept),
-    the Cost Surveyor prices only the items measured again, then the cost plan is reassembled and comes back for sign-off."""
+    the Cost Surveyor prices only the items measured again, then the cost plan is reassembled and comes back for sign-off. kind 'files':
+    the same, because files were added (`why` names them)."""
     j, team, jt = _rerun_ready(jid)
     ms, ps = _stage_of(jt, 'qs_measure'), _price_stage(jt)
     if not ms or not ps: raise ValueError('This job has no measuring stage.')
@@ -1771,13 +1776,50 @@ def remeasure(jid, elements, estimates=False, order=None, trends=False, note='',
     keep = [x['key'] for x in (ts, ad) if x] if not trends else []
     rerun = {'elements': elements, 'order': order, 'estimates': bool(estimates), 'provisional': bool(provisional), 'trends': bool(trends) and bool(ts), 'keep': keep,
              'previous': {'measure': outs.get('measure'), 'price': outs.get('price'), **({'trends': outs['trends']} if trends and outs.get('trends') else {})}}
-    bits = [f're-measure {", ".join(elements)}, then price the items measured again']
+    bits = [(f'{why}: ' if why else '') + f're-measure {", ".join(elements)}, then price the items measured again']
     if estimates: bits.append('team estimates allowed for them')
     if provisional: bits.append('provisional sums allowed for them')
     if order: bits.append('rate sources in the order ' + ', '.join(order))
     if trends and ts: bits.append('Market Trends again')
     keys = [s_['key'] for s_ in jt['stages']]
-    return _restart(jid, j, jt, 'remeasure', ms['key'], rerun, '; '.join(bits) + '.', note, elements=elements, clear=keys[keys.index(ms['key']):])
+    return _restart(jid, j, jt, kind, ms['key'], rerun, '; '.join(bits) + '.', note, elements=elements, clear=keys[keys.index(ms['key']):])
+
+
+REMEASURE_KINDS = ('remeasure', 'files')     # re-runs that measure chosen elements again and price only what was measured again
+
+
+def files_added(jid, j, jt, names, elements, note, attach_only=False):
+    """Files added to a cost estimate (team_files.add_files): they join the documents of the elements they concern (the ones you name,
+    else every element of the plan). Work not done yet just uses them; elements already measured are measured again from the documents,
+    then only their items are priced again, as a new version (while the team is working, once it stops for you)."""
+    import team_files
+    outs = j['outputs']
+    plan = outs.get('plan') or {}
+    have = plan.get('elements') or []
+    if not have:
+        return {'rerun': 'none', 'message': 'Added. The team has not planned the job yet: the Lead QS plans with the new files.'}
+    els = [e for e in dict.fromkeys(teams._clean(x, 80) for x in elements or []) if e] or list(have)
+    bad = [e for e in els if e not in have]
+    if bad: raise ValueError(f'{", ".join(bad)}: not an element in the plan.')
+    ed = plan.setdefault('element_documents', {})
+    every = [d['name'] for d in teams._docs_in(jid) if d['name'] not in names]
+    for e in els: ed[e] = list(dict.fromkeys((ed.get(e) or every) + list(names)))      # an element with none named used every document: it still does
+    plan['documents'] = (plan.get('documents') or []) + [{'name': n, 'use': 'added during the job'} for n in names if n not in {d.get('name') for d in plan.get('documents') or []}]
+    outs['plan'] = plan
+    teams._set(jid, outputs=outs)
+    if attach_only: return {}
+    ms = _stage_of(jt, 'qs_measure')
+    keys = [s_['key'] for s_ in jt['stages']]
+    measured = bool((outs.get('measure') or {}).get('items'))
+    if not ms or (not measured and j['stage'] <= keys.index(ms['key'])):
+        return {'rerun': 'none', 'message': f'Added to {", ".join(els)}. Nothing is measured yet: the Measurement Surveyor uses the new files.'}
+    if team_files._busy(j):
+        team_files._pend(jid, 'qs', names=names, elements=els, note=note)
+        return {'rerun': 'pending', 'message': f'Added to {", ".join(els)}. The team is working: those elements are measured again and their items '
+                                               'priced again as soon as it stops for you, as a new version.'}
+    remeasure(jid, els, note=note, kind='files', why=f'new file{"s" if len(names) != 1 else ""} {", ".join(names)}')
+    return {'rerun': 'started', 'message': f'Added. {", ".join(els)} {"is" if len(els) == 1 else "are"} measured again with the new files and '
+                                           'only those items priced again, as a new version.'}
 
 
 def decide_rates(jid, entries, save_to_library=True, go_on=False):
@@ -1883,7 +1925,7 @@ def decide_rates(jid, entries, save_to_library=True, go_on=False):
 def _template():
     return {'name': 'Quantity surveying', 'description': 'A small QS team that produces an early cost estimate (cost plan) from a brief, a specification, '
             'schedules and drawings. Every rate has a source; the arithmetic is done by Alice.', 'discipline': 'Quantity surveying', 'colour': 'teal',
-            'icon': 'calculator', 'autonomy': 'approve', 'members': MEMBERS, 'settings': SETTINGS, 'filing': TEMPLATE_FILING,
+            'icon': 'calculator', 'autonomy': 'approve', 'members': MEMBERS, 'settings': SETTINGS, 'filing': TEMPLATE_FILING, 'missing_info': 'assume',
             'job_types': [{'id': 'cost-estimate', 'name': 'Cost estimate', 'finish': 'cost_estimate', 'client_facing': True,
                            'description': 'From brief to a draft cost plan (Word and Excel) and a Market Trends report.', 'stages': STAGES}]}
 
@@ -1906,7 +1948,11 @@ teams.JOB_VIEWS['cost_estimate'] = job_view
 teams.UNDECIDED['cost_estimate'] = undecided
 teams.PRICING['qs_price'] = lambda: {'order': price_rules(), 'note': PRICE_NOTE, 'rules': ['rate_sources', 'commercial_caution']}
 teams.TEMPLATES['quantity-surveying'] = _template
-teams.HANDLER_TOOLS.update({'qs_price': ['Web search', 'Rate library'], 'qs_trends': ['Past rates held in Alice']})
+teams.HANDLER_TOOLS.update({'qs_price': ['Web search', 'Rate library'], 'qs_trends': ['Past rates held in Alice'],
+                            'qs_plan': ['Reads drawings as images'], 'qs_measure': ['Reads drawings as images']})
+import team_files  # noqa: E402
+team_files.READS_DRAWINGS.update({'qs_plan', 'qs_measure'})
+team_files.FILE_RERUNS['cost_estimate'] = files_added      # the Lead QS's plan and the take-off read drawing pages as images
 
 
 seed()

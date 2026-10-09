@@ -194,6 +194,18 @@ class JobIn(BaseModel):
     provisional: bool | None = None                              # None = the rule decides; True/False = this job's own switch
 
 
+class AddFilesIn(BaseModel):
+    uploads: list[UploadIn] = Field(default_factory=list, max_length=12)
+    library: list[PickIn] = Field(default_factory=list, max_length=12)
+    elements: list[str] = Field(default_factory=list, max_length=40)       # the elements the files concern (none = every element)
+    answers: str = Field('', pattern=r'^([0-9a-f]{32})?$')                 # a question asking for a document, answered by these files
+    note: str = Field('', max_length=1000)
+
+
+class MissingInfoIn(BaseModel):
+    mode: str = Field(pattern='^(ask|assume)$')
+
+
 class InspectIn(BaseModel):
     name: str = Field('', max_length=120)
     data: str | None = Field(None, max_length=21_000_000)
@@ -400,6 +412,12 @@ def teams_job_template_fill(jid: str = FPath(pattern=HEX)):
     return _do(teams.job_page, jid)
 
 
+@router.post('/admin/api/teams/jobs/{jid}/files')
+def teams_job_files(d: AddFilesIn, jid: str = FPath(pattern=HEX)):
+    import team_files
+    return _do(team_files.add_files, jid, [u.model_dump() for u in d.uploads], [x.model_dump() for x in d.library], d.elements, d.answers, d.note)
+
+
 @router.post('/admin/api/teams/jobs/{jid}/resume')
 def teams_job_resume(d: ResumeIn | None = Body(None), jid: str = FPath(pattern=HEX)):
     return _do(teams.resume, jid, (d.note if d else ''))
@@ -518,6 +536,11 @@ def teams_filing(f: FilingIn, tid: str = FPath(pattern=ID)):
 @router.post('/admin/api/teams/{tid}/filing/category')
 def teams_filing_category(tid: str = FPath(pattern=ID)):
     return _do(teams.create_filing_category, tid)
+
+
+@router.put('/admin/api/teams/{tid}/missing-info')
+def teams_missing_info(m: MissingInfoIn, tid: str = FPath(pattern=ID)):
+    return _do(teams.set_missing_info, tid, m.mode)
 
 
 @router.put('/admin/api/teams/{tid}/autonomy')

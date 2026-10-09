@@ -10,6 +10,7 @@ Every question goes through Alice in code, in this order, before any model sees 
 The model answers only from those sources and cites them. No transcript is stored: the activity log records the outcome
 (answered, blocked, escalated) and which sources were used, not the question.
 """
+import base64
 import json
 import re
 import uuid
@@ -252,6 +253,21 @@ def claude_messages(messages):
     history can do either. Drop empty messages and any assistant turns before the first user turn."""
     out = [m for m in messages if not (isinstance(m.get('content'), str) and not m['content'].strip())]
     while out and out[0].get('role') != 'user': out.pop(0)
+    return out
+
+
+def vision_content(provider, text, attachments):
+    """A user message's content with pages to look at, in the provider's own shape (digital teams reading drawings): each attachment
+    {'kind': 'pdf'|'image', 'mime', 'data' (bytes), 'name'}. A PDF goes as a document (the provider reads its page as an image)."""
+    out = []
+    for a in attachments:
+        b64 = base64.b64encode(a['data']).decode('ascii')
+        if family(provider) == 'openai':
+            out.append({'type': 'input_file', 'filename': a.get('name') or 'page.pdf', 'file_data': f'data:application/pdf;base64,{b64}'} if a['kind'] == 'pdf'
+                       else {'type': 'input_image', 'image_url': f'data:{a["mime"]};base64,{b64}', 'detail': 'high'})
+        else:
+            out.append({'type': 'document' if a['kind'] == 'pdf' else 'image', 'source': {'type': 'base64', 'media_type': a['mime'], 'data': b64}})
+    out.append({'type': 'input_text', 'text': text} if family(provider) == 'openai' else {'type': 'text', 'text': text})
     return out
 
 

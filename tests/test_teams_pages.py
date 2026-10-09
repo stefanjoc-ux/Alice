@@ -12,6 +12,7 @@ cl = TestClient(app.app); H = {'x-admin-token': app.ADMIN_TOKEN}
 teams.BACKGROUND = False
 temple.save_settings(False, 'claude')
 TID, JT = team_qs.TEAM_ID, 'cost-estimate'
+teams.set_missing_info(TID, 'ask')        # these checks cover a member's question (test_team_files covers Assume and flag)
 
 PLAN = {'plan': 'Measure by element.', 'elements': ['Substructure', 'Windows'], 'documents': [], 'location': '', 'summary': 'Planned.', 'note': 'Measure.', 'questions': []}
 ITEMS = [{'element': 'Substructure', 'description': 'Concrete strip foundation 600 x 900 mm including excavation', 'quantity': 74, 'unit': 'm',
@@ -124,7 +125,7 @@ nb = board()
 mine = [i for i in nb['needs'] if i['job_id'] == JID]
 t('Needs you: the decision on unpriced items, from the lead, goes straight to the job', len(mine) == 1 and mine[0]['kind'] == 'decision'
   and 'Lead QS needs a decision on 2 unpriced items' in mine[0]['text'] and mine[0]['href'] == f'/admin/teams/{TID}/jobs/{JID}' and mine[0]['action'] == 'Review')
-STATE['plan'] = [dict(PLAN, questions=['Is the hall to include a stage?'])]
+STATE['plan'] = [dict(PLAN, questions=['Is the hall to include a stage?'], why_ask='A stage changes the hall\'s area and its cost.')]   # T2 assumes and flags: a question needs its reason
 jq = start(T2, title='FICTIONAL demo: hall with a question')
 it = next(i for i in board()['needs'] if i['job_id'] == jq['id'])
 t('…a question, with the question in plain words', it['kind'] == 'question' and 'Is the hall to include a stage?' in it['text'] and it['action'] == 'Answer' and it['team'] == 'Cost planning (Edinburgh)')
@@ -197,7 +198,8 @@ t('ticking knowledge clears that member\'s warning (the Knowledge tab saves thro
 t('the lead is whoever works the first stage', tp['lead'] == 'lead-qs')
 t('each member\'s state in the live job', tp['member_states']['measurement-surveyor']['label'] == 'Done · 3 items measured' and tp['member_states']['lead-qs']['state'] == 'waiting'
   and tp['member_states']['market-trends-qs']['label'] == 'To come')
-t('tools come from the stages a member works on (web search for the Cost Surveyor)', tp['member_tools']['cost-surveyor'] == ['Rate library', 'Web search'] and tp['member_tools']['lead-qs'] == [])
+t('tools come from the stages a member works on (web search for the Cost Surveyor)', tp['member_tools']['cost-surveyor'] == ['Rate library', 'Web search']
+  and tp['member_tools']['lead-qs'] == ['Reads drawings as images'])
 t('where prices come from: the order the pricing code applies, read from the rate-source rule', [(o['key'], o['allowed']) for o in tp['pricing'][0]['order']]
   == [(x['key'], x['allowed']) for x in team_qs.price_rules()] == [('published', True), ('library', True), ('built_up', True), ('estimate', False), ('provisional', True), ('unpriced', True)]
   and tp['pricing'][0]['role'] == 'Cost Surveyor' and 'not by the models' in tp['pricing'][0]['note'] and tp['pricing'][0]['rules'][0]['href'].startswith('/admin/rules?rule='))

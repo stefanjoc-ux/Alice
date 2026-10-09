@@ -31,6 +31,7 @@ t('the Rules page has the editor for it (order and allowed)', "r.id==='rate_sour
 team = teams.from_template('quantity-surveying', name='Estimates test team')
 TID = team['id']
 teams.set_autonomy(TID, 'signoff')
+teams.set_missing_info(TID, 'ask')        # the re-ask checks below need questions to reach Stefan
 DOC = 'FICTIONAL hall spec.md'
 PLAN = {'plan': 'Measure from the specification.', 'elements': [{'name': 'Walls', 'documents': [DOC]}], 'documents': [{'name': DOC, 'use': 'all'}],
         'location': '', 'summary': 'Planned.', 'note': 'Go.', 'questions': []}
