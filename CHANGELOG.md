@@ -7,6 +7,7 @@ becomes a knowledge item in the category "Alice changes".
 
 ## 2026-10-09
 
+- #35 Digital teams: the Members tab is now a card per member in hand-off order, with each member's cost for the period you choose, warnings where a member is set up to fail, an editor in the side panel (with what changed in its instructions), Add a member from a template, and drag or keyboard reordering.
 - #34 A change log: this file, Admin › What's new (the running release, when each release went live, and the setup steps run in Azure), a knowledge item per release in "Alice changes", and Ask Temple can say what changed recently. You need to: copy deploy/github/deploy.yml over .github/workflows/deploy.yml, so pull requests are checked for their change log line.
 - #33 Every memory is checked on its own before any model sees it: one that fails the rules is left out and logged, and the rest still go.
 - #32 Quantity surveying: provisional sums, exclusions with a reason, and no item is left unpriced without your decision.

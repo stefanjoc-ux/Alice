@@ -405,12 +405,41 @@ def update_member(tid, mid, fields, what=''):
     return _save(tid, d, what or f'{new["role"]}: {", ".join(changed)} changed')
 
 
-def add_member(tid, fields):
+# Starting points for "Add a member" on the Members tab (Stefan, 9 Oct 2026). Only a starting point: everything is edited in the panel
+# before it is saved, and nothing here is a rule (the rules stay on the Rules page).
+MEMBER_TEMPLATES = {
+    'estimator': {'label': 'Estimator', 'role': 'Estimator', 'provider': 'claude_sonnet',
+                  'purpose': 'Works out quantities, effort or costs for the job from the documents it is given.',
+                  'instructions': 'Work only from the brief and the documents you are given. Show where each figure comes from (document and page). '
+                                  'Where a figure is missing, say so and leave it out rather than guess. Never calculate totals: Alice does the arithmetic.'},
+    'checker': {'label': 'Checker', 'role': 'Checker', 'provider': 'claude_sonnet',
+                'purpose': 'Checks the work handed to it against the brief and sends it back with reasons when something is missing or wrong.',
+                'instructions': 'Check the work handed to you against the brief and the documents. Accept it only when every point the brief asks '
+                                'for is covered and every figure has a source. Otherwise send it back with one plain reason per problem.'},
+    'researcher': {'label': 'Researcher', 'role': 'Researcher', 'provider': 'claude_sonnet', 'tools': {'web_search': True},
+                   'purpose': 'Finds current public information the job needs, each point with its source and date.',
+                   'instructions': 'Search the web for what the job needs. Cite the exact page and its date for every point. Say plainly when you '
+                                   'found nothing reliable; never fill a gap from memory.'},
+    'blank': {'label': 'Blank', 'role': '', 'provider': 'claude_sonnet', 'purpose': '', 'instructions': ''},
+}
+
+
+def add_member(tid, fields, template=''):
     d = get(tid)
-    m = _norm_member(fields)
+    base = dict(MEMBER_TEMPLATES.get(template) or {})
+    base.pop('label', None)
+    m = _norm_member({**base, **{k: v for k, v in fields.items() if v is not None}})
+    if not m['role']: raise ValueError('Give the new member a role name, e.g. Services Engineer.')
     m['id'] = _new_id('m-')
     d['members'].append(m)
     return _save(tid, d, f'Member added: {m["role"]}')
+
+
+def _in_progress(tid, version):
+    """Jobs running on this team version, or waiting for you part-way (a job always runs on the version it started with)."""
+    with store.db() as c:
+        return [dict(r) for r in c.execute("SELECT id, title FROM team_jobs WHERE team_id=? AND team_version=? AND status IN ('running','waiting')",
+                                           (tid, int(version)))]
 
 
 def remove_member(tid, mid):
@@ -418,8 +447,39 @@ def remove_member(tid, mid):
     m = _member(d, mid)
     used = [f'{jt["name"]} › {s["title"]}' for jt in d['job_types'] for s in jt['stages'] if s['member'] == mid]
     if used: raise ValueError(f'{m["role"]} works on ' + ', '.join(used) + '. Give those stages to someone else first.')
+    busy = _in_progress(tid, d['current_version'])
+    if busy:
+        raise ValueError(f'{m["role"]} cannot be removed while a job is running on this version of the team ('
+                         + ', '.join(f'{ref(j["id"])} {j["title"]}' for j in busy[:3]) + '). Try again once it is signed off or stopped.')
     d['members'] = [x for x in d['members'] if x['id'] != mid]
     return _save(tid, d, f'Member removed: {m["role"]}')
+
+
+def _reorderable(jt):
+    """A job type whose stages follow the member order: only your own steps, each member working once. Built-in steps (such as
+    measuring before pricing) depend on the step before them, so their order is never changed from the Members tab."""
+    ms = [s['member'] for s in jt.get('stages') or []]
+    return bool(ms) and all((s.get('handler') or 'generic') == 'generic' for s in jt['stages']) and len(ms) == len(set(ms))
+
+
+def reorder_members(tid, order):
+    """The Members tab's hand-off order (drag or keyboard): the members in this order, and the stages of every job type made only of
+    your own steps (each member once) put in the same order. One new team version; jobs already run keep theirs."""
+    d = get(tid)
+    ids = [m['id'] for m in d['members']]
+    order = [str(x) for x in order or []]
+    if sorted(order) != sorted(ids) or len(set(order)) != len(order):
+        raise ValueError('The order must name every member of the team once. Reload the page and try again.')
+    if order == ids: return d
+    pos = {mid: i for i, mid in enumerate(order)}
+    d['members'] = sorted(d['members'], key=lambda m: pos[m['id']])
+    moved = []
+    for jt in d['job_types']:
+        if _reorderable(jt):
+            new = sorted(jt['stages'], key=lambda s: pos.get(s['member'], len(pos)))
+            if new != jt['stages']: jt['stages'] = new; moved.append(jt['name'])
+    role = {m['id']: m['role'] for m in d['members']}
+    return _save(tid, d, 'Hand-off order: ' + ' → '.join(role[x] for x in order) + (f' (stages of {", ".join(moved)} follow it)' if moved else ''))
 
 
 def update_job_type(tid, jid, name=None, description=None, stages=None, client_facing=None):
@@ -2172,6 +2232,9 @@ def page(tid):
               'colours': b['colours'], 'icons': b['icons'], 'disciplines': b['disciplines'], 'paused': b['paused'], 'templates': b['templates'],
               'filing': filing(t), 'tool_names': TOOLS, 'tool_switches': {m['id']: tool_switches(t, m) for m in t['members']},
               'costs': team_costs.team(tid) if _cap(tid, 'costs') else None})
+    o.update({'member_view': members_page(t, o['jobs'], o['rates']['count']), 'member_templates': {k: v for k, v in MEMBER_TEMPLATES.items()},
+              'previous': _previous_members(t), 'member_costs': team_costs.members(tid, base=o['costs']) if o['costs'] else None,
+              'reorderable': [jt['name'] for jt in t['job_types'] if _reorderable(jt)]})
     return o
 
 
@@ -2189,6 +2252,138 @@ def member_tools(t, m):
         if on: out.add(TOOLS[k])
         else: out.discard(TOOLS[k])
     return sorted(out)
+
+
+# ---- the Members tab (Stefan, 9 Oct 2026): cards in hand-off order, with warnings where a member is set up to fail ----
+def flow(t):
+    """Who passes work to whom: {member id: {'to': [ids], 'from': [ids]}}, from the stages of every job type (consecutive stages
+    worked by different members), in order of first appearance."""
+    out = {m['id']: {'to': [], 'from': []} for m in t.get('members') or []}
+    for jt in t.get('job_types') or []:
+        st = [s['member'] for s in jt.get('stages') or []]
+        for a, b in zip(st, st[1:]):
+            if a == b or a not in out or b not in out: continue
+            if b not in out[a]['to']: out[a]['to'].append(b)
+            if a not in out[b]['from']: out[b]['from'].append(a)
+    return out
+
+
+def _light_models():
+    """The light models (Haiku): fine for short answers, less reliable for web search and long structured lists."""
+    import assistants
+    return {k for k, (model, _) in assistants.PROVIDERS.items() if 'haiku' in model.lower()}
+
+
+_NEG = re.compile(r"\b(not|never|no|don't|do not|without|nor)\b[^.]{0,25}$", re.I)
+# What standing instructions may ask for that a tool or the rate-source rule decides. (pattern, need, plain words, pricing roles only)
+INSTRUCTION_NEEDS = [
+    (re.compile(r'\b(search(es|ing)?|look(s|ing)?\s+(up|for)|find)\b[^.]{0,50}\b(the\s+)?(web|internet|online)\b|\bweb\s+search\b|\bon\s+the\s+web\b', re.I),
+     'tool:web_search', 'searching the web', False),
+    (re.compile(r'\bpublished\s+rates?\b', re.I), 'source:published', 'published rates', True),
+    (re.compile(r'\brate\s+library\b', re.I), 'source:library', 'the rate library', True),
+    (re.compile(r'\bbuilt[- ]up\s+rates?\b', re.I), 'source:built_up', 'built-up rates', True),
+    (re.compile(r'\b(team\s+)?estimate[sd]?\s+(a\s+|the\s+)?rates?\b|\bestimat\w*\s+(a\s+|the\s+|your\s+own\s+)?rates?\b', re.I), 'source:estimate', 'estimating rates', True),
+    (re.compile(r'\bprovisional\s+sums?\b', re.I), 'source:provisional', 'provisional sums', True),
+]
+
+
+def _asks_for(text):
+    """The needs a member's standing instructions state (a request preceded by not/never/without is left out)."""
+    found = []
+    for rx, need, words, pricing in INSTRUCTION_NEEDS:
+        for mt in rx.finditer(text or ''):
+            if _NEG.search((text or '')[max(0, mt.start() - 60):mt.start()]): continue
+            found.append((need, words, pricing))
+            break
+    return found
+
+
+def member_warnings(t, m, rates=None, cats=None):
+    """Plain warnings for a member's card: no knowledge ticked; a pricing role with neither web search nor the rate library it may
+    use; web search or long structured lists on a light model (Haiku); standing instructions asking for what its tools or the rules
+    do not allow. Tools are read from the member, the rate sources from the rule (rules_engine), never from here."""
+    import assistants, rules_engine
+    cats = cats if cats is not None else {c['name'] for c in store.list_categories()['categories']}
+    handlers = [s.get('handler') or 'generic' for jt in t.get('job_types') or [] for s in jt.get('stages') or [] if s['member'] == m['id']]
+    sw = tool_switches(t, m)
+    out = []
+    if not set(m.get('categories') or []) & cats:
+        gone = [x for x in m.get('categories') or [] if x not in cats]
+        out.append({'kind': 'knowledge', 'fix': 'knowledge',
+                    'text': (f'Its knowledge categor{"y" if len(gone) == 1 else "ies"} ({", ".join(gone)}) do{"es" if len(gone) == 1 else ""} not exist yet, '
+                             'so it works from the brief and documents alone.') if gone else 'No knowledge ticked: it works from the brief and documents alone.'})
+    rs = rules_engine.rate_sources()
+    rule = rules_engine.rule('rate_sources') or {'name': 'Where digital teams\' rates come from'}
+    rule_href = '/admin/rules?rule=rate_sources#rules'
+    pricing = any(h in PRICING for h in handlers)
+    if pricing:
+        if rates is None:
+            with store.db() as c: rates = c.execute('SELECT count(*) FROM team_rates WHERE team_id=?', (t['id'],)).fetchone()[0]
+        web = sw.get('web_search') and 'published' in rs['allowed']
+        lib = 'library' in rs['allowed'] and rates > 0
+        if not web and not lib:
+            why = []
+            why.append('web search is switched off for it' if not sw.get('web_search') else f'the rule “{rule["name"]}” does not allow published rates')
+            why.append('the rule does not allow the rate library' if 'library' not in rs['allowed'] else 'the team has no rate library yet')
+            out.append({'kind': 'pricing', 'text': 'Prices items with neither web search nor the rate library (' + '; '.join(why)
+                        + '), so items are likely to be left unpriced.', 'fix': 'tools', 'href': rule_href})
+    light = _light_models()
+    if m.get('provider') in light:
+        jobs = []
+        if sw.get('web_search') or any('Web search' in HANDLER_TOOLS.get(h, []) for h in handlers): jobs.append('searches the web')
+        if any(h in PART_LABELS for h in handlers): jobs.append('returns long structured lists')
+        if jobs:
+            name = assistants.PROVIDERS[m['provider']][1]
+            out.append({'kind': 'model', 'text': f'It {" and ".join(jobs)} on {name}, a light model: answers are more often cut off or unreadable. '
+                        'Sonnet 5.5 or GPT-6 Luna suit this work better.', 'fix': 'model'})
+    for need, words, pricing_only in _asks_for(m.get('instructions') or ''):
+        if pricing_only and not pricing: continue
+        kind, key = need.split(':', 1)
+        if kind == 'tool' and not sw.get(key):
+            out.append({'kind': 'instructions', 'text': f'Its standing instructions ask for {words}, but {TOOLS.get(key, key).lower()} is switched off for it.',
+                        'fix': 'tools'})
+        elif kind == 'source' and key not in rs['allowed']:
+            out.append({'kind': 'instructions', 'text': f'Its standing instructions ask for {words}, but the rule “{rule["name"]}” does not allow '
+                        f'{rules_engine.RATE_SOURCES.get(key, key).lower()}s.', 'fix': 'instructions', 'href': rule_href})
+    return out
+
+
+def _last_runs(jobs):
+    """Each member's most recent turn across the team's jobs (newest first in `jobs`): when, on which job, and how it ended."""
+    out = {}
+    for j in jobs:
+        for s in j.get('steps') or []:
+            if s.get('kind') != 'turn' or not s.get('member'): continue
+            cur = out.get(s['member'])
+            if cur and cur['at'] >= s['created_at']: continue
+            out[s['member']] = {'at': s['created_at'], 'status': s['status'], 'label': 'Failed' if s['status'] == 'failed' else 'Done',
+                                'note': _clean(s.get('note'), 160), 'job_id': j['id'], 'job_ref': j['ref'], 'team_id': j['team_id']}
+    return out
+
+
+def members_page(t, jobs, rates=None):
+    """What the Members tab draws for each member beyond its definition: who it passes work to and gets work from, the stages it
+    works on, the tools its stages use, its warnings and its last run."""
+    cats = {c['name'] for c in store.list_categories()['categories']}
+    fl = flow(t)
+    last = _last_runs(jobs)
+    out = {}
+    for m in t.get('members') or []:
+        out[m['id']] = {'to': fl[m['id']]['to'], 'from': fl[m['id']]['from'],
+                        'works_on': [f'{jt["name"]} › {s["title"]}' for jt in t.get('job_types') or [] for s in jt.get('stages') or [] if s['member'] == m['id']],
+                        'builtin_tools': sorted({x for jt in t.get('job_types') or [] for s in jt.get('stages') or [] if s['member'] == m['id']
+                                                 for x in HANDLER_TOOLS.get(s.get('handler') or '', [])}),
+                        'warnings': member_warnings(t, m, rates, cats), 'last_run': last.get(m['id']), 'initials': _initials(m['role'])}
+    return out
+
+
+def _previous_members(t):
+    """Each member as it was in the previous team version, for the editor's "What changed" view."""
+    v = t['current_version']
+    if v < 2: return {'version': None, 'what': '', 'members': {}}
+    prev = get(t['id'], v - 1)
+    what = next((x['what'] for x in versions(t['id']) if x['version'] == v), '')
+    return {'version': v - 1, 'what': what, 'members': {m['id']: {k: m.get(k) for k in ('role', 'purpose', 'instructions', 'provider')} for m in prev['members']}}
 
 
 # ---- a job (Screen 3) ----

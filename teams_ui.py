@@ -151,6 +151,33 @@ SECTION = r'''<style>
 .tm-map{max-width:min(960px,96vw);width:100%;border:0;border-radius:14px;padding:18px 20px}.tm-map::backdrop{background:rgba(11,22,38,.55)}.tm-map h3{margin:0 0 6px}.tm-map .sheet{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:10px 0}
 .tm-map .roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}.tm-map label{display:grid;gap:3px;font-size:12.5px;font-weight:600}.tm-map .prev{max-height:220px;overflow:auto;margin:8px 0}.tm-map .prev td,.tm-map .prev th{font-size:11.5px;padding:2px 6px;border:1px solid #e3e9ee;white-space:nowrap;max-width:180px;overflow:hidden;text-overflow:ellipsis}
 .tm-map .tm-acts button:first-child{background:var(--teal);color:#fff;border-color:var(--teal)}.tm-tpl{display:grid;gap:6px;font-size:13px}.tm-diffs{margin:6px 0 0;padding-left:18px;font-size:12.5px}.tm-diffs li{margin:2px 0}
+.tm-mhead{display:flex;gap:10px 16px;align-items:center;flex-wrap:wrap;margin:0 0 6px}.tm-mhead .tm-fx{flex-basis:100%;margin:0}.tm-mtot{margin:0;font-size:14px}.tm-mtot b{font-variant-numeric:tabular-nums}.tm-mhelp{margin:0 0 12px}
+.tm-mgrid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:24px 32px}.tm-mc{position:relative;min-width:0}
+.tm-mcd{position:relative;height:100%;box-sizing:border-box;background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:9px;transition:box-shadow .15s,border-color .15s}
+.tm-mc.lead .tm-mcd{border-width:2px}.tm-mcd:hover,.tm-mcd:focus-within{border-color:#7fa9c4;box-shadow:0 2px 10px rgba(16,43,64,.08)}
+.tm-mcd .top{display:flex;gap:10px;align-items:flex-start}.tm-mcd .nm{flex:1;min-width:0}.tm-mcd h4{margin:0;font-size:15.5px;line-height:1.3}
+#tm-app button.tm-mc-open{all:unset;cursor:pointer;font-weight:650;color:var(--ink)}#tm-app button.tm-mc-open::after{content:'';position:absolute;inset:0;border-radius:14px}
+#tm-app button.tm-mc-open:focus-visible{outline:none}.tm-mcd:has(.tm-mc-open:focus-visible){outline:2px solid var(--teal);outline-offset:2px}
+.tm-mcd .purpose{margin:2px 0 0;font-size:13px;color:#30495c;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.tm-mcd a,.tm-mcd time{position:relative;z-index:1}#tm-app button.tm-handle{all:unset;box-sizing:border-box;cursor:grab;position:relative;z-index:1;flex:none;width:30px;height:30px;display:grid;place-items:center;border-radius:8px;color:#4b5a66;font-size:17px}
+#tm-app button.tm-handle:hover{background:#eef3f7}#tm-app button.tm-handle:focus-visible{outline:2px solid var(--teal);outline-offset:1px}#tm-app button.tm-handle[aria-pressed=true]{background:var(--teal);color:#fff}
+.tm-mc.grab .tm-mcd{border-color:var(--teal);box-shadow:0 0 0 3px #bfe0ea}.tm-mc.dragging{opacity:.45}.tm-mc.over .tm-mcd{border-color:var(--teal);border-style:dashed}
+.tm-lead{flex:none;font-weight:700;background:#e3f1f6;border-color:#9ccbdc;color:#054a60}.tm-mchips{gap:4px}.tm-mchips .tm-chip{font-size:11.5px;padding:1px 8px}
+.tm-chip.t{background:#e3f1f6;border-color:#9ccbdc;color:#054a60}.tm-chip.k{background:#eef3f7;border-color:#d3dee6}.tm-chip.p{background:#f1ebf7;border-color:#cbb8e2;color:#4b2f73}
+.tm-mcost{border-top:1px solid #eef3f6;padding-top:8px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;align-items:center}.tm-mcost .big{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}
+.tm-mcost .small{grid-column:1}.tm-spark{grid-column:2;grid-row:1/span 2;width:120px;height:28px}.tm-spark polyline{fill:none;stroke:var(--teal);stroke-width:1.6;stroke-linejoin:round}.tm-spark circle{fill:var(--teal)}
+.tm-mrun{font-size:12.5px;color:#3d5566}.tm-mflow{margin:0;font-size:12.5px;color:#3d5566}.tm-msugg{margin:0;font-size:12.5px;color:#4b2f73;font-weight:600}
+.tm-mwarn{margin:0;padding:7px 10px 7px 24px;background:#fff4e5;border:1px solid #f0c48a;border-radius:9px;font-size:12.5px;color:#6b3305}.tm-mwarn li{margin:2px 0}
+.tm-mcd.tm-madd{border:2px dashed #9fb6c4;background:#f9fbfc;justify-content:center}.tm-madd h4{font-size:15px}.tm-madd p{margin:0}
+.tm-mc.arr-r::after{content:'→';position:absolute;right:-26px;top:50%;transform:translateY(-50%);font-size:20px;font-weight:700;color:#5f8ea8}
+.tm-mc.arr-d::after{content:'↓';position:absolute;left:50%;bottom:-23px;transform:translateX(-50%);font-size:18px;font-weight:700;color:#5f8ea8}
+.tm-ed{display:grid;gap:8px}.tm-ed label{display:grid;gap:4px;font-weight:600;font-size:13px;margin:0}.tm-ed p{margin:0}.tm-ed textarea.tm-ins{min-height:300px;font-size:13.5px;line-height:1.5}
+.tm-ed .tm-checks label{display:flex;gap:6px;align-items:center;font-weight:400}.tm-changed>summary{cursor:pointer;font-weight:600;font-size:13px}.tm-diffbox{display:grid;gap:6px;margin-top:6px}.tm-diff{white-space:pre-wrap;font-size:12.5px;line-height:1.55;background:#fbfcfd;border:1px solid #e3e9ee;border-radius:8px;padding:8px 10px;max-height:280px;overflow:auto;overflow-wrap:anywhere}
+.tm-diff ins{background:#dff3e4;color:#1d5a2a;text-decoration:none}.tm-diff del{background:#fbe3e3;color:#7a1f1f}
+.tm-diff ins::before,.tm-diff ins::after,.tm-diff del::before,.tm-diff del::after{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.tm-diff ins::before{content:' [added: '}.tm-diff del::before{content:' [removed: '}.tm-diff ins::after,.tm-diff del::after{content:'] '}
+.tm-edfoot{display:flex;gap:8px;flex-wrap:wrap;align-items:center;width:100%}.tm-edfoot button{margin:0}.tm-edfoot .tm-rm{margin-left:auto}.tm-edmsg{flex-basis:100%;margin:0;color:#b42318}.tm-edmsg:empty{display:none}
+@media(max-width:640px){.tm-mgrid{grid-template-columns:minmax(0,1fr)}.tm-period{display:flex;flex-wrap:wrap}.tm-period button.ghost{flex:1 1 auto}}
 @media(max-width:1000px){.ts-grid{grid-template-columns:minmax(0,1fr)}.ts-next{position:static}}
 @media(max-width:640px){.ts-step .row{grid-template-columns:minmax(0,1fr)}.ts-file{grid-template-columns:minmax(0,1fr)}.ts-file select{min-width:0;width:100%}}
 @media(max-width:1100px){.tm-cols{grid-template-columns:minmax(0,1fr)}}
@@ -285,7 +312,7 @@ if(PAGE==='teams'){
  let tab=(location.hash||'').slice(1);if(!TABS.some(t=>t[0]===tab))tab='overview';
  const T={editOpen:false,talkOpen:false,pt:null};
  async function loadTeam(poll){const d=await api('/admin/api/teams/'+enc(V.tid)+'/page');V.d=d;setIconsFrom(d);
-  const typing=T.editOpen||['members','knowledge','rules'].includes(tab);if(!poll||!typing)drawTeam();     // a refresh never wipes a form you are filling in
+  const typing=T.editOpen||['knowledge','rules'].includes(tab)||(tab==='members'&&(document.body.classList.contains('ic-open')||!!M.grab));if(!poll||!typing)drawTeam();     // a refresh never wipes a form you are filling in or a card you are moving
   clearTimeout(V.timer);if(d.jobs.some(j=>j.status==='running'))V.timer=setTimeout(()=>run(()=>loadTeam(true)),3000)}
  function teamHead(){const d=V.d,t=d.team,idn=d.identity;const head=h('div',{class:'tm-thead'});
   const chips=h('div',{class:'tm-chips'},h('a',{class:'tm-chip',href:'#rules',onclick:()=>setTab('rules')},d.autonomy[t.autonomy]),...d.chips.map(c=>h('a',{class:'tm-chip'+(c.off?' off':''),href:c.href},c.label)),idn.discipline?h('span',{class:'tm-chip'},idn.discipline):null,pill(d.status,d.status_label));
@@ -370,16 +397,131 @@ if(PAGE==='teams'){
  function suggBox(s){const w=h('div',{class:'tm-sugg'},h('strong',null,'Temple suggests new instructions'+(s.role?' for '+s.role:'')),h('p',{class:'small'},s.reason));
   w.append(h('details',null,h('summary',null,'Current instructions'),h('pre',null,s.current_text)),h('div',{class:'small'},'Suggested instructions'),h('pre',null,s.proposed));
   w.append(h('div',{class:'tm-acts'},btn('Approve: use these',async()=>{await api('/admin/api/teams/suggestions/'+s.id,'POST',{action:'approve'});$('notice').textContent='Applied as a new team version.';await loadTeam()}),btn('Reject',async()=>{await api('/admin/api/teams/suggestions/'+s.id,'POST',{action:'reject'});await loadTeam()},'secondary')));return w}
- function drawMembersTab(p){const d=V.d,t=d.team;const top=h('div',{class:'tm-head'},h('p',{class:'small muted',style:'margin:0'},'Each member’s role, model and standing instructions. Knowledge categories are on the Knowledge tab.'),btn('Add a member',async()=>{const role=prompt('Role name for the new member, e.g. Services Engineer');if(!role||!role.trim())return;await api('/admin/api/teams/'+enc(t.id)+'/members','POST',{role,provider:'claude_sonnet',purpose:'',instructions:''});$('notice').textContent=role+' added. Give them a purpose and instructions, then a stage on Rules and autonomy.';await loadTeam()},'secondary'));p.append(top);
+ // ---- Members tab (Stefan, 9 Oct 2026): cards in hand-off order with their costs for a period you choose; each card opens its editor
+ // in the side panel (the information card pattern). Drag a card, or use its handle with the keyboard, to change the hand-off order.
+ const M={grab:'',order:null,orig:null,ro:null};
+ const memberPeriod=()=>{const C=V.d.member_costs;const k=store.get('member-period','30d');return C&&C.periods.some(p=>p.key===k)?k:'30d'};
+ const initials=role=>((role||'?').match(/[A-Za-z0-9]+/g)||['?']).slice(0,2).map(w=>w[0]).join('').toUpperCase();
+ function shownOrder(){const d=V.d,ms=d.team.members.slice();ms.sort((a,b)=>(b.id===d.lead)-(a.id===d.lead));return ms.map(m=>m.id)}
+ function spark(trend,label){const W=120,H=28,vs=trend.map(x=>x.usd),hi=Math.max(...vs,0);const NS='http://www.w3.org/2000/svg';const svg=document.createElementNS(NS,'svg');
+  svg.setAttribute('viewBox','0 0 '+W+' '+H);svg.setAttribute('class','tm-spark');svg.setAttribute('role','img');
+  svg.setAttribute('aria-label',label+', week by week: '+trend.map(x=>x.text).join(', '));
+  const pts=vs.map((v,i)=>(i*(W-4)/(vs.length-1)+2).toFixed(1)+','+(hi?(H-3-(H-6)*v/hi):H-3).toFixed(1)).join(' ');
+  const pl=document.createElementNS(NS,'polyline');pl.setAttribute('points',pts);svg.append(pl);
+  const last=document.createElementNS(NS,'circle');const lp=pts.split(' ').pop().split(',');last.setAttribute('cx',lp[0]);last.setAttribute('cy',lp[1]);last.setAttribute('r','2.2');svg.append(last);
+  const tt=document.createElementNS(NS,'title');tt.textContent=label+': '+trend.map(x=>x.text).join(' · ');svg.append(tt);return svg}
+ function roleOfId(id){return (V.d.team.members.find(m=>m.id===id)||{role:'a former member'}).role}
+ function warnList(ws,m){if(!ws.length)return null;const ul=h('ul',{class:'tm-mwarn','aria-label':'Warnings'});
+  for(const w of ws)ul.append(h('li',null,w.text,w.href?[' ',h('a',{href:w.href},'Open the rule')]:null));return ul}
+ function memberCardM(m,i,n){const d=V.d,C=d.member_costs,mv=d.member_view[m.id]||{to:[],from:[],warnings:[],works_on:[],builtin_tools:[]},per=memberPeriod(),lead=m.id===d.lead;
+  const li=h('li',{class:'tm-mc'+(lead?' lead':'')+(M.grab===m.id?' grab':''),'data-mid':m.id,draggable:'true'});
+  const card=h('article',{class:'tm-mcd','aria-labelledby':'tm-mc-'+m.id});if(lead)card.style.borderColor=d.identity.hex;
+  const open=h('button',{type:'button',class:'tm-mc-open',id:'tm-mc-'+m.id,'aria-haspopup':'dialog'},m.role);open.onclick=()=>openMember(m.id);
+  const handle=h('button',{type:'button',class:'tm-handle','aria-label':'Move '+m.role+': position '+(i+1)+' of '+n+'. Press Space to pick up, arrow keys to move, Space again to drop, Escape to cancel.','aria-pressed':String(M.grab===m.id),title:'Drag to change the hand-off order, or press Space then the arrow keys'},'⠿');
+  handle.onkeydown=e=>moveKey(e,m.id);handle.onclick=e=>e.stopPropagation();
+  card.append(h('div',{class:'top'},avatar(mv.initials||initials(m.role),m.role,lead,d.identity.hex,'lg'),h('div',{class:'nm'},h('h4',null,open),m.purpose?h('p',{class:'purpose'},m.purpose):h('p',{class:'purpose muted'},'No purpose yet.')),lead?h('span',{class:'tm-chip tm-lead'},'Lead'):null,handle));
+  const tools=(d.member_tools[m.id]||[]),cats=m.categories||[],packs=(m.packs||[]).map(k=>d.packs[k]||k);
+  const chips=h('div',{class:'tm-chips tm-mchips'},h('span',{class:'tm-chip',title:'Model'},d.models[m.provider]||m.provider),...tools.map(x=>h('span',{class:'tm-chip t'},x)),
+   ...(cats.length?cats.map(x=>h('span',{class:'tm-chip k',title:'Knowledge category'},x)):[]),...packs.map(x=>h('span',{class:'tm-chip p',title:'Its own rule pack'},x)));card.append(chips);
+  if(C){const mc=C.members[m.id],P=C.periods.find(x=>x.key===per);const share=mc.share_pct[per];
+   card.append(h('div',{class:'tm-mcost'},h('div',{class:'big'},money(mc.costs[per],C.fx),P.since?h('span',{class:'small muted'},' '+P.since):null),
+    h('div',{class:'small'},share==null?'No team cost in this period':share+'% of the team',' · ',plural(mc.jobs[per],'job'),mc.per_job[per]?[' · ',money(mc.per_job[per],C.fx),' a job on average']:null),
+    spark(mc.trend,m.role+'’s AI cost over the last 12 weeks')))}
+  const st=d.member_states[m.id];const lr=mv.last_run;
+  card.append(h('div',{class:'tm-mrun'},st&&st.state!=='idle'?h('span',{class:'tm-state '+st.state},st.label+(st.job?' · '+st.job:'')):null,st&&st.state!=='idle'&&lr?' · ':null,
+   lr?[h('span',{class:lr.status==='failed'?'tm-state blocked':'muted'},'Last ran '),tm(lr.at),' on ',h('a',{href:'/admin/teams/'+enc(lr.team_id)+'/jobs/'+lr.job_id},lr.job_ref),' · ',h('b',{class:lr.status==='failed'?'tm-state blocked':''},lr.label)]:(st&&st.state!=='idle'?null:h('span',{class:'muted'},'Has not run a job yet'))));
+  if(mv.to.length)card.append(h('p',{class:'tm-mflow'},'Hands work to ',h('b',null,mv.to.map(roleOfId).join(', '))));
+  const wl=warnList(mv.warnings,m);if(wl)card.append(wl);
+  if(d.suggestions.some(s=>s.member===m.id))card.append(h('p',{class:'tm-msugg'},'Temple suggests new instructions: open to review'));
+  li.append(card);
+  li.ondragstart=e=>{M.drag=m.id;li.classList.add('dragging');try{e.dataTransfer.setData('text/plain',m.id);e.dataTransfer.effectAllowed='move'}catch{}};
+  li.ondragend=()=>{li.classList.remove('dragging');M.drag='';document.querySelectorAll('.tm-mc.over').forEach(x=>x.classList.remove('over'))};
+  li.ondragover=e=>{if(!M.drag||M.drag===m.id)return;e.preventDefault();li.classList.add('over')};li.ondragleave=()=>li.classList.remove('over');
+  li.ondrop=e=>{e.preventDefault();li.classList.remove('over');const from=M.drag;if(!from||from===m.id)return;const o=shownOrder().filter(x=>x!==from);o.splice(o.indexOf(m.id)+(shownOrder().indexOf(from)<shownOrder().indexOf(m.id)?1:0),0,from);run(()=>saveOrder(o))};
+  return li}
+ function addCard(){const d=V.d,li=h('li',{class:'tm-mc add'});const c=h('div',{class:'tm-mcd tm-madd'},h('h4',null,'Add a member'),h('p',{class:'small muted'},'Start from:'));
+  const row=h('div',{class:'tm-acts'});for(const [k,x] of Object.entries(d.member_templates)){const b=h('button',{type:'button',class:'secondary'},x.label);b.onclick=()=>openMember('',k);row.append(b)}
+  c.append(row,h('p',{class:'small muted'},'You can change everything before you save it. Then give it a stage on Rules and autonomy.'));li.append(c);return li}
+ function placeArrows(grid){const items=[...grid.querySelectorAll('.tm-mc:not(.add)')];items.forEach((li,i)=>{li.classList.remove('arr-r','arr-d');const nx=items[i+1];if(!nx)return;
+  const mv=V.d.member_view[li.dataset.mid];if(!mv||!mv.to.includes(nx.dataset.mid))return;if(Math.abs(nx.offsetTop-li.offsetTop)<4)li.classList.add('arr-r');else if(Math.abs(nx.offsetLeft-li.offsetLeft)<4)li.classList.add('arr-d')})}
+ function drawGrid(grid){const d=V.d,t=d.team;const ids=M.order||shownOrder();const byId=Object.fromEntries(t.members.map(m=>[m.id,m]));
+  grid.replaceChildren(...ids.map((id,i)=>memberCardM(byId[id],i,ids.length)),addCard());requestAnimationFrame(()=>placeArrows(grid));
+  if(M.ro)M.ro.disconnect();if(window.ResizeObserver){M.ro=new ResizeObserver(()=>placeArrows(grid));M.ro.observe(grid)}}
+ function drawMembersTab(p){const d=V.d,t=d.team,C=d.member_costs,per=memberPeriod();
+  const head=h('div',{class:'tm-mhead'});
+  if(C){const seg=h('div',{class:'tm-seg tm-period',role:'group','aria-label':'Costs for'});for(const pr of C.periods){const b=h('button',{type:'button',class:'ghost','aria-pressed':String(pr.key===per)},pr.label);b.onclick=()=>{store.set('member-period',pr.key);drawTeam()};seg.append(b)}
+   const P=C.periods.find(x=>x.key===per);head.append(seg,h('p',{class:'tm-mtot'},'Team total, '+P.label.toLowerCase()+(P.since?' ('+P.since+')':'')+': ',h('b',null,money(C.total[per],C.fx)),
+    C.former[per].usd?h('span',{class:'small muted'},' (includes ',money(C.former[per],C.fx),' by members no longer in the team)'):null));head.append(fxLine(C.fx))}
+  else head.append(h('p',{class:'small muted'},'Costs are not shown: your permissions for this team do not include seeing costs.'));
+  p.append(head);
+  p.append(h('p',{class:'small muted tm-mhelp'},'In hand-off order, the lead first. Click a member to edit it; drag a card, or use its ⠿ handle with Space and the arrow keys, to change the order. '
+   +(d.reorderable.length?'The stages of '+d.reorderable.join(', ')+' follow the order. ':'')+'Job types with built-in steps keep their stage order (Rules and autonomy). Every change is a new team version.'));
   for(const s of d.suggestions.filter(s=>!t.members.some(m=>m.id===s.member)))p.append(suggBox(s));
-  for(const m of t.members){const c=h('div',{class:'tm-mem'});c.append(h('h3',null,avatar((m.role.match(/[A-Za-z0-9]+/g)||['?']).slice(0,2).map(w=>w[0]).join('').toUpperCase(),m.role,m.id===d.lead,d.identity.hex),m.role,m.id===d.lead?h('span',{class:'tm-chip'},'Lead'):null));
-   const role=h('input',{type:'text',maxlength:'80',value:m.role}),purpose=h('textarea',{maxlength:'600',rows:'2'}),ins=h('textarea',{maxlength:'6000',class:'ins'}),prov=h('select');purpose.value=m.purpose||'';ins.value=m.instructions||'';
-   for(const [k,l] of Object.entries(d.models))prov.append(h('option',{value:k},l));prov.value=m.provider;const packs=checks(Object.entries(d.packs),m.packs||[]);const sw=d.tool_switches[m.id]||{};const tools=checks(Object.entries(d.tool_names),Object.keys(sw).filter(k=>sw[k]));
-   c.append(h('div',{class:'grid'},field('Role name',role),field('Model',prov)),field('Purpose',purpose),field('Standing instructions',ins),field('Tools',tools),field('Its own rule packs',packs));
-   const used=t.job_types.flatMap(jt=>jt.stages.filter(s=>s.member===m.id).map(s=>jt.name+' › '+s.title));if(used.length)c.append(h('p',{class:'small muted'},'Works on: '+used.join(', ')));
-   c.append(h('div',{class:'tm-acts'},btn('Save',async()=>{await api('/admin/api/teams/'+enc(t.id)+'/members/'+enc(m.id),'PUT',{role:role.value,purpose:purpose.value,instructions:ins.value,provider:prov.value,packs:packs.values(),tools:Object.fromEntries(Object.keys(d.tool_names).map(k=>[k,tools.values().includes(k)]))});$('notice').textContent='Saved as a new team version.';await loadTeam()}),
-    btn('Remove',async()=>{if(!confirm('Remove '+m.role+' from the team? (You can undo it on the Activity tab.)'))return;await api('/admin/api/teams/'+enc(t.id)+'/members/'+enc(m.id),'DELETE');await loadTeam()},'secondary')));
-   for(const s of d.suggestions.filter(s=>s.member===m.id))c.append(suggBox(s));c.append(coachTalk(m));p.append(c)}}
+  const grid=h('ol',{class:'tm-mgrid','aria-label':'Members in hand-off order'});p.append(grid,h('p',{class:'tm-sr','aria-live':'assertive',id:'tm-move-live'}));drawGrid(grid)}
+ async function saveOrder(order){const t=V.d.team;await api('/admin/api/teams/'+enc(t.id)+'/member-order','PUT',{order});M.order=null;M.grab='';$('notice').textContent='Hand-off order saved as a new team version.';await loadTeam()}
+ function moveKey(e,mid){const live=$('tm-move-live'),grid=document.querySelector('.tm-mgrid');const say=x=>{if(live)live.textContent=x};
+  if(e.key===' '||e.key==='Enter'){e.preventDefault();if(M.grab!==mid){M.grab=mid;M.order=shownOrder();M.orig=M.order.slice();drawGrid(grid);say(roleOfId(mid)+' picked up. Use the arrow keys to move it, Space to drop it, Escape to cancel.')}
+   else{const o=M.order,changed=o.join()!==M.orig.join();M.grab='';if(!changed){M.order=null;drawGrid(grid);say('Order unchanged.')}else{say(roleOfId(mid)+' dropped at position '+(o.indexOf(mid)+1)+'. Saving.');run(()=>saveOrder(o))}}
+   focusHandle(mid);return}
+  if(e.key==='Escape'&&M.grab===mid){e.preventDefault();M.grab='';M.order=null;drawGrid(grid);focusHandle(mid);say('Move cancelled.');return}
+  if(M.grab!==mid||!['ArrowUp','ArrowLeft','ArrowDown','ArrowRight'].includes(e.key))return;e.preventDefault();
+  const o=M.order,i=o.indexOf(mid),j=i+(e.key==='ArrowUp'||e.key==='ArrowLeft'?-1:1);if(j<0||j>=o.length){say(j<0?'Already first.':'Already last.');return}
+  [o[i],o[j]]=[o[j],o[i]];drawGrid(grid);focusHandle(mid);say(roleOfId(mid)+', position '+(j+1)+' of '+o.length+'.')}
+ function focusHandle(mid){const x=document.querySelector('.tm-mc[data-mid="'+CSS.escape(mid)+'"] .tm-handle');if(x)x.focus()}
+ // A word-by-word comparison of two texts (standing instructions), for "What changed". Comparison only: nothing is calculated here.
+ function wordDiff(a,b){const A=(a||'').split(/(\s+)/).filter(x=>x!==''),B=(b||'').split(/(\s+)/).filter(x=>x!=='');const n=A.length,m=B.length;if(n*m>2500000)return null;
+  const L=[];for(let i=0;i<=n;i++)L.push(new Uint16Array(m+1));for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)L[i][j]=A[i]===B[j]?L[i+1][j+1]+1:Math.max(L[i+1][j],L[i][j+1]);
+  const out=[];let i=0,j=0;const push=(k,x)=>{const l=out[out.length-1];if(l&&l[0]===k)l[1]+=x;else out.push([k,x])};
+  while(i<n&&j<m){if(A[i]===B[j]){push(' ',A[i]);i++;j++}else if(L[i+1][j]>=L[i][j+1])push('-',A[i++]);else push('+',B[j++])}while(i<n)push('-',A[i++]);while(j<m)push('+',B[j++]);return out}
+ function diffView(box,prev,now,label){box.replaceChildren();if(prev==null){box.append(h('p',{class:'small muted'},label));return}
+  if((prev||'').trim()===(now||'').trim()){box.append(h('p',{class:'small muted'},'No change: the same as '+label+'.'));return}
+  const parts=wordDiff(prev,now);if(!parts){box.append(h('p',{class:'small muted'},'Too long to compare word by word.'));return}
+  const words=k=>parts.filter(x=>x[0]===k).reduce((n,x)=>n+(x[1].match(/\S+/g)||[]).length,0);
+  box.append(h('p',{class:'small'},'Compared with '+label+': '+plural(words('+'),'word')+' added, '+plural(words('-'),'word')+' removed.'),
+   h('div',{class:'tm-diff'},...parts.map(([k,x])=>k===' '?x:h(k==='+'?'ins':'del',null,x))))}
+ function openMember(mid,tpl){const d=V.d,t=d.team,isNew=!mid;const src=isNew?{...d.member_templates[tpl||'blank']}:t.members.find(m=>m.id===mid);if(!src)return;
+  const m={role:src.role||'',purpose:src.purpose||'',instructions:src.instructions||'',provider:src.provider||'claude_sonnet',categories:src.categories||[],packs:src.packs||[],tools:src.tools||null};
+  const mv=isNew?{to:[],from:[],warnings:[],works_on:[],builtin_tools:[]}:d.member_view[mid];
+  const role=h('input',{type:'text',maxlength:'80',value:m.role,required:true,placeholder:'e.g. Services Engineer'}),prov=h('select');for(const [k,l] of Object.entries(d.models))prov.append(h('option',{value:k},l));prov.value=m.provider;
+  const purpose=h('textarea',{maxlength:'600',rows:'3'});purpose.value=m.purpose;const ins=h('textarea',{maxlength:'6000',rows:'16',class:'tm-ins'});ins.value=m.instructions;
+  const sw=isNew?Object.fromEntries(Object.keys(d.tool_names).map(k=>[k,!!(m.tools&&m.tools[k])])):(d.tool_switches[mid]||{});const tools=checks(Object.entries(d.tool_names),Object.keys(sw).filter(k=>sw[k]));
+  const cats=checks(d.categories.map(x=>[x,x]),m.categories),packs=checks(Object.entries(d.packs),m.packs);
+  const secs=[];const P=d.previous;
+  const roleBox=h('div',{class:'tm-ed'},field('Role name',role),field('Model',prov));
+  if(!isNew){if(mv.works_on.length)roleBox.append(h('p',{class:'small'},h('b',null,'Works on: '),mv.works_on.join(', ')));
+   if(mv.from.length||mv.to.length)roleBox.append(h('p',{class:'small'},mv.from.length?['Gets work from ',h('b',null,mv.from.map(roleOfId).join(', ')),'. ']:null,mv.to.length?['Hands work to ',h('b',null,mv.to.map(roleOfId).join(', ')),'.']:null))}
+  const wl=warnList(mv.warnings,m);if(wl)roleBox.prepend(wl);
+  secs.push({key:'what',title:'Role and model',node:roleBox},{key:'why',title:'Purpose',node:h('div',{class:'tm-ed'},field('One line: what this member is for',purpose))});
+  const diff=h('div',{class:'tm-diffbox','aria-live':'polite'});const prev=isNew?null:(P.members[mid]||null);
+  const lab=isNew?'This member is new.':!P.version?'There is no earlier version of the team.':!prev?'This member was added in v'+t.version+'.':'v'+P.version+' (before v'+t.version+': '+P.what+')';
+  const redraw=()=>diffView(diff,prev?prev.instructions||'':null,ins.value,lab);let tmr=null;ins.oninput=()=>{clearTimeout(tmr);tmr=setTimeout(redraw,250)};redraw();
+  const insBox=h('div',{class:'tm-ed'},field('Standing instructions',ins),h('details',{class:'tm-changed',open:true},h('summary',null,'What changed'),diff));
+  if(!isNew){for(const s of d.suggestions.filter(s=>s.member===mid))insBox.append(suggBox(s));insBox.append(coachTalk(t.members.find(x=>x.id===mid)))}
+  secs.push({key:'what',title:'Standing instructions',node:insBox});
+  secs.push({key:'technical',title:'Tools',node:h('div',{class:'tm-ed'},tools,mv.builtin_tools.length?h('p',{class:'small muted'},'Its stages also use: '+mv.builtin_tools.join(', ')+' (built in).'):null)});
+  secs.push({key:'related',title:'Knowledge',node:h('div',{class:'tm-ed'},d.categories.length?cats:h('p',{class:'small muted'},'There are no categories yet: create them on the Memories page.'),h('p',{class:'small muted'},'Only active knowledge in the ticked categories, never Local only items, only what its model may receive, and only the clients’ material the Rules page allows.'))});
+  secs.push({key:'where',title:'Rule packs',node:h('div',{class:'tm-ed'},packs,h('p',{class:'small muted'},'Its own packs apply to every call it makes, on top of the packs applied to Alice’s live rules.'))});
+  const C=d.member_costs;if(!isNew&&C){const mc=C.members[mid];const tb=h('table',{class:'tm-tbl tm-cost'},h('thead',null,h('tr',null,h('th',{scope:'col'},'Period'),h('th',{scope:'col',class:'n'},'Cost'),h('th',{scope:'col',class:'n'},'Share'),h('th',{scope:'col',class:'n'},'Jobs'),h('th',{scope:'col',class:'n'},'Per job'))));
+   const body=h('tbody');for(const pr of C.periods)body.append(h('tr',null,h('th',{scope:'row'},pr.label,pr.since?h('div',{class:'small muted'},pr.since):null),h('td',{class:'n'},money(mc.costs[pr.key],C.fx)),h('td',{class:'n'},mc.share_pct[pr.key]==null?'—':mc.share_pct[pr.key]+'%'),h('td',{class:'n'},String(mc.jobs[pr.key])),h('td',{class:'n'},money(mc.per_job[pr.key],C.fx))));tb.append(body);
+   const jl=h('ul',{class:'tm-ver'});for(const j of mc.last_jobs)jl.append(h('li',null,h('div',{class:'h'},h('a',{href:'/admin/teams/'+enc(t.id)+'/jobs/'+j.job_id},j.ref+' '+j.title),h('span',{class:'c'},money(j.cost,C.fx))),h('div',{class:'small muted'},'Last worked on '+when(j.at))));
+   secs.push({key:'when',title:'Cost',node:h('div',{class:'tm-ed'},h('div',{class:'table-wrap'},tb),h('h4',{style:'margin:12px 0 4px'},mc.last_jobs.length>1?'Its last '+plural(mc.last_jobs.length,'job'):'Its last job'),mc.last_jobs.length?jl:h('p',{class:'small muted'},'No jobs yet.'),fxLine(C.fx))})}
+  const msg=h('p',{class:'small tm-edmsg',role:'status'});
+  const body=()=>({role:role.value,purpose:purpose.value,instructions:ins.value,provider:prov.value,categories:cats.values?cats.values():[],packs:packs.values(),tools:Object.fromEntries(Object.keys(d.tool_names).map(k=>[k,tools.values().includes(k)]))});
+  const save=h('button',{type:'button',class:'primary'},isNew?'Add to the team':'Save as a new version'),cancel=h('button',{type:'button',class:'secondary'},'Cancel');cancel.onclick=()=>closeCard();
+  save.onclick=async()=>{if(!role.value.trim()){msg.textContent='Give the member a role name.';role.focus();return}save.disabled=true;msg.textContent='Saving…';
+   try{if(isNew)await api('/admin/api/teams/'+enc(t.id)+'/members','POST',{...body(),template:tpl||'blank'});else await api('/admin/api/teams/'+enc(t.id)+'/members/'+enc(mid),'PUT',body());
+    closeCard();$('notice').textContent=isNew?role.value.trim()+' added as a new team version. Give it a stage on Rules and autonomy.':'Saved as a new team version.';await loadTeam()}
+   catch(e){msg.textContent=e.message}finally{save.disabled=false}};
+  const foot=h('div',{class:'tm-edfoot'},save,cancel);
+  if(!isNew){const rm=h('button',{type:'button',class:'secondary tm-rm'},'Remove from the team');rm.onclick=async()=>{if(!confirm('Remove '+src.role+' from the team? Jobs already run keep the version they ran on, and you can undo this on the Activity tab.'))return;
+   rm.disabled=true;try{await api('/admin/api/teams/'+enc(t.id)+'/members/'+enc(mid),'DELETE');closeCard();$('notice').textContent=src.role+' removed (a new team version).';await loadTeam()}catch(e){msg.textContent=e.message}finally{rm.disabled=false}};foot.append(rm)}
+  foot.append(msg);
+  const first=JSON.stringify(body());const go=x=>()=>{if(JSON.stringify(body())!==first&&!confirm('Discard your changes to '+(src.role||'this member')+'?'))return;openMember(x)};
+  const ids=shownOrder(),i=ids.indexOf(mid);
+  openCard({kind_label:'Digital team · '+(isNew?'New member':'Member'),title:isNew?'New member: '+(d.member_templates[tpl||'blank'].label):src.role,subtitle:t.name+' · team v'+t.version+(mid===d.lead?' · Lead':''),
+   badge:mv.warnings.length?plural(mv.warnings.length,'warning'):'',tone:mv.warnings.length?'warn':'',sections:secs},
+   {wide:true,footer:()=>foot,position:isNew?'':(i+1)+' of '+ids.length,prev:isNew||i<1?null:go(ids[i-1]),next:isNew||i>=ids.length-1?null:go(ids[i+1])});
+  setTimeout(()=>{(isNew?role:null)?.focus()},50)}
  function coachTalk(m){const t=V.d.team;const wrap=h('details',{class:'dec-talk'});wrap.append(h('summary',null,h('span',{class:'dec-talk-t'},'Ask Temple about '+m.role),h('span',{class:'small muted'},' How its jobs went, and better instructions (applied only if you approve)')));
   const url='/admin/api/teams/'+enc(t.id)+'/members/'+enc(m.id)+'/discussion';const log=h('div',{class:'dec-talk-log'}),form=h('form',{class:'dec-talk-form'}),ta=h('textarea',{rows:'2',maxlength:'4000',placeholder:'Ask Temple, e.g. what keeps being sent back?','aria-label':'Message to Temple'}),send=h('button',{type:'submit'},'Send');
   const starters=h('div',{class:'dec-talk-starters'});for(const s of ['How could '+m.role+'’s instructions be better?','What keeps being sent back, and why?','What did I have to correct?']){const x=h('button',{type:'button',class:'chip'},s);x.onclick=()=>{ta.value=s;form.requestSubmit()};starters.append(x)}

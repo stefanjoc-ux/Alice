@@ -126,6 +126,11 @@ class MemberIn(BaseModel):
     categories: list[str] | None = Field(None, max_length=20)
     packs: list[str] | None = Field(None, max_length=10)
     tools: dict[str, bool] | None = None
+    template: str | None = Field(None, max_length=20)        # Add a member: a starting point from teams.MEMBER_TEMPLATES
+
+
+class OrderIn(BaseModel):
+    order: list[str] = Field(min_length=1, max_length=40)
 
 
 class FilingIn(BaseModel):
@@ -527,12 +532,18 @@ def teams_settings(s: SettingsIn, tid: str = FPath(pattern=ID)):
 
 @router.post('/admin/api/teams/{tid}/members')
 def teams_member_add(m: MemberIn, tid: str = FPath(pattern=ID)):
-    return _do(teams.add_member, tid, m.model_dump(exclude_none=True))
+    f = m.model_dump(exclude_none=True)
+    return _do(teams.add_member, tid, f, f.pop('template', ''))
+
+
+@router.put('/admin/api/teams/{tid}/member-order')
+def teams_member_order(o: OrderIn, tid: str = FPath(pattern=ID)):
+    return _do(teams.reorder_members, tid, o.order)
 
 
 @router.put('/admin/api/teams/{tid}/members/{mid}')
 def teams_member_update(m: MemberIn, tid: str = FPath(pattern=ID), mid: str = FPath(pattern=ID)):
-    return _do(teams.update_member, tid, mid, m.model_dump(exclude_none=True))
+    return _do(teams.update_member, tid, mid, m.model_dump(exclude_none=True, exclude={'template'}))
 
 
 @router.delete('/admin/api/teams/{tid}/members/{mid}')

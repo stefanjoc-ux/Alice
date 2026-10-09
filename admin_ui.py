@@ -412,6 +412,7 @@ details.r-row[open]>summary .r-sum{white-space:normal}.r-body{padding:0 14px 14p
 @media(max-width:700px){.r-body{padding-left:14px}.rl-bar #r-counts,.rl-bar #rp-counts{margin-left:0}}
 .ic-drawer{position:fixed;top:52px;right:0;bottom:0;width:min(460px,100vw);background:#fff;border-left:1px solid #dde7ee;box-shadow:-12px 0 30px -18px rgba(16,43,64,.45);z-index:40;display:flex;flex-direction:column;animation:ic-in .18s ease-out}
 .ic-drawer[hidden]{display:none}@keyframes ic-in{from{transform:translateX(24px);opacity:.4}to{transform:none;opacity:1}}@media(prefers-reduced-motion:reduce){.ic-drawer{animation:none}}
+.ic-drawer.ic-wide{width:min(640px,100vw)}@media(min-width:1700px){body.ic-open.ic-wide-open .content{margin-right:640px}}@media(max-width:1699px){body.ic-open.ic-wide-open .content{margin-right:0}body.ic-open.ic-wide-open .ic-backdrop{display:block;position:fixed;inset:52px 0 0;background:rgba(11,22,38,.3);z-index:39}}@media(max-width:700px){.ic-drawer.ic-wide{top:0;width:100vw;border-left:0;z-index:60}}
 .ic-backdrop{display:none}@media(max-width:900px){body.ic-open .ic-backdrop{display:block;position:fixed;inset:52px 0 0;background:rgba(11,22,38,.35);z-index:39}}
 @media(min-width:1280px){body.ic-open .content{margin-right:460px}}
 .ic-loading{padding:24px;color:#5d7385}.ic-head{padding:14px 18px 12px;border-bottom:1px solid #e6edf2;background:#f7fafc}.ic-head.ic-bad{background:#fdf3f3;border-bottom-color:#f1d0d0}.ic-head.ic-warn{background:#fffaf0}
@@ -3075,7 +3076,7 @@ if(DEMO&&!DEMO_PAGES.includes(PAGE)){location.replace('/admin/agents');throw new
 
 SCRIPT += r"""
 // ---- Information card: the standard detail view across Alice (see CLAUDE.md, Information cards) ----
-// openCard(url | spec, {prev, next, position, onClose}). A spec: {ref, kind_label, title, subtitle, badge, tone,
+// openCard(url | spec, {prev, next, position, onClose, footer, wide}). wide: a wider panel, full screen on a phone (editors). A spec: {ref, kind_label, title, subtitle, badge, tone,
 // sections:[{key,title,text|rows:[[label,value|{time}|{text,href}]]|paths:[{label,path:[{label,href}]}]|items:[{ref,label,time}],collapsed,empty}], actions:[{label,href}]}
 const IC_ICONS={what:'<path d="M4 6h16M4 12h16M4 18h10"/>',where:'<path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>',when:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
  who:'<circle cx="12" cy="8" r="4"/><path d="M4 21c1-4 4.5-6 8-6s7 2 8 6"/>',why:'<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.5v.01"/>',related:'<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
@@ -3083,20 +3084,21 @@ const IC_ICONS={what:'<path d="M4 6h16M4 12h16M4 18h10"/>',where:'<path d="M12 2
 function icTime(iso){const d=new Date(iso);if(isNaN(d))return iso;const m=(Date.now()-d)/60000;const rel=m<1?'just now':m<60?Math.round(m)+' min ago':m<1440?Math.round(m/60)+' h ago':Math.round(m/1440)+' day'+(Math.round(m/1440)===1?'':'s')+' ago';
  return d.toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'})+' · '+rel}
 let IC_STATE=null;
-function closeCard(){const d=document.getElementById('ic-drawer');if(!d||d.hidden)return;d.hidden=true;document.body.classList.remove('ic-open');const s=IC_STATE;IC_STATE=null;if(s&&s.onClose)s.onClose();if(s&&s.from&&document.contains(s.from))s.from.focus()}
+function closeCard(){const d=document.getElementById('ic-drawer');if(!d||d.hidden)return;d.hidden=true;document.body.classList.remove('ic-open','ic-wide-open');const s=IC_STATE;IC_STATE=null;if(s&&s.onClose)s.onClose();if(s&&s.from&&document.contains(s.from))s.from.focus()}
 async function openCard(src,opts={}){let d=document.getElementById('ic-drawer');
  if(!d){d=document.createElement('aside');d.id='ic-drawer';d.className='ic-drawer';d.setAttribute('role','dialog');d.setAttribute('aria-labelledby','ic-title');d.hidden=true;document.body.append(d);
   const bd=document.createElement('div');bd.className='ic-backdrop';bd.onclick=closeCard;document.body.append(bd);
   document.addEventListener('keydown',e=>{if(!IC_STATE)return;if(e.key==='Escape'){closeCard();return}
    if(['INPUT','TEXTAREA','SELECT'].includes((e.target.tagName||'')))return;if((e.key==='ArrowDown'||e.key==='j')&&IC_STATE.next){e.preventDefault();IC_STATE.next()}if((e.key==='ArrowUp'||e.key==='k')&&IC_STATE.prev){e.preventDefault();IC_STATE.prev()}})}
  const from=(IC_STATE&&IC_STATE.from)||document.activeElement;IC_STATE={...opts,from};
- d.hidden=false;document.body.classList.add('ic-open');d.replaceChildren(el('div','Loading…','ic-loading'));
+ d.hidden=false;document.body.classList.add('ic-open');d.classList.toggle('ic-wide',!!opts.wide);document.body.classList.toggle('ic-wide-open',!!opts.wide);d.replaceChildren(el('div','Loading…','ic-loading'));
  let c;try{c=typeof src==='string'?await api(src):src}catch(e){d.replaceChildren(icHead({title:'Could not open this',subtitle:e.message}));return}
  if(IC_STATE.from!==from)return;
  const head=icHead(c);const body=el('div','','ic-body');
  for(const s of c.sections||[]){const sec=document.createElement(s.collapsed?'details':'div');sec.className='ic-sec ic-'+s.key;
   const h=el(s.collapsed?'summary':'h3','');const ic=document.createElement('span');ic.className='ic-ic';ic.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+(IC_ICONS[s.key]||IC_ICONS.what)+'</svg>';h.append(ic,document.createTextNode(s.title));sec.append(h);
   if(s.text)sec.append(el('p',s.text,'ic-text'));
+  if(s.node)sec.append(s.node);                // an editor's own controls (a spec built in the page, e.g. a team member)
   if(s.paths)for(const p of s.paths){const row=el('div','','ic-path-row');row.append(el('span',p.label,'ic-k'));const bc=el('ol','','ic-path');p.path.forEach((n,i)=>{const li=document.createElement('li');if(n.href){const a=document.createElement('a');a.href=n.href;a.textContent=n.label;li.append(a)}else li.append(el('span',n.label));if(i===p.path.length-1)li.className='here';bc.append(li)});row.append(bc);sec.append(row)}
   if(s.chart&&s.chart.points&&s.chart.points.length>1)sec.append(icChart(s.chart));
   if(s.rows&&s.rows.length){const dl=el('dl','','ic-rows');for(const [k,v] of s.rows){dl.append(el('dt',k));const dd=document.createElement('dd');
