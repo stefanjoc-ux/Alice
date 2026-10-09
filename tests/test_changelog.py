@@ -227,7 +227,7 @@ def who(oid, email, roles):
 d = cl.get('/admin/api/whats-new').json()
 t('on the PC the page shows the release, the changes by day and the setup steps', cl.get('/admin/whats-new').status_code == 200
   and d['days'] and d['days'][0]['entries'] and any(r['version'] == 'e4f5a6b' and r['knowledge_ref'].startswith('K-') for r in d['releases'])
-  and d['setup'] and d['running']['version'] == 'local')
+  and d['setup'] and d['running']['version'] == __import__('ui_theme').version_info()['version'])
 os.environ.update({'ALICE_TRUST_EASYAUTH': '1', 'ALICE_USE_APP_ROLES': '1', 'ALICE_OWNER_OBJECT_ID': OWNER})
 O, M, A = who(OWNER, 'stefan@example.org', ['Alice.Owner']), who(MEMBER, 'mira@example.org', ['Alice.Member']), who(ADMIN, 'ada@example.org', ['Alice.Admin'])
 t('the Owner sees What\'s new', cl.get('/admin/api/whats-new', headers=O).status_code == 200 and cl.get('/admin/whats-new', headers=O).status_code == 200)
