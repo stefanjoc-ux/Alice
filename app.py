@@ -3282,7 +3282,11 @@ def _people(fn, *a):
     except ValueError as e: raise HTTPException(400, str(e)) from None
 
 @app.get('/admin/api/users')
-def admin_users(): return users.listing()
+def admin_users():
+    out = users.listing()
+    v = store.viewer()
+    if v is None or (v.full and v.role == 'owner'): out['handover'] = handover.counts(out['users'])     # Hand over: an Owner's only
+    return out
 
 @app.put('/admin/api/users/{oid}')
 def admin_user_set(q: AccessIn, oid: str = FPath(pattern=r'^[0-9a-z][0-9a-z-]{0,63}$')):
@@ -3300,6 +3304,40 @@ def admin_profile_delete(pid: str = FPath(pattern=r'^[a-z0-9][a-z0-9-]{1,39}$'))
 
 @app.get('/admin/api/permissions/catalogue')
 def admin_permissions_catalogue(): return permissions.catalogue()
+
+# ---- hand over a departing person's work (handover.py): an Owner's only; titles first, each item through the sharing gate ----
+import handover
+
+class HandoverItem(BaseModel):
+    type: Literal['record','file','organisation','proposal','team','team_job','pricing_template']
+    id: str = Field(min_length=1, max_length=600)
+
+class HandoverIn(BaseModel):
+    items: list[HandoverItem] = Field(default_factory=list, max_length=handover.MAX_ITEMS)
+    space: str = Field(min_length=3, max_length=40)
+    note: str = Field(default='', max_length=500)
+    categories: dict[str, str] = Field(default_factory=dict)
+
+class HandoverDecisionIn(BaseModel):
+    action: Literal['share','keep']
+    note: str = Field(default='', max_length=500)
+
+OID_PATTERN = r'^[0-9a-z][0-9a-z-]{0,63}$'
+
+@app.get('/admin/api/users/{oid}/handover')
+def admin_handover(oid: str = FPath(pattern=OID_PATTERN)): return _people(handover.listing, oid)
+
+@app.get('/admin/api/users/{oid}/handover/item')
+def admin_handover_item(oid: str = FPath(pattern=OID_PATTERN), type: str = Query(max_length=20), id: str = Query(max_length=600)):
+    return _people(handover.open_item, oid, type, id)
+
+@app.post('/admin/api/users/{oid}/handover')
+def admin_handover_move(q: HandoverIn, oid: str = FPath(pattern=OID_PATTERN)):
+    return _people(handover.move, oid, [i.model_dump() for i in q.items], q.space, q.note, q.categories)
+
+@app.post('/admin/api/handover/held/{mid}')
+def admin_handover_decide(q: HandoverDecisionIn, mid: str = FPath(pattern=r'^[0-9a-f]{32}$')):
+    return _people(handover.decide, mid, q.action, q.note)
 
 # ---- spaces (spaces.py): shared team memory with explicit membership ----
 import spaces

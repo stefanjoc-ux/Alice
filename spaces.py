@@ -45,6 +45,11 @@ def _schema(c):
               "from_space TEXT NOT NULL, to_space TEXT NOT NULL, requested_by TEXT NOT NULL, author_key TEXT NOT NULL DEFAULT '', "
               "status TEXT NOT NULL, reasons TEXT NOT NULL DEFAULT '[]', screened_by TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, "
               "decided_at TEXT, decided_by TEXT NOT NULL DEFAULT '')")
+    # kind 'handover': an Owner handing over a departing person's work (handover.py), decided by an Owner, not the author;
+    # note: the reason the Owner gave. Additive (Stefan, 9 Oct 2026).
+    cols = {r['name'] for r in c.execute('PRAGMA table_info(space_moves)')}
+    if 'kind' not in cols: c.execute("ALTER TABLE space_moves ADD COLUMN kind TEXT NOT NULL DEFAULT ''")
+    if 'note' not in cols: c.execute("ALTER TABLE space_moves ADD COLUMN note TEXT NOT NULL DEFAULT ''")
 
 
 with store.db() as _c: _schema(_c)
@@ -695,8 +700,8 @@ def held(v):
     """Moves into a shared space held by the sharing gate, waiting for this person (the item's author) to decide."""
     key = person_key(v)
     with store.db() as c:
-        rows = [dict(r) for r in c.execute("SELECT * FROM space_moves WHERE status='held' AND (author_key=? OR requested_by=?) ORDER BY created_at DESC",
-                                           (key, key))]
+        rows = [dict(r) for r in c.execute("SELECT * FROM space_moves WHERE status='held' AND kind<>'handover' AND (author_key=? OR requested_by=?) "
+                                           "ORDER BY created_at DESC", (key, key))]
     nm = names()
     for r in rows:
         r['reasons'] = json.loads(r['reasons'] or '[]'); r['to_name'] = (nm.get(r['to_space']) or {}).get('name', '')
@@ -710,6 +715,7 @@ def decide(mid, action):
     with store.db() as c:
         r = c.execute('SELECT * FROM space_moves WHERE id=?', (mid,)).fetchone()
     if not r or r['status'] != 'held': raise LookupError('Nothing waiting with that reference.')
+    if r['kind'] == 'handover': raise PermissionError('This was held while handing over someone\'s work: an Owner decides it on Users and permissions.')
     if r['author_key'] != person_key(v): raise PermissionError('Only the person whose item it is can decide.')
     if action not in ('share', 'keep'): raise ValueError('Choose share or keep.')
     if action == 'share':
@@ -741,3 +747,72 @@ def options(v=None):
     nm = names()
     return [{'id': s, 'name': nm.get(s, {}).get('name', s), 'kind': nm.get(s, {}).get('kind', '')}
             for s, r in my_spaces(v).items() if RANK[r] >= RANK['contribute']]
+
+
+# ---------------- handing over a departing person's work (handover.py; Stefan, 9 Oct 2026) ----------------
+def hand_over(item_type, item_id, target, from_key, note):
+    """One item out of a departing person's personal space into a shared space the acting Owner manages, through the same
+    sharing gate as any share. Only handover.move calls it (Owner role, the person suspended or without a role, a reason given).
+    Clear: moved. Otherwise a space_moves row of kind 'handover' (held for an Owner to decide, or refused when unclassified).
+    Nothing is deleted; who and why are logged."""
+    v = _actor()
+    if item_type not in TYPE_LABEL: raise ValueError('That kind of item does not live in a space.')
+    if space_of(item_type, item_id) != personal_space(from_key): raise LookupError('That item is not in their personal space.')
+    tgt = _space(target)
+    if tgt['kind'] != 'shared' or role_in(v, target) != 'manage':
+        raise PermissionError('Hand work over only into a shared space you manage.')
+    title = _item(item_type, item_id)[0]
+    who = _name_of(from_key)
+    ok, reasons, by = gate(item_type, item_id)
+    if not ok:
+        hard = by == 'unclassified'
+        mid = uuid.uuid4().hex
+        with store.db() as c, store.acting(note=note):
+            c.execute('INSERT INTO space_moves(id,item_type,item_id,title,from_space,to_space,requested_by,author_key,status,reasons,screened_by,created_at,kind,note) '
+                      'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)', (mid, item_type, str(item_id), title[:200], personal_space(from_key), target, person_key(v),
+                                                            from_key, 'refused' if hard else 'held', json.dumps(reasons), by, store.now(), 'handover', note[:500]))
+            store.audit(c, 'handover_refused' if hard else 'handover_held', str(item_id), 'share_gate',
+                        f'{TYPE_LABEL[item_type]} "{title[:120]}" from {who}\'s personal space → {tgt["name"]}: ' + '; '.join(reasons)[:400])
+        return {'status': 'refused' if hard else 'held', 'reasons': reasons, 'move': mid, 'title': title}
+    _place(item_type, item_id, target)
+    with store.db() as c, store.acting(note=note):
+        store.audit(c, 'handover_moved', str(item_id), 'spaces', f'{TYPE_LABEL[item_type]} "{title[:120]}" handed over from {who}\'s personal space '
+                    f'to {tgt["name"]} (sharing check by {by})')
+    return {'status': 'moved', 'space': target, 'screened_by': by, 'title': title}
+
+
+def handover_held(from_key=None):
+    """Hand-over items the sharing gate held, waiting for an Owner (Actions and Users and permissions)."""
+    q, a = "SELECT * FROM space_moves WHERE kind='handover' AND status='held'", []
+    if from_key: q, a = q + ' AND author_key=?', [from_key]
+    with store.db() as c:
+        rows = [dict(r) for r in c.execute(q + ' ORDER BY created_at DESC', a)]
+    nm = names()
+    for r in rows:
+        r['reasons'] = json.loads(r['reasons'] or '[]'); r['to_name'] = (nm.get(r['to_space']) or {}).get('name', '')
+        r['type_label'] = TYPE_LABEL.get(r['item_type'], r['item_type']); r['from_name'] = _name_of(r['author_key'])
+    return rows
+
+
+def decide_handover(mid, action, note):
+    """An Owner's call on a held hand-over item: 'share' (into the space after all, with a reason: the person it came from has
+    left) or 'keep' (it stays in their personal space). Only into a space the Owner still manages. Logged with who and why."""
+    v = _actor()
+    with store.db() as c:
+        r = c.execute('SELECT * FROM space_moves WHERE id=?', (mid,)).fetchone()
+    if not r or r['status'] != 'held' or r['kind'] != 'handover': raise LookupError('Nothing waiting with that reference.')
+    if action not in ('share', 'keep'): raise ValueError('Choose share or keep.')
+    who = _name_of(r['author_key'])               # read before the write transaction below
+    if action == 'share':
+        if role_in(v, r['to_space']) != 'manage': raise PermissionError('You no longer manage that space.')
+        if space_of(r['item_type'], r['item_id']) != r['from_space']: raise ValueError('It is no longer in their personal space.')
+        if r['item_type'] in ('record', 'file') and not _item(r['item_type'], r['item_id'])[2]:
+            raise ValueError('It has no category confirmed by a person, so it cannot be shared.')
+        _place(r['item_type'], r['item_id'], r['to_space'])
+    with store.db() as c, store.acting(note=note):
+        c.execute('UPDATE space_moves SET status=?,decided_at=?,decided_by=? WHERE id=?', ('shared' if action == 'share' else 'kept', store.now(), _who(), mid))
+        store.audit(c, 'handover_shared' if action == 'share' else 'handover_kept', r['item_id'], 'share_gate',
+                    f'{TYPE_LABEL.get(r["item_type"], r["item_type"])} "{r["title"][:120]}" from {who}: ' +
+                    ('shared after an Owner read why the sharing check held it' if action == 'share' else 'kept in their personal space'))
+    forget()
+    return {'status': 'shared' if action == 'share' else 'kept'}
