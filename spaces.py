@@ -417,6 +417,7 @@ def set_member(sid, member, role):
     if role not in RANK: raise ValueError('Role must be View, Contribute or Manage.')
     key = member_key(member)
     if key != OWNER and not users.person(key): raise LookupError('No such person. They appear after their first sign-in.')
+    who = _name_of(key)                       # read before the write transaction below, never inside it
     with store.db() as c:
         c.execute('BEGIN IMMEDIATE')
         old = c.execute('SELECT role FROM space_members WHERE space_id=? AND member_key=?', (sid, key)).fetchone()
@@ -424,7 +425,7 @@ def set_member(sid, member, role):
         c.execute('INSERT INTO space_members(space_id,member_key,role,added_at,added_by) VALUES (?,?,?,?,?) '
                   'ON CONFLICT(space_id,member_key) DO UPDATE SET role=excluded.role', (sid, key, role, store.now(), _who()))
         store.audit(c, 'space_member_' + ('changed' if old else 'added'), sid, 'spaces',
-                    f'{s["name"]}: {_name_of(key)} as {ROLE_LABEL[role]}' + (f' (was {ROLE_LABEL[old[0]]})' if old else ''))
+                    f'{s["name"]}: {who} as {ROLE_LABEL[role]}' + (f' (was {ROLE_LABEL[old[0]]})' if old else ''))
     forget()
     return listing()
 
@@ -440,13 +441,14 @@ def remove_member(sid, member):
     if s['kind'] != 'shared': raise ValueError('A personal space is only ever its own person\'s.')
     if not may_manage(v, sid): raise PermissionError('Only someone who manages this space (or an Owner of Alice) can change its members.')
     key = member_key(member)
+    who = _name_of(key)                       # read before the write transaction below, never inside it
     with store.db() as c:
         c.execute('BEGIN IMMEDIATE')
         old = c.execute('SELECT role FROM space_members WHERE space_id=? AND member_key=?', (sid, key)).fetchone()
         if not old: raise LookupError('They are not a member of this space.')
         if old[0] == 'manage' and _managers(c, sid) <= 1: raise ValueError('A space always keeps at least one manager.')
         c.execute('DELETE FROM space_members WHERE space_id=? AND member_key=?', (sid, key))
-        store.audit(c, 'space_member_removed', sid, 'spaces', f'{s["name"]}: {_name_of(key)} removed')
+        store.audit(c, 'space_member_removed', sid, 'spaces', f'{s["name"]}: {who} removed')
     forget()
     return listing()
 
@@ -484,9 +486,12 @@ def listing():
     mine = my_spaces(v)
     with store.db() as c:
         rows = [dict(r) for r in c.execute('SELECT * FROM spaces ORDER BY kind DESC, lower(name)')]
-        members = {}
-        for r in c.execute('SELECT space_id, member_key, role FROM space_members ORDER BY member_key'):
-            members.setdefault(r[0], []).append({'key': r[1], 'name': _name_of(r[1]), 'role': r[2]})
+        member_rows = c.execute('SELECT space_id, member_key, role FROM space_members ORDER BY member_key').fetchall()
+    # Names are looked up only after the rows are read and this connection is closed: _name_of opens its own connection, and
+    # doing that with this cursor still open could wait on a writer that waits on us (SQLite, 15 s, "database is locked").
+    members = {}
+    for r in member_rows:
+        members.setdefault(r[0], []).append({'key': r[1], 'name': _name_of(r[1]), 'role': r[2]})
     out = []
     for s in rows:
         if s['id'] not in mine and not (v.full and s['kind'] == 'shared'): continue     # Owners see every shared space's members, never its items unless a member
