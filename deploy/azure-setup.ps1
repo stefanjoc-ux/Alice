@@ -37,16 +37,37 @@ Steps (all by default, or one with -Step):
            alice-drill job (Admin > Backups > Run a restore drill now, or the Restore drill workflow).
   users    (run on its own) people and roles: adds the app roles Alice.Owner, Alice.Admin and Alice.Member to the "Alice web
            sign-in" app registration (and the "Alice connector sign-in" one if it exists), sets "Assignment required" on the web
-           sign-in's enterprise application, and assigns you (and the accounts in -AlsoAllow) the Owner role. It does NOT switch
+           sign-in's enterprise application, and assigns the roles. ENTRA DECIDES THE OWNER: anyone with Alice.Owner is an owner
+           of Alice (full access, including Health, Trading, Mileage and Backups). This step assigns Alice.Owner to the owner
+           (ownerObjectId, below) and Alice.Admin to the admins (-AdminObjectIds, remembered; you, if you are not the owner, and a
+           previous owner) and takes Alice.Owner away from those admins, never from the owner, so there is always an Owner. Other
+           accounts in -AlsoAllow get Alice.Member, so nobody who gets in today is locked out by the switch. It does NOT switch
            Alice over: until you run -Step users -UseAppRoles on and then -Step apps, Entra still lets in only the accounts it does
            today (allowedPrincipals), so nobody is locked out. Adding a person afterwards = assigning them a role in Entra
            (Enterprise applications > Alice web sign-in > Users and groups); they start with the default Member profile.
              -Step users                      roles, Assignment required, you as Owner (safe to run again)
              -Step users -UseAppRoles on      remember the switch; then -Step apps puts it live (off = back to allowedPrincipals)
+  -OwnerObjectId <object ID or user@domain>  (any step; remembered in the setup state as ownerObjectId) the account that owns
+           Alice: -Step users gives it Alice.Owner, and until app roles are on (-UseAppRoles on) it is the bootstrap fallback,
+           ALICE_OWNER_OBJECT_ID on the apps (put live with -Step apps). Not set = the account running this script (as before).
+           Changing it keeps the previous owner as an admin (Alice.Admin, still allowed to sign in), never a second Owner.
+  -AdminObjectIds <ids or user@domain, comma separated>  (-Step users; remembered as adminObjectIds) accounts given Alice.Admin.
   recover  (run on its own, in a NEW resource group from a fresh clone; docs/restore.md part C) loads a nightly off-site copy
            into this new, empty Alice before its apps start: -Step recover -RecoverFrom <offsite account> [-RecoverCopy yyyy/mm/dd]
+  check    (run on its own; READ-ONLY, changes nothing) lists what each step has set up in the resource group (sign-in,
+           apps, connector, demo, Copilot, mail, backups: the vault and its retention, the lock, the off-site account and its
+           retention, the nightly job and its last run, the drill; app roles) and flags anything missing or different.
   -DatabaseHost <server address>  (any step; remembered) after a point-in-time restore into a new server (docs/restore.md part B),
            so redeploys keep database-url pointing at it. -DatabaseHost '' goes back to this template's own server.
+           Every deployment of main.bicep names the database: when databaseHost is not set it is set to the address of the
+           resource group's own server (read from Azure), and the step stops if that cannot be read. Only the first -Step
+           infra, before any server exists, deploys without one.
+The setup state (what every step set up and every later step keeps) lives IN AZURE: the blob alice-setup/azure-state.json in
+Alice's own storage account (deploy/azure_state.py). Every step reads it first and writes it back whenever it saves; each saved
+version is also kept under alice-setup/history/. deploy\azure-state.json is only a cache of it. If the Azure copy is missing or
+older than the newest deployment, it is rebuilt from what is deployed first, and you are shown what was rebuilt. If the local
+file differs from the Azure copy, the step stops: delete or rename the local file to use the Azure copy, or add -UseLocalState
+to use the local file deliberately (it then replaces the Azure copy).
 Nothing here reads .env: keys are typed in once and live only in Key Vault.
 #>
 param(
@@ -77,12 +98,27 @@ param(
   [string]$RecoverCopy = '',          # -Step recover: which night (yyyy/mm/dd); default the newest copy
   [string]$DatabaseHost = '',         # after a point-in-time restore: the server Alice uses (remembered; '' = the template's own)
   [ValidateSet('', 'on', 'off')][string]$UseAppRoles = '',   # -Step users: switch who gets in to Entra app roles (on) or back (off); remembered
-  [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github', 'connector', 'demo', 'copilot', 'mail', 'backup', 'recover', 'users')][string]$Step = 'all'
+  [string]$OwnerObjectId = '',        # the owner of Alice (object ID, or user@domain); remembered as ownerObjectId; default: you
+  [string]$AdminObjectIds = '',       # -Step users: accounts given Alice.Admin (comma separated); remembered as adminObjectIds
+  [switch]$UseLocalState,             # use deploy\azure-state.json even though it differs from the Azure copy (it then replaces it)
+  [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github', 'connector', 'demo', 'copilot', 'mail', 'backup', 'recover', 'users', 'check')][string]$Step = 'all'
 )
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 $Template = Join-Path $Root 'infra\main.bicep'
-$StateFile = Join-Path $PSScriptRoot 'azure-state.json'
+$StateFile = Join-Path $PSScriptRoot 'azure-state.json'     # a cache: the setup state lives in Azure (azure_state.py)
+$StateHelper = Join-Path $PSScriptRoot 'azure_state.py'
+function Find-Python {
+  # The PC's .venv, else Python on the PATH (Cloud Shell has python3). Each is tried, so the Windows Store stub is skipped.
+  foreach ($c in @((Join-Path $Root '.venv\Scripts\python.exe'), (Join-Path $Root '.venv/bin/python'), 'python3', 'python', 'py')) {
+    if (-not ((Test-Path $c) -or (Get-Command $c -ErrorAction SilentlyContinue))) { continue }
+    $ErrorActionPreference = 'Continue'
+    & $c -c 'import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)' 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) { return $c }
+  }
+  throw 'Python 3.8 or later is needed for the setup state (deploy\azure_state.py). On the PC: python.org, or run from the folder with .venv. Cloud Shell has it.'
+}
+$StatePy = Find-Python
 
 function Say($text) { Write-Host "`n== $text" -ForegroundColor Cyan }
 function AzCli { $out = & az @args; if ($LASTEXITCODE -ne 0) { throw "az $($args -join ' ') failed" }; return $out }   # not named Az: PowerShell names ignore case, so it would call itself
@@ -100,7 +136,28 @@ function Add-AlsoAllow {
   return ,$also
 }
 function Load-State { if (Test-Path $StateFile) { return Get-Content $StateFile -Raw | ConvertFrom-Json } else { return [pscustomobject]@{} } }
-function Save-State($s) { $s | ConvertTo-Json -Depth 5 | Set-Content $StateFile -Encoding UTF8 }
+function Sync-State {
+  # The Azure copy first: read it (rebuilt from what is deployed if missing or behind), refuse a local file that differs.
+  $a = @('load', '--resource-group', $ResourceGroup, '--file', $StateFile, '--who', "$Me")
+  if ($UseLocalState) { $a += '--use-local' }
+  & $StatePy $StateHelper @a | Out-Host
+  if ($LASTEXITCODE -ne 0) { throw 'Stopped before changing anything: the setup state could not be settled (see above).' }
+}
+function Save-State($s) {
+  # Locally (the cache), then the Azure copy, with its ETag so another run's save is never overwritten.
+  $s | ConvertTo-Json -Depth 5 | Set-Content $StateFile -Encoding UTF8
+  & $StatePy $StateHelper save --resource-group $ResourceGroup --file $StateFile --who "$Me" --step $Step | Out-Host
+  if ($LASTEXITCODE -ne 0) { throw 'The setup state could not be saved to Azure (see above). Run -Step check to see what is set up.' }
+  $fresh = Get-Content $StateFile -Raw | ConvertFrom-Json
+  if ($fresh._azure) { Set-Prop $s '_azure' $fresh._azure }
+}
+function Json-Array($lines) {
+  # A JSON array from az as a real array of its items, in Windows PowerShell 5.1 too (its ConvertFrom-Json returns the whole
+  # array as ONE object, so @(... | ConvertFrom-Json) is an array holding an array)
+  $items = @()
+  foreach ($x in (((@($lines) -join "`n").Trim()) | ConvertFrom-Json)) { $items += $x }
+  return ,$items
+}
 function Set-Prop($obj, $name, $value) { $obj | Add-Member -NotePropertyName $name -NotePropertyValue $value -Force }
 function New-Password { -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 32 | ForEach-Object { [char]$_ }) }
 function Kv-Has($kv, $name) { AzTry keyvault secret show --vault-name $kv --name $name --query id -o tsv | Out-Null; return ($LASTEXITCODE -eq 0) }
@@ -121,15 +178,71 @@ function Kv-Get($kv, $name) { return (AzCli keyvault secret show --vault-name $k
 AzCli account set --subscription $SubscriptionId | Out-Null
 $Me = AzCli ad signed-in-user show --query id -o tsv
 $Tenant = AzCli account show --query tenantId -o tsv
+if ($Step -eq 'check') {
+  Say "Check (read-only): what each step has set up in $ResourceGroup"
+  & $StatePy $StateHelper check --resource-group $ResourceGroup --file $StateFile --who "$Me" | Out-Host
+  if ($LASTEXITCODE -ne 0) { throw 'The check could not finish (see above). Nothing was changed.' }
+  return
+}
+Sync-State
 $State = Load-State
 if ($PSBoundParameters.ContainsKey('DatabaseHost')) { Set-Prop $State 'databaseHost' $DatabaseHost.Trim(); Save-State $State }   # '' clears it
+
+# The owner of Alice: a setting in the setup state (ownerObjectId), never simply whoever runs this script. -OwnerObjectId sets
+# it; only when it was never set does it default to you. Entra decides who is an owner (Alice.Owner); ownerObjectId is who
+# -Step users gives that role, and the bootstrap fallback while app roles are off. A previous owner becomes an admin.
+function Resolve-User($u) {
+  $u = "$u".Trim()
+  $id = AzTry ad user show --id $u --query id -o tsv
+  if (-not $id) { throw "No account '$u' in tenant $Tenant (give its object ID, or its sign-in name user@domain). Nothing was changed." }
+  return "$id".Trim().ToLower()
+}
+function Owner { return "$($State.ownerObjectId)".Trim().ToLower() }
+function Admins { return @($State.adminObjectIds | Where-Object { $_ } | ForEach-Object { "$_".ToLower() } | Where-Object { $_ -ne (Owner) } | Select-Object -Unique) }
+function Add-Admin($oid) {
+  $oid = "$oid".Trim().ToLower()
+  if (-not $oid -or $oid -eq (Owner)) { return }
+  $have = @($State.adminObjectIds | Where-Object { $_ } | ForEach-Object { "$_".ToLower() })
+  if ($have -notcontains $oid) { Set-Prop $State 'adminObjectIds' @($have + $oid); Write-Host "Admin of Alice (Alice.Admin, not an Owner): $oid" }
+}
+function Sign-In-Others($given) {
+  # Everyone besides the owner who may sign in while Entra's allowedPrincipals decides: -AlsoAllow and the admins
+  $all = @($given) + @($State.alsoAllow) + @(Admins) | Where-Object { $_ } | ForEach-Object { "$_".Trim().ToLower() }
+  return ,@($all | Where-Object { $_ -ne (Owner) } | Select-Object -Unique)
+}
+if ($OwnerObjectId) {
+  $new = Resolve-User $OwnerObjectId
+  $old = Owner
+  if ($old -ne $new) {
+    Set-Prop $State 'ownerObjectId' $new
+    Set-Prop $State 'adminObjectIds' @($State.adminObjectIds | Where-Object { $_ -and "$_".ToLower() -ne $new })    # the owner is never also an admin
+    if ($old) { Add-Admin $old }
+    Save-State $State
+    Write-Host "Owner of Alice: $new (was $(if ($old) { $old } else { 'not set' })). Remembered. -Step users gives it Alice.Owner; -Step apps puts the fallback live." -ForegroundColor Green
+  }
+} elseif (-not (Owner)) {
+  Set-Prop $State 'ownerObjectId' "$Me".Trim().ToLower(); Save-State $State
+  Write-Host "Owner of Alice was not set: you ($Me), remembered. Change it with -OwnerObjectId." -ForegroundColor Yellow
+}
+Write-Host "Owner of Alice: $(Owner)$(if (@(Admins).Count) { '; admins: ' + ((Admins) -join ', ') })"
 Write-Host "Subscription $SubscriptionId, tenant $Tenant, resource group $ResourceGroup ($Location), you: $Me"
 
+function Ensure-DatabaseHost {
+  # main.bicep is never deployed with an empty databaseHost once a database server exists: not set = the address of the
+  # resource group's own server (the one Alice uses), read from Azure; the step stops if it cannot be read.
+  if ("$($State.databaseHost)".Trim()) { return }
+  & $StatePy $StateHelper database-host --resource-group $ResourceGroup --file $StateFile | Out-Host
+  if ($LASTEXITCODE -ne 0) { throw 'Stopped before deploying: the database server Alice uses is not known (see above). Nothing was changed.' }
+  $h = "$((Load-State).databaseHost)".Trim()
+  if ($h) { Set-Prop $State 'databaseHost' $h; Save-State $State }
+}
+
 function Deploy($stage, $extra) {
+  Ensure-DatabaseHost
   $kv = $State.keyVault
   $pw = if ($kv -and (Kv-Has $kv 'pg-admin-password')) { Kv-Get $kv 'pg-admin-password' } elseif ($State.pendingPassword) { $State.pendingPassword } else { New-Password }
   if (-not $kv) { Set-Prop $State 'pendingPassword' $pw; Save-State $State }   # kept only until it is in Key Vault
-  $values = @{ stage = $stage; pgAdminPassword = $pw; deployerObjectId = $Me; ownerObjectId = $Me; location = $Location }
+  $values = @{ stage = $stage; pgAdminPassword = $pw; deployerObjectId = $Me; ownerObjectId = (Owner); location = $Location }
   # Backups (-Step backup) are remembered, so every step that redeploys keeps them exactly as they are
   foreach ($k in 'pgBackupRetentionDays', 'filesBackupDays', 'offsiteKeepDays', 'offsiteSoftDeleteDays') { if ($State.$k) { $values[$k] = [int]$State.$k } }
   if ($State.pgGeoBackup) { $values['pgGeoRedundantBackup'] = $true }
@@ -140,6 +253,11 @@ function Deploy($stage, $extra) {
     $values['lockResourceGroup'] = -not $State.noLock; $values['offsiteImmutabilityLocked'] = [bool]$State.offsiteImmutabilityLocked
   }
   foreach ($k in $extra.Keys) { $values[$k] = $extra[$k] }
+  # Whoever deploys, the owner is ownerObjectId, and the admins keep signing in (allowedPrincipals) and reaching alice-mcp
+  if ($values.ContainsKey('allowedUserObjectIds')) { $values['allowedUserObjectIds'] = Sign-In-Others $values['allowedUserObjectIds'] }
+  if ($values.ContainsKey('extAllowedUsers') -and -not $ExtAllowedUsers) {
+    $values['extAllowedUsers'] = (@((Owner)) + @("$($values['extAllowedUsers'])" -split ',') + @(Admins) | ForEach-Object { "$_".Trim().ToLower() } | Where-Object { $_ } | Select-Object -Unique) -join ','
+  }
   $doc = @{ '$schema' = 'https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#'; contentVersion = '1.0.0.0'; parameters = @{} }
   foreach ($k in $values.Keys) { $doc.parameters[$k] = @{ value = $values[$k] } }
   $pfile = New-TemporaryFile                     # a parameters file: no quoting problems, and the password is not on the command line
@@ -154,6 +272,7 @@ function Deploy($stage, $extra) {
   if (-not (Kv-Has $State.keyVault 'pg-admin-password')) { Kv-Set $State.keyVault 'pg-admin-password' $pw }
   if ($State.pendingPassword) { $State.PSObject.Properties.Remove('pendingPassword') }
   Save-State $State
+  if ($State.postgresServer) { Ensure-DatabaseHost }     # the first -Step infra has just created the server: name it now
 }
 
 function Grant-MailSend($principalId, $label) {
@@ -328,43 +447,66 @@ if (Want 'users') {
   function Retry($what, [scriptblock]$do) {
     for ($i = 1; $i -le 12; $i++) { try { return (& $do) } catch { if ($i -eq 12) { throw "$what failed: $_" }; Start-Sleep -Seconds 10 } }
   }
-  # Fixed IDs, so running this again changes nothing and the roles never get new IDs (Alice reads the role NAMES).
-  $roles = @(
-    @{ id = '388aff1f-7b8b-4bcf-bde1-0df23a400f6e'; value = 'Alice.Owner'; displayName = 'Alice Owner'; description = 'Everything in Alice, including everyone''s items. The owner (ownerObjectId) is always an Owner.' },
-    @{ id = '5fc72aad-c175-48b3-89ef-0d7f38675c1c'; value = 'Alice.Admin'; displayName = 'Alice Admin'; description = 'Their permission profile, plus Users and permissions, Rules and Rule packs. Never Health, Trading, Mileage or Backups.' },
-    @{ id = '63e492a6-c40b-4485-b412-3ed386f849d6'; value = 'Alice.Member'; displayName = 'Alice Member'; description = 'Their permission profile only (by default: Chat and their own saved chats).' }
-  )
+  # The roles' JSON is built by deploy\azure_state.py (app-roles), not by PowerShell: Windows PowerShell 5.1 does not unroll a
+  # JSON array from ConvertFrom-Json, so the app's current roles came back wrapped in another array and Graph refused the
+  # update ("StartArray ... PrimitiveValue expected"). The helper keeps the app's other roles, keeps the ID an Alice role
+  # already has (else a fixed one), sends only the fields Graph accepts, every one a single value except allowedMemberTypes.
+  $roles = @([ordered]@{ value = 'Alice.Owner'; id = '' }, [ordered]@{ value = 'Alice.Admin'; id = '' }, [ordered]@{ value = 'Alice.Member'; id = '' })
   function Add-Roles($appId, $label) {
-    $have = @(AzCli ad app show --id $appId --query 'appRoles' -o json | ConvertFrom-Json)
-    $merged = @($have | Where-Object { $_.value -notin $roles.value })      # any other roles on the app are kept
-    foreach ($r in $roles) {
-      $merged += [pscustomobject]@{ allowedMemberTypes = @('User'); description = $r.description; displayName = $r.displayName
-                                    id = $r.id; isEnabled = $true; value = $r.value }
-    }
-    $tmp = New-TemporaryFile
-    try { [IO.File]::WriteAllText($tmp, (ConvertTo-Json -InputObject @($merged) -Depth 5 -Compress)); AzCli ad app update --id $appId --app-roles "@$tmp" | Out-Null }
-    finally { Remove-Item $tmp -ErrorAction SilentlyContinue }
+    $existing = New-TemporaryFile; $send = New-TemporaryFile
+    try {
+      [IO.File]::WriteAllText($existing, ((AzCli ad app show --id $appId --query 'appRoles' -o json) -join "`n"))
+      & $StatePy $StateHelper app-roles --existing $existing --out $send | Out-Host
+      if ($LASTEXITCODE -ne 0) { throw "Could not work out the app roles for $label (see above). Nothing was changed." }
+      try { AzCli ad app update --id $appId --app-roles "@$send" | Out-Null }
+      catch {
+        Write-Host "The app roles sent to $label ($appId) were:" -ForegroundColor Yellow
+        Write-Host ([IO.File]::ReadAllText($send))
+        throw
+      }
+    } finally { Remove-Item $existing, $send -ErrorAction SilentlyContinue }
     Write-Host "$label`: roles Alice.Owner, Alice.Admin, Alice.Member"
   }
   Add-Roles $State.webAuthClientId 'Alice web sign-in'
+  foreach ($r in $roles) {        # the IDs the web sign-in app really has (an existing role keeps its own)
+    $r.id = "$(AzCli ad app show --id $State.webAuthClientId --query "appRoles[?value=='$($r.value)'].id | [0]" -o tsv)".Trim()
+    if (-not $r.id) { throw "The web sign-in app has no $($r.value) role after the update. Nothing was assigned." }
+  }
   if ($State.connectorClientId) { Add-Roles $State.connectorClientId 'Alice connector sign-in' }
   # The web sign-in's enterprise application (service principal)
   $sp = AzTry ad sp show --id $State.webAuthClientId --query id -o tsv
   if (-not $sp) { $sp = Retry 'Creating the web sign-in service principal' { AzCli ad sp create --id $State.webAuthClientId --query id -o tsv } }
-  # You (and the accounts you allowed before) as Owner, first, so nobody who gets in today is locked out by Assignment required or the switch.
-  $owners = @($Me) + @($State.alsoAllow | Where-Object { $_ }) | Select-Object -Unique
-  foreach ($o in $owners) {
-    $has = AzCli rest --method GET --url "https://graph.microsoft.com/v1.0/servicePrincipals/$sp/appRoleAssignedTo" `
-             --query "length(value[?principalId=='$o' && appRoleId=='$($roles[0].id)'])" -o tsv
-    if ([int]$has -gt 0) { Write-Host "Already an Owner: $o"; continue }
-    $body = @{ principalId = $o; resourceId = $sp; appRoleId = $roles[0].id } | ConvertTo-Json -Compress
+  # Entra decides who is an owner. Alice.Owner for the owner (ownerObjectId) FIRST; then Alice.Admin for the admins (you, if you
+  # are not the owner, -AdminObjectIds, a previous owner), taking Alice.Owner away from them; Alice.Member for anyone else in
+  # -AlsoAllow, so nobody who gets in today is locked out by Assignment required or the switch. The owner's own Alice.Owner is
+  # never removed, so there is always at least one Owner.
+  foreach ($a in ($AdminObjectIds -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })) { Add-Admin (Resolve-User $a) }
+  Add-Admin $Me
+  Save-State $State
+  if (-not (Owner)) { throw 'No owner of Alice set: give -OwnerObjectId. Nothing was assigned.' }
+  $assignedUrl = "https://graph.microsoft.com/v1.0/servicePrincipals/$sp/appRoleAssignedTo"
+  function Assignments { return @((AzCli rest --method GET --url $assignedUrl -o json | ConvertFrom-Json).value) }
+  function Assign($o, $role, $label) {
+    if (@(Assignments | Where-Object { $_.principalId -eq $o -and $_.appRoleId -eq $role.id }).Count) { Write-Host "Already $($role.value): $o ($label)"; return }
     $tmp = New-TemporaryFile
     try {
-      [IO.File]::WriteAllText($tmp, $body)
-      Retry "Assigning $o as Owner" { AzCli rest --method POST --url "https://graph.microsoft.com/v1.0/servicePrincipals/$sp/appRoleAssignedTo" --headers 'Content-Type=application/json' --body "@$tmp" --output none | Out-Null }
+      [IO.File]::WriteAllText($tmp, (@{ principalId = $o; resourceId = $sp; appRoleId = $role.id } | ConvertTo-Json -Compress))
+      Retry "Assigning $o $($role.value)" { AzCli rest --method POST --url $assignedUrl --headers 'Content-Type=application/json' --body "@$tmp" --output none | Out-Null }
     } finally { Remove-Item $tmp -ErrorAction SilentlyContinue }
-    Write-Host "Assigned Owner: $o"
+    Write-Host "Assigned $($role.value): $o ($label)"
   }
+  Assign (Owner) $roles[0] 'the owner of Alice'
+  if (-not @(Assignments | Where-Object { $_.principalId -eq (Owner) -and $_.appRoleId -eq $roles[0].id }).Count) { throw 'The owner does not hold Alice.Owner yet: nothing else was changed. Run -Step users again in a minute.' }
+  foreach ($o in (Admins)) {
+    Assign $o $roles[1] 'admin'
+    foreach ($x in @(Assignments | Where-Object { $_.principalId -eq $o -and $_.appRoleId -eq $roles[0].id })) {
+      Retry "Taking Alice.Owner from $o" { AzCli rest --method DELETE --url "$assignedUrl/$($x.id)" --output none | Out-Null }
+      Write-Host "Alice.Owner taken away from $o (an admin, not an owner)."
+    }
+  }
+  foreach ($o in (Sign-In-Others @())) { if ((Admins) -notcontains $o) { Assign $o $roles[2] 'allowed to sign in: raise it in Entra if needed' } }
+  $others = @(Assignments | Where-Object { $_.appRoleId -eq $roles[0].id -and $_.principalId -ne (Owner) } | ForEach-Object { $_.principalId })
+  if ($others) { Write-Host "Also owners, assigned in Entra (anyone with Alice.Owner is an owner of Alice): $($others -join ', ')" -ForegroundColor Yellow }
   # Assignment required on the web sign-in's enterprise application: Entra itself refuses anyone without a role.
   Retry 'Setting Assignment required' { AzCli ad sp update --id $State.webAuthClientId --set appRoleAssignmentRequired=true | Out-Null }
   Write-Host 'Alice web sign-in: Assignment required (Entra refuses anyone without an Alice role).'
@@ -429,9 +571,9 @@ if (Want 'connector') {
 }
 
 function Deploy-Demo {
-  $users = (@($Me) + @($State.alsoAllow | Where-Object { $_ }) | Select-Object -Unique) -join ','
-  $values = @{ image = (Image-Ref); pgAdminPassword = (Kv-Get $State.keyVault 'pg-admin-password'); ownerObjectId = $Me; location = $Location
-               allowedUserObjectIds = @($State.alsoAllow | Where-Object { $_ }); webAuthClientId = $State.webAuthClientId; keyVaultSecretNames = (Key-Names)
+  $users = (@((Owner), $Me) + @(Sign-In-Others @()) | Where-Object { $_ } | Select-Object -Unique) -join ','
+  $values = @{ image = (Image-Ref); pgAdminPassword = (Kv-Get $State.keyVault 'pg-admin-password'); ownerObjectId = (Owner); location = $Location
+               allowedUserObjectIds = (Sign-In-Others @()); webAuthClientId = $State.webAuthClientId; keyVaultSecretNames = (Key-Names)
                extAppId = $State.extAppId; extAllowedUsers = $users; extCallers = $State.extCallers; extAudiences = (Audiences) }
   $doc = @{ '$schema' = 'https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#'; contentVersion = '1.0.0.0'; parameters = @{} }
   foreach ($k in $values.Keys) { $doc.parameters[$k] = @{ value = $values[$k] } }
@@ -453,7 +595,7 @@ if (Want 'demo') {
   }
   # the same sign-in app (only you): add the demo's callback to its addresses, keeping live's
   $demoWeb = 'https://alice-demo-web.' + $State.environmentDomain
-  $uris = @(AzCli ad app show --id $State.webAuthClientId --query 'web.redirectUris' -o json | ConvertFrom-Json)
+  $uris = Json-Array (AzCli ad app show --id $State.webAuthClientId --query 'web.redirectUris' -o json)
   $cb = "$demoWeb/.auth/login/aad/callback"
   if ($uris -notcontains $cb) { $uris += $cb; AzCli ad app update --id $State.webAuthClientId --web-redirect-uris @uris | Out-Null; Write-Host 'Demo address added to the sign-in app.' }
   Deploy-Demo
@@ -697,4 +839,5 @@ if (Want 'github') {
   Write-Host "  ACR_NAME              = $($State.acrName)"
 }
 
+Save-State $State      # the Azure copy is up to date at the end of every step
 Say 'Done'

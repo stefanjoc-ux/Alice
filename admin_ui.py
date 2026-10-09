@@ -2883,7 +2883,7 @@ NAV_GROUPS = [('', ['home', 'actions']),
               ('Workspace', ['temple', 'assistants', 'teams', 'apps', 'organisations']),
               ('Knowledge', ['memories', 'knowledge', 'documents', 'archive']),
               ('Admin', ['agents', 'rules', 'rule-packs', 'activity', 'usage', 'speed', 'signins', 'backup'])]
-OWNER_PAGES = {'backup'}         # shown to the owner only (backup.owner_ok)
+OWNER_PAGES = {'backup', 'health', 'trading', 'mileage'}   # an owner's only (backup.owner_ok: the shared owner check, users.is_owner)
 NAV_FOLDS = {'Admin'}            # groups that fold away (remembered per browser; open when you are on one of their pages)
 
 _I = lambda d: '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + d + '</svg>'

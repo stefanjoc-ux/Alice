@@ -52,7 +52,9 @@ with store.db() as _c: _schema(_c)
 
 # ---------------- who ----------------
 def person_key(v):
-    """The key a person has in memberships: 'owner' for the owner (on this computer or by object ID), else their object ID."""
+    """The key a person has in memberships: 'owner' for an owner of Alice by the one owner check (permissions.is_owner_person
+    -> users.is_owner: the Alice.Owner role in Entra, or the fallback ID while app roles are off; on the PC, whoever is here),
+    else their object ID. ALICE_OWNER_OBJECT_ID alone never makes an account the owner once app roles are on."""
     if v is None: return OWNER
     import permissions
     if permissions.is_owner_person(v) or (v.full and not v.oid): return OWNER
@@ -63,8 +65,17 @@ def author_keys(v):
     """The author values in item_authors that are this person's own ('' = made before authors were kept: the owner's)."""
     if person_key(v) == OWNER:
         import users
-        return ['', users.owner_oid()] if users.owner_oid() else ['']
+        return sorted({'', *users.owner_oids(), *([v.oid] if v and v.oid else [])})
     return [v.oid] if v.oid else []
+
+
+def member_key(member):
+    """The membership key for a person named on the page or by a tool: 'owner' for an owner of Alice (users.is_owner),
+    else their object ID."""
+    import users
+    m = (member or '').strip().lower()
+    if not m: return ''
+    return OWNER if m == OWNER or users.is_owner(m) else m
 
 
 def _name_of(key):
@@ -263,6 +274,7 @@ def ensure_migrated():
     if _MIGRATED: return
     if _setting('spaces_migrated') == '1':
         _MIGRATED.append(True); return
+    others = _other_authors()          # worked out before the write transaction (it reads users; CLAUDE.md lessons)
     with store.db() as c:
         c.execute('BEGIN IMMEDIATE')
         if c.execute("SELECT value FROM settings WHERE key='spaces_migrated'").fetchone(): return
@@ -279,9 +291,16 @@ def ensure_migrated():
         areas = {r[0].lower(): r[1] for r in c.execute("SELECT name, coalesce(area,'') FROM categories")} if _has_col(c, 'categories', 'area') else {}
         def personal_cat(cat): return areas.get((cat or '').lower()) == 'personal'
         counts = {}
+        for key, name in others['names'].items():                    # a personal space for each non-owner author of older items
+            c.execute("INSERT INTO spaces(id,name,kind,owner_key,created_at,created_by) VALUES (?,?,'personal',?,?,?) ON CONFLICT(id) DO NOTHING",
+                      (personal_space(key), f'{name}: personal'[:80], key, t, 'Alice'))
+            c.execute("INSERT INTO space_members(space_id,member_key,role,added_at,added_by) VALUES (?,?,'manage',?,?) ON CONFLICT(space_id,member_key) DO NOTHING",
+                      (personal_space(key), key, t, 'Alice'))
+        authored = others['items']
         def put(kind, iid, sid):
+            if (kind, str(iid)) in authored: sid = personal_space(authored[(kind, str(iid))])     # someone else's: their own space
             c.execute('INSERT OR IGNORE INTO item_spaces(item_type,item_id,space_id,placed_at,placed_by) VALUES (?,?,?,?,?)', (kind, str(iid), sid, t, 'migration'))
-            k = f'{kind}:{"personal" if sid == personal else "work"}'
+            k = f'{kind}:{"personal" if sid == personal else "work" if sid == work else "their author"}'
             counts[k] = counts.get(k, 0) + 1
         for rid, cat in c.execute("SELECT r.id, coalesce(m.category,'') FROM records r LEFT JOIN record_meta m ON m.record_id=r.id").fetchall():
             put('record', rid, personal if personal_cat(cat) else work)
@@ -299,6 +318,28 @@ def ensure_migrated():
         summary = ', '.join(f'{v} {k.split(":")[0]} → {k.split(":")[1]}' for k, v in sorted(counts.items())) or 'nothing to move'
         store.audit(c, 'spaces_migrated', work, 'spaces', f'Your items placed in spaces: {summary}. Nothing copied or deleted.')
     _changed()
+
+
+def _other_authors():
+    """Older items written by someone who is NOT the owner go to that person's personal space, not the owner's spaces. The owner
+    is decided by the one owner check (users.is_owner: Alice.Owner in Entra, the fallback ID only while app roles are off). An
+    author counts as the owner's own account (their items are the owner's) when that check says so, when Entra gave them the
+    Owner ceiling at their last sign-in (entra_role; with app roles off everyone let in is one of the owner's accounts), when
+    it is the configured owner object ID (the account the setup named; its items are the owner's even though, with app roles
+    on, it is no longer an owner), or when Alice has no record of them. Placement only: it gives no account any access."""
+    import users
+    with store.db() as c:
+        if not _has_table(c, 'item_authors'): return {'items': {}, 'names': {}}
+        rows = c.execute('SELECT item_type, item_id, author_oid FROM item_authors WHERE author_oid<>\'\'').fetchall()
+    configured, items, names, verdict = users.owner_oid(), {}, {}, {}
+    for kind, iid, oid in rows:
+        oid = (oid or '').strip().lower()
+        if oid not in verdict:
+            row = users.person(oid)
+            verdict[oid] = bool(row) and not (users.is_owner(oid) or oid == configured or (row.get('entra_role') or '') == 'owner')
+            if verdict[oid]: names[oid] = row.get('name') or row.get('email') or oid
+        if verdict[oid]: items[(kind, str(iid))] = oid
+    return {'items': items, 'names': names}
 
 
 def _has_table(c, name):
@@ -369,7 +410,7 @@ def set_member(sid, member, role):
     if s['kind'] != 'shared': raise ValueError('A personal space is only ever its own person\'s.')
     if not may_manage(v, sid): raise PermissionError('Only someone who manages this space (or an Owner of Alice) can change its members.')
     if role not in RANK: raise ValueError('Role must be View, Contribute or Manage.')
-    key = OWNER if member in (OWNER, users.owner_oid()) and member else (member or '').strip().lower()
+    key = member_key(member)
     if key != OWNER and not users.person(key): raise LookupError('No such person. They appear after their first sign-in.')
     with store.db() as c:
         c.execute('BEGIN IMMEDIATE')
@@ -393,7 +434,7 @@ def remove_member(sid, member):
     s = _space(sid)
     if s['kind'] != 'shared': raise ValueError('A personal space is only ever its own person\'s.')
     if not may_manage(v, sid): raise PermissionError('Only someone who manages this space (or an Owner of Alice) can change its members.')
-    key = OWNER if member == users.owner_oid() and member else (member or '').strip().lower()
+    key = member_key(member)
     with store.db() as c:
         c.execute('BEGIN IMMEDIATE')
         old = c.execute('SELECT role FROM space_members WHERE space_id=? AND member_key=?', (sid, key)).fetchone()
@@ -446,8 +487,13 @@ def listing():
         if s['id'] not in mine and not (v.full and s['kind'] == 'shared'): continue     # Owners see every shared space's members, never its items unless a member
         out.append({**s, 'my_role': mine.get(s['id']), 'members': members.get(s['id'], []) if s['id'] in mine or v.full else [],
                     'counts': counts(s['id']) if s['id'] in mine else {}, 'can_manage': may_manage(v, s['id']) and s['kind'] == 'shared'})
-    people = [{'key': u['oid'], 'name': u['name'] or u['email'], 'email': u['email']} for u in users.listing()['users'] if u['status'] == 'active'] \
-        if (v.full or v.role == 'admin' or any(may_manage(v, s) for s in mine)) else []
+    people = []
+    if v.full or v.role == 'admin' or any(may_manage(v, s) for s in mine):
+        for u in users.listing()['users']:
+            if u['status'] != 'active': continue
+            key = OWNER if u.get('is_owner') else u['oid']            # every owner account is the one owner in spaces
+            if key == OWNER and any(x['key'] == OWNER for x in people): continue
+            people.append({'key': key, 'name': store.owner_name() if key == OWNER else (u['name'] or u['email']), 'email': u['email']})
     return {'spaces': out, 'default': default_for(v), 'me': person_key(v), 'can_create': v.full or v.role == 'admin',
             'waiting': held(v), 'migration': migration_report() if v.full else None, 'people': people,
             'roles': [{'key': r, 'label': ROLE_LABEL[r]} for r in ROLES]}
@@ -605,8 +651,7 @@ def _place(item_type, item_id, sid):
 
 def _author_key(item_type, item_id):
     a = store.author_of(item_type, item_id)
-    import users
-    return OWNER if not a or a == users.owner_oid() else a
+    return OWNER if not a else member_key(a)
 
 
 def held(v):

@@ -238,7 +238,9 @@ t('restored, they get back in', cl.get('/', headers=M).status_code == 200)
 
 # ---------------- at least one Owner ----------------
 os.environ['ALICE_OWNER_OBJECT_ID'] = ''
-cl.get('/', headers=who(OTHER, 'olive@example.org', ['Alice.Owner']))
+os.environ['ALICE_USE_APP_ROLES'] = '0'        # an Owner set on the page (no Alice.Owner role, so not an owner of Alice)
+cl.get('/', headers=who(OTHER, 'olive@example.org', []))
+os.environ['ALICE_USE_APP_ROLES'] = '1'
 users._forget()
 with store.db() as c: c.execute("UPDATE users SET role='member' WHERE oid=?", (OWNER,))
 users._forget()
