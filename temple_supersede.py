@@ -142,6 +142,8 @@ def check_one(fid, items, provider, use_model=True, budget=None):
     with store.db() as c:
         seen = {r[0] for r in c.execute('SELECT old_id FROM knowledge_replacements WHERE new_id=?', (fid,))}
     pool = [o for o in pool if o['id'] not in seen]
+    if (new.get('category') or '').lower() == 'alice changes':     # release notes add up: one never replaces another (changelog.py)
+        pool = [o for o in pool if (o.get('category') or '').lower() != 'alice changes']
     added = calls = 0
     ranked = []
     for o in pool:

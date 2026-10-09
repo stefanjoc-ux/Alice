@@ -3250,3 +3250,53 @@ CSS += r'''
 .sp-members .mini{margin-left:8px}.sp-add{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.sp-held{border:1px solid #e2bf85;background:#fdf3e1;border-radius:8px;padding:10px 12px;margin:8px 0}
 .sp-held ul{margin:6px 0 8px;padding-left:18px;font-size:14px}.sp-form label{display:block;margin:8px 0}.sp-form input{width:min(480px,100%)}#sp-new[hidden]{display:none}
 '''
+
+# ---- What's new (changelog.py): CHANGELOG.md as imported at each deploy, the releases and the setup steps run (Admin or Owner) ----
+PAGES['whats-new'] = ("What's new", 'What changed in Alice, newest first, from the change log every pull request adds to: the release running now and '
+                      'when each release went live, anything you need to do, and the setup steps run in Azure. Each release is also a knowledge '
+                      'item in the category Alice changes, so connected apps can find recent changes.')
+SECTIONS['whats-new'] = r'''<section><div class="mem-head"><h2>Running now</h2><button type="button" id="wn-refresh" class="secondary">Check again</button></div>
+<div id="wn-alert"></div><div id="wn-tiles" class="mi-tiles"></div><p class="small muted" id="wn-note"></p></section>
+<section><div class="mem-head"><h2>Changes</h2><label class="small"><input type="checkbox" id="wn-todo"> Only those with something for you to do</label></div><div id="wn-days"></div></section>
+<section><div class="mem-head"><h2>Releases</h2><span class="small muted">Newest first: when each started and when it went live</span></div><div class="table-wrap"><table id="wn-releases" class="mem-table"></table></div></section>
+<section><div class="mem-head"><h2>Setup steps run</h2><span class="small muted">azure-setup.ps1 steps that changed Azure, newest first (no secrets are recorded)</span></div><div class="table-wrap"><table id="wn-setup" class="mem-table"></table></div><p class="small muted" id="wn-setup-note"></p></section>'''
+NAV_GROUPS[-1][1].insert(NAV_GROUPS[-1][1].index('activity'), 'whats-new')
+NAV_ICONS['whats-new'] = _I('<path d="M5 4h14v16l-3.5-2.2L12 20l-3.5-2.2L5 20z"/><path d="M9 9h6M9 12.5h6"/>')
+CSS += r'''
+.wn-day h3{font-size:15px;margin:14px 0 6px}.wn-list{list-style:none;margin:0;padding:0}.wn-list li{padding:8px 0;border-top:1px solid var(--line);font-size:14px;line-height:1.45}
+.wn-list li:first-child{border-top:0}.wn-pr{font-weight:600;margin-right:6px}.wn-need{display:block;margin-top:4px;padding:6px 10px;border-left:3px solid #eb6834;background:#fdf3e1;border-radius:4px}
+.wn-rel{margin-left:6px}.wn-params{font-size:12px;color:var(--muted,#5b6b7b)}.wn-alert{border:1px solid #e2bf85;background:#fdf3e1;border-radius:8px;padding:8px 12px;margin:6px 0}
+'''
+SCRIPT += r"""
+if(PAGE==='whats-new'){
+ const when=iso=>{if(!iso)return '';const d=new Date(iso);return isNaN(d)?String(iso):d.toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})};
+ const link=(text,href)=>{if(!href)return el('span',text);const a=el('a',text);a.href=href;a.target='_blank';a.rel='noopener';return a};
+ const table=(id,heads,rows,empty)=>{const t=$(id);t.replaceChildren();const th=document.createElement('thead'),hr=document.createElement('tr');for(const h of heads){const c=el('th',h);c.scope='col';hr.append(c)}th.append(hr);t.append(th);
+  const b=document.createElement('tbody');if(!rows.length){const tr=document.createElement('tr'),td=el('td',empty,'muted');td.colSpan=heads.length;tr.append(td);b.append(tr)}
+  for(const r of rows){const tr=document.createElement('tr');for(const v of r){const td=document.createElement('td');if(v instanceof Node)td.append(v);else td.textContent=v==null?'':String(v);tr.append(td)}b.append(tr)}t.append(b)};
+ let data=null;
+ function days(){const box=$('wn-days');box.replaceChildren();const only=$('wn-todo').checked;let shown=0;
+  for(const d of data.days){const items=d.entries.filter(e=>!only||e.action);if(!items.length)continue;const s=el('div','','wn-day');s.append(el('h3',d.label));const ul=el('ul','','wn-list');
+   for(const e of items){const li=document.createElement('li');const pr=link('#'+e.pr,e.link);pr.className='wn-pr';li.append(pr,document.createTextNode(e.text));
+    if(e.release&&e.release!=='local')li.append(el('span','release '+e.release,'badge v-none wn-rel'));
+    if(e.action){const n=el('span','','wn-need');n.append(el('strong','You need to: '),document.createTextNode(e.action));li.append(n)}ul.append(li);shown++}
+   s.append(ul);box.append(s)}
+  if(!shown)box.append(el('p',only?'Nothing for you to do.':'No changes recorded yet. They are read from CHANGELOG.md when Alice starts.','muted small'))}
+ async function load(){data=await api('/admin/api/whats-new');const r=data.running;
+  const tile=(v,l)=>{const x=el('div','','mi-tile');x.append(v instanceof Node?v:el('strong',v),el('span',l));return x};
+  const v=el('strong','');v.append(r.link?link(r.version,r.link):document.createTextNode(r.version));
+  $('wn-tiles').replaceChildren(tile(v,'release running'),tile(r.built?when(r.built):'–','built'),tile(r.live_at?when(r.live_at):(r.revision?'not yet':'–'),'went live'),
+   tile(String(data.days.reduce((n,d)=>n+d.entries.length,0)),'changes recorded'));
+  $('wn-note').textContent=(r.revision?'Revision '+r.revision+'. ':'')+(r.started_at?'This release first started '+when(r.started_at)+'. ':'')+'A release counts as live from the first request it serves through Alice’s own address.';
+  const al=$('wn-alert');al.replaceChildren();if(data.problems&&data.problems.length){const a=el('div','CHANGELOG.md has '+data.problems.length+' problem(s): '+data.problems.slice(0,3).join(' '),'wn-alert');a.setAttribute('role','alert');al.append(a)}
+  days();
+  table('wn-releases',['Release','Started','Went live','Changes','Knowledge item','Note'],data.releases.map(x=>[link(x.version,x.link),when(x.started_at),x.live_at?when(x.live_at):'not yet',x.entries,
+   x.knowledge_ref?link(x.knowledge_ref,'/admin/knowledge?q='+encodeURIComponent(x.knowledge_ref)):'',x.note||'']),'No releases recorded yet.');
+  table('wn-setup',['When','Step','Settings','Result','Who','From'],data.setup.map(s=>{const p=el('span',Object.entries(s.params||{}).map(([k,v])=>'-'+k+(v===''||v==='True'?'':' '+v)).join(' '),'wn-params');
+   const res=el('span',s.result==='ok'?'OK':s.result==='failed'?'Failed':(s.result||''),'badge '+(s.result==='ok'?'v-ok':s.result==='failed'?'v-bad':'v-none'));const rc=document.createElement('span');rc.append(res);if(s.error)rc.append(el('div',s.error,'small muted'));if(s.note)rc.append(el('div',s.note,'small muted'));
+   return [String(s.at||'').length>10?when(s.at):new Date(String(s.at)+'T12:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}),'-Step '+s.step,p,rc,s.who||'',s.from||'']}),'No setup steps recorded yet.');
+  $('wn-setup-note').textContent=data.setup_file_found?'':'The setup history on the file share has not been written yet: the next azure-setup.ps1 step writes it. The steps shown were recorded before it existed.'}
+ $('wn-todo').onchange=()=>{if(data)days()};$('wn-refresh').onclick=()=>run(load);
+ run(load);
+}
+"""

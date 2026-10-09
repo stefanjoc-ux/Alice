@@ -30,6 +30,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -41,8 +42,9 @@ BLOB = 'azure-state.json'
 MAIN_DEPLOYMENTS = ('alice-infra', 'alice-migrate', 'alice-apps')    # main.bicep, one name per stage
 LOCAL_ONLY = ('pendingPassword',)        # the database password before Key Vault exists: never leaves this machine
 BOOKKEEPING = ('_azure', 'savedAt', 'savedBy', 'savedFrom', 'lastStep', 'deployedAt')
-NOT_COMPARED = BOOKKEEPING + LOCAL_ONLY + ('image',)   # image: steps always deploy the LIVE image (Image-Ref)
-NOT_LIVE = ('copilotAuthId', 'copilotDemoAuthId', 'imageFresh', 'adminObjectIds')   # nothing deployed shows these
+HISTORY = 'setupHistory'               # the steps run: who, when, step, settings, result (history below); never compared
+NOT_COMPARED = BOOKKEEPING + LOCAL_ONLY + ('image', HISTORY)   # image: steps always deploy the LIVE image (Image-Ref)
+NOT_LIVE = ('copilotAuthId', 'copilotDemoAuthId', 'imageFresh', 'adminObjectIds', HISTORY)   # nothing deployed shows these
 LISTS = ('alsoAllow', 'extAudiences', 'adminObjectIds')
 CHOSEN = ('ownerObjectId',)            # settings the person chose (-OwnerObjectId): what is deployed fills them only when unset
 OWNER_ROLE_ID = '388aff1f-7b8b-4bcf-bde1-0df23a400f6e'   # Alice.Owner on the web sign-in app (fixed in azure-setup.ps1)
@@ -479,6 +481,102 @@ def _upload(store, content, etag, who, step, newest):
     content.update(savedAt=_now(), savedBy=who or '', savedFrom=_where(), lastStep=step or '')
     props = store.write(content, etag, step)
     return content, props
+
+
+# ---------------- the setup history (Stefan, 9 Oct 2026) ----------------
+# Each step that changes Azure appends one entry to the setup state (setupHistory) and mirrors the whole list to Alice's file
+# share (setup/setup-history.json), where Admin › What's new reads it. Settings are recorded by name from this list only, and
+# a value that looks like a key or password is never recorded, whatever its name.
+HISTORY_MAX = 500
+SHARE_DIR, SHARE_FILE = 'setup', 'setup-history.json'
+START = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'setup-history-start.json')   # steps run before the history existed
+RECORDED = ('ResourceGroup', 'Location', 'ExtAppId', 'ExtCallers', 'ExtAllowedUsers', 'GitHubRepo', 'AlsoAllow', 'CustomDomain',
+            'GitHubSubject', 'CopilotAudience', 'CopilotAuthId', 'CopilotDemoAudience', 'CopilotDemoAuthId', 'MailFrom', 'BackupNotify',
+            'FilesBackupDays', 'OffsiteKeepDays', 'OffsiteSoftDeleteDays', 'PgBackupDays', 'NoLock', 'LockImmutability', 'PgGeoBackup',
+            'RecoverFrom', 'RecoverCopy', 'DatabaseHost', 'UseAppRoles', 'OwnerObjectId', 'AdminObjectIds', 'LocalModel',
+            'LocalModelName', 'UseLocalState')
+NOT_RECORDED = '(not recorded)'
+_SECRET_NAME = re.compile(r'(?i)(password|passwd|secret|token|credential|apikey|api_key|accountkey|account_key|connectionstring|sas)')
+_GUID = re.compile(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')
+
+
+def _secretish(word):
+    """A word that could be a key, password or token: long, letters and digits, and not an ID, address or name."""
+    w = word.strip().strip('"\'')
+    if len(w) < 20 or _GUID.match(w) or any(ch in w for ch in '.@:/\\'): return False
+    return bool(re.search(r'[A-Za-z]', w) and re.search(r'[0-9]', w)) or bool(re.search(r'[+=]', w))
+
+
+def _scrub(text, limit=300):
+    words = re.split(r'(\s+|[,;=])', str(text or ''))
+    return ''.join(NOT_RECORDED if _secretish(w) else w for w in words).strip()[:limit]
+
+
+def recorded_params(pairs):
+    """{name: value} from ["Name=value", ...] as the script passes them: only names in RECORDED, never a secret-looking value."""
+    out = {}
+    for p in pairs or ():
+        name, _, value = str(p).partition('=')
+        name = name.strip().lstrip('-')
+        if not name or name == 'SubscriptionId' or name == 'Step': continue
+        if name not in RECORDED or _SECRET_NAME.search(name): out[name[:40]] = NOT_RECORDED; continue
+        out[name] = _scrub(value, 200)
+    return out
+
+
+def _history_list(x):
+    if isinstance(x, dict): x = [x]                       # Windows PowerShell 5.1 may write a one-item list as the item itself
+    return [h for h in (x or []) if isinstance(h, dict) and h.get('id')]
+
+
+def _start():
+    try:
+        with open(START, encoding='utf-8-sig') as f: return _history_list(json.load(f))
+    except (OSError, ValueError):
+        return []
+
+
+def _mirror(az, rg, state, hist, out):
+    """The history on Alice's file share, where the What's new page reads it (best effort: the state in Azure is the record)."""
+    acct, share = state.get('storageAccount'), state.get('shareName')
+    if not acct or not share: return False
+    box = tempfile.mkdtemp(prefix='alice-history-')
+    try:
+        env = Store(az, rg, acct)._env()
+        tmp = os.path.join(box, SHARE_FILE)
+        with open(tmp, 'w', encoding='utf-8') as f: f.write(json.dumps({HISTORY: hist, 'savedAt': _now()}, indent=1, sort_keys=True))
+        common = ['--account-name', acct, '--share-name', share]
+        az(['storage', 'directory', 'create', *common, '--name', SHARE_DIR, '-o', 'json'], env)      # already there is fine
+        code, _o, err = az(['storage', 'file', 'upload', *common, '--path', f'{SHARE_DIR}/{SHARE_FILE}', '--source', tmp, '-o', 'json'], env)
+        if code != 0: out(f'The setup history was not copied to the file share: {_scrub(err.strip(), 200)}'); return False
+        return True
+    except AzureError as e:
+        out(f'The setup history was not copied to the file share: {e}'); return False
+    finally:
+        shutil.rmtree(box, ignore_errors=True)
+
+
+def history(az, rg, path, who='', who_name='', step='', result='ok', params=(), error='', out=print):
+    """Append this step to the setup history in the setup state (saved to Azure like any save) and mirror it to the share."""
+    state = read_local(path)
+    if state is None: state = {}
+    hist = _history_list(state.get(HISTORY))
+    have = {h['id'] for h in hist}
+    hist += [h for h in _start() if h['id'] not in have]
+    at = _now()
+    entry = {'id': f"{at}-{step or 'step'}-{hashlib.sha256((at + (who or '') + str(params)).encode()).hexdigest()[:6]}", 'at': at,
+             'step': (step or '')[:30], 'who': ' '.join(str(who_name or who or '').split())[:120], 'from': _where(),
+             'params': recorded_params(params), 'result': 'failed' if result == 'failed' else 'ok'}
+    if str(error or '').strip(): entry['error'] = _scrub(' '.join(str(error).strip().splitlines()[0].split()), 300)
+    hist.append(entry)
+    hist.sort(key=lambda h: str(h.get('at', '')))        # stable: steps in the same second keep the order they ran
+    state[HISTORY] = hist[-HISTORY_MAX:]
+    write_local(path, state)
+    code = save(az, rg, path, who, step or 'history', out)
+    mirrored = _mirror(az, rg, state, state[HISTORY], out)
+    out(f"Setup history: -Step {entry['step']} {'failed' if entry['result'] == 'failed' else 'done'}, recorded"
+        + (' in the setup state and on the file share.' if mirrored and code == 0 else '.'))
+    return code
 
 
 # ---------------- the commands ----------------
@@ -920,7 +1018,7 @@ def check(az, rg, path, who='', out=print):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description='The setup state of azure-setup.ps1, kept in Azure.')
-    ap.add_argument('command', choices=('load', 'save', 'check', 'database-host', 'app-roles'))
+    ap.add_argument('command', choices=('load', 'save', 'check', 'database-host', 'app-roles', 'history'))
     ap.add_argument('--resource-group', default='')
     ap.add_argument('--file', default='')
     ap.add_argument('--existing', default='')     # app-roles: the app's current appRoles (JSON)
@@ -928,6 +1026,10 @@ def main(argv=None):
     ap.add_argument('--use-local', action='store_true')
     ap.add_argument('--who', default='')
     ap.add_argument('--step', default='')
+    ap.add_argument('--who-name', default='')     # history: the signed-in account's name
+    ap.add_argument('--result', default='ok', choices=('ok', 'failed'))
+    ap.add_argument('--param', action='append', default=[])   # history: Name=value, as the script was given it
+    ap.add_argument('--error', default='')
     a = ap.parse_args(argv)
     try: sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     except Exception: pass
@@ -940,6 +1042,7 @@ def main(argv=None):
         if a.command == 'load': return load(AZ, a.resource_group, a.file, a.use_local, a.who, out)
         if a.command == 'save': return save(AZ, a.resource_group, a.file, a.who, a.step, out)
         if a.command == 'database-host': return database_host(AZ, a.resource_group, a.file, out)
+        if a.command == 'history': return history(AZ, a.resource_group, a.file, a.who, a.who_name, a.step, a.result, a.param, a.error, out)
         return check(AZ, a.resource_group, a.file, a.who, out)
     except AzureError as e:
         out(f'Stopped: {e}'); return 2
