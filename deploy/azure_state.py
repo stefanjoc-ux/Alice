@@ -42,8 +42,11 @@ MAIN_DEPLOYMENTS = ('alice-infra', 'alice-migrate', 'alice-apps')    # main.bice
 LOCAL_ONLY = ('pendingPassword',)        # the database password before Key Vault exists: never leaves this machine
 BOOKKEEPING = ('_azure', 'savedAt', 'savedBy', 'savedFrom', 'lastStep', 'deployedAt')
 NOT_COMPARED = BOOKKEEPING + LOCAL_ONLY + ('image',)   # image: steps always deploy the LIVE image (Image-Ref)
-NOT_LIVE = ('copilotAuthId', 'copilotDemoAuthId', 'imageFresh')   # nothing deployed shows these
-LISTS = ('alsoAllow', 'extAudiences')
+NOT_LIVE = ('copilotAuthId', 'copilotDemoAuthId', 'imageFresh', 'adminObjectIds')   # nothing deployed shows these
+LISTS = ('alsoAllow', 'extAudiences', 'adminObjectIds')
+CHOSEN = ('ownerObjectId',)            # settings the person chose (-OwnerObjectId): what is deployed fills them only when unset
+OWNER_ROLE_ID = '388aff1f-7b8b-4bcf-bde1-0df23a400f6e'   # Alice.Owner on the web sign-in app (fixed in azure-setup.ps1)
+ADMIN_ROLE_ID = '5fc72aad-c175-48b3-89ef-0d7f38675c1c'   # Alice.Admin
 PROTECTIONS_OFF = ('noLock',)          # true = a protection off: never inferred from what is deployed
 DEFAULTS = {'pgBackupRetentionDays': 35, 'filesBackupDays': 30, 'offsiteKeepDays': 35, 'offsiteSoftDeleteDays': 35}
 TOKEN_STORE = 'ab3be6b7-f5df-413d-ac2d-abf1e3fd9c0b'   # Microsoft's Enterprise token store (Copilot)
@@ -233,6 +236,8 @@ def merge(azure, live_state):
             merged[k] = have + [x for x in (v or []) if str(x).lower() not in {str(h).lower() for h in have}]
         elif k in PROTECTIONS_OFF and v and not old and azure.get('backup'):
             kept.append(k)                                  # the lock stays wanted
+        elif k in CHOSEN and _norm(k, old) is not None:
+            if _norm(k, v) != _norm(k, old): kept.append(k)  # the owner you chose stays chosen until -Step apps puts it live
         elif _norm(k, v) is None and _norm(k, old) is not None:
             kept.append(k)
         else:
@@ -326,7 +331,8 @@ def rebuild(live):
     put('webAuthClientId', ((aad.get('registration') or {}).get('clientId')) or (param(apps, 'webAuthClientId') if apps else None) or None,
         'alice-web sign-in: client ID' if (aad.get('registration') or {}).get('clientId') else 'deployment alice-apps, parameter webAuthClientId')
     who = ((((aad.get('validation') or {}).get('defaultAuthorizationPolicy') or {}).get('allowedPrincipals') or {}).get('identities'))
-    owner = wenv.get('ALICE_OWNER_OBJECT_ID') or (param(apps, 'ownerObjectId') if apps else '') or ''
+    owner = (wenv.get('ALICE_OWNER_OBJECT_ID') or (param(apps, 'ownerObjectId') if apps else '') or '').strip().lower()
+    if owner: put('ownerObjectId', owner, 'alice-web: ALICE_OWNER_OBJECT_ID' if wenv.get('ALICE_OWNER_OBJECT_ID') else 'deployment alice-apps, parameter ownerObjectId')
     if who:
         put('alsoAllow', [i for i in who if i and i.lower() != owner.lower()], 'alice-web sign-in: allowed people other than the owner')
     elif apps and param(apps, 'allowedUserObjectIds') is not None:
@@ -496,7 +502,7 @@ def load(az, rg, path, use_local=False, who='', out=print):
             change = _show(merged[k]) if azure is None else f"{_show((azure or {}).get(k))} -> {_show(merged[k])}"
             out(f'  {k:<26} {change}   ({src[k]})'); shown += 1
         if azure is not None and not shown: out('  nothing had changed')
-        if kept_azure: out(f"  kept from the Azure copy, though not found deployed (-Step check shows what is missing): {', '.join(kept_azure)}")
+        if kept_azure: out(f"  kept from the Azure copy, though not found deployed (a setting you chose, or missing: -Step check shows which): {', '.join(kept_azure)}")
         if kept: out(f"  kept from {local_name} (nothing deployed shows them): {', '.join(kept)}")
         try:
             content, props = _upload(store, merged, (props or {}).get('etag'), who, 'rebuild', newest)
@@ -770,6 +776,28 @@ def check(az, rg, path, who='', out=print):
             row('users', 'App roles decide who gets in', 'ok' if on else 'off', 'on' if on else 'not yet (-Step users -UseAppRoles on, then -Step apps)')
     else:
         row('users', 'People and roles', 'off', 'not set up: -Step users')
+    # the owner of Alice: Entra decides (Alice.Owner). ownerObjectId is who -Step users gives it, and the bootstrap fallback on
+    # alice-web while app roles are off; admins (adminObjectIds) hold Alice.Admin and never Alice.Owner.
+    want, live_owner = (state.get('ownerObjectId') or '').strip().lower(), (wenv.get('ALICE_OWNER_OBJECT_ID') or '').strip().lower()
+    if not want: row('users', 'Owner of Alice (ownerObjectId)', 'MISSING' if web else 'off', f"not set{' (alice-web has ' + live_owner + ')' if live_owner else ''}: the next step sets it (-OwnerObjectId, else you)")
+    elif web and want != live_owner:
+        row('users', 'Owner of Alice (ownerObjectId)', 'DIFFERS', f"the state says {want}, alice-web has {live_owner or 'none'} as its fallback: run -Step apps")
+    else: row('users', 'Owner of Alice (ownerObjectId)', 'ok', want)
+    admins = [a.lower() for a in (state.get('adminObjectIds') or []) if a and a.lower() != want]
+    if want and have and (sp or {}).get('id'):
+        got = live.j('rest', '--method', 'GET', '--url', f"https://graph.microsoft.com/v1.0/servicePrincipals/{sp['id']}/appRoleAssignedTo")
+        if got is None: row('users', 'Role assignments', 'info', 'could not read the assignments (you need to be able to read the enterprise application); not checked')
+        else:
+            held = {}
+            for a in got.get('value') or []: held.setdefault(str(a.get('principalId', '')).lower(), set()).add(a.get('appRoleId'))
+            ok = OWNER_ROLE_ID in held.get(want, set())
+            row('users', 'Alice.Owner: the owner', 'ok' if ok else 'MISSING', want + ('' if ok else ': run -Step users'))
+            for a in admins:
+                r = held.get(a, set())
+                status = 'DIFFERS' if OWNER_ROLE_ID in r else ('ok' if ADMIN_ROLE_ID in r else 'MISSING')
+                row('users', 'Alice.Admin: admin', status, a + {'DIFFERS': ': also holds Alice.Owner (an owner): run -Step users', 'MISSING': ': run -Step users', 'ok': ''}[status])
+            others = sorted(o for o, r in held.items() if OWNER_ROLE_ID in r and o != want and o not in admins)
+            if others: row('users', 'Other owners (Alice.Owner in Entra)', 'info', ', '.join(others))
     row('recover', 'Recovery', 'info', 'only for a NEW resource group (docs/restore.md part C)' if wanted else 'not used')
 
     # ---- print

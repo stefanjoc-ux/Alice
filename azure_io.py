@@ -96,7 +96,7 @@ class Blobs:
         """Blob names under a prefix, in name order."""
         names, marker = [], ''
         while True:
-            q = '?restype=container&comp=list&maxresults=5000' + (f'&prefix={urllib.parse.quote(prefix)}' if prefix else '') + (f'&marker={urllib.parse.quote(marker)}' if marker else '')
+            q = '?restype=container&comp=list&maxresults=5000' + (f'&prefix={urllib.parse.quote(prefix)}' if prefix else '') + (f'&marker={urllib.parse.quote(marker, safe="")}' if marker else '')
             status, _, body = HTTP('GET', self.base.rstrip('/') + q, None, self._headers(), 60)
             if status != 200: raise RuntimeError(f'could not list {self.account}/{self.container} ({azure_message(status, body)})')
             text = body.decode('utf-8', 'replace')
@@ -117,7 +117,7 @@ class Blobs:
     def put_block(self, name, block_id, data):
         for attempt in range(3):
             try:
-                status, _, body = HTTP('PUT', self._url(name, '?comp=block&blockid=' + urllib.parse.quote(block_id)), data,
+                status, _, body = HTTP('PUT', self._url(name, '?comp=block&blockid=' + urllib.parse.quote(block_id, safe='')), data,
                                        self._headers({'Content-Length': str(len(data))}), 300)
             except OSError as e:
                 status, body = 0, str(e).encode()
@@ -171,9 +171,21 @@ class BlockWriter(io.RawIOBase):
 
 
 # ---------------- Azure Resource Manager ----------------
-def arm(method, path, api, body=None, ok=(200, 201, 202, 204), timeout=60):
-    """One Resource Manager call on a resource path (/subscriptions/...). Returns (status, headers, parsed JSON)."""
-    url = ARM + path + ('&' if '?' in path else '?') + 'api-version=' + api
+def arm_url(path, api, query=None):
+    """The Resource Manager address for a resource path, every query parameter URL-encoded (urllib.parse): an OData $filter
+    such as backupManagementType eq 'AzureStorage' has spaces and quotes, which urllib refuses raw ("URL can't contain control
+    characters"). Parameters come from query={name: value}; any already written after a ? in path are taken apart and
+    encoded the same way. The path itself is quoted too (its / kept, nothing encoded twice)."""
+    path, _, written = path.partition('?')
+    params = urllib.parse.parse_qsl(written, keep_blank_values=True) + list((query or {}).items()) + [('api-version', api)]
+    qs = '&'.join(urllib.parse.quote(str(k), safe='$') + '=' + urllib.parse.quote(str(v), safe='') for k, v in params)
+    return ARM + urllib.parse.quote(path, safe="/:@!$&'()*+,;=-._~%") + '?' + qs
+
+
+def arm(method, path, api, body=None, ok=(200, 201, 202, 204), timeout=60, query=None):
+    """One Resource Manager call on a resource path (/subscriptions/...). Returns (status, headers, parsed JSON).
+    query: extra query parameters ({'$filter': ...}), encoded by arm_url."""
+    url = arm_url(path, api, query)
     data = json.dumps(body).encode('utf-8') if body is not None else (b'' if method in ('POST', 'PUT') else None)
     headers = {'Authorization': 'Bearer ' + token_for(ARM + '/')}
     if data is not None: headers['Content-Type'] = 'application/json'
@@ -184,8 +196,8 @@ def arm(method, path, api, body=None, ok=(200, 201, 202, 204), timeout=60):
     return status, h, parsed
 
 
-def arm_get(path, api):
-    return arm('GET', path, api, ok=(200,))[2]
+def arm_get(path, api, query=None):
+    return arm('GET', path, api, ok=(200,), query=query)[2]
 
 
 # ---------------- PostgreSQL addresses ----------------

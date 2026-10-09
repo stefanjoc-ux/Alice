@@ -119,12 +119,18 @@ def configured():
 
 
 def owner_ok(headers):
-    """Owner only. On the PC Alice listens on this computer only, so whoever is here is the owner. In Azure the sign-in's
-    object ID must be the owner's (ALICE_OWNER_OBJECT_ID, from Bicep); if that is not set, nobody sees backups."""
-    if os.environ.get('ALICE_TRUST_EASYAUTH') != '1': return True
-    owner = (os.environ.get('ALICE_OWNER_OBJECT_ID') or '').strip().lower()
-    oid = (headers.get('x-ms-client-principal-id') or '').strip().lower()
-    return bool(owner) and oid == owner
+    """Owner only, by the one shared owner check (permissions.is_owner_person / users.is_owner): on the PC whoever is at this
+    computer; in Azure the Alice.Owner role on the sign-in (or, while app roles are off, the configured owner object ID), never a
+    name or email. The person is the one app.py's middleware identified for this request; identified from the headers only if
+    it did not run."""
+    import permissions
+    import substrate_store as store
+    v = store.viewer()
+    if v is None and os.environ.get('ALICE_TRUST_EASYAUTH') == '1':
+        import users
+        try: v = users.identify(headers)
+        except users.Refused: return False
+    return permissions.is_owner_person(v)
 
 
 # ---------------- the database: pg_dump, streamed ----------------
@@ -373,7 +379,7 @@ def _files_state(cfg):
     except ValueError:
         pass
     try:
-        items = _arm(cfg['vault_id'] + "/backupProtectedItems?$filter=backupManagementType eq 'AzureStorage'", '2023-04-01').get('value', [])
+        items = _arm(cfg['vault_id'] + '/backupProtectedItems', '2023-04-01', {'$filter': "backupManagementType eq 'AzureStorage'"}).get('value', [])
         if not items: out['error'] = 'The vault protects no file share yet.'; return out
         it = items[0]; p = it.get('properties', {})
         out['share'] = p.get('friendlyName', ''); out['state'] = p.get('protectionState', ''); out['health'] = p.get('healthStatus', '')
