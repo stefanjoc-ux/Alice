@@ -375,8 +375,8 @@ t('setup: -OwnerObjectId is a remembered setting; every deployment names it, nev
   '[string]$OwnerObjectId' in setup and "Set-Prop $State 'ownerObjectId'" in setup and 'ownerObjectId = $Me' not in setup
   and setup.count('ownerObjectId = (Owner)') == 2 and "elseif (-not (Owner))" in setup)
 t('setup: -Step users gives the owner Alice.Owner first, the admins (you, a previous owner, -AdminObjectIds) Alice.Admin, and takes Alice.Owner from admins only',
-  "Assign (Owner) $roles[0] 'the owner of Alice'" in setup and "Assign $o $roles[1] 'admin'" in setup and 'Add-Admin $Me' in setup
-  and '--method DELETE' in setup and setup.index("Assign (Owner) $roles[0]") < setup.index('--method DELETE')
+  "Assign (Owner) 'Alice.Owner' 'the owner of Alice'" in setup and "Assign $o 'Alice.Admin' 'admin'" in setup and 'Add-Admin $Me' in setup
+  and '--method DELETE' in setup and setup.index("Assign (Owner) 'Alice.Owner'") < setup.index('--method DELETE')
   and "if ($old) { Add-Admin $old }" in setup and 'second, break-glass' not in setup and "Sign-In-Others $values['allowedUserObjectIds']" in setup)
 
 # ---------------- -Step users: the app roles JSON sent to Graph (az ad app update --app-roles) ----------------

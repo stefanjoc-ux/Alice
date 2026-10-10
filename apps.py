@@ -49,7 +49,7 @@ APPS = [
      'waiting': _health_waiting, 'summary': _health_summary},
 ]
 PAGES = {a['page'] for a in APPS}
-PERSONAL = {'mileage', 'trading', 'health'}       # Stefan's own apps: never shown on the demo Alice
+PERSONAL = {'mileage', 'trading', 'health'}       # The owner's own apps: never shown on the demo Alice
 
 
 def shown():

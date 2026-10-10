@@ -1,8 +1,8 @@
-// The demo Alice: a second Alice for client demos (Stefan's decision, 5 Oct 2026), deployed by deploy/azure-setup.ps1 -Step demo.
+// The demo Alice: a second Alice for client demos (decision 5 Oct 2026), deployed by deploy/azure-setup.ps1 -Step demo.
 // Same image, same environment, registry, identity and Key Vault as live Alice, but its OWN database (alice_demo on the same
 // PostgreSQL server) and its own data folder on the share, so it can never see live data and live Alice never sees demo data.
 // ALICE_DEMO_INSTANCE=1 turns on the Client demo page, the demo banner and the demo notice on every connector answer, and keeps
-// Stefan's own apps (Health, Trading, Mileage) out. Both apps scale to zero when idle (open the demo a couple of minutes early).
+// The owner's own apps (Health, Trading, Mileage) out. Both apps scale to zero when idle (open the demo a couple of minutes early).
 targetScope = 'resourceGroup'
 
 param location string = 'uksouth'
@@ -12,7 +12,8 @@ param image string
 param pgAdminLogin string = 'aliceadmin'
 @secure()
 param pgAdminPassword string
-param ownerName string = 'Stefan'
+param ownerName string = 'Owner'
+param organisation string = ''
 param ownerObjectId string
 param allowedUserObjectIds array = []
 @description('Client ID of the "Alice web sign-in" app registration (shared with live; the script adds the demo address to it).')
@@ -60,6 +61,7 @@ var commonEnv = concat(
     { name: 'AISUBSTRATE_DATA_DIR', value: '/mnt/alice/demo/data' }
     { name: 'ALICE_DOCUMENT_LIBRARY', value: '/mnt/alice/demo/Documents' }
     { name: 'ALICE_OWNER_NAME', value: ownerName }
+    { name: 'ALICE_ORGANISATION', value: organisation }
     { name: 'ALICE_AUDIT_STDOUT', value: '1' }
   ],
   map(keySecretNames, s => { name: s.env, secretRef: s.name })

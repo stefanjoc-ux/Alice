@@ -1,7 +1,7 @@
-"""Automatic approval (Stefan's decision, 3 Oct 2026): to keep Alice from being admin, memories, knowledge drafts,
-organisation facts and Temple's memory/knowledge suggestions go live without a click. What still waits for him:
+"""Automatic approval (decision 3 Oct 2026): to keep Alice from being admin, memories, knowledge drafts,
+organisation facts and Temple's memory/knowledge suggestions go live without a click. What still waits for a person:
 
-- Decisions: Temple manages them (Stefan's decision, 5 Oct 2026). They are working decisions made by signed-in people, not
+- Decisions: Temple manages them (decision 5 Oct 2026). They are working decisions made by signed-in people, not
   board decisions, so Temple records each one once checked, with who made it, clashes included (Alice records, she does not
   mediate: a clash is noted with the decision). The only decisions that wait are the ones the decision policy asks for:
   categories that always need approval, and/or Temple's impact rating at or above a level. Those are held on Actions and
@@ -11,10 +11,10 @@ organisation facts and Temple's memory/knowledge suggestions go live without a c
 - A new memory that clashes: Temple's review says it contradicts an approved memory or decision ('Conflict: yes'),
   recommends rejecting it, says it replaces an older memory, or could not check it.
 - Anything proposed through the outside connector (Copilot, the signed-in endpoint): it reads documents and web pages
-  Stefan does not control, so a page saying "remember that…" must not become a live memory. Exception (Stefan's decision
+  The owner does not control, so a page saying "remember that…" must not become a live memory. Exception (the owner's decision
   D-0026, 6 Oct 2026): knowledge notes from an outside app switched on in 'connector_knowledge' (Claude and Copilot by
   default; switches on Actions) are approved after the same checks, unless Temple's free checks (`temple_supersede.overlaps`)
-  or the proposer say it may replace or overlap something Alice holds: those wait for him. Memories likewise (Stefan, 6 Oct
+  or the proposer say it may replace or overlap something Alice holds: those wait for a person. Memories likewise (6 Oct
   2026): from an app ticked in 'connector_memories' (Claude and ChatGPT on, Copilot off by default, since it reads email and
   meetings) a memory goes through Temple's review like any other and waits only if Temple finds a clash, a replacement or
   could not check it.
@@ -23,7 +23,7 @@ The security rules still run when anything is proposed and again on approval (se
 identifiers, duplicates, client separation): automatic approval never skips them. Each automatic approval is logged
 ('auto_approved', actor Alice).
 Who approves, what Temple may do and what is held for a person are the settings of the Core rule "Approval and library management"
-(Stefan's decisions D-0044 and D-0045; library.py, Rules page), which replaced "Human approval" and the old 'auto_approve' switch:
+(the owner's decisions D-0044 and D-0045; library.py, Rules page), which replaced "Human approval" and the old 'auto_approve' switch:
 on() is "Temple approves" there. Each of Temple's approvals and supersessions is also a library action (library.change), shown on
 the Activity page with Undo."""
 import contextvars
@@ -36,8 +36,8 @@ import substrate_store as store
 
 _outside = contextvars.ContextVar('alice_auto_outside', default='')
 _outside_provider = contextvars.ContextVar('alice_auto_outside_provider', default='')
-CONNECTOR_APPS = {'claude': 'Claude', 'copilot': 'Microsoft Copilot', 'chatgpt': 'ChatGPT'}   # ChatGPT: Stefan, 6 Oct 2026, same as Claude
-MEMORY_DEFAULTS = {'claude': True, 'chatgpt': True, 'copilot': False}   # Copilot reads email and meetings: off until Stefan ticks it
+CONNECTOR_APPS = {'claude': 'Claude', 'copilot': 'Microsoft Copilot', 'chatgpt': 'ChatGPT'}   # ChatGPT: the owner, 6 Oct 2026, same as Claude
+MEMORY_DEFAULTS = {'claude': True, 'chatgpt': True, 'copilot': False}   # Copilot reads email and meetings: off until the owner ticks it
 _deciding = contextvars.ContextVar('alice_auto_deciding', default=False)
 TYPES = {'memory': 'Memory', 'knowledge': 'Knowledge', 'orgfact': 'Organisation fact', 'chat': 'Saved conversation'}
 IMPACT = re.compile(r'^\W*impact\W*[:\-]?\s*(low|medium|high)\b', re.I | re.M)
@@ -86,7 +86,7 @@ def set_on(value, reason=None):
 
 # ---------------- who proposed it ----------------
 class from_outside:
-    """with from_outside('Microsoft Copilot', 'copilot'): ... — proposals made inside are held for Stefan ('' = trusted caller),
+    """with from_outside('Microsoft Copilot', 'copilot'): ... — proposals made inside are held for the owner ('' = trusted caller),
     except knowledge notes from an app switched on in connector_knowledge()."""
     def __init__(self, label, provider=''): self.label, self.provider = label or '', (provider or '').lower()
     def __enter__(self): self.t = (_outside.set(self.label), _outside_provider.set(self.provider)); return self
@@ -99,7 +99,7 @@ def connector_knowledge():
         row = c.execute("SELECT value FROM settings WHERE key='connector_knowledge'").fetchone()
     try: v = json.loads(row[0]) if row else {}
     except ValueError: v = {}
-    return {k: bool(v.get(k, True)) for k in CONNECTOR_APPS}       # an app added later starts on, as Stefan decided for ChatGPT
+    return {k: bool(v.get(k, True)) for k in CONNECTOR_APPS}       # an app added later starts on, as the owner decided for ChatGPT
 
 
 def set_connector_knowledge(apps):
@@ -113,7 +113,7 @@ def set_connector_knowledge(apps):
 
 
 def connector_memories():
-    """{app: True|False}: memories from that outside app go through Temple's review like any other (Stefan, 6 Oct 2026)."""
+    """{app: True|False}: memories from that outside app go through Temple's review like any other (6 Oct 2026)."""
     with store.db() as c:
         row = c.execute("SELECT value FROM settings WHERE key='connector_memories'").fetchone()
     try: v = json.loads(row[0]) if row else {}
@@ -132,7 +132,7 @@ def set_connector_memories(apps):
 
 
 def outside_memory_waits():
-    """Called when a memory is proposed: True if it must wait for Stefan because it came through an app switched off."""
+    """Called when a memory is proposed: True if it must wait for the owner because it came through an app switched off."""
     if not outside(): return False
     return not connector_memories().get(_app_of(outside(), _outside_provider.get()), False)
 

@@ -408,8 +408,8 @@ ALLOWED_TOOLS = {"list_files", "search_files", "read_file", "search_records", "p
                  "list_proposals", "get_proposal", "propose_proposal_changes",
                  "get_organisation", "list_organisations", "search_opportunities", "list_spaces"}
 MAX_CALLS = 10
-HEALTH_TOOL_DESCRIPTION = ("Stefan's blood test results from Health Insights (confirmed values only, with the lab's own ranges, status, history and change) "
-                           "and the decisions, experiments, supplements and clinician advice he is tracking. Use it when he asks about his health or results. "
+HEALTH_TOOL_DESCRIPTION = ("The owner's blood test results from Health Insights (confirmed values only, with the lab's own ranges, status, history and change) "
+                           "and the decisions, experiments, supplements and clinician advice they are tracking. Use it when they ask about their health or results. "
                            "Informational only: never diagnose, never suggest changing prescribed medication, separate the lab value, the range, the trend and your interpretation.")
 HEALTH_TOOL_SCHEMA = {"type": "object", "properties": {"marker": {"type": "string", "description": "Optional: one marker, e.g. Ferritin or Vitamin D"},
                                                        "since": {"type": "string", "description": "Optional: only history from this date, YYYY-MM-DD"}}}
@@ -500,7 +500,7 @@ async def chat_events(request):
                 tools += ([{"type": "function", "name": "create_document", "description": documents.TOOL_DESCRIPTION,
                             "parameters": documents.TOOL_SCHEMA, "strict": False}] if provider != "claude" else
                           [{"name": "create_document", "description": documents.TOOL_DESCRIPTION, "input_schema": documents.TOOL_SCHEMA}])
-                health_ok = health.allowed(provider) and not demo_instance.ON and permissions.is_owner_person(store.viewer())      # only providers Stefan allows (never Grok); never on the demo Alice
+                health_ok = health.allowed(provider) and not demo_instance.ON and permissions.is_owner_person(store.viewer())      # only providers the owner allows (never Grok); never on the demo Alice
                 if health_ok:
                     tools += ([{"type": "function", "name": "health_context", "description": HEALTH_TOOL_DESCRIPTION, "parameters": HEALTH_TOOL_SCHEMA, "strict": False}]
                               if provider != "claude" else [{"name": "health_context", "description": HEALTH_TOOL_DESCRIPTION, "input_schema": HEALTH_TOOL_SCHEMA}])
@@ -580,7 +580,7 @@ async def chat_events(request):
                                     "get_organisation": "Reading an organisation profile…",
                                     "list_organisations": "Listing organisations…",
                                     "search_opportunities": "Searching opportunities…"}.get(name, "Working…"), "tool": name, "arguments": args}
-                                if name == "health_context":       # local tool: Stefan's confirmed results, only for allowed providers
+                                if name == "health_context":       # local tool: the owner's confirmed results, only for allowed providers
                                     yield {"type": "activity", "message": "Reading your health results…", "tool": name}
                                     try: output = json.dumps(await asyncio.to_thread(health.context, provider, "Alice chat", str(args.get("marker") or "")[:60], str(args.get("since") or "")[:10]), ensure_ascii=False)
                                     except ValueError as e: output = json.dumps({"error": str(e)})
@@ -800,7 +800,7 @@ class Speech(BaseModel):
     text: str = Field(min_length=1,max_length=40000)
     voice_id: str = Field(min_length=1,max_length=40)
 
-VOICE_DEFAULT_NAME='Bella'          # Stefan's choice (4 Oct 2026) when none has been saved
+VOICE_DEFAULT_NAME='Bella'          # The owner's choice (4 Oct 2026) when none has been saved
 
 class VoiceChoice(BaseModel):
     voice_id: str = Field(pattern=r'^[A-Za-z0-9]{8,40}$')
@@ -1644,7 +1644,7 @@ def _caller_ip(request: Request):
 
 @app.post('/hooks/tradingview')
 async def tradingview_webhook(request: Request):
-    """TradingView alerts (outside Microsoft sign-in by Stefan's decision): records a signal, nothing else."""
+    """TradingView alerts (outside Microsoft sign-in by the owner's decision): records a signal, nothing else."""
     body=await request.body()
     code,msg=await asyncio.to_thread(trading.webhook,body[:8192],_caller_ip(request))
     return JSONResponse({'detail':msg},status_code=code)
@@ -2685,7 +2685,7 @@ class ProposalReplaces(BaseModel):
 
 @app.post('/assistant/{aid}/proposals/{pid}/replaces')
 def proposal_replaces(aid: str, pid: str, x: ProposalReplaces, request: Request):
-    """Make this proposal replace others: they become its earlier versions (Stefan picks them; never linked by title)."""
+    """Make this proposal replace others: they become its earlier versions (the owner picks them; never linked by title)."""
     import proposal_bids
     _same_origin(request); _proposal_writer(aid)
     return _proposal_call(lambda: proposal_bids.link(aid,pid,x.replaces))
@@ -3269,7 +3269,7 @@ PERSONAL_API = ('/admin/api/health', '/admin/api/trading', '/admin/api/mileage',
 
 @app.middleware('http')
 async def demo_keeps_personal_out(request: Request, call_next):
-    """On the demo Alice, Stefan's own apps do not exist (the demo page shows clients a fictional team, nothing of his)."""
+    """On the demo Alice, the owner's own apps do not exist (the demo page shows clients a fictional team, nothing of theirs)."""
     if demo_instance.ON and request.url.path.startswith(PERSONAL_API):
         return JSONResponse({'detail': 'Not available on the demo Alice.'}, status_code=404)
     return await call_next(request)
@@ -3523,6 +3523,17 @@ def admin_space_sweep_move(q: SweepMoveIn): return _people(spaces.sweep_move, q.
 
 @app.post('/admin/api/spaces/sweep/{sid}/dismiss')
 def admin_space_sweep_dismiss(sid: str = FPath(pattern=r'^[0-9a-f]{32}$')): return _people(spaces.sweep_dismiss, sid)
+
+# Linked accounts (10 Oct 2026): items left in a person's other accounts' personal spaces, repaired with a preview first
+class LinkedRepairIn(BaseModel):
+    actions: dict[str, Literal['move', 'archive', 'leave']] = Field(default_factory=dict, max_length=500)
+    note: str = Field(default='', max_length=300)
+
+@app.get('/admin/api/spaces/linked')
+def admin_space_linked(): return _people(spaces.linked_repair_preview)
+
+@app.post('/admin/api/spaces/linked')
+def admin_space_linked_repair(q: LinkedRepairIn): return _people(spaces.linked_repair, q.actions, q.note)
 
 # Open by default (CR-4 phase 1): closing a team space, the move into the Organisation space, Entra group mappings
 class SpaceCloseIn(BaseModel):
@@ -3878,7 +3889,7 @@ body{display:grid;grid-template-rows:52px minmax(0,1fr);overflow:hidden}
  <p class="muted small">Files attached to this chat appear as chips above your message; click a chip to make it a focus file (up to four). Every model can search all saved files whichever chat you are in.</p>
  <p id="file-status" role="status"></p><p id="selected"></p>
  <details id="library" open><summary>All saved files (<span id="library-count">0</span>)</summary><p class="muted small">Tick a file to add it to this chat.</p><div id="files"></div>
- <details class="muted small"><summary>Limits and storage</summary><p>Excel: 12 sheets, 5,000 rows/80 columns per sheet, 10,000 rows across sheets. PDF: 100 pages. Maximum 100,000 extracted characters per file. Oversize files are rejected, never silently shortened.</p><p>Scanned PDFs need OCR first. Excel formulas use saved results; recalculate and save in Excel before uploading. Charts and images inside files are not read.</p><p>Original files and extracted content are stored in data/substrate.db beside app.py. Back up the data folder while the app is stopped. Removing a file from a chat does not delete it.</p></details>
+ <details class="muted small"><summary>Limits and storage</summary><p>Excel: 12 sheets, 5,000 rows/80 columns per sheet, 10,000 rows across sheets. PDF: 100 pages. Maximum 100,000 extracted characters per file. Oversize files are rejected, never silently shortened.</p><p>Scanned PDFs need OCR first. Excel formulas use saved results; recalculate and save in Excel before uploading. Charts and images inside files are not read.</p><p>Original files and extracted content are stored in Alice's database. In Azure it is covered by Alice's backups (Admin › Backup); on a PC it is data/substrate.db, so copy the data folder while Alice is stopped. Removing a file from a chat does not delete it.</p></details>
  </details>
 </aside>
 <script>

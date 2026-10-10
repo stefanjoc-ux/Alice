@@ -1,5 +1,5 @@
 {
- "_about": "Alice's shipped rule defaults (Stefan's decision D-0045: no rule is hard-coded). Each rule's switch, settings, guidance text and whether it is Core. A deployment sets its own defaults in a file of the same shape (ALICE_RULE_DEFAULTS, or rule-defaults.json in the data folder): only the rules and fields it names change. Defaults apply when a rule is first created; 'core' and the wording apply at every start. Changes made on the Rules page are kept.",
+ "_about": "Alice's shipped rule defaults (decision D-0045: no rule is hard-coded). Each rule's switch, settings, guidance text and whether it is Core. A deployment sets its own defaults in a file of the same shape (ALICE_RULE_DEFAULTS, or rule-defaults.json in the data folder): only the rules and fields it names change. Defaults apply when a rule is first created; 'core' and the wording apply at every start. Changes made on the Rules page are kept.",
  "rules": [
   {
    "id": "secret_detection",
@@ -152,7 +152,7 @@
    "set": "organisation",
    "name": "Commercial caution",
    "kind": "guidance",
-   "text": "Do not state prices, discounts, rates or Insight commitments unless they come from a saved file or approved memory, and cite that source.",
+   "text": "Do not state prices, discounts, rates or commitments on your organisation's behalf unless they come from a saved file or approved memory, and cite that source.",
    "enabled": true,
    "params": {},
    "core": false

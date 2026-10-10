@@ -1,16 +1,16 @@
-"""The restore drill (Stefan, 8 Oct 2026), run as the Container Apps job alice-drill (ALICE_ROLE=drill): proves last
+"""The restore drill (8 Oct 2026), run as the Container Apps job alice-drill (ALICE_ROLE=drill): proves last
 night's off-site copy brings Alice back, and how long that takes.
 
   1. Finds the newest off-site copy (its manifest) and the image of the release that took it.
   2. Builds THROWAWAY resources in the drill resource group (never Alice's own): a private network, a PostgreSQL
      server and database, a storage account with a file share, a Container Apps environment, and a temporary Alice.
   3. The temporary Alice's init container (restore.py) loads the copy into that empty database and share, then Alice
-     starts: no API keys (no model calls), no email, no schedules, and sign-in locked to Stefan (Entra; everything but
+     starts: no API keys (no model calls), no email, no schedules, and sign-in locked to the owner (Entra; everything but
      /healthz answers 401 to anyone else).
   4. Checks it starts (/healthz) and compares the restored counts of memories, knowledge items, proposals and files with
      the counts recorded from the live database when the copy was taken.
   5. ALWAYS deletes every throwaway resource, success or failure (and anything left from an earlier drill first).
-  6. Writes its report to the off-site account's drill-reports container (the Backup page reads it) and emails Stefan.
+  6. Writes its report to the off-site account's drill-reports container (the Backup page reads it) and emails the owner.
 
 It never reads or writes Alice's live resources: its identity has Contributor on the drill resource group only, read
 access to the off-site copies, write access to drill-reports only, and pull access to the image registry. Every
@@ -197,7 +197,7 @@ class Drill:
                          'scale': {'minReplicas': 1, 'maxReplicas': 1},
                          'volumes': [{'name': 'alice', 'storageType': 'AzureFile', 'storageName': 'alice-files',
                                       'mountOptions': 'uid=10001,gid=10001,dir_mode=0770,file_mode=0660'}]}}})
-        # Sign-in locked to Stefan: Entra, his object ID only; anyone else gets 401. /healthz stays open for the check.
+        # Sign-in locked to the owner: Entra, their object ID only; anyone else gets 401. /healthz stays open for the check.
         arm('PUT', app + '/authConfigs/current', API['Microsoft.App/containerApps'], {'properties': {
             'platform': {'enabled': True},
             'globalValidation': {'unauthenticatedClientAction': 'Return401', 'excludedPaths': ['/healthz']},

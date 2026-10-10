@@ -1,4 +1,4 @@
-"""Temple's model for screening and categories (Stefan, 9 Oct 2026): Cloud or Local.
+"""Temple's model for screening and categories (9 Oct 2026): Cloud or Local.
 
 The setting "Temple's model for screening and categories" (Agents page, setting `temple_screen_model`: cloud, or local) decides
 which model does Temple's screening work: the sharing check before an item enters a shared space (spaces.py), categories
@@ -84,7 +84,7 @@ def fallback():
 
 
 def set_choice(where=None, allow_fallback=None):
-    """Stefan's choice on the Agents page. Local only when a local model is set up (else everything would wait)."""
+    """The owner's choice on the Agents page. Local only when a local model is set up (else everything would wait)."""
     if where is not None and where not in CHOICES: raise ValueError('Choose Cloud or Local.')
     if where == 'local' and not configured():
         raise ValueError('No local model is set up yet. Run azure-setup.ps1 -Step localmodel -LocalModel on first, then choose Local.')

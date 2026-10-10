@@ -1,7 +1,7 @@
-// Alice on Azure (Tuduma tenant, UK South). Built in three stages by deploy/azure-setup.ps1:
+// Alice on Azure (your tenant, UK South). Built in three stages by deploy/azure-setup.ps1:
 //   stage 'infra'   network, PostgreSQL (private), Key Vault, registry, file share, Container Apps environment, identity
 //   stage 'migrate' + the two migration jobs (dry run and apply), run once at cut-over, inside the network
-//   stage 'apps'    + alice-web (chat and Command centre, Entra sign-in, Stefan only) and alice-mcp (external MCP endpoint)
+//   stage 'apps'    + alice-web (chat and Command centre, Entra sign-in, the owner only) and alice-mcp (external MCP endpoint)
 //   backup = true   + backup.bicep (with stage apps): file share snapshots, the resource group lock, the nightly off-site copy
 //   localModel = true  + local-model.bicep (with stage apps): Temple's local model for screening and categories, internal ingress only
 // No secret values live here or in git: API keys are put into Key Vault by the script; the apps read them by managed identity.
@@ -22,8 +22,10 @@ param pgAdminLogin string = 'aliceadmin'
 param pgAdminPassword string
 @description('Object ID of the person running the deployment (to put secrets into Key Vault).')
 param deployerObjectId string
-@description('Your name, recorded as the actor when no sign-in name is present.')
-param ownerName string = 'Stefan'
+@description('What Alice calls the owner when no sign-in name is present (azure-setup -OwnerName; never in code, D-0052).')
+param ownerName string = 'Owner'
+@description('Your organisation\'s name, used in Alice\'s wording (azure-setup -Organisation); empty = "your organisation".')
+param organisation string = ''
 @description('Your Entra object ID: the only person the web sign-in lets in.')
 param ownerObjectId string = ''
 @description('Other Entra object IDs allowed to sign in (e.g. your everyday account in the same tenant). The owner is always allowed.')
@@ -32,7 +34,7 @@ param allowedUserObjectIds array = []
 param useAppRoles bool = false
 @description('Ask for your sign-in (not just reuse the browser\'s Microsoft session) at every new Alice session.')
 param askEverySignIn bool = true
-@description('Custom domain for alice-web (e.g. alice.northants.it), already bound once with a managed certificate; empty = none.')
+@description('Custom domain for alice-web (e.g. alice.example.org), already bound once with a managed certificate; empty = none.')
 param customDomain string = ''
 @description('Resource ID of that domain\'s managed certificate.')
 param customDomainCertificateId string = ''
@@ -50,7 +52,7 @@ param extCallers string = ''
 param extAudiences string = ''
 @description('Mailbox Alice sends from (notify.py, through Microsoft Graph with the managed identity): set by azure-setup -Step mail.')
 param mailFrom string = ''
-@description('Alice\'s public address, for links in emails (e.g. https://alice.northants.it).')
+@description('Alice\'s public address, for links in emails (e.g. https://alice.example.org).')
 param publicUrl string = ''
 @description('Claude connector: client ID of the "Alice connector sign-in" app registration (its secret and signing key are in Key Vault); empty = off.')
 param connectorClientId string = ''
@@ -330,6 +332,7 @@ var commonEnv = concat(
     { name: 'AISUBSTRATE_DATA_DIR', value: '/mnt/alice/data' }
     { name: 'ALICE_DOCUMENT_LIBRARY', value: '/mnt/alice/Documents' }
     { name: 'ALICE_OWNER_NAME', value: ownerName }
+    { name: 'ALICE_ORGANISATION', value: organisation }
     { name: 'ALICE_AUDIT_STDOUT', value: '1' }
     // keyvault.py: optional keys added in the portal are read at run time (allow-listed names only)
     { name: 'ALICE_KEY_VAULT_URI', value: kvUri }
@@ -450,7 +453,7 @@ resource web 'Microsoft.App/containerApps@2024-03-01' = if (withApps) {
 
 // Entra sign-in in front of the web app: only you get in (or, with useAppRoles, only people assigned an Alice role). /healthz stays open for the platform's probe; /signed-out is the
 // static page after 'Sign out of Alice' (no data), outside sign-in so it doesn't sign you straight back in.
-// /hooks/tradingview: TradingView alerts (Stefan's decision, 4 Oct 2026); it only records a signal and checks its own token,
+// /hooks/tradingview: TradingView alerts (decision 4 Oct 2026); it only records a signal and checks its own token,
 // size, rate and TradingView's sending addresses (trading.webhook).
 resource webAuth 'Microsoft.App/containerApps/authConfigs@2024-03-01' = if (withApps) {
   parent: web

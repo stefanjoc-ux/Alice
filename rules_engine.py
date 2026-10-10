@@ -17,7 +17,7 @@ import substrate_store as store
 
 SETS = [
     ('security', 'Security', 'Highest precedence. Protects credentials, classified material and personal data.'),
-    ('organisation', 'Organisation', 'Insight and client obligations you apply to your own work.'),
+    ('organisation', 'Organisation', 'Obligations to your organisation and its clients that you apply to your own work.'),
     ('memory', 'Memory governance', 'How knowledge gets in and stays trustworthy.'),
     ('cost', 'Cost', 'Spending limits for every model call the substrate makes.'),
     ('personal', 'Personal', 'How you want answers written.'),
@@ -25,7 +25,7 @@ SETS = [
 RANK = {k: i for i, (k, _, _) in enumerate(SETS)}
 PROVIDERS = ['openai', 'claude', 'grok', 'copilot']   # copilot: Microsoft 365 Copilot via the external endpoint
 
-# The shipped defaults live in config/rule-defaults.json, not in code (Stefan's decision D-0045: no rule is hard-coded). A deployment
+# The shipped defaults live in config/rule-defaults.json, not in code (decision D-0045: no rule is hard-coded). A deployment
 # sets its own defaults in a file of the same shape: ALICE_RULE_DEFAULTS (a path), else rule-defaults.json in the data folder. Only the
 # rules and fields it names change; params merge into the shipped ones. Defaults apply when a rule is first created; the wording and
 # whether a rule is Core apply at every start. What anyone changes on the Rules page is kept, and logged (rule_changes).
@@ -93,7 +93,7 @@ BUILTIN = [(d['id'], d['set'], d['name'], d['kind'], d['description'], d['enable
 RATE_SOURCES = {'published': 'Published rate', 'library': 'Your rate library', 'built_up': 'Built-up rate', 'estimate': 'Team estimate',
                 'provisional': 'Provisional sum'}
 RATE_SOURCES_DEFAULT_ALLOWED = ('published', 'library', 'built_up', 'provisional')
-# Sources added after the rule first shipped, with whether they are allowed until the saved settings name them (Stefan, 9 Oct 2026:
+# Sources added after the rule first shipped, with whether they are allowed until the saved settings name them (the owner, 9 Oct 2026:
 # provisional sums are allowed by default, so a rule saved before they existed allows them until it is changed and saved again).
 RATE_SOURCES_ADDED = {'provisional': True}
 

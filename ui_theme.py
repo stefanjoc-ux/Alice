@@ -100,6 +100,7 @@ def version_info(env=None):
     if not re.fullmatch(r'[0-9A-Za-z._-]{1,40}', v): v = 'local'
     built = (env.get('ALICE_BUILT') or '').strip()[:25]
     rev = (env.get('CONTAINER_APP_REVISION') or '').strip()[:80]
-    repo = (env.get('ALICE_REPO_URL') or 'https://github.com/stefanjoc-ux/Alice').rstrip('/')
-    link = repo + '/commit/' + v if re.fullmatch(r'[0-9a-f]{7,40}', v) else ''
+    import deployment                           # the repository is this deployment's setting (D-0052), never written in code
+    repo = (env.get('ALICE_REPO_URL') or deployment.repo_url()).rstrip('/')
+    link = repo + '/commit/' + v if repo.startswith('https://') and re.fullmatch(r'[0-9a-f]{7,40}', v) else ''
     return {'version': v, 'built': built, 'revision': rev, 'link': link}

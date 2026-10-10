@@ -44,7 +44,7 @@ P = {'f': None}
 def fake_call(provider, system, messages, max_tokens=1500, timeout=60, workload='', meta=None):
     payload = messages[0]['content']
     CALLS.append({'workload': workload, 'system': system, 'payload': payload})
-    if 'Lead QS' in workload and 'message_from_stefan' in payload:
+    if 'Lead QS' in workload and 'message_from_the_user' in payload:
         return json.dumps(STATE['talk'].pop(0))
     if 'Lead QS' in workload and 'COST PLAN FIGURES' in payload:
         return json.dumps({'accept': True, 'summary': 'A hall.', 'assumptions': [], 'exclusions': ['VAT'], 'risks': [], 'note': 'On.'})
@@ -211,7 +211,7 @@ cl.post(f'/admin/api/teams/steps/{j7["pending"][0]["id"]}', json={'action': 'sen
 j7 = teams.job_detail(j7['id'])
 t('asked again with what changed, the re-ask says so', j7['pending'][0]['kind'] == 'question'
   and 'What changed since last time: The new note mentions a performance space.' in j7['pending'][0]['content']['questions'][0])
-t('members are told never to re-ask unchanged', 'Never ask Stefan a question he has already answered' in CALLS[-1]['system'])
+t('members are told never to re-ask unchanged', 'Never ask the user a question they have already answered' in CALLS[-1]['system'])
 
 # a receiver that would send the same unchanged work back for the same reasons is stopped
 teams.set_autonomy(TID, 'signoff')

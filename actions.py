@@ -260,6 +260,23 @@ def _summary():
                              f"{sw['in_personal']} items sit in your personal space. Ask Temple to look for the ones about the work, so they can go to "
                              f"{sw['target_name'] or 'your team space'}. Nothing moves until you confirm."), info=True) | {'sweep': sw})
 
+    # 10b3. The move out of the work space (#42; everything in it since D-0053) waits for an Owner to preview and confirm it; while
+    # anything is left to move it is offered here, so it is not missed at the bottom of the Spaces page.
+    try:
+        om = spaces.org_migration_offer() if me.full else None
+    except Exception:
+        om = None
+    if om:
+        c_ = om['counts']
+        what = ', '.join(f"{c_[k]} {label.lower()}" for k, _, label in spaces.ORG_MOVE_KINDS + spaces.TEAM_MOVE_KINDS if c_.get(k))
+        out.append(_section('org_move', 'Move the work space\'s material to the Organisation and team spaces', 1, '/admin/spaces#organisation',   # one thing to do: the move
+                            [{'type': 'link', 'id': 'org-move', 'title': f"{om['total']} items in {om['from_name']}: {what}",
+                              'detail': 'Preview first: nothing moves until you confirm, and each item goes through the sharing check. '
+                              + (f"Digital teams go to {', '.join(om['teams'])}. " if om['teams'] else '')
+                              + (f"{c_['staying']} personal-area items stay." if c_.get('staying') else ''), 'href': '/admin/spaces#organisation'}],
+                            'Everything in the work space is organisational (D-0053): it goes to the Organisation space, which everyone with an '
+                            'Alice role reads, and each digital team to a team space of its own.', info=True))
+
     # 10c. Hand-over items the sharing check held (handover.py): an Owner decides, on Users and permissions
     try: ho = spaces.handover_held() if me.full and me.role == 'owner' else []
     except Exception: ho = []
@@ -302,7 +319,7 @@ def count():
 
 
 def approve_all(key):
-    """Stefan's Approve all on one section of Actions (6 Oct 2026): the same approval each item's own button gives, for every
+    """The owner's Approve all on one section of Actions (6 Oct 2026): the same approval each item's own button gives, for every
     item in the section (not only those shown), each through its usual checks; anything a check refuses stays and is listed.
     Never for apps (mileage approvals stay per entry on the app's page), opportunities, agents or the information lists."""
     if key not in APPROVE_ALL: raise ValueError('That section cannot be approved all at once.')

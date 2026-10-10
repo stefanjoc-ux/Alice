@@ -1,4 +1,4 @@
-"""Spaces: where team memory lives (Stefan, 8 Oct 2026; open by default since D-0040, 10 Oct 2026).
+"""Spaces: where team memory lives (8 Oct 2026; open by default since D-0040, 10 Oct 2026).
 
 Every memory, decision, knowledge item, organisation, proposal, digital team, team job and pricing template belongs to
 exactly one space (store.item_spaces; an item with no row belongs to the default work space). Each person has a personal
@@ -50,18 +50,18 @@ def _schema(c):
               "status TEXT NOT NULL, reasons TEXT NOT NULL DEFAULT '[]', screened_by TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, "
               "decided_at TEXT, decided_by TEXT NOT NULL DEFAULT '')")
     # kind 'handover': an Owner handing over a departing person's work (handover.py), decided by an Owner, not the author;
-    # note: the reason the Owner gave. Additive (Stefan, 9 Oct 2026).
+    # note: the reason the Owner gave. Additive (9 Oct 2026).
     cols = {r['name'] for r in c.execute('PRAGMA table_info(space_moves)')}
     if 'kind' not in cols: c.execute("ALTER TABLE space_moves ADD COLUMN kind TEXT NOT NULL DEFAULT ''")
     if 'note' not in cols: c.execute("ALTER TABLE space_moves ADD COLUMN note TEXT NOT NULL DEFAULT ''")
-    # The one-off sweep (Stefan, 10 Oct 2026): Temple's verdict on each item in a personal space (work, about the person
+    # The one-off sweep (10 Oct 2026): Temple's verdict on each item in a personal space (work, about the person
     # themselves, sensitive, unsure), so work items stuck there can be moved with the person's confirmation. Additive.
     c.execute("CREATE TABLE IF NOT EXISTS space_sweep (id TEXT PRIMARY KEY, person_key TEXT NOT NULL, item_type TEXT NOT NULL, item_id TEXT NOT NULL, "
               "title TEXT NOT NULL DEFAULT '', preview TEXT NOT NULL DEFAULT '', verdict TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '', "
               "target TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'proposed', scanned_at TEXT NOT NULL, decided_at TEXT, "
               "decided_by TEXT NOT NULL DEFAULT '', outcome TEXT NOT NULL DEFAULT '')")
     c.execute('CREATE INDEX IF NOT EXISTS space_sweep_by_person ON space_sweep(person_key, status)')
-    # Open by default (Stefan's decision D-0040, design CR-4 phase 1, 10 Oct 2026). A team space is readable across the
+    # Open by default (decision D-0040, design CR-4 phase 1, 10 Oct 2026). A team space is readable across the
     # organisation unless a manager closes it (with a reason); a membership may come from an Entra group mapping ('group:<id>'
     # in via), so leaving the group removes exactly that membership. Additive.
     scols = {r['name'] for r in c.execute('PRAGMA table_info(spaces)')}
@@ -85,7 +85,7 @@ with store.db() as _c: _schema(_c)
 
 
 # ---------------- who ----------------
-# ONE identity everywhere (Stefan, 10 Oct 2026). The key of the person behind an account is worked out by key_for() in every process,
+# ONE identity everywhere (10 Oct 2026). The key of the person behind an account is worked out by key_for() in every process,
 # the web, the connector (alice-mcp, which is not behind web sign-in) and background work alike: 'owner' for an owner of Alice by the
 # one owner check (users.is_owner), else the person's primary account (users.primary: an Owner may link a person's Entra accounts on
 # Users and permissions). Reads (my_spaces, list_spaces, search) and writes (author, default space, who may decide) all use it, so
@@ -185,6 +185,24 @@ def _personal_exists(key):
         return c.execute('SELECT 1 FROM spaces WHERE id=?', (personal_space(key),)).fetchone() is not None
 
 
+def linked_personal_spaces(v):
+    """The personal spaces of this person's OTHER accounts (10 Oct 2026): a space made for an account before it was linked (or by a
+    process that did not yet know the link) stays its person's. Linking moved what was in it then; anything made in it later is
+    found here, shown on the Spaces page, read by the sweep, and repaired with a preview (linked_repair_preview). Never another
+    person's: only accounts linked to this person."""
+    key = person_key(v)
+    if key in ('', '-'): return []
+    def load():
+        import users
+        accounts = set(author_keys(v)) | ({v.oid.lower()} if v is not None and v.oid else set())
+        accounts = sorted(a.lower() for a in accounts if a and a.lower() != key)
+        if not accounts: return []
+        with store.db() as c:
+            rows = c.execute("SELECT id, owner_key FROM spaces WHERE kind='personal' AND owner_key IN (%s)" % ','.join('?' * len(accounts)), accounts).fetchall()
+        return sorted(r[0] for r in rows if r[0] != personal_space(key))
+    return list(_cached(('linked-personal', key, v.oid if v is not None else ''), load))
+
+
 def prepare(v):
     """Outside any transaction, before a person's request or a connector call: the migration (once), the Organisation space
     (once) and their personal space."""
@@ -232,6 +250,7 @@ def my_spaces(v):
     m = _memberships(key)
     for sid in retired(): m.pop(sid, None)
     m[personal_space(key)] = 'manage'
+    for sid in linked_personal_spaces(v): m[sid] = 'manage'          # their other accounts' personal spaces are theirs too
     if key == OWNER and not migrated(): m[WORK] = 'manage'
     if ORG in names():
         r = _org_role(v, key)
@@ -324,7 +343,7 @@ def default_for(v):
     return capture_default(v)
 
 
-# ---------------- the default capture space (Stefan, 10 Oct 2026: work knowledge must not get stuck in personal spaces) ----------------
+# ---------------- the default capture space (the owner, 10 Oct 2026: work knowledge must not get stuck in personal spaces) ----------------
 CAPTURE_MODES = {'team': 'Their team space', 'personal': 'Their personal space'}
 
 
@@ -1329,7 +1348,7 @@ def options(v=None):
             for s, r in my_spaces(v).items() if RANK[r] >= RANK['contribute']]
 
 
-# ---------------- handing over a departing person's work (handover.py; Stefan, 9 Oct 2026) ----------------
+# ---------------- handing over a departing person's work (handover.py; 9 Oct 2026) ----------------
 def hand_over(item_type, item_id, target, from_key, note):
     """One item out of a departing person's personal space into a shared space the acting Owner manages, through the same
     sharing gate as any share. Only handover.move calls it (Owner role, the person suspended or without a role, a reason given).
@@ -1398,7 +1417,7 @@ def decide_handover(mid, action, note):
     return {'status': 'shared' if action == 'share' else 'kept'}
 
 
-# ---------------- the one-off sweep: work items stuck in personal spaces (Stefan, 10 Oct 2026) ----------------
+# ---------------- the one-off sweep: work items stuck in personal spaces (10 Oct 2026) ----------------
 SWEEP_PROMPT = ('You are Temple, helping a person tidy their personal space in Alice, their organisation\'s shared memory. For each item '
                 'say whether it is about the WORK (projects, clients, organisations, how the team or the business works, decisions about '
                 'tools, systems, Alice itself or policies) or about the PERSON THEMSELVES (their preferences, habits, home, family, '
@@ -1409,9 +1428,16 @@ SWEEP_BATCH = 30
 SWEEP_VERDICTS = ('work', 'self', 'sensitive', 'unsure')
 
 
-def _personal_items(key):
-    """(type, id, title, text, category) for the memories, decisions and knowledge in this person's personal space."""
-    sid = personal_space(key)
+def _personal_items(key, v=None):
+    """(type, id, title, text, category) for the memories, decisions and knowledge in this person's personal space and, given the
+    person, their linked accounts' personal spaces."""
+    out = []
+    for sid in [personal_space(key)] + (linked_personal_spaces(v) if v is not None else []):
+        out += _items_of_space(sid)
+    return out
+
+
+def _items_of_space(sid):
     out = []
     with store.db() as c:
         for r in c.execute("SELECT r.id, r.title, r.content, coalesce(m.category,'') AS cat FROM records r JOIN item_spaces i ON i.item_type='record' "
@@ -1440,7 +1466,7 @@ def _sweep(v):
     import agents, assistants, rules_engine
     rules_engine.check_spend('automation')
     key = person_key(v)
-    items = _personal_items(key)
+    items = _personal_items(key, v)
     agents.note('read', 'memory', ','.join(i for t, i, *_ in items if t == 'record')[:500], f'{len(items)} items in a personal space (titles and starts)')
     target = capture_default(v)
     if _kind(target) != 'shared': target = team_space(v)
@@ -1500,7 +1526,7 @@ def sweep_list(v=None):
     counts['dismissed'] = sum(1 for r in rows if r['status'] == 'dismissed')
     proposed = [r for r in rows if r['status'] == 'proposed']
     for r in proposed: r['target_name'] = (nm.get(r['target'] or target) or {}).get('name', '')
-    try: in_personal = len(_personal_items(key))
+    try: in_personal = len(_personal_items(key, v))
     except Exception: in_personal = 0
     return {'scanned_at': last, 'counts': counts, 'items': proposed, 'in_personal': in_personal,
             'target': target if _kind(target) == 'shared' else '', 'target_name': (nm.get(target) or {}).get('name', '') if _kind(target) == 'shared' else '',
@@ -1550,7 +1576,7 @@ def sweep_dismiss(sid):
     return sweep_list(v)
 
 
-# ---------------- linking a person's accounts, and repairing items split between them (Stefan, 10 Oct 2026) ----------------
+# ---------------- linking a person's accounts, and repairing items split between them (10 Oct 2026) ----------------
 def link_preview(oid, to):
     """What linking account `oid` to the person whose account is `to` would change, before anything changes: the items that
     account wrote (they count as the person's own), the items in that account's own personal space (moved into the person's
@@ -1625,6 +1651,106 @@ def link_accounts(oid, to, note):
     return plan | {'linked': True, 'moved': moved}
 
 
+TYPE_REF = {'record': 'record', 'file': 'file'}
+
+
+def _norm_text(t):
+    return re.sub(r'[^a-z0-9 ]', '', ' '.join((t or '').lower().split()))
+
+
+def linked_repair_preview(v=None):
+    """What is still in this person's other accounts' personal spaces (made there after the accounts were linked, or by a process
+    that did not know the link: 10 Oct 2026, D-0041 to D-0046 stayed in the admin account's personal space), before anything
+    changes. Each item: move it into the person's own personal space, or, when the same item was recorded again elsewhere (the same
+    title, or near-identical words: D-0047 to D-0052 re-recorded them), archive it as a duplicate of that one. Nothing changes
+    until the person confirms (linked_repair)."""
+    import refs
+    from difflib import SequenceMatcher
+    v = v or _actor()
+    key = person_key(v)
+    srcs = linked_personal_spaces(v)
+    nm = names()
+    items = []
+    for sid in srcs:
+        for t, i, title, text, _cat in _items_of_space(sid):
+            items.append({'type': t, 'id': i, 'title': title, 'text': text, 'space': sid, 'space_name': (nm.get(sid) or {}).get('name', '')})
+    if not items: return {'items': [], 'to': personal_space(key), 'to_name': (nm.get(personal_space(key)) or {}).get('name', ''), 'spaces': []}
+    ids = {x['id'] for x in items}
+    with store.db() as c:          # the copies to compare with: live memories, decisions and knowledge this person may see, elsewhere
+        recs = [dict(r) for r in c.execute("SELECT r.id, r.title, r.content AS text FROM records r LEFT JOIN memory_archive a ON a.record_id=r.id "
+                                           "WHERE coalesce(a.state,r.status) IN ('approved','proposed')")]
+        fils = [dict(r) for r in c.execute("SELECT m.file_id AS id, m.title, substr(f.text,1,1200) AS text FROM knowledge_meta m JOIN files f ON "
+                                           "f.id=m.file_id WHERE m.status IN ('active','draft')")]
+    with store.as_viewer(v):
+        others = {'record': [r for r in recs if r['id'] not in ids and store.can_see('record', r['id'])],
+                  'file': [r for r in fils if r['id'] not in ids and store.can_see('file', r['id'])]}
+    rr = refs.of('record', [x['id'] for x in items if x['type'] == 'record'] + [r['id'] for r in others['record']])
+    rf = refs.of('file', [x['id'] for x in items if x['type'] == 'file'] + [r['id'] for r in others['file']])
+    ref = lambda t, i: (rr if t == 'record' else rf).get(i, '')
+    out = []
+    for x in items:
+        nt, nx = _norm_text(x['title']), _norm_text(x['title'] + ' ' + x['text'])
+        twin = None
+        for o in others[x['type']]:
+            if (nt and _norm_text(o['title']) == nt) or SequenceMatcher(None, nx, _norm_text(o['title'] + ' ' + o['text'])).ratio() >= 0.9:
+                twin = o; break
+        out.append({'type': x['type'], 'type_label': TYPE_LABEL.get(x['type'], x['type']), 'id': x['id'], 'ref': ref(x['type'], x['id']),
+                    'title': x['title'], 'space': x['space'], 'space_name': x['space_name'],
+                    'preview': ' '.join(x['text'].split())[:200],
+                    'duplicate_of': {'id': twin['id'], 'ref': ref(x['type'], twin['id']), 'title': twin['title']} if twin else None,
+                    'suggested': 'archive' if twin else 'move'})
+    return {'items': out, 'to': personal_space(key), 'to_name': (nm.get(personal_space(key)) or {}).get('name', ''),
+            'spaces': [{'id': s_, 'name': (nm.get(s_) or {}).get('name', '')} for s_ in srcs]}
+
+
+def linked_repair(actions, note):
+    """Carry out what the person chose on the preview: {item id: 'move' | 'archive' | 'leave'}. Move = into their own personal space
+    (it stays private, as it was); archive = a duplicate retired with its history kept (memories and decisions) or archived (knowledge),
+    never deleted. Only items the preview lists; a reason is required and logged."""
+    v = _actor()
+    note = ' '.join((note or '').split())[:300]
+    if len(note) < 3: raise ValueError('Say why (kept in the activity log).')
+    plan = {x['id']: x for x in linked_repair_preview(v)['items']}
+    dst = personal_space(person_key(v))
+    ensure_personal(person_key(v))
+    done = {'moved': 0, 'archived': 0, 'left': 0, 'not_done': []}
+    for iid, act in (actions or {}).items():
+        x = plan.get(iid)
+        if not x: done['not_done'].append({'id': iid, 'why': 'not in the preview'}); continue
+        try:
+            if act == 'move':
+                with store.db() as c:
+                    c.execute('UPDATE item_spaces SET space_id=?,placed_at=?,placed_by=? WHERE item_type=? AND item_id=? AND space_id=?',
+                              (dst, store.now(), _who(), x['type'], iid, x['space']))
+                    with store.acting(note=note):
+                        store.audit(c, 'space_moved', iid, 'spaces', f'{x["type_label"]} "{x["title"][:120]}" from {x["space_name"]} (a linked account) into '
+                                    f'{(names().get(dst) or {}).get("name", "your personal space")}')
+                done['moved'] += 1
+            elif act == 'archive':
+                why = 'Duplicate of ' + ((x['duplicate_of'] or {}).get('ref') or (x['duplicate_of'] or {}).get('title') or 'a later copy') + ': ' + note
+                with store.acting(note=note):
+                    if x['type'] == 'record':
+                        with store.db() as c:
+                            cur = c.execute('SELECT status FROM records WHERE id=?', (iid,)).fetchone()
+                        if cur and cur[0] == 'proposed': store.review(iid, 'rejected')
+                        else: store.retire_memory(iid, why)
+                    else:
+                        import knowledge
+                        knowledge.update(iid, status='archived')
+                    with store.db() as c:
+                        store.audit(c, 'linked_duplicate_archived', iid, 'spaces', f'{x["type_label"]} "{x["title"][:120]}" archived: {why}'[:500])
+                done['archived'] += 1
+            else:
+                done['left'] += 1
+        except (ValueError, LookupError) as e:
+            done['not_done'].append({'id': iid, 'title': x['title'], 'why': str(e)[:200]})
+    forget()
+    with store.db() as c, store.acting(note=note):
+        store.audit(c, 'linked_accounts_repaired', person_key(v), 'spaces',
+                    f"Linked accounts' personal spaces: {done['moved']} moved, {done['archived']} archived as duplicates, {done['left']} left")
+    return done
+
+
 def unlink_accounts(oid, note=''):
     import users
     out = users.unlink(oid, note)
@@ -1633,7 +1759,7 @@ def unlink_accounts(oid, note=''):
 
 
 
-# ---------------- the Organisation space, open and closed team spaces (CR-4 phase 1; Stefan, 10 Oct 2026) ----------------
+# ---------------- the Organisation space, open and closed team spaces (CR-4 phase 1; 10 Oct 2026) ----------------
 ORG_NAME_DEFAULT = 'Organisation'
 _ORG_MADE = []
 
@@ -1863,6 +1989,17 @@ def org_migration_plan():
 CAPTURE_AFTER = 'After the move, new items go to the Organisation space unless a person has chosen their own space.'
 
 
+def org_migration_offer():
+    """What Actions offers an Owner: the counts the move would carry (D-0053: everything in the work space), while it is not running
+    and something is still there to move (an earlier, narrower move does not stop the offer). None otherwise."""
+    st = org_migration_status()
+    if st.get('state') == 'running': return None
+    p = org_migration_plan()
+    n = sum(v for k, v in p['counts'].items() if k != 'staying')
+    if not n: return None
+    return {'counts': p['counts'], 'total': n, 'teams': [t['space_name'] for t in p['teams']], 'from_name': p['from_name'], 'to_name': p['to_name']}
+
+
 def org_migration_preview():
     v = _actor()
     if not v.full: raise PermissionError('Only an Owner of Alice can move items into the Organisation space.')
@@ -2063,7 +2200,7 @@ def _save_status(st):
 
 
 
-# ---------------- Temple's router and restricted spaces (CR-4 phase 2; Stefan, 10 Oct 2026) ----------------
+# ---------------- Temple's router and restricted spaces (CR-4 phase 2; 10 Oct 2026) ----------------
 ROUTE_PROMPT = ('You are Temple, deciding where a newly captured item belongs in an organisation\'s shared memory. Answer with one route: '
                 '"work" (about the team\'s work: its policies, processes, projects, clients, decisions); "general" (useful to the whole '
                 'organisation, not one team: organisation-wide policies, facts about the organisation); "self" (about the person who saved '

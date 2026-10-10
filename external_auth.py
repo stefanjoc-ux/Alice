@@ -5,7 +5,7 @@ allowed user, through an allowed client app, with the required delegated scope. 
 The internal endpoint (port 8001, web chat) is unchanged and must never be exposed publicly.
 
 Settings (names only; values live in .env, never in code or git):
-  ALICE_EXT_TENANT_ID       Directory (tenant) ID of the Tuduma tenant
+  ALICE_EXT_TENANT_ID       Directory (tenant) ID of your Microsoft 365 tenant
   ALICE_EXT_APP_ID          Application (client) ID of the Alice API app registration
   ALICE_EXT_APP_ID_URI      Optional; defaults to api://<ALICE_EXT_APP_ID>
   ALICE_EXT_AUDIENCES       Optional; more Application ID URIs accepted as the token audience, comma separated (e.g. the one
@@ -26,7 +26,7 @@ person to Entra, and every token is then checked exactly as above (tenant, allow
   ALICE_EXT_CONNECTOR_KEY        Random key (32+ characters) that signs Alice's own tokens and encrypts stored sign-ins (Key Vault)
   ALICE_EXT_CONNECTOR_LABEL      Optional; the name for an app whose callback is not one Alice knows, default Claude
   ALICE_EXT_CONNECTOR_REDIRECTS  Optional; client callback addresses allowed, comma separated (default: Claude's and ChatGPT's)
-The same sign-in serves ChatGPT on the web (Stefan's decision, 6 Oct 2026): each app is named by the callback address it
+The same sign-in serves ChatGPT on the web (decision 6 Oct 2026): each app is named by the callback address it
 registered with (claude.ai = Claude, provider claude; chatgpt.com = ChatGPT, provider openai), so proposals, the activity log,
 the Agents page and the provider rules see the real app.
   ALICE_EXT_CONNECTOR_STORE      Optional; folder for the encrypted sign-in records (default <data folder>/oauth-connector)
@@ -269,7 +269,7 @@ def connector_proxy(verifier):
 
 def auth_provider(verifier):
     """The verifier plus standard protected-resource metadata, so MCP clients can discover that Alice signs in
-    with the Tuduma tenant's Entra ID and which scope to ask for."""
+    with your tenant's Entra ID and which scope to ask for."""
     from fastmcp.server.auth import RemoteAuthProvider
     cfg = verifier.cfg
     full_scope = f'{cfg.app_id_uri}/{cfg.scope}'
