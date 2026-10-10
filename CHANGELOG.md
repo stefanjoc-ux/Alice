@@ -7,6 +7,7 @@ becomes a knowledge item in the category "Alice changes".
 
 ## 2026-10-09
 
+- #40 /signed-out is now a "Sign in to Alice" page to bookmark: Alice's look, a secure-connection badge showing the address you are really on, one Sign in with Microsoft button (it clears this browser's old sign-in first) and a note on what to check; no fields to type into, and the signed-out messages still show when they apply.
 - #38 Hand over a departing person's work: once someone is suspended (or has lost their Alice role), an Owner can see their personal-space items by title on Users and permissions, open one to read it, and move only the ticked ones into a shared space they manage; each goes through the sharing check, anything held is explained on Actions for you to share with a reason or keep, and nothing is deleted. You need to: on the PC, back up data\ before updating (two columns are added); in Azure the database backups cover it.
 - #39 Tests on GitHub no longer fail before they start when Docker Hub refuses the download: Docker's official images now come from Amazon's public copy of them (the same images). Also fixes the Spaces test that sometimes stopped with "database is locked" (Alice no longer looks up a member's name while still reading the members list). You need to: copy deploy/github/deploy.yml over .github/workflows/deploy.yml.
 - #37 Purview labels are now read the same whichever program wrote an Office file, so a Word, Excel or PowerPoint file with a blocked label is always refused (before, an Excel file written with one common library slipped through).

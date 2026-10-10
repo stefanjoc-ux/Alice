@@ -35,6 +35,7 @@ Run after every update, before relaunching. Exit code 0 means every check passed
 | providers | Plain-English provider errors and Check connections |
 | mcp_stdio | The connector exactly as Claude Desktop uses it |
 | quotes, desktop | Quote matching; hotkey and window-size parsing |
+| signin | The signed-in badge and /me, signing out of Alice only, sign-out everywhere, the sign-in reset, and the "Sign in to Alice" front page on /signed-out: no input fields, the host read from the page's own address (checked in Node when installed), ?go=1 expires the sign-in cookies and goes to /, the signed-out messages above the button, no data and no call but /me |
 | external_mcp | The signed-in external endpoint: settings, every Entra token check, 401s over HTTP, external rules for Copilot |
 | organisations | Organisation facts: sources, review dates, data minimisation, approval, the brief (labels, providers, external), removal by source |
 | diagrams | Mermaid and SVG code blocks drawn as pictures (as images, never live SVG), local Mermaid library, static folder case |

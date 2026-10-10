@@ -1353,7 +1353,7 @@ AUTH_COOKIES = ('AppServiceAuthSession', 'AppServiceAuthSession1', 'AppServiceAu
 
 @app.get('/signout')
 def signout(request: Request, everywhere: int = 0):
-    r = RedirectResponse('/signed-out' + ('?everywhere=1' if everywhere else ''), status_code=303)
+    r = RedirectResponse('/signed-out?' + ('everywhere=1' if everywhere else 'out=1'), status_code=303)
     for name in sorted(set(AUTH_COOKIES) | {c for c in request.cookies if c.lower().startswith('appserviceauth')}):
         r.delete_cookie(name, path='/', secure=True, httponly=True, samesite='lax')
     r.headers['Cache-Control'] = 'no-store'
@@ -1363,31 +1363,85 @@ def _reset_cookie(name: str) -> bool:
     n = name.lower()
     return n.startswith('appserviceauth') or n.startswith('nonce')
 
+def _expire_signin_cookies(request: Request, response):
+    """Expire every Container Apps sign-in cookie (AppServiceAuth*) and its Nonce cookies for path /. Returns the names found."""
+    found = sorted({n for n in request.cookies if _reset_cookie(n)})
+    for name in sorted(set(AUTH_COOKIES) | {'Nonce'} | set(found)):
+        response.delete_cookie(name, path='/', secure=True, httponly=True, samesite='lax')
+    return found
+
 @app.get('/signed-out')
-def signed_out(request: Request, everywhere: int = 0, reset: int = 0):
-    """The page after signing out, outside sign-in. ?reset=1 clears this browser's sign-in state (Container Apps sign-in
-    cookies, its Nonce cookies, any service worker) when sign-in keeps looping; it lists cookie names only, never values."""
+def signed_out(request: Request, everywhere: int = 0, reset: int = 0, go: int = 0, out: int = 0):
+    """Sign in to Alice: the front page to bookmark, outside sign-in (infra: excludedPaths), holding no data and asking for
+    nothing. ?go=1 (Sign in with Microsoft) expires this browser's sign-in cookies and goes to /, where Microsoft asks who you
+    are. ?out=1 / ?everywhere=1 say you have just signed out. ?reset=1 clears this browser's sign-in state (Container Apps
+    sign-in cookies, its Nonce cookies, any service worker) when sign-in keeps looping; it lists cookie names only."""
     from ui_theme import SHARED_CSS
     if reset: return _signin_reset(request, SHARED_CSS)
-    page = SIGNED_OUT_HTML.replace('__CSS__', SHARED_CSS)
-    if everywhere: page = page.replace('<h1 id="so-t">Signed out of Alice</h1>', '<h1 id="so-t">Signed out of Alice everywhere</h1>').replace(
-        'Your Microsoft sign-in for Outlook', 'Every device that was signed in to Alice now has to sign in again. Your Microsoft sign-in for Outlook')
+    if go:
+        r = RedirectResponse('/', status_code=303)
+        _expire_signin_cookies(request, r)
+        r.headers['Cache-Control'] = 'no-store'
+        return r
+    msg = ''
+    if everywhere: msg = SIGNED_OUT_MSG.format(h='Signed out of Alice everywhere', p='Every device that was signed in to Alice now has to sign in again. '
+                                               'Your Microsoft sign-in for Outlook, Teams and the Azure portal is untouched.')
+    elif out: msg = SIGNED_OUT_MSG.format(h='Signed out of Alice', p='Your Microsoft sign-in for Outlook, Teams and the Azure portal is untouched.')
+    page = (SIGN_IN_HTML.replace('__CSS__', SHARED_CSS).replace('__MSG__', msg).replace('__MS__', '' if msg else ' hidden')
+            .replace('__LOCK__', LOCK_SVG))
     return HTMLResponse(page, headers={'Cache-Control': 'no-store'})
 
-SIGNED_OUT_HTML = '''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Signed out of Alice</title><link rel="icon" href="/static/favicon.png"><style>__CSS__
-.so{max-width:460px;margin:12vh auto 0;padding:28px 30px;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 6px 24px rgba(10,30,50,.08)}
-.so h1{margin:0 0 6px;font-size:22px}.so p{margin:8px 0}.so .go{display:inline-block;margin:14px 0 4px;padding:9px 18px;border-radius:9px;background:var(--teal);color:#fff;text-decoration:none;font-weight:600}
-.so .warn{padding:8px 12px;border-radius:8px;background:#fdf3e1;border:1px solid #e2bf85;color:#4a3004;font-size:13px}.so .alt{font-size:13px}
-</style></head><body><main class="so"><h1 id="so-t">Signed out of Alice</h1>
-<p class="muted" id="so-p">Your Microsoft sign-in for Outlook, Teams and the Azure portal is untouched.</p>
+from ui_theme import LOCK_SVG
+
+SIGNED_OUT_MSG = '<div class="si-msg" role="status"><b id="so-t">{h}</b><span>{p}</span></div>'
+
+# The page names no person and no address: the host in the badge and the note is read from the page's own address in the
+# browser (location.hostname), so it always shows where you really are. Its only request is /me (does this browser still
+# have an Alice session?).
+SIGN_IN_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign in to Alice</title><link rel="icon" href="/static/favicon.png"><style>__CSS__
+body{display:flex;flex-direction:column;min-height:100%}
+.si-bar{display:flex;align-items:center;gap:10px;min-height:52px;padding:8px 16px;background:var(--bar);color:#e8f6ff;flex-wrap:wrap}
+.si-brand{display:flex;align-items:center;gap:9px;font-weight:600;letter-spacing:.1em;font-size:13px;color:#e8f6ff}
+.si-brand img{width:28px;height:28px;border-radius:50%;box-shadow:0 0 12px #4de6ff55}
+.si-secure{margin-left:auto;display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:4px 10px;border-radius:999px;background:#12344a;border:1px solid #2f6a85;color:#8fd9b5;font-size:12px;overflow:hidden}
+.si-secure span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}.si-secure svg{flex:none;width:12px;height:12px}.si-secure.plain{color:#c9d8e3}.si-secure.bad{color:#ffd2a6;border-color:#a2683a}
+.si{width:100%;max-width:460px;margin:9vh auto 24px;padding:28px 30px;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 6px 24px rgba(10,30,50,.08)}
+.si h1{margin:0 0 6px;font-size:24px}.si p{margin:8px 0}
+.si-msg{display:flex;flex-direction:column;gap:2px;margin:0 0 16px;padding:10px 12px;border-radius:9px;background:var(--teal2);border:1px solid #b8dbe8;font-size:14px}
+.si .warn{padding:8px 12px;border-radius:8px;background:#fdf3e1;border:1px solid #e2bf85;color:#4a3004;font-size:13px}
+.si .go{display:flex;justify-content:center;align-items:center;gap:8px;margin:18px 0 6px;padding:11px 18px;border-radius:9px;background:var(--teal);color:#fff;text-decoration:none;font-weight:600;font-size:16px}
+.si .go:hover{background:var(--teal-d)}
+.si-note{margin-top:16px;padding:12px 14px;border-radius:10px;background:var(--bg);border:1px solid var(--line);font-size:13px}
+.si-note p{margin:4px 0}.si-note svg{width:12px;height:12px;vertical-align:-1px}.si-host{font-weight:600;word-break:break-all}
+.si .alt{font-size:13px}
+@media(max-width:520px){.si{margin:16px 16px 24px;width:auto;padding:22px 18px}.si h1{font-size:21px}.si-bar{padding:8px 16px}.si-secure{margin-left:0;width:100%}}
+</style></head><body>
+<header class="si-bar"><div class="si-brand"><img src="/static/favicon.png" alt="">ALICE</div>
+<div class="si-secure" id="si-secure" title="The address of this page, read from your browser">__LOCK__<span id="si-secure-t">Secure connection</span></div></header>
+<main class="si">__MSG__
 <p id="so-warn" class="warn" hidden>This browser still has an Alice session. Use the link below to sign out of Microsoft too.</p>
-<a class="go" href="/">Sign in to Alice again</a>
-<p class="alt muted">You will be asked to sign in (password, Windows Hello or passkey), even though this browser is still signed in to Microsoft.</p>
-<p class="alt muted">On a shared computer? <a href="/.auth/logout?post_logout_redirect_uri=/signed-out">Sign out of Microsoft in this browser too</a>.</p>
+<h1>Sign in to Alice</h1>
+<p class="muted">Microsoft will ask who you are (password, Windows Hello or passkey), every time.</p>
+<a class="go" id="si-go" href="/signed-out?go=1">Sign in with Microsoft</a>
+<div class="si-note">
+<p>__LOCK__ Check the address bar shows a padlock and <span class="si-host">this page&#39;s address</span>. The next page is Microsoft&#39;s own sign-in at <b>login.microsoftonline.com</b>.</p>
+<p class="muted">Secured by Microsoft Entra ID. Only approved accounts can open Alice.</p>
+</div>
+<p class="alt muted" id="so-ms"__MS__>On a shared computer? <a href="/.auth/logout?post_logout_redirect_uri=/signed-out">Sign out of Microsoft in this browser too</a>.</p>
 <p class="alt muted">Trouble signing in? <a href="/signed-out?reset=1">Reset sign-in on this device</a>.</p>
-</main><script>fetch('/me',{credentials:'same-origin',redirect:'manual',headers:{'X-Requested-With':'XMLHttpRequest'}}).then(r=>r.ok?r.json():null).then(m=>{if(m&&m.signed_in)document.getElementById('so-warn').hidden=false}).catch(()=>{})</script>
-</body></html>'''
+</main>
+<script>(()=>{const host=location.hostname,https=location.protocol==='https:',local=/^(localhost|127\\.0\\.0\\.1|\\[::1\\])$/.test(host);
+for(const e of document.querySelectorAll('.si-host'))e.textContent=host;
+const b=document.getElementById('si-secure'),t=document.getElementById('si-secure-t');
+if(https)t.textContent='Secure connection \\u00b7 '+host;
+else{b.querySelector('svg').remove();b.classList.add(local?'plain':'bad');t.textContent=(local?'This computer only \\u00b7 ':'Not a secure connection \\u00b7 ')+host}
+document.getElementById('si-go').addEventListener('click',async ev=>{ev.preventDefault();const to=ev.currentTarget.href;
+ try{if('serviceWorker' in navigator)await Promise.race([navigator.serviceWorker.getRegistrations().then(rs=>Promise.all(rs.map(r=>r.unregister()))),new Promise(r=>setTimeout(r,1500))])}catch(e){}
+ location.href=to});
+fetch('/me',{credentials:'same-origin',redirect:'manual',headers:{'X-Requested-With':'XMLHttpRequest'}}).then(r=>r.ok?r.json():null)
+ .then(m=>{if(m&&m.signed_in){document.getElementById('so-warn').hidden=false;document.getElementById('so-ms').hidden=false}}).catch(()=>{})})()</script>
+</body></html>"""
 
 def _signin_reset(request: Request, css: str):
     import html as _html
@@ -1398,8 +1452,7 @@ def _signin_reset(request: Request, css: str):
     page = (SIGNIN_RESET_HTML.replace('__CSS__', css).replace('__LIST__', listing)
             .replace('__COUNT__', str(len(found))))
     r = HTMLResponse(page, headers={'Cache-Control': 'no-store'})
-    for name in sorted(set(AUTH_COOKIES) | {'Nonce'} | set(found)):
-        r.delete_cookie(name, path='/', secure=True, httponly=True, samesite='lax')
+    _expire_signin_cookies(request, r)
     return r
 
 SIGNIN_RESET_HTML = '''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
