@@ -106,8 +106,10 @@ def is_owner_person(v):
     """The owner themselves (Health, Trading, Mileage, Backups and the drill, the owner rules on Users and permissions). On the
     PC whoever is at this computer is the owner. In Azure: users.is_owner, the one owner check (the Alice.Owner role in Entra,
     or the configured owner object ID only while app roles are off; never a name or email), as worked out when they were identified."""
-    if not _trusted(): return v is None or v.full
-    if v is None: return False
+    if v is None: return not _trusted()
+    if not v.oid: return not _trusted() and v.full          # this computer (no sign-in): whoever is here
+    # A signed-in account (the web, or a connector call from the token's object ID): the same check in every process, whether or
+    # not that process sits behind web sign-in (alice-mcp does not), so the connector and the web agree on who the owner is.
     import users
     return bool(getattr(v, 'owner', False)) or users.is_owner(v.oid, roles=[])
 
@@ -252,7 +254,12 @@ ROUTES = {
     # spaces: everyone has at least their personal space; spaces.py decides who may manage, share or move what
     'GET /admin/api/spaces': 'any', 'GET /admin/api/spaces/mine': 'any', 'POST /admin/api/spaces': 'any', 'PUT /admin/api/spaces/default': 'any',
     'POST /admin/api/spaces/move': 'any', 'POST /admin/api/spaces/held/{mid}': 'any', 'PUT /admin/api/spaces/{sid}/members': 'any',
-    'DELETE /admin/api/spaces/{sid}/members/{member}': 'any',
+    'DELETE /admin/api/spaces/{sid}/members/{member}': 'any', 'POST /admin/api/spaces/retry': 'full',
+    'GET /admin/api/spaces/capture': 'admin', 'PUT /admin/api/spaces/capture': 'admin',
+    'GET /admin/api/spaces/sweep': 'any', 'POST /admin/api/spaces/sweep/scan': 'any', 'POST /admin/api/spaces/sweep/move': 'any',
+    'POST /admin/api/spaces/sweep/{sid}/dismiss': 'any',
+    # linked accounts (users.link, spaces.link_accounts): an Owner's only
+    'POST /admin/api/users/{oid}/link/preview': 'full', 'POST /admin/api/users/{oid}/link': 'full', 'DELETE /admin/api/users/{oid}/link': 'full',
     # sign-ins (the handler shows other people's sessions to Admins and Owners only)
     'GET /admin/api/signins': 'signins:view', 'POST /admin/api/signins/{sid}/signout': 'signins:use', 'POST /admin/api/signout-everywhere': 'full',
     # memories (lists show a person without the Owner role only their own)

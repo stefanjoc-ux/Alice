@@ -433,6 +433,7 @@ def set_category(ids, category):
         found = [r[0] for r in c.execute(f"SELECT id FROM records WHERE id IN ({','.join('?' * len(ids))})", ids)]
         for rid in found: _assign(c, rid, category, 'human')
         audit(c, 'category_set', ','.join(found)[:500], 'human_review', f'{len(found)} memories → {category or "Uncategorised"}')
+    if category: _spaces().retry_soon('record', found)        # shares held for want of a category move on their own now
     return {'updated': len(found), 'category': category}
 
 
@@ -451,6 +452,7 @@ def resolve_suggestions(ids, action):
                 c.execute("UPDATE record_meta SET suggestion='',suggestion_reason='' WHERE record_id=?", (rid,))
             done += 1
         audit(c, 'category_suggestions_' + action, ','.join(ids)[:500], 'human_review', f'{done} Temple suggestions {action}ed')
+    if action == 'accept' and done: _spaces().retry_soon('record', ids)
     return {'done': done}
 
 
@@ -1090,16 +1092,28 @@ def stamp(item_type, item_id, oid=None, space=None):
     if item_type not in ITEM_TYPES or not item_id or demo_active(): return
     v = VIEWER.get()
     if oid is None: oid = v.oid if v is not None else ''
-    rows = []
+    rows, queued = [], ''
     if oid: rows.append(('INSERT OR IGNORE INTO item_authors(item_type,item_id,author_oid,created_at) VALUES (?,?,?,?)', (item_type, str(item_id), oid, now())))
     if item_type in SPACE_TYPES:
-        target = space or (_spaces().default_for(v) if v is not None else '')
+        sp = _spaces()
+        target = space or (sp.default_for(v) if v is not None else '')
+        if target and not space and item_type in ('record', 'file') and sp._kind(target) == 'shared' \
+                and not exists_in_space(item_type, item_id):
+            # A memory, decision or knowledge item whose default space is shared (the default capture space, or the person's own
+            # choice): it starts in its author's personal space and moves through the sharing gate once Temple has reviewed it.
+            queued, target = target, sp.personal_space(sp.person_key(v))
         if target:
             rows.append(('INSERT OR IGNORE INTO item_spaces(item_type,item_id,space_id,placed_at,placed_by) VALUES (?,?,?,?,?)',
                          (item_type, str(item_id), target, now(), actor())))
-    if not rows: return
+    if rows:
+        with db() as c:
+            for sql, a in rows: c.execute(sql, a)
+    if queued: _spaces().queue(item_type, item_id, queued, v)
+
+
+def exists_in_space(item_type, item_id):
     with db() as c:
-        for sql, a in rows: c.execute(sql, a)
+        return c.execute('SELECT 1 FROM item_spaces WHERE item_type=? AND item_id=?', (item_type, str(item_id))).fetchone() is not None
 
 
 def author_of(item_type, item_id):

@@ -1257,6 +1257,19 @@ if(PAGE==='actions'){
    log.append(bubble({role:'you',content:msg}));const wait=el('div','Temple is thinking…','dec-msg from-t thinking');log.append(wait);starters.hidden=true;log.scrollTop=log.scrollHeight;
    run(async()=>{try{const r=await api('/admin/api/records/'+i.id+'/discussion','POST',{message:msg});show(r.messages)}catch(err){wait.remove();ta.value=msg;throw err}finally{send.disabled=false}})};
   if(keen&&!i.discussion)wrap.classList.add('dec-talk-keen');return wrap}
+ // Work items in personal spaces (spaces.sweep_*): Temple lists them, you confirm; each move goes through the sharing check
+ function sweepBlock(w){const box=el('div','','sweep');
+  const look=btn(w.scanned_at?'Ask Temple to look again':'Ask Temple to look',async()=>{look.disabled=true;$('notice').textContent='Temple is reading your personal space…';try{const x=await api('/admin/api/spaces/sweep/scan','POST',{});$('notice').textContent='Temple found '+x.counts.work+' about the work, '+x.counts.self+' about you, '+x.counts.sensitive+' sensitive and '+x.counts.unsure+' it was not sure about. Nothing has moved.'}finally{look.disabled=false}},!!w.scanned_at);
+  const bar=el('div','','sweep-bar');bar.append(look);
+  if(w.scanned_at){bar.append(el('span','Last looked '+new Date(w.scanned_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+' · '+w.counts.work+' work · '+w.counts.self+' about you · '+w.counts.sensitive+' sensitive · '+w.counts.unsure+' unsure'+(w.counts.moved?' · '+w.counts.moved+' moved':''),'small muted'))}
+  if(w.items.length&&w.target){bar.append(btn('Move all '+w.items.length+' to '+w.target_name,async()=>{if(!confirm('Move all '+w.items.length+' to '+w.target_name+'? Everyone in that space will see them. Each goes through the sharing check first.'))return;const x=await api('/admin/api/spaces/sweep/move','POST',{all:true});$('notice').textContent=sweepSaid(x)}))}
+  if(w.items.length&&!w.target)bar.append(el('span','You have no team space to move them to yet: an Admin sets one on Users and permissions.','small'));
+  box.append(bar);
+  for(const i of w.items){const row=el('div','','act-row');const txt=el('div','','act-text');txt.append(el('strong',i.title),el('div',i.detail,'small muted'));if(i.reason)txt.append(el('div','Temple: '+i.reason,'small'));
+   const acts=el('div','','act-btns');if(w.target)acts.append(btn('Move to '+(i.target_name||w.target_name),async()=>{const x=await api('/admin/api/spaces/sweep/move','POST',{ids:[i.id]});$('notice').textContent=sweepSaid(x)}));
+   acts.append(btn('Leave it',async()=>{await api('/admin/api/spaces/sweep/'+i.id+'/dismiss','POST',{});$('notice').textContent='Left in your personal space.'},true));row.append(txt,acts);box.append(row)}
+  return box}
+ function sweepSaid(x){return x.moved+' moved'+(x.waiting?', '+x.waiting+' waiting for Temple\u2019s review':'')+(x.held?', '+x.held+' held by the sharing check (see Shares the sharing check held)':'')+(x.not_moved.length?'; not moved: '+x.not_moved.map(n=>n.title+' ('+n.why+')').slice(0,3).join(' · '):'')+'.'}
  async function load(){const d=await api('/admin/api/actions');$('act-total').textContent=d.total?d.total+(d.total===1?' action waiting':' actions waiting'):'Nothing waiting — all clear';
   const box=$('act-sections');box.replaceChildren();
   const open=d.sections.filter(s=>s.count),clear=d.sections.filter(s=>!s.count&&s.key!=='decisions');
@@ -1268,6 +1281,7 @@ if(PAGE==='actions'){
    if(s.key==='waiting'&&d.auto_on){const go=btn('Approve these automatically',async()=>{const x=await api('/admin/api/auto-approve/backlog','POST',{});$('notice').textContent='Checked '+x.memories+' memories ('+x.checking+' being reviewed by Temple), '+x.drafts+' knowledge drafts, '+x.facts+' organisation facts'+(x.suggestions?', accepted '+x.suggestions+' suggestions':'')+'. Anything that failed a check is held back for you.'});go.classList.remove('secondary');sec.append(go)}
    let list=sec;if(s.info&&s.items.length>6){const det=document.createElement('details');det.append(el('summary','Show '+s.items.length));sec.append(det);list=det}
    if(s.key==='decisions'){for(const i of s.items)sec.append(decisionCard(i));box.append(sec);continue}
+   if(s.key==='sweep'){sec.append(sweepBlock(s.sweep));box.append(sec);continue}
    for(const i of s.items){const row=el('div','','act-row');const txt=el('div','','act-text');if(i.ref){const rf=el('span',i.ref,'ref');rf.style.marginRight='6px';txt.append(rf)}const tl=el('strong',i.title);
     if(CARD_KEY[i.type]){const ob=el('button','','act-open');ob.type='button';ob.title='Open the full details, and ask Temple';ob.append(tl);const lst=s.items.filter(x=>CARD_KEY[x.type]),ix=lst.indexOf(i);ob.onclick=()=>openItem(lst,ix);txt.append(ob)}else txt.append(tl);
     if(i.verdict){const [l,c]=V[i.verdict]||V.unclear;const bd=el('span',l,'badge '+c);bd.style.marginLeft='8px';txt.append(bd)}if(i.kind==='decision'&&i.type==='proposal'){const db=el('span','Decision','badge v-run');db.style.marginLeft='6px';txt.append(db)}
@@ -2938,7 +2952,17 @@ PAGES['users'] = ('Users and permissions', 'Who can use Alice and what each pers
                   'sees only what they created themselves. Health, Trading, Mileage and Backups are always the owner\'s alone.')
 SECTIONS['users'] = r'''<section><div class="mem-head"><h2>People</h2><span class="small muted" id="us-mode"></span></div>
 <div id="us-tiles" class="mi-tiles"></div><div class="table-wrap"><table id="us-people" class="mem-table"></table></div>
-<p class="small muted">A person appears here after their first sign-in. Their role is the lower of their Entra role and the role set here; the owner of Alice always has full access.</p></section>
+<p class="small muted">A person appears here after their first sign-in. Their role is the lower of their Entra role and the role set here; the owner of Alice always has full access.
+Someone with more than one account (for example an everyday account and a tenant admin account): <b>Link</b> them, so they are one author with one set of spaces. Alice never links accounts by itself.</p></section>
+<section id="us-link" hidden aria-labelledby="us-link-title"><div class="mem-head"><h2 id="us-link-title">Link accounts</h2><button type="button" id="us-link-close" class="secondary">Close</button></div>
+<form id="us-link-form" class="us-form"><label>The same person as <select id="us-link-to" required></select></label>
+<label>Why (kept in the activity log) <input id="us-link-note" maxlength="300" required placeholder="For example: both are Stefan's accounts (everyday and tenant admin)"></label>
+<button type="button" id="us-link-check" class="secondary">Show what changes</button></form><div id="us-link-preview" class="small"></div>
+<button type="button" id="us-link-go" hidden>Link and repair</button></section>
+<section id="us-cap" hidden><div class="mem-head"><h2>Where new items go</h2></div>
+<p class="small muted">The default space for new memories, decisions and knowledge when nobody names one (connectors and Alice's pages alike). A person's own choice on the Spaces page ("New items go to") still wins. Anything going into a shared space waits for Temple's review and the sharing check first.</p>
+<label class="small">For everyone <select id="us-cap-default" aria-label="Default space for new items"></select></label>
+<div class="table-wrap"><table id="us-cap-people" class="mem-table"></table></div></section>
 <section id="us-ho" hidden aria-labelledby="us-ho-title"><div class="mem-head"><h2 id="us-ho-title">Hand over</h2><button type="button" id="us-ho-close" class="secondary">Close</button></div>
 <p class="small muted" id="us-ho-why"></p><div id="us-ho-held"></div><div id="us-ho-list" class="us-ho-list"></div><div id="us-ho-open" class="us-ho-open" hidden></div>
 <form id="us-ho-form" class="us-form"><label>Hand the ticked items over to <select id="us-ho-space" required></select></label>
@@ -2962,7 +2986,7 @@ CSS += r'''
 .us-card h3{margin:0 0 4px;font-size:15px}.us-card p{margin:4px 0;font-size:13px}.us-form label{display:block;margin:8px 0;font-size:14px}.us-form input[type=text],.us-form input:not([type]){width:min(480px,100%)}
 .us-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px 16px}.us-grid .us-row{display:flex;gap:8px;align-items:center;justify-content:space-between;font-size:14px;flex-wrap:wrap}
 .us-row select{min-width:96px}.us-caps{display:flex;gap:8px;flex-wrap:wrap;font-size:12px;width:100%}.us-badge{font-size:11px;padding:1px 6px;border-radius:4px;background:#eef3f6;margin-left:6px}
-#us-edit[hidden],#us-delete[hidden],#us-ho[hidden],.us-ho-open[hidden]{display:none!important}
+#us-edit[hidden],#us-delete[hidden],#us-ho[hidden],.us-ho-open[hidden],#us-link[hidden],#us-cap[hidden],#us-link-go[hidden]{display:none!important}
 .us-ho-list h3{margin:14px 0 4px;font-size:15px}.us-ho-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:4px 0;border-bottom:1px solid var(--line);font-size:14px}
 .us-ho-row label{display:flex;gap:8px;align-items:center;flex:1 1 260px;min-width:0}.us-ho-row select{font-size:13px;max-width:100%}
 .us-ho-open{border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:10px 0;background:#fff;max-height:50vh;overflow:auto}
@@ -2974,7 +2998,34 @@ if(PAGE==='users'){
  const when=iso=>iso?new Date(iso).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'–';
  const sel=(opts,val,label)=>{const s=document.createElement('select');s.setAttribute('aria-label',label);for(const [v,t] of opts){const o=el('option',t);o.value=v;s.append(o)}s.value=val;return s};
  const LV=[['none','None'],['view','View'],['use','Use'],['manage','Manage']];
- async function load(){[D,C]=await Promise.all([api('/admin/api/users'),api('/admin/api/permissions/catalogue')]);draw()}
+ async function load(){[D,C]=await Promise.all([api('/admin/api/users'),api('/admin/api/permissions/catalogue')]);draw();capture().catch(()=>{})}
+ // Where new items go (spaces.capture_*): the organisation's default, and the space set for each person
+ async function capture(){const P=await api('/admin/api/spaces/capture');$('us-cap').hidden=false;
+  const d=$('us-cap-default');d.replaceChildren(...P.modes.concat(P.spaces).map(x=>{const o=el('option',x.name);o.value=x.id;return o}));d.value=P.default;
+  d.onchange=()=>run(async()=>{await api('/admin/api/spaces/capture','PUT',{default:d.value});$('notice').textContent='New items now go to: '+d.selectedOptions[0].textContent+'.';await capture()});
+  const t=$('us-cap-people');t.replaceChildren();const hr=document.createElement('tr');for(const h of ['Person','Their space for new items','Goes to now'])hr.append(el('th',h));t.append(hr);
+  for(const p of P.people){const tr=document.createElement('tr');const s=document.createElement('select');s.setAttribute('aria-label','Space for '+p.name+'\u2019s new items');
+   const o0=el('option','The default above');o0.value='';s.append(o0);for(const x of p.options){const o=el('option',x.name);o.value=x.id;s.append(o)}s.value=p.set||'';
+   s.onchange=()=>run(async()=>{await api('/admin/api/spaces/capture','PUT',{person:p.key,space:s.value});$('notice').textContent='Saved.';await capture()});
+   const now=el('td',p.goes_to_name||'Their personal space');if(p.own_choice)now.append(el('div','Their own choice wins: '+p.own_choice,'small muted'));
+   tr.append(el('td',p.name),el('td','',''),now);tr.children[1].append(s);t.append(tr)}}
+ // Link a person's accounts (spaces.link_preview / link_accounts): preview first, then link and repair
+ let LK=null;
+ function openLink(u){LK=u;$('us-link').hidden=false;$('us-link-title').textContent='Link '+(u.name||u.email||u.oid)+' to another account';$('us-link-preview').replaceChildren();$('us-link-go').hidden=true;$('us-link-note').value='';
+  $('us-link-to').replaceChildren(...D.users.filter(x=>x.oid!==u.oid&&!x.linked_to).map(x=>{const o=el('option',(x.name||x.email)+(x.email&&x.name?' ('+x.email+')':'')+(x.is_owner?' · Owner of Alice':''));o.value=x.oid;return o}));
+  $('us-link').scrollIntoView({behavior:'smooth',block:'start'})}
+ $('us-link-close').onclick=()=>{$('us-link').hidden=true;LK=null};
+ $('us-link-check').onclick=()=>run(async()=>{if(!LK)return;const p=await api('/admin/api/users/'+LK.oid+'/link/preview','POST',{to:$('us-link-to').value});const b=$('us-link-preview');b.replaceChildren();
+  b.append(el('p',p.account.name+' becomes the same person as '+p.to.name+'. Nothing is deleted.'));
+  const ul=el('ul','');ul.append(el('li',p.authored+' items it wrote count as '+p.to.name+'\u2019s'+(Object.keys(p.authored_by_type).length?' ('+Object.entries(p.authored_by_type).map(([k,v])=>v+' '+k).join(', ')+')':'')));
+  ul.append(el('li',p.personal_items+' items in its own personal space move into '+(p.personal_to||'their personal space')));
+  ul.append(el('li',p.shares+' waiting or held shares are re-keyed, so '+p.to.name+' decides them on any account'));
+  ul.append(el('li',p.joins.length?'It belonged to '+p.joins.map(j=>j.name+' ('+j.role+')').join(', ')+': '+p.to.name+' joins with the same role':'No space memberships to carry over'));b.append(ul);
+  for(const [h,list] of [['In its personal space',p.personal_titles],['Shares waiting or held',p.share_titles]])if(list.length){b.append(el('b',h));const l=el('ul','');for(const x of list)l.append(el('li',x.type+': '+x.title+(x.to?' → '+x.to:'')));b.append(l)}
+  $('us-link-go').hidden=false});
+ $('us-link-go').onclick=()=>run(async()=>{if(!LK)return;const note=$('us-link-note').value.trim();if(!note){$('notice').textContent='Say why these accounts are the same person.';return}
+  if(!confirm('Link the accounts and repair as shown?'))return;const r=await api('/admin/api/users/'+LK.oid+'/link','POST',{to:$('us-link-to').value,note});
+  $('notice').textContent='Linked. '+r.moved+' items moved into the personal space; '+r.shares+' shares re-keyed.';$('us-link').hidden=true;LK=null;await load()});
  function draw(){
   $('us-mode').textContent=D.app_roles?'Entra app roles decide who gets in (Alice.Owner, Alice.Admin, Alice.Member).':'Entra\'s allowed accounts decide who gets in (app roles not switched on yet).';
   const tile=(v,l)=>{const x=el('div','','mi-tile');x.append(el('strong',String(v)),el('span',l));return x};
@@ -2992,6 +3043,9 @@ if(PAGE==='users'){
    const st=el('td','');const b=el('button',u.status==='active'?'Suspend':'Restore access','secondary');b.type='button';b.disabled=fixed;
    b.onclick=()=>{if(u.status==='active'&&!confirm('Suspend '+(u.name||u.email)+'? They are refused at once, everywhere in Alice.'))return;run(async()=>{try{await api('/admin/api/users/'+u.oid,'PUT',{status:u.status==='active'?'suspended':'active'})}finally{await load()}})};
    st.append(el('span',u.status==='active'?'Active ':'Suspended ','badge '+(u.status==='active'?'v-ok':'v-bad')),b);
+   if(u.linked_to){const to=D.users.find(x=>x.oid===u.linked_to);who.append(el('div','Linked to '+(to?(to.name||to.email):u.linked_to)+': one person','small'))}
+   if(D.can_link&&D.users.length>1){const lk=el('button',u.linked_to?'Unlink':'Link…','secondary mini');lk.type='button';
+    lk.onclick=()=>{if(u.linked_to){if(!confirm('Unlink '+(u.email||u.oid)+'? It becomes its own author again; nothing it wrote moves.'))return;run(async()=>{await api('/admin/api/users/'+u.oid+'/link','DELETE');await load()})}else openLink(u)};who.append(lk)}
    if(D.handover&&u.oid in D.handover){const ho=el('button','Hand over ('+D.handover[u.oid]+')','secondary');ho.type='button';ho.title='Their personal space stays private until you hand items over';ho.onclick=()=>handOver(u.oid);st.append(' ',ho)}
    tr.append(who,rc,pc,st,el('td',when(u.first_seen)),el('td',when(u.last_seen)));t.append(tr)}
   if(!D.users.length){const tr=document.createElement('tr');const td=el('td',D.owner_configured?'Nobody has signed in yet.':'Alice is running on this computer only: there is no sign-in, so whoever is here is the owner.');td.colSpan=6;tr.append(td);t.append(tr)}
@@ -3254,9 +3308,13 @@ if(PAGE==='spaces'){
   $('sp-new').hidden=!d.can_create;
   const w=$('sp-waiting');w.replaceChildren();
   if(!d.waiting.length)w.append(el('p','Nothing waiting for you.','muted small'));
-  for(const h of d.waiting){const c=el('div','','sp-held');c.append(el('b',h.title),el('div',h.type_label+' → '+h.to_name,'small muted'));const ul=el('ul','');for(const r of h.reasons)ul.append(el('li',r));c.append(ul);
-   const a=el('button','Share anyway');a.type='button';a.onclick=()=>run(async()=>{if(!confirm('Share “'+h.title+'” to '+h.to_name+' anyway? Everyone in that space will see it.'))return;await api('/admin/api/spaces/held/'+h.id,'POST',{action:'share'});await load()});
-   const k=el('button','Keep it personal','secondary');k.type='button';k.onclick=()=>run(async()=>{await api('/admin/api/spaces/held/'+h.id,'POST',{action:'keep'});await load()});c.append(a,k);w.append(c)}
+  for(const h of d.waiting){const c=el('div','','sp-held');c.append(el('b',h.title),el('div',h.type_label+' → '+h.to_name+(h.as&&h.as!=='author'?' · '+h.author_name+'\u2019s item':'')+(h.status==='waiting'?' · waiting for Temple\u2019s review':''),'small muted'));const ul=el('ul','');for(const r of h.reasons)ul.append(el('li',r));c.append(ul);
+   const mine=h.as==='author';const why=()=>{if(mine)return '';const n=prompt('Why? You are deciding '+h.author_name+'\u2019s item (kept in the activity log).');return n&&n.trim()?n.trim():null};
+   if(h.as&&!h.needs_category){const a=el('button','Share anyway');a.type='button';a.onclick=()=>{if(!confirm('Share “'+h.title+'” to '+h.to_name+' anyway? Everyone in that space will see it.'))return;const note=why();if(note===null)return;run(async()=>{await api('/admin/api/spaces/held/'+h.id,'POST',{action:'share',note});await load()})};c.append(a)}
+   if(h.needs_category&&h.status!=='waiting')c.append(el('p','Give it a category (Memories or Knowledge) and it moves on its own.','small'));
+   if(h.as){const k=el('button',mine?'Keep it where it is':'Keep it out of '+h.to_name,'secondary');k.type='button';k.onclick=()=>{const note=why();if(note===null)return;run(async()=>{await api('/admin/api/spaces/held/'+h.id,'POST',{action:'keep',note});await load()})};c.append(k)}
+   if(!h.as)c.append(el('p','A manager of '+h.to_name+' decides this one.','small muted'));
+   w.append(c)}
   const def=$('sp-default');def.replaceChildren();for(const x of d.spaces.filter(x=>x.my_role&&x.my_role!=='view')){const o=document.createElement('option');o.value=x.id;o.textContent=x.name;def.append(o)}def.value=d.default;
   const list=$('sp-list');list.replaceChildren();
   for(const x of d.spaces){const c=el('section','','sp-card');const h=el('h3',x.name);h.append(el('span',x.kind==='personal'?'Personal':'Shared','badge v-none'));if(x.client)h.append(el('span','Client: '+x.client,'badge v-warn'));c.append(h);

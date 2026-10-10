@@ -211,16 +211,36 @@ def _summary():
     out.append(_section('teams', 'Digital teams: waiting for you', len(tw), '/admin/teams', tw,
                         'Open an item for the full hand-off, and to discuss it with Temple.' if tw else '', top=10))
 
-    # 10b. Shares the sharing check held (spaces.py): only the item's author decides, on the Spaces page
+    # 10b. Shares the sharing check held (spaces.py): the item's author, the space's managers or an Owner decides, on the Spaces page.
+    # Each one says why it cannot move yet; one held only for want of a category moves on its own once it has one.
     import spaces
     me = spaces._actor()
-    sh = [h for h in spaces.held(me) if h['author_key'] == spaces.person_key(me)]
+    sh = [h for h in spaces.held(me) if h['as']]
+    AS = {'author': 'Your', 'manager': 'For a space you manage:', 'owner': 'As an Owner of Alice:'}
     out.append(_section('shares', 'Shares the sharing check held', len(sh), '/admin/spaces',
                         [{'type': 'link', 'id': h['id'], 'title': f"{h['title']} → {h['to_name'] or 'a shared space'}",
-                          'detail': f"Your {h['type_label']} was held before it entered a shared space: " + ' '.join(h['reasons'] or ['personal or private details.']),
+                          'detail': (f"Your {h['type_label']}" if h['as'] == 'author' else f"{AS[h['as']]} {h['author_name']}'s {h['type_label']}") +
+                                    (' is waiting for a category: ' if h['needs_category'] else ' was held before it entered a shared space: ') +
+                                    ' '.join(h['reasons'] or ['personal or private details.']),
                           'href': '/admin/spaces'} for h in sh],
-                        'Before anything enters a shared space, Alice and Temple check it for personal details about you or anyone else, '
-                        'special-category details and anything marked private. Open Spaces to share it anyway or keep it personal.' if sh else ''))
+                        'Before anything enters a shared space, Temple reviews it, then Alice and Temple check it for an actual finding: personal '
+                        'data about a real person, special category data, or something marked private. Open Spaces to share one anyway or keep it '
+                        'where it is (a manager or an Owner gives a reason). One waiting for a category moves on its own once it has one.' if sh else ''))
+
+    # 10b2. The one-off sweep: work items stuck in your personal space (Temple lists them; nothing moves until you confirm)
+    try:
+        sw = spaces.sweep_list(me)
+    except Exception:
+        sw = None
+    if sw and (sw['items'] or (not sw['scanned_at'] and sw['in_personal'])):
+        out.append(_section('sweep', 'Work items in personal spaces', len(sw['items']) if sw['scanned_at'] else sw['in_personal'], '/admin/actions',
+                            [{'type': 'sweep', 'id': r['id'], 'title': r['title'], 'detail': r['preview'], 'reason': r['reason'],
+                              'target_name': r['target_name']} for r in sw['items']],
+                            (f"Temple read your personal space and thinks these are about the work, not about you, and not sensitive. Move them to "
+                             f"{sw['target_name'] or 'your team space'} so your team can find them; each still goes through the sharing check. "
+                             f"Nothing moves until you say so." if sw['scanned_at'] else
+                             f"{sw['in_personal']} items sit in your personal space. Ask Temple to look for the ones about the work, so they can go to "
+                             f"{sw['target_name'] or 'your team space'}. Nothing moves until you confirm."), info=True) | {'sweep': sw})
 
     # 10c. Hand-over items the sharing check held (handover.py): an Owner decides, on Users and permissions
     try: ho = spaces.handover_held() if me.full and me.role == 'owner' else []

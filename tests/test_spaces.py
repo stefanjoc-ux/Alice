@@ -16,7 +16,8 @@ spaces._MIGRATED.clear(); spaces.forget()
 
 temple.save_settings(False, 'claude')
 teams.BACKGROUND = False
-SCREEN = {'reply': {'personal_data': False, 'special_category': False, 'private': False, 'reasons': []}, 'fail': False, 'calls': []}
+SCREEN = {'reply': {'finding': False, 'findings': []}, 'fail': False, 'calls': []}
+spaces.BACKGROUND = False
 
 
 def fake_call(provider, system, messages, max_tokens=1500, timeout=60, workload='', meta=None):
@@ -123,8 +124,8 @@ t('Contribute still cannot add people (only Manage and Owners)', cl.put(f'/admin
 
 # ---------------- the sharing gate ----------------
 r = cl.post('/admin/api/spaces/move', headers=M, json={'item_type': 'record', 'item_id': own, 'space': B})
-t('an unclassified item never enters a shared space', r.json()['status'] == 'refused' and 'category' in ' '.join(r.json()['reasons'])
-  and spaces.space_of('record', own) != B)
+t('an item with no category never enters a shared space: it waits for one', r.json()['status'] in ('waiting', 'held')
+  and 'category' in ' '.join(r.json()['reasons']) and spaces.space_of('record', own) != B)
 health = mem('Team cover', 'Mira has been off on sick leave with depression since March, so cover her bids.', 'Work')
 r = cl.post('/admin/api/spaces/move', headers=O, json={'item_type': 'record', 'item_id': health, 'space': B})
 t('a health detail is held for its author, with the reason', r.json()['status'] == 'held' and spaces.space_of('record', health) == W
@@ -132,11 +133,12 @@ t('a health detail is held for its author, with the reason', r.json()['status'] 
 contact = mem('Supplier contact', 'Ring John Smith on 07700 900123 about the hall survey.', 'Work')
 r = cl.post('/admin/api/spaces/move', headers=O, json={'item_type': 'record', 'item_id': contact, 'space': B})
 t('a third person\'s personal data (a phone number) is held', r.json()['status'] == 'held' and any('phone' in x for x in r.json()['reasons']))
-SCREEN['reply'] = {'personal_data': True, 'special_category': False, 'private': False, 'reasons': ['It describes a colleague\'s pay.']}
+SCREEN['reply'] = {'finding': True, 'findings': [{'type': 'personal_data', 'quote': 'The senior bid writer has asked for a review',
+                                                  'about': 'the senior bid writer', 'reason': 'It describes a colleague\'s pay.'}]}
 quiet = mem('Pay note', 'The senior bid writer has asked for a review in the spring cycle.', 'Work')
 r = cl.post('/admin/api/spaces/move', headers=O, json={'item_type': 'record', 'item_id': quiet, 'space': B})
 t('what only Temple spots is held too, in Temple\'s words', r.json()['status'] == 'held' and 'colleague\'s pay' in ' '.join(r.json()['reasons']))
-SCREEN['reply'] = {'personal_data': False, 'special_category': False, 'private': False, 'reasons': []}
+SCREEN['reply'] = {'finding': False, 'findings': []}
 SCREEN['fail'] = True
 other = mem('Bid calendar', 'Bid reviews happen on the second Monday of each month.', 'Work')
 r = cl.post('/admin/api/spaces/move', headers=O, json={'item_type': 'record', 'item_id': other, 'space': B})
@@ -160,13 +162,13 @@ cl.post(f'/admin/api/spaces/held/{oid_}', headers=O, json={'action': 'share'})
 t('share anyway: the author\'s deliberate choice', spaces.space_of('record', other) == B and other in ids(M))
 with store.db() as c:
     acts = {r[0] for r in c.execute("SELECT action FROM activity WHERE rule IN ('spaces','share_gate')")}
-t('every share, hold, refusal and decision is logged', {'space_shared', 'space_share_held', 'space_share_refused', 'space_share_kept', 'space_member_added'} <= acts)
+t('every share, hold, wait and decision is logged', {'space_shared', 'space_share_held', 'space_share_waiting', 'space_share_kept', 'space_member_added'} <= acts)
 
 # ---------------- connectors choose a space they may contribute to ----------------
 mcp_server._viewer = as_mira
 r = mcp_server.propose_record('Mira workflow', 'Mira keeps a running list of bid lessons in a shared note.', 'Mira said so', space=B)
-t('a connector proposal into a shared space: unclassified, so it stays in her default space and says why', spaces.space_of('record', r['id']) == spaces.personal_space(MIRA)
-  and r['space']['status'] in ('refused', 'not_moved') and 'default space' in r['space']['message'])
+t('a connector proposal into a shared space: it stays in her personal space until Temple has reviewed it, and says so',
+  spaces.space_of('record', r['id']) == spaces.personal_space(MIRA) and r['space']['status'] in ('waiting', 'held') and 'Temple' in r['space']['message'])
 r = mcp_server.propose_record('Mira workflow two', 'Mira also tracks every bid deadline in her calendar.', 'Mira said so', space=W)
 t('…and a space she is not in is refused', r['space']['status'] == 'not_moved')
 sp = mcp_server.list_spaces()

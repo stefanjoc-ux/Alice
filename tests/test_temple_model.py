@@ -20,9 +20,13 @@ CLOUD = []
 
 
 def share_reply(text):
-    hit = any(w in text.lower() for w in ('sick', 'depression', 'divorce', 'home address', 'mobile', 'personal:'))
-    return json.dumps({'personal_data': hit, 'special_category': 'depression' in text.lower(), 'private': hit,
-                       'reasons': ['It names a colleague\'s private circumstances.'] if hit else []})
+    body = text.split('\n\n', 1)[-1]
+    low = body.lower()
+    if not any(w in low for w in ('sick', 'depression', 'divorce', 'home address', 'mobile', 'personal:')):
+        return json.dumps({'finding': False, 'findings': [], 'clear_because': 'Ordinary work content.'})
+    typ = 'special_category' if ('sick' in low or 'depression' in low) else 'private' if 'personal:' in low else 'personal_data'
+    return json.dumps({'finding': True, 'findings': [{'type': typ, 'quote': body[:120], 'about': 'a colleague',
+                                                      'reason': 'It names a colleague\'s private circumstances.'}]})
 
 
 def cat_reply(payload):
@@ -52,7 +56,7 @@ def fake_http(method, url, body, timeout):
 def fake_call(provider, system, messages, max_tokens=1500, timeout=60, workload='', meta=None):
     CLOUD.append((workload, messages[0]['content']))
     if system == spaces.SCREEN_PROMPT:
-        return json.dumps({'personal_data': False, 'special_category': False, 'private': False, 'reasons': []})   # a weak cloud: always clear
+        return json.dumps({'finding': False, 'findings': []})   # a weak cloud: always clear
     if system == temple_categorise.PROMPT: return cat_reply(messages[0]['content'])
     raise RuntimeError('no model in tests')
 

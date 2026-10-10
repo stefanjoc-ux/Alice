@@ -48,8 +48,15 @@ BUILTIN = [
     ('share_gate', 'security', 'Sharing check', 'enforced',
      'Before anything enters or moves into a shared space (whoever moves it: a person, Temple, a team or a connector), it is checked for '
      'personal identifiers, contact details, health or other special category details about anyone, and anything marked private (Local only, '
-     'or in a personal-area category); Temple reads it too. Anything found holds it for its author to share anyway or keep personal. An item '
-     'with no category confirmed by a person never enters a shared space.', True, {'temple': True}, '', True),
+     'or in a personal-area category); Temple reads it too, after its review, and only an actual finding holds an item: a quoted passage '
+     'with personal data about a real person, special category data, or something marked private (talking about HR, health or privacy '
+     'in general is not a finding). A held item waits for its author, the space\'s managers or an Owner to share anyway or keep it where '
+     'it is. An item with no category never enters a shared space; it moves on its own once it has one.', True, {'temple': True}, '', True),
+    ('temple_category', 'security', 'Temple\'s category is enough for work items', 'enforced',
+     'A category Temple gave a memory, decision or knowledge item (or one the proposing app chose from your list) counts for entering a '
+     'shared space: a person does not have to confirm it first. A person must still decide when the Sharing check finds personal data '
+     'about a real person, special category data or anything marked private, or when Temple was not sure which category it belongs in. '
+     'Switched off, only a category a person set counts.', True, {}, '', False),
     ('client_separation', 'organisation', 'Client separation', 'enforced',
      'In a chat tagged with a client, memory and file tools return only that client\'s material plus General '
      '(untagged) material. Strict mode also keeps client material out of untagged chats.', True,
