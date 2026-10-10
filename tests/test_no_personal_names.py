@@ -37,8 +37,21 @@ GUID_OK = {
 GUID_OK |= {g.lower() for g in GUID.findall(open(os.path.join(_util.ROOT, 'tests', 'test_infra_roles.py'), encoding='utf-8').read())}
 
 
+SKIP_DIRS = {'.git', 'data', 'Documents', '.venv', '__pycache__', 'Downloads', 'Claude outputs', 'dist', 'node_modules', '.pytest_cache'}
+SKIP_FILES = re.compile(r'(^|/)(\.env(\..*)?|deploy/azure-state\.json|deploy/run-all\.local\.json)$|\.(pyc|zip|bak)$')
+
+
 def files():
-    out = subprocess.run(['git', 'ls-files'], cwd=_util.ROOT, capture_output=True, text=True).stdout.splitlines()
+    """The files git tracks; where there is no git (the pipeline runs the suites inside the image), the source tree as the image
+    has it, leaving out what .gitignore and .dockerignore leave out."""
+    try:
+        out = subprocess.run(['git', 'ls-files'], cwd=_util.ROOT, capture_output=True, text=True, check=True).stdout.splitlines()
+    except (OSError, subprocess.CalledProcessError):
+        out = []
+        for d, dirs, names in os.walk(_util.ROOT):
+            dirs[:] = [x for x in dirs if x not in SKIP_DIRS]
+            out += [os.path.relpath(os.path.join(d, n), _util.ROOT).replace(os.sep, '/') for n in names]
+        out = [f for f in out if not SKIP_FILES.search(f)]
     return [f for f in out if not f.startswith(EXEMPT) and os.path.isfile(os.path.join(_util.ROOT, f))]
 
 
