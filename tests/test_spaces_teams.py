@@ -105,7 +105,9 @@ with store.db() as c:
 t('…and the closing is logged with the reason', logged and 'Pricing strategy' in logged['detail'] and logged['note'])
 cl.put(f'/admin/api/spaces/{SALES}/closed', headers=M, json={'closed': False})
 t('opened again, everyone reads it', sees(NIA, 'record', pitch))
+with store.as_viewer(V(MIRA)): spaces.set_default(spaces.personal_space(MIRA))   # her own choice: nothing queued for her team space
 personal = item('Bullet points', 'Mira prefers bullet points in summaries.', spaces.personal_space(MIRA), viewer=V(MIRA))
+with store.as_viewer(V(MIRA)): spaces.set_default('')
 t('a personal space is never open', not sees(NIA, 'record', personal) and not sees(OWNER, 'record', personal))
 
 # ---------------- organisations: a shared directory, internal facts stay in their space ----------------
