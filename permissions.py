@@ -398,7 +398,7 @@ ROUTES = {
     'POST /admin/api/teams/jobs/{jid}/copy': 'job:use:run', 'GET /admin/api/teams/jobs/{jid}/versions': 'job:view',
     'GET /admin/api/teams/jobs/{jid}/versions/{v}': 'job:view', 'PUT /admin/api/teams/jobs/{jid}/template': 'job:use:run',
     'POST /admin/api/teams/jobs/{jid}/template/fill': 'job:use:run', 'POST /admin/api/teams/jobs/{jid}/resume': 'job:use:run',
-    'POST /admin/api/teams/jobs/{jid}/stop': 'job:use:run', 'POST /admin/api/teams/jobs/{jid}/files': 'job:use:run', 'POST /admin/api/teams/steps/{sid}': 'job:use:run',
+    'POST /admin/api/teams/jobs/{jid}/stop': 'job:use:run', 'POST /admin/api/teams/jobs/{jid}/files': 'job:use:run', 'POST /admin/api/teams/jobs/{jid}/files/rerun': 'job:use:reprice', 'POST /admin/api/teams/jobs/{jid}/assumptions/{aid}': 'job:use:run', 'POST /admin/api/teams/steps/{sid}': 'job:use:run',
     'GET /admin/api/teams/{tid}': 'team:view', 'GET /admin/api/teams/{tid}/page': 'team:view', 'POST /admin/api/teams/{tid}/seen': 'team:view',
     'PUT /admin/api/teams/{tid}/pin': 'team:view', 'PUT /admin/api/teams/{tid}/identity': 'team:manage',
     'GET /admin/api/teams/{tid}/talk': 'team:use', 'POST /admin/api/teams/{tid}/talk': 'team:use',

@@ -158,6 +158,12 @@ BUILTIN = [
      'When you write in Talk to the team (a team or a job page)', ['Digital team'],
      'Your message, the team (roles and purposes), the job\'s brief, stages, outputs and recent steps, the conversation so far',
      'Replies, and notes passed to a member (kept with the job)', False),
+    ('team-files-review', 'Digital teams: what new files change', 'internal',
+     'When files are added to a job that has started, the team lead says what they change: a newer revision of a drawing (Alice\'s own code '
+     'matches those first), new scope, or answers to flagged assumptions, and which elements each affects. Nothing is redone until you choose.',
+     'When you add files to a job that has started (job page)', ['Digital team'],
+     'The new files, the names of the job\'s documents, the plan\'s elements and the open flagged assumptions',
+     'A report on the job page; you choose what to redo, with its estimated cost shown first', False),
     ('team-template-mapper', 'Digital teams: pricing template layout', 'internal',
      'Only when Alice\'s own code cannot find a pricing template\'s header row: the team lead\'s model reads the top rows of the template and '
      'says which columns hold the description, quantity, unit, rate and amount. Its answer is checked in code and you confirm the mapping.',
@@ -311,6 +317,10 @@ ANATOMY = {
                   'instructions': 'Answer the user for the team from the team and job data; route a faithful note to the member who should act on it. Never invent progress.',
                   'tools': ['None'], 'data': ['input'], 'guardrails': ['secret_detection', 'protective_marking', 'spend_cap'],
                   'outputs': ['Replies; notes passed to a member for their next turn'], 'gate': 'Advisory: it changes nothing; you act on the page'},
+    'team-files-review': {'model': 'The team lead\'s model', 'instructions': 'Say what each new file changes (revision, new scope, answers, other) and which elements it affects. Never plan, measure or price.',
+                          'tools': ['Revision matching in code (drawing number, name)'], 'data': ['documents'],
+                          'guardrails': ['secret_detection', 'protective_marking', 'client_separation', 'provider_allow', 'spend_cap'],
+                          'outputs': ['A report on the new files; the options and their estimated costs are worked out in code'], 'gate': 'You choose what to redo'},
     'team-template-mapper': {'model': 'The team lead\'s model', 'instructions': 'Find the header row and which column holds each role; list element headings.',
                              'tools': ['None'], 'data': ['documents'], 'guardrails': ['secret_detection', 'protective_marking', 'provider_allow', 'spend_cap'],
                              'outputs': ['A detected mapping, checked in code'], 'gate': 'You confirm or correct the mapping'},
@@ -333,7 +343,7 @@ GROUPS = [
     ('apps_agents', 'Inside your apps', 'Agents that do one job inside an app, such as reading a lab report for Health Insights.',
      ['health-extract']),
     ('teams', 'Digital teams', 'Members of your digital teams working jobs stage by stage, and Temple suggesting how to refine them.',
-     ['team-member', 'team-talk', 'team-template-mapper', 'temple-team-coach']),
+     ['team-member', 'team-talk', 'team-files-review', 'team-template-mapper', 'temple-team-coach']),
     ('answers', 'Answering questions', 'Staff assistants that answer from approved knowledge, and Ask Temple for your own questions.',
      ['alice-assistants', 'temple-ask']),
 ]

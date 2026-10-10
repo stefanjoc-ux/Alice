@@ -203,7 +203,19 @@ class AddFilesIn(BaseModel):
 
 
 class MissingInfoIn(BaseModel):
-    mode: str = Field(pattern='^(ask|assume)$')
+    mode: str = Field(pattern='^(ask|minor|assume)$')
+    limit: float | None = Field(None, ge=0, le=10000000)
+
+
+class AssumptionIn(BaseModel):
+    action: str = Field(pattern='^(accept|change|ask_client)$')
+    text: str = Field('', max_length=1000)
+
+
+class FilesChoiceIn(BaseModel):
+    choice: str = Field(pattern='^(remeasure|reprice|full|none)$')
+    elements: list[str] | None = Field(None, max_length=60)
+    refs: list[str] | None = Field(None, max_length=500)
 
 
 class InspectIn(BaseModel):
@@ -422,6 +434,19 @@ def teams_job_files(d: AddFilesIn, jid: str = FPath(pattern=HEX)):
     return _do(team_files.add_files, jid, [u.model_dump() for u in d.uploads], [x.model_dump() for x in d.library], d.elements, d.answers, d.note)
 
 
+@router.post('/admin/api/teams/jobs/{jid}/files/rerun')
+def teams_job_files_rerun(d: FilesChoiceIn, jid: str = FPath(pattern=HEX)):
+    """After adding files: what to redo (the lead's report and each option's estimated cost are on the job page first)."""
+    import team_files
+    return _do(team_files.choose_rerun, jid, d.choice, d.elements, d.refs)
+
+
+@router.post('/admin/api/teams/jobs/{jid}/assumptions/{aid}')
+def teams_job_assumption(d: AssumptionIn, jid: str = FPath(pattern=HEX), aid: str = FPath(pattern=r'^[0-9a-f]{8}$')):
+    """A flagged assumption: accept it, change it (only the lines it affects are redone) or ask the client."""
+    return _do(teams.decide_assumption, jid, aid, d.action, d.text)
+
+
 @router.post('/admin/api/teams/jobs/{jid}/resume')
 def teams_job_resume(d: ResumeIn | None = Body(None), jid: str = FPath(pattern=HEX)):
     return _do(teams.resume, jid, (d.note if d else ''))
@@ -551,7 +576,7 @@ def teams_filing_category(tid: str = FPath(pattern=ID)):
 
 @router.put('/admin/api/teams/{tid}/missing-info')
 def teams_missing_info(m: MissingInfoIn, tid: str = FPath(pattern=ID)):
-    return _do(teams.set_missing_info, tid, m.mode)
+    return _do(teams.set_missing_info, tid, m.mode, m.limit)
 
 
 @router.put('/admin/api/teams/{tid}/autonomy')

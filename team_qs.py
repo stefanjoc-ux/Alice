@@ -21,6 +21,7 @@ from pathlib import Path
 
 import agents
 import substrate_store as store
+import team_costs
 import teams
 
 TEAM_ID = 'quantity-surveying'
@@ -278,8 +279,13 @@ def qs_plan(job, stage, member, ctx):
 MEASURE_BATCH = 3            # elements per part of the take-off
 PRICE_ITEMS = 20             # items per part of the pricing (and of the comparison)
 MEASURE_SPEC = ('{"accept": true, "reasons": [], "items": [{"ref": "Q1", "element": "", "description": "", "quantity": 0, "unit": "m2|m3|m|nr|item", '
-                '"source": {"document": "exact document name", "page": "page number if the document has pages", "line": "schedule line, e.g. Line 4"}, '
+                '"source": {"document": "exact document name", "page": "page number if the document has pages", "area": "for a drawing: the area A1 to C3 the reading cites", '
+                '"line": "schedule line, e.g. Line 4"}, '
                 '"from_drawing": false, "unmeasured": false, "note": ""}], "summary": "one sentence", "note": "hand-off note to the Cost Surveyor", "questions": [], "what_changed": ""}')
+AREA_NOTE = ('DRAWINGS: each drawing page has been read for you (by Alice\'s code from its text and lines, and by a model only for what code '
+             'could not read); every reading line cites the page and the area (a 3 x 3 grid, A1 top left to C3 bottom right). For every quantity '
+             'taken from a drawing give that page and area in "source". Use measurements Alice\'s code worked out at the scale as they are; where a '
+             'written dimension does not agree with its drawn line, use the written figure and say so in "note".')
 UNMEASURED_NOTE = ('PROVISIONAL SUMS ARE ALLOWED on this job: work the documents call for but do not let you measure (for example a connection to an '
                    'existing sewer, or statutory services) is listed as ONE item: quantity 1, unit item, "unmeasured": true, with the document and page '
                    'that name the work. The Cost Surveyor prices it as a provisional sum. Never use this for work you can measure.')
@@ -323,17 +329,18 @@ def qs_measure(job, stage, member, ctx):
         mine = list(dict.fromkeys(p['label'] for p in part))
         names = list(dict.fromkeys(d for p in part for d in p['docs']))
         extra = (f'WHOLE PLAN: elements {every}.\nTHIS PART: take off ONLY these elements: {", ".join(mine)}, from the DOCUMENTS given '
-                 f'({", ".join(names) or "none"}). The other elements are measured separately: do not measure them here.'
+                 f'({", ".join(names) or "none"}). The other elements are measured separately: do not measure them here.\n' + AREA_NOTE
                  + ('\n' + UNMEASURED_NOTE if ps_on else ''))
         return _ask(job, member, ctx, stage, MEASURE_SPEC, extra=extra, what='the list of measured items', docs_only=names)
     done, stats = teams.in_parts(job, stage, pieces, run, _split_docs, batch=MEASURE_BATCH, extra={**_extra_key(ctx, member), 'ps': ps_on})
     out = _merge_common([d for _, d in done])
     if not out['accept'] and not ctx.get('must_accept'): return out
-    items, rejected, seen = [], [], set()
+    items, rejected, seen, said = [], [], set(), {}
     for part, d in done:
         mine = {p['label'].lower(): p['label'] for p in part}
         for it in d.get('items') or []:
             if not isinstance(it, dict): continue
+            said_ref = teams._clean(it.get('ref'), 12).upper()
             desc = teams._clean(it.get('description'), 300)
             q, unit = _num(it.get('quantity')), unit_key(it.get('unit'))
             unmeasured = ps_on and it.get('unmeasured') is True
@@ -342,20 +349,24 @@ def qs_measure(job, stage, member, ctx):
             docname = teams._clean(src.get('document'), 120)
             doc = _doc_named(docs, docname)
             page, line = teams._clean(src.get('page'), 20), teams._clean(src.get('line'), 60)
+            area = teams._clean(src.get('area'), 4).upper()
+            area = area if re.fullmatch(r'[A-C][1-3]', area) else ''
             why = ('no description' if not desc else 'no quantity above zero' if not q or q <= 0 else 'no unit' if not unit
                    else 'no source document' if not docname else f'“{docname}” is not one of this job\'s documents' if not doc
                    else 'no page or schedule line' if not (page or line) else '')
             if why: rejected.append({'description': desc or '(none)', 'reason': why}); continue
             el = teams._clean(it.get('element'), 80)
             el = mine.get(el.lower()) or (part[0]['label'] if len(mine) == 1 else el) or 'General'
-            key = (el.lower(), desc.lower(), round(q, 3), unit, doc['name'], page, line)
+            key = (el.lower(), desc.lower(), round(q, 3), unit, doc['name'], page, area, line)
             if key in seen: continue                       # the same item from two parts (e.g. a halved element) is kept once
             seen.add(key)
             approx = bool(it.get('from_drawing')) or doc['kind'] == 'drawing'
+            if re.fullmatch(r'Q\d+', said_ref): said.setdefault(said_ref, []).append(len(items))
             items.append({'ref': f'Q{len(items) + 1}', 'element': el, 'description': desc,
                           'quantity': round(q, 3), 'unit': unit, 'approximate': approx and not unmeasured, **({'unmeasured': True} if unmeasured else {}),
-                          'source': {'document': doc['name'], 'page': page, 'line': line},
-                          'source_text': doc['name'] + (f', page {page}' if page else '') + (f', {line}' if line else ''), 'note': teams._clean(it.get('note'), 300)})
+                          'source': {'document': doc['name'], 'page': page, 'line': line, **({'area': area} if area else {})},
+                          'source_text': doc['name'] + (f', page {page}' if page else '') + (f', area {area}' if area else '') + (f', {line}' if line else ''),
+                          'note': teams._clean(it.get('note'), 300)})
     out['output'] = {'items': items, 'rejected': rejected}
     if only is not None:                  # the other elements' items are kept exactly as measured (same refs, so their prices stay)
         prev = (ctx['outputs'] or {}).get('measure') or (rr.get('previous') or {}).get('measure') or {}
@@ -365,6 +376,7 @@ def qs_measure(job, stage, member, ctx):
         out['output'] = {'items': kept + items, 'rejected': rejected,
                          'remeasured': {'elements': list(only), 'refs': [i['ref'] for i in items],
                                         'replaced': [i['ref'] for i in prev.get('items') or [] if i['element'] in only]}}
+    _renumber_flags({r: items[ix[0]]['ref'] for r, ix in said.items() if len(ix) == 1})
     out['parts'] = stats
     out['accept'] = True
     out['summary'] = (done[0][1].get('summary') if len(done) == 1 else '') or (f'{len(items)} items measured' + (f', {len(rejected)} left out without a source' if rejected else ''))
@@ -1669,6 +1681,15 @@ def _ask_pass(jid, refs, note, kind):
 
 
 # ---------------- Re-price and Re-measure: a new version of the job (8 Oct 2026) ----------------
+def _renumber_flags(mapping):
+    """The member numbered its items its own way; Alice renumbers them (parts merged, a re-measure continuing after the kept items). The
+    refs its assumptions name this turn follow the new numbers, so their effect on cost and a later change point at the right lines."""
+    box = teams._FLAGS.get()
+    if not box or not mapping: return
+    for a in box['assumed']:
+        a['affects'] = re.sub(r'\bQ\d+\b', lambda m: mapping.get(m.group(0), m.group(0)), a.get('affects') or '')
+
+
 def _rerun_ready(jid):
     """The job and its team for a re-run: only when the team is not working on it (waiting for you, stopped by a failure or by you,
     or signed off). A stopped job re-runs as a new version like any other (9 Oct 2026)."""
@@ -1788,38 +1809,80 @@ def remeasure(jid, elements, estimates=False, order=None, trends=False, note='',
 REMEASURE_KINDS = ('remeasure', 'files')     # re-runs that measure chosen elements again and price only what was measured again
 
 
-def files_added(jid, j, jt, names, elements, note, attach_only=False):
-    """Files added to a cost estimate (team_files.add_files): they join the documents of the elements they concern (the ones you name,
-    else every element of the plan). Work not done yet just uses them; elements already measured are measured again from the documents,
-    then only their items are priced again, as a new version (while the team is working, once it stops for you)."""
-    import team_files
+def files_added(jid, j, jt, names, elements, note, attach_only=True, revisions=None):
+    """Files added to a cost estimate (team_files.add_files) join the documents of the elements they concern: a newer revision takes
+    its earlier file's place in the elements that used it; any other file joins the elements you ticked, else every element. Nothing is
+    redone here: you choose that after the lead's report (file_choice_options / file_choice)."""
     outs = j['outputs']
     plan = outs.get('plan') or {}
     have = plan.get('elements') or []
-    if not have:
-        return {'rerun': 'none', 'message': 'Added. The team has not planned the job yet: the Lead QS plans with the new files.'}
+    if not have: return {}
     els = [e for e in dict.fromkeys(teams._clean(x, 80) for x in elements or []) if e] or list(have)
     bad = [e for e in els if e not in have]
     if bad: raise ValueError(f'{", ".join(bad)}: not an element in the plan.')
     ed = plan.setdefault('element_documents', {})
-    every = [d['name'] for d in teams._docs_in(jid) if d['name'] not in names]
-    for e in els: ed[e] = list(dict.fromkeys((ed.get(e) or every) + list(names)))      # an element with none named used every document: it still does
-    plan['documents'] = (plan.get('documents') or []) + [{'name': n, 'use': 'added during the job'} for n in names if n not in {d.get('name') for d in plan.get('documents') or []}]
+    every = [d['name'] for d in teams._docs_in(jid) if d['name'] not in names]          # the current documents (a replaced revision is left out)
+    revisions = revisions or {}
+    for n in names:
+        old = revisions.get(n)
+        users = [e for e in have if old and old in (ed.get(e) or [])]
+        if old and users:
+            for e in users: ed[e] = [n if x == old else x for x in ed[e]]
+        elif old:                                     # the old revision was read by every element (none named): the new one is too
+            for e in have: ed[e] = list(dict.fromkeys([x for x in (ed.get(e) or every) if x != old] + [n]))
+        else:
+            for e in els: ed[e] = list(dict.fromkeys((ed.get(e) or every) + [n]))      # an element with none named used every document: it still does
+    plan['documents'] = (plan.get('documents') or []) + [{'name': n, 'use': 'added during the job' + (f' (replaces {revisions[n]})' if n in revisions else '')}
+                                                         for n in names if n not in {d.get('name') for d in plan.get('documents') or []}]
     outs['plan'] = plan
     teams._set(jid, outputs=outs)
-    if attach_only: return {}
-    ms = _stage_of(jt, 'qs_measure')
-    keys = [s_['key'] for s_ in jt['stages']]
-    measured = bool((outs.get('measure') or {}).get('items'))
-    if not ms or (not measured and j['stage'] <= keys.index(ms['key'])):
-        return {'rerun': 'none', 'message': f'Added to {", ".join(els)}. Nothing is measured yet: the Measurement Surveyor uses the new files.'}
-    if team_files._busy(j):
-        team_files._pend(jid, 'qs', names=names, elements=els, note=note)
-        return {'rerun': 'pending', 'message': f'Added to {", ".join(els)}. The team is working: those elements are measured again and their items '
-                                               'priced again as soon as it stops for you, as a new version.'}
-    remeasure(jid, els, note=note, kind='files', why=f'new file{"s" if len(names) != 1 else ""} {", ".join(names)}')
-    return {'rerun': 'started', 'message': f'Added. {", ".join(els)} {"is" if len(els) == 1 else "are"} measured again with the new files and '
-                                           'only those items priced again, as a new version.'}
+    return {}
+
+
+def file_choice_options(jid, review, costs):
+    """After new files: re-measure the affected elements (then price only their items) or re-price the affected items, each with its
+    estimated cost, worked out in code from what the job's own stages cost last time (per element measured, per item priced, plus
+    reassembling); the full re-run and Redo nothing are added by team_files."""
+    from decimal import Decimal
+    j = teams._row(jid)
+    team, jt = teams._job_team(j)
+    outs = j['outputs']
+    f = team_costs.fx()
+    els_all = (outs.get('plan') or {}).get('elements') or []
+    els = [e for e in review.get('elements') or [] if e in els_all]
+    measured = (outs.get('measure') or {}).get('items') or []
+    priced = (outs.get('price') or {}).get('items') or []
+    ms, ps, asm = _stage_of(jt, 'qs_measure'), _price_stage(jt), _stage_of(jt, 'qs_assemble')
+    per_el = (costs.get(ms['key'], Decimal('0')) / len(els_all)) if ms and els_all else Decimal('0')
+    per_item = (costs.get(ps['key'], Decimal('0')) / len(priced)) if ps and priced else Decimal('0')
+    after = costs.get(asm['key'], Decimal('0')) if asm else Decimal('0')
+    out = []
+    if els and measured:
+        n_items = sum(1 for i in priced if i.get('element') in els) or sum(1 for i in measured if i.get('element') in els)
+        est = per_el * len(els) + per_item * n_items + after
+        out.append({'key': 'remeasure', 'label': f'Re-measure {", ".join(els)}', 'elements': els,
+                    'what': f'Measure {", ".join(els)} again from the documents (the new files included), price only their items again and reassemble; '
+                            'every other item is kept exactly. A new version.', 'estimate': team_costs.money(est, f) if est else None})
+    refs = [i['ref'] for i in priced if i.get('element') in els]
+    if refs:
+        est = per_item * len(refs) + after
+        out.append({'key': 'reprice', 'label': f'Re-price {len(refs)} item{"s" if len(refs) != 1 else ""} in {", ".join(els)}', 'refs': refs, 'elements': els,
+                    'what': 'Keep the measured quantities and price only these items again (for a new specification, say), then reassemble. A new version.',
+                    'estimate': team_costs.money(est, f) if est else None})
+    return out
+
+
+def file_choice(jid, choice, elements, refs, names, note):
+    why = f'new file{"s" if len(names) != 1 else ""} {", ".join(names)}'
+    if choice == 'remeasure':
+        if not elements: raise ValueError('Choose the elements to re-measure.')
+        remeasure(jid, elements, note=note, kind='files', why=why)
+        return f'{", ".join(elements)} {"is" if len(elements) == 1 else "are"} measured again with the new files and only those items priced again, as a new version.'
+    if choice == 'reprice':
+        if not refs: raise ValueError('Choose the items to re-price.')
+        reprice(jid, refs, note=(note + ' ' if note else '') + f'Because of {why}.')
+        return f'{len(refs)} item{"s" if len(refs) != 1 else ""} priced again with the new files, as a new version.'
+    raise ValueError('Choose re-measure, re-price, the full re-run or nothing.')
 
 
 def decide_rates(jid, entries, save_to_library=True, go_on=False):
@@ -1950,9 +2013,59 @@ teams.PRICING['qs_price'] = lambda: {'order': price_rules(), 'note': PRICE_NOTE,
 teams.TEMPLATES['quantity-surveying'] = _template
 teams.HANDLER_TOOLS.update({'qs_price': ['Web search', 'Rate library'], 'qs_trends': ['Past rates held in Alice'],
                             'qs_plan': ['Reads drawings as images'], 'qs_measure': ['Reads drawings as images']})
+# ---------------- flagged assumptions (10 Oct 2026) ----------------
+def flag_lines(outs, flag):
+    """The items an assumption affects: the refs it names (Q3) and every item of the plan elements it names; the priced items when
+    the job has been priced, else the measured ones. Returns (items, refs named, elements named)."""
+    text = flag.get('affects') or ''
+    items = (outs.get('price') or {}).get('items') or (outs.get('measure') or {}).get('items') or []
+    refs = set(re.findall(r'\bQ\d+\b', text))
+    low = text.lower()
+    els = {e for e in (outs.get('plan') or {}).get('elements') or [] if e and re.search(r'(?<!\w)' + re.escape(e.lower()) + r'(?!\w)', low)}
+    return [i for i in items if i['ref'] in refs or i.get('element') in els], refs, els
+
+
+def flag_impact(outs, flag):
+    """The effect on cost of an assumption, worked out in code: what the lines it affects come to (quantity x rate, with the job's
+    regional factor; provisional sums at their sum), or None when none of them is priced yet."""
+    lines, _, _ = flag_lines(outs, flag)
+    priced = [i for i in lines if i.get('rate') is not None and i.get('rate_source') not in ('unpriced', 'excluded')]
+    if not priced: return None
+    factor = ((outs.get('price') or {}).get('location') or {}).get('factor', 1.0)
+    v = Decimal(str(compute(priced, factor)['construction']))
+    return {'value': v, 'text': _gbp(v), 'refs': [i['ref'] for i in priced]}
+
+
+def flag_rerun(jid, flag, text):
+    """Change an assumption: only the lines it affects are done again, as a new version, with your correction passed to the member as
+    feedback. An assumption made while planning or measuring (or one naming elements) re-measures those elements and prices only their
+    items again; one made while pricing re-prices only the items it names. Raises, changing nothing, when it names no lines."""
+    j, team, jt = _rerun_ready(jid)
+    outs = j['outputs']
+    lines, refs, els = flag_lines(outs, flag)
+    note = f'You changed an assumption. It was: “{flag["assumption"]}”. It is now: “{text}”. Work from this instead.'
+    stage = next((x for x in jt['stages'] if x['key'] == flag.get('stage')), {})
+    priced = bool((outs.get('price') or {}).get('items'))
+    if stage.get('handler') == 'qs_price' and refs and priced:
+        have = {i['ref'] for i in (outs.get('price') or {}).get('items') or []}
+        mine = [r for r in sorted(refs, key=lambda x: int(x[1:])) if r in have]
+        if mine:
+            reprice(jid, mine, note=note)
+            return {'what': f'Re-pricing {", ".join(mine)} only (a new version).', 'kind': 'reprice', 'refs': mine}
+    elements = sorted(els | {i['element'] for i in lines if i.get('element')})
+    if elements and (outs.get('measure') or {}).get('items'):
+        remeasure(jid, elements, note=note)
+        return {'what': f'Re-measuring {", ".join(elements)} and pricing only their items again (a new version).', 'kind': 'remeasure', 'elements': elements}
+    raise ValueError('This assumption does not say which items or elements it affects, so Alice cannot tell what to redo: use Re-price or '
+                     'Re-measure on the job and choose them, with your correction as the note.')
+
+
+teams.IMPACTS['cost_estimate'] = flag_impact
+teams.FLAG_RERUNS['cost_estimate'] = flag_rerun
 import team_files  # noqa: E402
 team_files.READS_DRAWINGS.update({'qs_plan', 'qs_measure'})
 team_files.FILE_RERUNS['cost_estimate'] = files_added      # the Lead QS's plan and the take-off read drawing pages as images
+team_files.FILE_CHOICES['cost_estimate'] = {'options': file_choice_options, 'apply': file_choice}
 
 
 seed()
