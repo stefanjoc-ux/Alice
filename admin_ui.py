@@ -2023,7 +2023,7 @@ if(PAGE==='backup'){
    tile(f.last&&f.last.time?at(f.last.time).split(' (')[1].replace(')',''):'–','last file share snapshot'),
    tile(db.earliest_restore?Math.max(0,Math.round((Date.now()-new Date(db.earliest_restore))/86400000))+' days':'–','database restore window'),
    tile(d.lock.on?'On':'Off','resource group lock'));
-  $('bk-note').textContent=!d.configured?'Backups are not set up yet. In Azure Cloud Shell run azure-setup.ps1 -Step backup (see the pull request). On the PC, back up the data folder by copying it while Alice is stopped.':
+  $('bk-note').textContent=!d.configured?(d.platform==='pc'?'This Alice runs on a PC: '+(d.advice||'copy its data folder while Alice is stopped.'):'Backups are not set up yet. In Azure Cloud Shell run azure-setup.ps1 -Step backup.'):
    d.lock.on?'Nothing in Alice\'s resource group can be deleted while the lock ('+d.lock.name+') is on. Lift it deliberately: az lock delete --name '+d.lock.name+' --resource-group <your resource group>, then run -Step backup -NoLock so it is not put back.':'The resource group lock is off.';
   const last=o.last;
   const offState=!o.configured?badge(null,'not set up'):!last?badge(null,'no copy yet'):last.status==='ok'?badge(true,'OK'):last.status==='running'?badge('run','running'):badge(false,'failed');
@@ -2972,7 +2972,7 @@ PAGES['teams'] = teams_ui.TITLE
 SECTIONS['teams'] = teams_ui.SECTION
 SCRIPT += teams_ui.SCRIPT
 
-PERSONAL_PAGES = {'health', 'trading', 'mileage'}      # Stefan's own apps: never on the demo Alice
+PERSONAL_PAGES = {'health', 'trading', 'mileage'}      # The owner's own apps: never on the demo Alice
 NAV_GROUPS = [('', ['home', 'actions']),
               ('Workspace', ['temple', 'assistants', 'teams', 'apps', 'organisations']),
               ('Knowledge', ['memories', 'knowledge', 'documents', 'archive']),
@@ -3016,7 +3016,7 @@ SECTIONS['users'] = r'''<section><div class="mem-head"><h2>People</h2><span clas
 Someone with more than one account (for example an everyday account and a tenant admin account): <b>Link</b> them, so they are one author with one set of spaces. Alice never links accounts by itself.</p></section>
 <section id="us-link" hidden aria-labelledby="us-link-title"><div class="mem-head"><h2 id="us-link-title">Link accounts</h2><button type="button" id="us-link-close" class="secondary">Close</button></div>
 <form id="us-link-form" class="us-form"><label>The same person as <select id="us-link-to" required></select></label>
-<label>Why (kept in the activity log) <input id="us-link-note" maxlength="300" required placeholder="For example: both are Stefan's accounts (everyday and tenant admin)"></label>
+<label>Why (kept in the activity log) <input id="us-link-note" maxlength="300" required placeholder="For example: both are the owner's accounts (everyday and tenant admin)"></label>
 <button type="button" id="us-link-check" class="secondary">Show what changes</button></form><div id="us-link-preview" class="small"></div>
 <button type="button" id="us-link-go" hidden>Link and repair</button></section>
 <section id="us-groups" hidden><div class="mem-head"><h2>Entra groups</h2><button type="button" id="us-groups-apply" class="secondary">Apply now</button></div>

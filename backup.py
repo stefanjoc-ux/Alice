@@ -1,4 +1,4 @@
-"""Backups (Stefan, 8 Oct 2026): the nightly off-site copy and the Backup page.
+"""Backups (8 Oct 2026): the nightly off-site copy and the Backup page.
 
 Three kinds of backup keep Alice safe in Azure (all set up by azure-setup.ps1 -Step backup, infra/backup.bicep):
   files     Azure Backup snapshots of the file share (Recovery Services vault, daily, kept 30 days): restore one file or folder.
@@ -10,7 +10,7 @@ Three kinds of backup keep Alice safe in Azure (all set up by azure-setup.ps1 -S
 The job only READS live data: the database through pg_dump, the share through a read-only mount (/mnt/alice-ro). It writes
 backup data to the off-site account and nowhere else (never the live share's account), with the managed identity (no keys).
 Each run is recorded (backup_runs) and logged with its size, duration and result; a failure shows on Home and is emailed
-to Stefan (notify.py). The Backup page (Admin, owner only) reads the vault and the database server's backup state from
+to the owner (notify.py). The Backup page (Admin, owner only) reads the vault and the database server's backup state from
 Azure with the same identity (Reader on those two resources only).
 """
 import io
@@ -258,7 +258,7 @@ def _scrub(text):
 
 
 def _email_failure(cfg, when, error, kind='off-site backup'):
-    """Tell Stefan by email (notify.py) and log whether it went."""
+    """Tell the owner by email (notify.py) and log whether it went."""
     import notify
     link = (os.environ.get('ALICE_PUBLIC_URL', '').rstrip('/') or '') + '/admin/backup'
     detail = error
@@ -512,10 +512,14 @@ def targets(o, now=None):
 
 
 def runbook():
+    """docs/restore.md, with this deployment's repository address filled in where it is configured (deployment.repo_url)."""
     try:
-        with open(RUNBOOK, encoding='utf-8') as f: return f.read()
+        with open(RUNBOOK, encoding='utf-8') as f: text = f.read()
     except OSError:
         return ''
+    import deployment
+    url = deployment.repo_url()
+    return text.replace('<repository URL>', url + '.git') if url else text
 
 
 def overview(fresh=False):
@@ -544,7 +548,8 @@ def overview(fresh=False):
     if dc['job']:
         try: drill['running'] = drill_running()
         except Exception as e: drill['error'] = (drill['error'] + ' ' if drill['error'] else '') + 'Could not see whether a drill is running: ' + _scrub(str(e))
-    value = {'configured': configured(), 'offsite': offsite, 'files': _files_state(cfg), 'database': _database_state(cfg),
+    import deployment
+    value = {'platform': deployment.platform(), 'advice': deployment.backup_advice(), 'configured': configured(), 'offsite': offsite, 'files': _files_state(cfg), 'database': _database_state(cfg),
              'lock': {'on': bool(cfg['lock']), 'name': cfg['lock']}, 'home': home_status(), 'drill': drill}
     value['targets'] = targets(value)
     with _lock: _cache.update(at=now, value=value)

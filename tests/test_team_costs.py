@@ -33,7 +33,7 @@ def fake_call(provider, system, messages, max_tokens=1500, timeout=60, workload=
     payload = messages[0]['content']
     CALLS.append({'workload': workload, 'payload': payload, 'system': system})
     usage_meter.log(USAGE, 'claude', 'claude-sonnet-5-5', workload)              # the real ledger path: Usage, the agent run, the team
-    if 'Lead QS' in workload and 'message_from_stefan' in payload:
+    if 'Lead QS' in workload and 'message_from_the_user' in payload:
         return json.dumps({'reply': 'Noted.', 'route_to': '', 'note_for_member': '', 'not_allowed': []})
     if 'Lead QS' in workload and 'COST PLAN FIGURES' in payload:
         return json.dumps({'accept': True, 'summary': 'A hall.', 'assumptions': [], 'exclusions': ['VAT'], 'risks': [], 'note': 'On.'})
@@ -300,7 +300,7 @@ t('an element not in the plan is refused', cl.post(f'/admin/api/teams/jobs/{k["i
 clients.create_client('Client Aardvark'); clients.create_client('Client Badger')
 a = start('FICTIONAL client job', client='Client Aardvark')
 t('a job for a client', a['client'] == 'Client Aardvark')
-n_plan = sum(1 for c_ in CALLS if 'Lead QS' in c_['workload'] and 'COST PLAN' not in c_['payload'] and 'SUGGESTED' not in c_['payload'] and 'message_from_stefan' not in c_['payload'])
+n_plan = sum(1 for c_ in CALLS if 'Lead QS' in c_['workload'] and 'COST PLAN' not in c_['payload'] and 'SUGGESTED' not in c_['payload'] and 'message_from_the_user' not in c_['payload'])
 r = cl.post(f'/admin/api/teams/jobs/{a["id"]}/copy', json={'client': 'Client Badger'}, headers=H)
 t('copying a client\'s job for another client is refused by the rule, and logged', r.status_code == 400 and 'Client Aardvark' in r.json()['detail']
   and 'Client-facing documents' in r.json()['detail'])
@@ -308,7 +308,7 @@ with s.db() as c: blk = c.execute("SELECT count(*) FROM activity WHERE action='r
 t('…as a block under that rule', blk == 1)
 r = cl.post(f'/admin/api/teams/jobs/{a["id"]}/copy', json={'client': 'Client Aardvark', 'title': 'FICTIONAL client job, phase 2'}, headers=H)
 cp = r.json()
-n_plan2 = sum(1 for c_ in CALLS if 'Lead QS' in c_['workload'] and 'COST PLAN' not in c_['payload'] and 'SUGGESTED' not in c_['payload'] and 'message_from_stefan' not in c_['payload'])
+n_plan2 = sum(1 for c_ in CALLS if 'Lead QS' in c_['workload'] and 'COST PLAN' not in c_['payload'] and 'SUGGESTED' not in c_['payload'] and 'message_from_the_user' not in c_['payload'])
 t('for the same client it is copied: documents, plan and settings kept', r.status_code == 200 and cp['client'] == 'Client Aardvark'
   and [d_['name'] for d_ in cp['documents']] == [DOC] and cp['team_version'] == a['team_version'] and cp['job_type'] == a['job_type'] and cp['id'] != a['id']
   and cp['title'] == 'FICTIONAL client job, phase 2')

@@ -1,6 +1,6 @@
 # Restoring Alice
 
-Four ways back, from the smallest to the largest. Run every command in **Azure Cloud Shell**, signed in to the Tuduma tenant.
+Four ways back, from the smallest to the largest. Run every command in **Azure Cloud Shell**, signed in to your Microsoft 365 tenant.
 Each step says which shell: **Bash** or **PowerShell**. Words in `<angle brackets>` are placeholders: replace them with your
 own values. This page never contains a password or a key. Where a command needs one, it reads it from Key Vault into a variable.
 
@@ -137,7 +137,7 @@ Use this when Alice's resource group or region is lost or unusable. The off-site
    and your live setup state is never mixed with it (the setup state lives in each resource group's own storage account, and a
    step refuses to start if a local `azure-state.json` describes an Alice the resource group does not have):
    ```
-   git clone https://github.com/stefanjoc-ux/Alice.git Alice-recovery
+   git clone <repository URL> Alice-recovery
    cd Alice-recovery
    ./deploy/azure-setup.ps1 -SubscriptionId <subscription id> -ResourceGroup alice-recovered-rg -Location uksouth -Step infra
    ./deploy/azure-setup.ps1 -SubscriptionId <subscription id> -ResourceGroup alice-recovered-rg -Step secrets
@@ -170,7 +170,7 @@ Database changes are always additive, so the older version runs against the newe
 - **The button:** GitHub › Actions › **Go live (promote or roll back)** › Run workflow › `rollback`.
 - **From Cloud Shell** (Bash):
   ```
-  git clone https://github.com/stefanjoc-ux/Alice.git && cd Alice
+  git clone <repository URL> Alice && cd Alice
   RG=alice-rg bash deploy/promote.sh status
   RG=alice-rg bash deploy/promote.sh rollback
   ```

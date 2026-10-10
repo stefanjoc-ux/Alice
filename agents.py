@@ -14,6 +14,7 @@ come with the Azure step.
 """
 import contextvars
 import functools
+import deployment
 import json
 import logging
 import re
@@ -234,7 +235,7 @@ ANATOMY = {
                         'tools': ['None'], 'data': ['memories'], 'guardrails': ['spend_cap', 'secret_detection', 'protective_marking', 'client_separation'],
                         'outputs': ['Category and tag changes with Undo', 'Proposals on Actions'],
                         'gate': 'Yours and rule-protected categories wait for you; limits, names and near-duplicates checked in code'},
-    'temple-discuss': {'model': 'temple', 'instructions': 'Discuss a waiting decision with Stefan; explain clashes, say what would resolve them, '
+    'temple-discuss': {'model': 'temple', 'instructions': 'Discuss a waiting decision with the person deciding; explain clashes, say what would resolve them, '
                                                        'optionally a new recommendation and a suggested note. Never approves.',
                        'tools': ['None'], 'data': ['memories'], 'guardrails': ['spend_cap', 'secret_detection', 'protective_marking'],
                        'outputs': ['Replies, a possible new recommendation, a suggested note'], 'gate': 'You still approve or reject'},
@@ -307,7 +308,7 @@ ANATOMY = {
                     'outputs': ['Stage outputs and hand-off notes', 'Questions for you', 'Word and Excel cost plan (draft)'],
                     'gate': 'You approve each hand-off (or only the final output) on Actions'},
     'team-talk': {'model': 'The lead\'s model, chosen on the team page',
-                  'instructions': 'Answer Stefan for the team from the team and job data; route a faithful note to the member who should act on it. Never invent progress.',
+                  'instructions': 'Answer the user for the team from the team and job data; route a faithful note to the member who should act on it. Never invent progress.',
                   'tools': ['None'], 'data': ['input'], 'guardrails': ['secret_detection', 'protective_marking', 'spend_cap'],
                   'outputs': ['Replies; notes passed to a member for their next turn'], 'gate': 'Advisory: it changes nothing; you act on the page'},
     'team-template-mapper': {'model': 'The team lead\'s model', 'instructions': 'Find the header row and which column holds each role; list element headings.',
@@ -317,7 +318,7 @@ ANATOMY = {
                           'tools': ['None'], 'data': ['input'], 'guardrails': ['spend_cap', 'secret_detection', 'protective_marking'],
                           'outputs': ['Replies; suggested instructions'], 'gate': 'You approve or reject each suggestion'},
     'claude-desktop': dict(_APP_ANATOMY, model='Claude (your Claude Desktop model)', identity='Caller name on this computer (stdio)'),
-    'microsoft-copilot': dict(_APP_ANATOMY, model='Microsoft 365 Copilot', identity='Entra ID token from the Tuduma tenant'),
+    'microsoft-copilot': dict(_APP_ANATOMY, model='Microsoft 365 Copilot', identity='Entra ID token from ' + deployment.tenant()),
 }
 # How the Agents page groups agents: (id, name, what the group is for, member agent ids). Apps form their own group.
 GROUPS = [
@@ -373,7 +374,7 @@ def _default_perms(kind):
 
 
 with store.db() as c:
-    c.execute('''CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, owner TEXT NOT NULL DEFAULT 'Stefan',
+    c.execute('''CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, owner TEXT NOT NULL DEFAULT 'Owner',
         purpose TEXT NOT NULL DEFAULT '', trigger TEXT NOT NULL DEFAULT '', workloads TEXT NOT NULL DEFAULT '[]', reads TEXT NOT NULL DEFAULT '',
         writes TEXT NOT NULL DEFAULT '', external_content INTEGER NOT NULL DEFAULT 0, permissions TEXT NOT NULL DEFAULT '{}',
         budget_usd REAL, status TEXT NOT NULL DEFAULT 'active', status_reason TEXT NOT NULL DEFAULT '', review_by TEXT,

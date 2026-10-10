@@ -30,7 +30,7 @@ USAGE = SimpleNamespace(usage={'input_tokens': 10000, 'output_tokens': 1000})   
 def fake_call(provider, system, messages, max_tokens=1500, timeout=60, workload='', meta=None):
     payload = messages[0]['content']
     usage_meter.log(USAGE, 'claude', 'claude-sonnet-5-5', workload)
-    if 'Lead QS' in workload and 'message_from_stefan' in payload:
+    if 'Lead QS' in workload and 'message_from_the_user' in payload:
         return json.dumps({'reply': 'Noted.', 'route_to': '', 'note_for_member': '', 'not_allowed': []})
     if 'Lead QS' in workload and 'COST PLAN FIGURES' in payload:
         return json.dumps({'accept': True, 'summary': 'A hall.', 'assumptions': [], 'exclusions': ['VAT'], 'risks': [], 'note': 'On.'})

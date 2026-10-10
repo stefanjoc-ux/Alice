@@ -2,20 +2,32 @@
 Runs the outstanding Azure changes in one go, and can be left running:
   1. commit and push the changed files (the GitHub pipeline then tests them)
   2. build the new image in Azure from the committed code
-  3. update alice-web and alice-mcp: new image, your es3cloud account allowed, alice.northants.it kept
+  3. update alice-web and alice-mcp: new image, your other account allowed, your custom domain kept
   4. let the GitHub pipeline deploy (prints 5 values for you to paste into GitHub in the morning)
 It stops at the first problem and says which step. Everything is written to a log in your user folder.
 Run from D:\AISubstrate:   .\deploy\run-all.ps1
 #>
 param(
-  [string]$SubscriptionId = '02120be9-a2b2-46e6-ab0e-0eb4c372421f',
-  [string]$ExtAppId = '0f003e20-693d-4148-b609-a122e5ed29e3',
-  [string]$ExtCallers = '04b07795-8ddb-461a-bbee-02f9e1bf7b46=Azure CLI test:copilot',
-  [string]$AlsoAllow = 'stefan.oconnor@es3cloud.com',
-  [string]$CustomDomain = 'alice.northants.it',
-  [string]$GitHubRepo = 'stefanjoc-ux/Alice',
-  [string]$GitHubSubject = 'repo:stefanjoc-ux@336622755/Alice@1403454494:environment:production'
+  # This deployment's own values (decision D-0052: never in the code). Give them here, or put them in deploy\run-all.local.json
+  # (not in git: listed in .gitignore) as {"SubscriptionId": "...", "ExtAppId": "...", ...}.
+  [string]$SubscriptionId = '',
+  [string]$ExtAppId = '',
+  [string]$ExtCallers = '04b07795-8ddb-461a-bbee-02f9e1bf7b46=Azure CLI test:copilot',   # Microsoft's Azure CLI app ID, as the test caller
+  [string]$AlsoAllow = '',
+  [string]$CustomDomain = '',
+  [string]$GitHubRepo = '',
+  [string]$GitHubSubject = ''
 )
+$local = Join-Path $PSScriptRoot 'run-all.local.json'
+if (Test-Path $local) {
+  $cfg = Get-Content $local -Raw | ConvertFrom-Json
+  foreach ($n in 'SubscriptionId', 'ExtAppId', 'ExtCallers', 'AlsoAllow', 'CustomDomain', 'GitHubRepo', 'GitHubSubject') {
+    if (-not (Get-Variable $n -ValueOnly) -and $cfg.$n) { Set-Variable $n "$($cfg.$n)" }
+  }
+}
+foreach ($n in 'SubscriptionId', 'ExtAppId', 'CustomDomain', 'GitHubRepo') {
+  if (-not (Get-Variable $n -ValueOnly)) { throw "Give -$n (or put it in deploy\run-all.local.json)." }
+}
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root

@@ -761,7 +761,7 @@ def search_opportunities(query: Annotated[str, Field(max_length=200)] = '',
 
 
 
-# ---------------- Parker's proposals (Stefan's decision, 5 Oct 2026: every model gets the same access) ----------------
+# ---------------- Parker's proposals (the owner's decision, 5 Oct 2026: every model gets the same access) ----------------
 def _caller_label(who):
     return who.label if who else (CLIENT or "Alice's chat")
 

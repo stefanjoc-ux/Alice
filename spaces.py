@@ -1,4 +1,4 @@
-"""Spaces: shared team memory with explicit membership (Stefan, 8 Oct 2026).
+"""Spaces: shared team memory with explicit membership (8 Oct 2026).
 
 Every memory, decision, knowledge item, organisation, proposal, digital team, team job and pricing template belongs to
 exactly one space (store.item_spaces; an item with no row belongs to the default work space). Each person has a personal
@@ -46,18 +46,18 @@ def _schema(c):
               "status TEXT NOT NULL, reasons TEXT NOT NULL DEFAULT '[]', screened_by TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, "
               "decided_at TEXT, decided_by TEXT NOT NULL DEFAULT '')")
     # kind 'handover': an Owner handing over a departing person's work (handover.py), decided by an Owner, not the author;
-    # note: the reason the Owner gave. Additive (Stefan, 9 Oct 2026).
+    # note: the reason the Owner gave. Additive (9 Oct 2026).
     cols = {r['name'] for r in c.execute('PRAGMA table_info(space_moves)')}
     if 'kind' not in cols: c.execute("ALTER TABLE space_moves ADD COLUMN kind TEXT NOT NULL DEFAULT ''")
     if 'note' not in cols: c.execute("ALTER TABLE space_moves ADD COLUMN note TEXT NOT NULL DEFAULT ''")
-    # The one-off sweep (Stefan, 10 Oct 2026): Temple's verdict on each item in a personal space (work, about the person
+    # The one-off sweep (10 Oct 2026): Temple's verdict on each item in a personal space (work, about the person
     # themselves, sensitive, unsure), so work items stuck there can be moved with the person's confirmation. Additive.
     c.execute("CREATE TABLE IF NOT EXISTS space_sweep (id TEXT PRIMARY KEY, person_key TEXT NOT NULL, item_type TEXT NOT NULL, item_id TEXT NOT NULL, "
               "title TEXT NOT NULL DEFAULT '', preview TEXT NOT NULL DEFAULT '', verdict TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '', "
               "target TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'proposed', scanned_at TEXT NOT NULL, decided_at TEXT, "
               "decided_by TEXT NOT NULL DEFAULT '', outcome TEXT NOT NULL DEFAULT '')")
     c.execute('CREATE INDEX IF NOT EXISTS space_sweep_by_person ON space_sweep(person_key, status)')
-    # Open by default (Stefan's decision D-0040, design CR-4 phase 1, 10 Oct 2026). A team space is readable across the
+    # Open by default (decision D-0040, design CR-4 phase 1, 10 Oct 2026). A team space is readable across the
     # organisation unless a manager closes it (with a reason); a membership may come from an Entra group mapping ('group:<id>'
     # in via), so leaving the group removes exactly that membership. Additive.
     scols = {r['name'] for r in c.execute('PRAGMA table_info(spaces)')}
@@ -78,7 +78,7 @@ with store.db() as _c: _schema(_c)
 
 
 # ---------------- who ----------------
-# ONE identity everywhere (Stefan, 10 Oct 2026). The key of the person behind an account is worked out by key_for() in every process,
+# ONE identity everywhere (10 Oct 2026). The key of the person behind an account is worked out by key_for() in every process,
 # the web, the connector (alice-mcp, which is not behind web sign-in) and background work alike: 'owner' for an owner of Alice by the
 # one owner check (users.is_owner), else the person's primary account (users.primary: an Owner may link a person's Entra accounts on
 # Users and permissions). Reads (my_spaces, list_spaces, search) and writes (author, default space, who may decide) all use it, so
@@ -333,7 +333,7 @@ def default_for(v):
     return capture_default(v)
 
 
-# ---------------- the default capture space (Stefan, 10 Oct 2026: work knowledge must not get stuck in personal spaces) ----------------
+# ---------------- the default capture space (the owner, 10 Oct 2026: work knowledge must not get stuck in personal spaces) ----------------
 CAPTURE_MODES = {'team': 'Their team space', 'personal': 'Their personal space'}
 
 
@@ -1245,7 +1245,7 @@ def options(v=None):
             for s, r in my_spaces(v).items() if RANK[r] >= RANK['contribute']]
 
 
-# ---------------- handing over a departing person's work (handover.py; Stefan, 9 Oct 2026) ----------------
+# ---------------- handing over a departing person's work (handover.py; 9 Oct 2026) ----------------
 def hand_over(item_type, item_id, target, from_key, note):
     """One item out of a departing person's personal space into a shared space the acting Owner manages, through the same
     sharing gate as any share. Only handover.move calls it (Owner role, the person suspended or without a role, a reason given).
@@ -1314,7 +1314,7 @@ def decide_handover(mid, action, note):
     return {'status': 'shared' if action == 'share' else 'kept'}
 
 
-# ---------------- the one-off sweep: work items stuck in personal spaces (Stefan, 10 Oct 2026) ----------------
+# ---------------- the one-off sweep: work items stuck in personal spaces (10 Oct 2026) ----------------
 SWEEP_PROMPT = ('You are Temple, helping a person tidy their personal space in Alice, their organisation\'s shared memory. For each item '
                 'say whether it is about the WORK (projects, clients, organisations, how the team or the business works, decisions about '
                 'tools, systems, Alice itself or policies) or about the PERSON THEMSELVES (their preferences, habits, home, family, '
@@ -1473,7 +1473,7 @@ def sweep_dismiss(sid):
     return sweep_list(v)
 
 
-# ---------------- linking a person's accounts, and repairing items split between them (Stefan, 10 Oct 2026) ----------------
+# ---------------- linking a person's accounts, and repairing items split between them (10 Oct 2026) ----------------
 def link_preview(oid, to):
     """What linking account `oid` to the person whose account is `to` would change, before anything changes: the items that
     account wrote (they count as the person's own), the items in that account's own personal space (moved into the person's
@@ -1656,7 +1656,7 @@ def unlink_accounts(oid, note=''):
 
 
 
-# ---------------- the Organisation space, open and closed team spaces (CR-4 phase 1; Stefan, 10 Oct 2026) ----------------
+# ---------------- the Organisation space, open and closed team spaces (CR-4 phase 1; 10 Oct 2026) ----------------
 ORG_NAME_DEFAULT = 'Organisation'
 _ORG_MADE = []
 
@@ -1879,7 +1879,7 @@ def _save_status(st):
 
 
 
-# ---------------- Temple's router and restricted spaces (CR-4 phase 2; Stefan, 10 Oct 2026) ----------------
+# ---------------- Temple's router and restricted spaces (CR-4 phase 2; 10 Oct 2026) ----------------
 ROUTE_PROMPT = ('You are Temple, deciding where a newly captured item belongs in an organisation\'s shared memory. Answer with one route: '
                 '"work" (about the team\'s work: its policies, processes, projects, clients, decisions); "general" (useful to the whole '
                 'organisation, not one team: organisation-wide policies, facts about the organisation); "self" (about the person who saved '

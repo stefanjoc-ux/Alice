@@ -1,7 +1,7 @@
 @echo off
 title Alice - External endpoint check
 cd /d "%~dp0"
-rem Checks Tuduma sign-in for Alice's external endpoint on this PC (localhost only; nothing is exposed).
+rem Checks Microsoft 365 sign-in for Alice's external endpoint on this PC (localhost only; nothing is exposed).
 rem Needs the Azure CLI (winget install Microsoft.AzureCLI) and the ALICE_EXT_* settings in .env.
 
 if not exist ".venv\Scripts\python.exe" (

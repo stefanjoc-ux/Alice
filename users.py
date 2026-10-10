@@ -10,7 +10,7 @@ Two ways in, switched by ALICE_USE_APP_ROLES (Bicep useAppRoles):
   on              the web sign-in app's roles decide: Alice.Owner, Alice.Admin or Alice.Member, assigned in Entra (the
                   enterprise application has "Assignment required"). Someone with none of them is refused.
 The role Alice uses is the LOWER of the Entra role (a ceiling: take it away in Entra and they drop at once) and the role
-set on the Users and permissions page (which starts at the Entra role on first sign-in). ENTRA DECIDES THE OWNER (Stefan,
+set on the Users and permissions page (which starts at the Entra role on first sign-in). ENTRA DECIDES THE OWNER (the owner,
 9 Oct 2026), through ONE check, is_owner(): anyone assigned the Alice.Owner app role is an owner of Alice (full access,
 including Health, Trading, Mileage and Backups). The configured owner object ID (ALICE_OWNER_OBJECT_ID, the setup state's
 ownerObjectId) is only a bootstrap fallback while app roles are off. Never an account name or email. An owner is always
@@ -61,7 +61,7 @@ def _schema(c):
     # which have no sign-in to read). Additive; read again at every sign-in, so taking the role away in Entra clears it.
     if 'entra_owner' not in {r['name'] for r in c.execute('PRAGMA table_info(users)')}:
         c.execute('ALTER TABLE users ADD COLUMN entra_owner INTEGER NOT NULL DEFAULT 0')
-    # Linked accounts (Stefan, 10 Oct 2026): one person, several Entra accounts (e.g. an everyday account and a tenant admin
+    # Linked accounts (10 Oct 2026): one person, several Entra accounts (e.g. an everyday account and a tenant admin
     # account). A linked account counts as the same author as its primary account and shares that person's space memberships.
     # Only an Owner links accounts, on Users and permissions; never automatically by name or email.
     c.execute("CREATE TABLE IF NOT EXISTS user_links (oid TEXT PRIMARY KEY, primary_oid TEXT NOT NULL, linked_at TEXT NOT NULL, "
@@ -316,7 +316,7 @@ def person(oid):
     return _row((oid or '').strip().lower())
 
 
-# ---------------- linked accounts: one person, one author (Stefan, 10 Oct 2026) ----------------
+# ---------------- linked accounts: one person, one author (10 Oct 2026) ----------------
 _links_cache = []          # [(time read, {linked oid: primary oid})]
 
 

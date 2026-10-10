@@ -231,7 +231,7 @@ q2 = next(x for x in p['view']['plan']['rows'] if x['ref'] == 'Q2')
 t('your rate is recorded as yours, source "Your rate"', r.status_code == 200 and q2['source'] == 'yours' and q2['source_label'] == 'Your rate' and q2['rate'] == 1250.5
   and q2['decided_by'] == 'Stefan' and q2['amount'] == 2501.0)
 rs = [x for x in p['steps'] if x['kind'] == 'rates']
-t('…in the job\'s history, with who decided', len(rs) == 1 and rs[0]['decided_by'] == 'Stefan' and 'Your rate' in rs[0]['note'] and rs[0]['member'] == 'stefan'
+t('…in the job\'s history, with who decided', len(rs) == 1 and rs[0]['decided_by'] == 'Stefan' and 'Your rate' in rs[0]['note'] and rs[0]['member'] == 'you'
   and any(x['kind'] == 'rates' and x['who'] == 'Stefan' for x in p['timeline']))
 t('not ticked: nothing saved to the rate library', len(team_qs.library(TID)) == lib_before)
 t('still no total: one item undecided', p['view']['plan']['totals'] is None and p['view']['plan']['undecided'] == 1 and p['view']['decision']['count'] == 1)

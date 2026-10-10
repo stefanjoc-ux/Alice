@@ -13,7 +13,7 @@ what to do.
   average cost of what was sold.
 - Prices: Twelve Data (key ALICE_TWELVEDATA_KEY, from Key Vault), daily bars cached in tp_prices. The free plan allows
   8 calls a minute, so a refresh runs in the background and paces itself.
-- The webhook (/hooks/tradingview) is the one address outside Microsoft sign-in, by Stefan's decision (4 Oct 2026). It
+- The webhook (/hooks/tradingview) is the one address outside Microsoft sign-in, by the owner's decision (4 Oct 2026). It
   only records a signal. It needs the secret token inside the alert message (ALICE_TV_WEBHOOK_TOKEN), accepts at most
   4 KB, 30 alerts a minute, and (unless switched off) only TradingView's published sending addresses.
 """
@@ -81,7 +81,7 @@ _schema()
 
 # ---------------- portfolios and trades ----------------
 # A paper portfolio is practice: trades are recorded by hand or imported. A live portfolio mirrors a real Trading 212 account
-# (Stefan's decision, 6 Oct 2026): it changes only by importing that account's history export, never by a trade typed here, and
+# (decision 6 Oct 2026): it changes only by importing that account's history export, never by a trade typed here, and
 # Alice never connects to the broker or places an order. "What if I had sold" scenarios work on both: they are simulations.
 KINDS = ('paper', 'live')
 LIVE_ONLY_IMPORT = ('This portfolio mirrors your real Trading 212 account, so it changes only when you import that account\'s '

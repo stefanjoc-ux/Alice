@@ -1,6 +1,6 @@
 <#
-Alice on Azure: build everything in the Tuduma subscription, step by step. Safe to run again: each step picks up
-where things are. Run from the repo folder (D:\AISubstrate) in PowerShell, after `az login` to the Tuduma tenant.
+Alice on Azure: build everything in your Azure subscription, step by step. Safe to run again: each step picks up
+where things are. Run from the repo folder (D:\AISubstrate) in PowerShell, after `az login` to your Microsoft 365 tenant.
 
   .\deploy\azure-setup.ps1 -SubscriptionId <id> -ExtAppId <Alice API app id> -ExtCallers "<copilot app id>=Microsoft Copilot:copilot"
 
@@ -87,9 +87,11 @@ param(
   [string]$ExtCallers = '',
   [string]$ExtAllowedUsers = '',
   [string]$GitHubRepo = '',
-  [string]$AlsoAllow = '',      # other accounts allowed to sign in, comma separated (e.g. stefan@yourdomain); remembered
-  [string]$CustomDomain = '',
-  [string]$GitHubSubject = '',  # the exact OIDC subject GitHub presents, if it uses owner and repo IDs (shown in a failed deploy log)   # e.g. alice.northants.it, after binding it once with a managed certificate; remembered
+  [string]$AlsoAllow = '',      # other accounts allowed to sign in, comma separated (e.g. someone@example.org); remembered
+  [string]$CustomDomain = '',   # e.g. alice.example.org, after binding it once with a managed certificate; remembered
+  [string]$GitHubSubject = '',  # the exact OIDC subject GitHub presents, if it uses owner and repo IDs (shown in a failed deploy log)
+  [string]$OwnerName = '',      # what Alice calls the owner when no one is signed in (ALICE_OWNER_NAME; default: what alice-web has, else Owner); remembered
+  [string]$Organisation = '',   # your organisation's name, used in Alice's wording (ALICE_ORGANISATION); remembered
   [string]$CopilotAudience = '',      # Application ID URI(s) from the Developer Portal Entra SSO registration(s), comma separated
   [string]$CopilotAuthId = '',        # its auth config ID (live Alice)
   [string]$CopilotDemoAudience = '',
@@ -164,7 +166,7 @@ function Save-State($s) {
   if ($fresh._azure) { Set-Prop $s '_azure' $fresh._azure }
 }
 function Record-Step($result, $err) {
-  # The setup history (Stefan, 9 Oct 2026): one line per step that changes Azure (who, when, step, settings, result), kept in the
+  # The setup history (9 Oct 2026): one line per step that changes Azure (who, when, step, settings, result), kept in the
   # setup state in Azure and copied to the file share for Admin › What's new. azure_state.py records only the settings it knows
   # by name and never a value that looks like a key or password. Best effort: it never changes the step's own outcome.
   $a = @('history', '--resource-group', $ResourceGroup, '--file', $StateFile, '--who', "$Me", '--who-name', "$MeName", '--step', $Step, '--result', $result)
@@ -228,6 +230,21 @@ function Resolve-User($u) {
   if (-not $id) { throw "No account '$u' in tenant $Tenant (give its object ID, or its sign-in name user@domain). Nothing was changed." }
   return "$id".Trim().ToLower()
 }
+# Names live in configuration, never in the code (decision D-0052): the owner's name and the organisation are parameters, remembered in
+# the setup state; an existing deployment keeps what alice-web already has.
+function Deployment-Names {
+  foreach ($p in @(@('ownerName', $OwnerName, 'ALICE_OWNER_NAME'), @('organisation', $Organisation, 'ALICE_ORGANISATION'))) {
+    if ($p[1]) { Set-Prop $State $p[0] $p[1].Trim() }
+    elseif (-not $State.($p[0])) {
+      $cur = AzTry containerapp show -g $ResourceGroup -n alice-web --query "properties.template.containers[0].env[?name=='$($p[2])'].value | [0]" -o tsv
+      if ("$cur".Trim()) { Set-Prop $State $p[0] "$cur".Trim() }
+    }
+  }
+  $v = @{}
+  if ($State.ownerName) { $v['ownerName'] = "$($State.ownerName)" }
+  if ($State.organisation) { $v['organisation'] = "$($State.organisation)" }
+  return $v
+}
 function Owner { return "$($State.ownerObjectId)".Trim().ToLower() }
 function Admins { return @($State.adminObjectIds | Where-Object { $_ } | ForEach-Object { "$_".ToLower() } | Where-Object { $_ -ne (Owner) } | Select-Object -Unique) }
 function Add-Admin($oid) {
@@ -279,6 +296,7 @@ function Deploy($stage, $extra) {
   if ($State.pgGeoBackup) { $values['pgGeoRedundantBackup'] = $true }
   if ($State.databaseHost) { $values['databaseHost'] = "$($State.databaseHost)" }
   if ($State.useAppRoles) { $values['useAppRoles'] = $true }     # -Step users -UseAppRoles on: kept by every later step
+  $names = Deployment-Names; foreach ($k in $names.Keys) { $values[$k] = $names[$k] }
   # Temple's local model (-Step localmodel): kept by every later step; switched off = parked at zero replicas
   if ($State.localModel) { $values['localModel'] = $true }
   elseif ($State.localModelParked) { $values['localModelParked'] = $true }
@@ -626,6 +644,7 @@ function Deploy-Demo {
   $values = @{ image = (Image-Ref); pgAdminPassword = (Kv-Get $State.keyVault 'pg-admin-password'); ownerObjectId = (Owner); location = $Location
                allowedUserObjectIds = (Sign-In-Others @()); webAuthClientId = $State.webAuthClientId; keyVaultSecretNames = (Key-Names)
                extAppId = $State.extAppId; extAllowedUsers = $users; extCallers = $State.extCallers; extAudiences = (Audiences) }
+  $names = Deployment-Names; foreach ($k in $names.Keys) { $values[$k] = $names[$k] }
   $doc = @{ '$schema' = 'https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#'; contentVersion = '1.0.0.0'; parameters = @{} }
   foreach ($k in $values.Keys) { $doc.parameters[$k] = @{ value = $values[$k] } }
   $pfile = New-TemporaryFile
@@ -900,7 +919,7 @@ if (Want 'github') {
   $sp = AzTry ad sp show --id $app --query id -o tsv
   if (-not $sp) { $sp = Retry 'Creating the GitHub service principal' { AzCli ad sp create --id $app --query id -o tsv } }
   # The deploy job runs in the "production" environment, and GitHub names the repo by owner and repo ID as well as name,
-  # e.g. repo:stefanjoc-ux@336622755/Alice@1403454494:environment:production (the deploy log shows the exact subject).
+  # e.g. repo:<owner>@<owner id>/<repo>@<repo id>:environment:production (the deploy log shows the exact subject).
   $subjects = @(@('github-main', "repo:${GitHubRepo}:ref:refs/heads/main"), @('github-production', "repo:${GitHubRepo}:environment:production"))
   if ($GitHubSubject) { $subjects += ,@('github-production-ids', $GitHubSubject) }
   $existing = @(AzTry ad app federated-credential list --id $app --query '[].subject' -o tsv)

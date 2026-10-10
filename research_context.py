@@ -1,4 +1,4 @@
-"""What Temple starts from when it researches an organisation or scans it for opportunities (Stefan, 8 Oct 2026).
+"""What Temple starts from when it researches an organisation or scans it for opportunities (8 Oct 2026).
 
 One function builds it (`build`): who to research, what Alice already knows, the sections to look for, the user's guidance and
 the rules, turned into the exact instructions (the system prompt) and the message the provider receives. Organisation research

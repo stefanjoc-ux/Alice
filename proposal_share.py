@@ -1,4 +1,4 @@
-"""Parker's proposals for your other models (Stefan's decision, 5 Oct 2026: every model gets the same access).
+"""Parker's proposals for your other models (the owner's decision, 5 Oct 2026: every model gets the same access).
 
 Through Alice's connector tools any model can list the proposals (written ones and forms in progress), read one in full (brief,
 notes, sections, the draft, the rate card with cost, sell and margin, the pricing and Argus's latest points) and propose changes.

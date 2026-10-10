@@ -3,7 +3,7 @@
 The state is what each step set up and every later step must keep (the sign-in app registrations, the Alice API app and
 its callers, Copilot's audiences, the custom domain, mail, backups and their retention, the lock, app roles, the database
 host after a restore). It used to live only in deploy/azure-state.json on whichever machine ran the step, so a run from a
-machine with an old copy (or none: Cloud Shell forgets) could quietly undo an earlier step. Now (Stefan, 8 Oct 2026):
+machine with an old copy (or none: Cloud Shell forgets) could quietly undo an earlier step. Now (8 Oct 2026):
 
 - The copy that counts is a blob in Alice's own storage account (the file share's account; container alice-setup, blob
   azure-state.json). `load` reads it at the start of every step, `save` writes it back each time the script saves (and
@@ -323,6 +323,8 @@ def rebuild(live):
         put('image', _image(web), 'alice-web: its running image')
         put('mailFrom', wenv.get('ALICE_MAIL_FROM', ''), 'alice-web: ALICE_MAIL_FROM')
         put('useAppRoles', wenv.get('ALICE_USE_APP_ROLES') == '1', 'alice-web: ALICE_USE_APP_ROLES')
+        for k, e in (('ownerName', 'ALICE_OWNER_NAME'), ('organisation', 'ALICE_ORGANISATION')):    # names are configuration (D-0052)
+            if wenv.get(e): put(k, wenv[e], f'alice-web: {e}')
         # Temple's local model (-Step localmodel): on when alice-web is told where it answers; parked when the app is there but unused
         put('localModel', bool(wenv.get('ALICE_LOCAL_MODEL_URL')), 'alice-web: ALICE_LOCAL_MODEL_URL')
         if wenv.get('ALICE_LOCAL_MODEL'): put('localModelName', wenv['ALICE_LOCAL_MODEL'], 'alice-web: ALICE_LOCAL_MODEL')
@@ -483,7 +485,7 @@ def _upload(store, content, etag, who, step, newest):
     return content, props
 
 
-# ---------------- the setup history (Stefan, 9 Oct 2026) ----------------
+# ---------------- the setup history (9 Oct 2026) ----------------
 # Each step that changes Azure appends one entry to the setup state (setupHistory) and mirrors the whole list to Alice's file
 # share (setup/setup-history.json), where Admin › What's new reads it. Settings are recorded by name from this list only, and
 # a value that looks like a key or password is never recorded, whatever its name.
@@ -494,7 +496,7 @@ RECORDED = ('ResourceGroup', 'Location', 'ExtAppId', 'ExtCallers', 'ExtAllowedUs
             'GitHubSubject', 'CopilotAudience', 'CopilotAuthId', 'CopilotDemoAudience', 'CopilotDemoAuthId', 'MailFrom', 'BackupNotify',
             'FilesBackupDays', 'OffsiteKeepDays', 'OffsiteSoftDeleteDays', 'PgBackupDays', 'NoLock', 'LockImmutability', 'PgGeoBackup',
             'RecoverFrom', 'RecoverCopy', 'DatabaseHost', 'UseAppRoles', 'OwnerObjectId', 'AdminObjectIds', 'LocalModel',
-            'LocalModelName', 'UseLocalState')
+            'LocalModelName', 'UseLocalState', 'OwnerName', 'Organisation')
 NOT_RECORDED = '(not recorded)'
 _SECRET_NAME = re.compile(r'(?i)(password|passwd|secret|token|credential|apikey|api_key|accountkey|account_key|connectionstring|sas)')
 _GUID = re.compile(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')

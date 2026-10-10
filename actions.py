@@ -247,11 +247,11 @@ def _summary():
         om = None
     if om:
         c_ = om['counts']
-        out.append(_section('org_move', 'Move shared material into the Organisation space', sum(c_.values()), '/admin/spaces#organisation',
+        out.append(_section('org_move', 'Move shared material into the Organisation space', 1, '/admin/spaces#organisation',   # one thing to do: the move
                             [{'type': 'link', 'id': 'org-move', 'title': f"{c_['organisations']} organisations, {c_['knowledge']} general knowledge items "
                               f"and {c_['decisions']} decisions in {om['from_name']}", 'detail': 'Preview first: nothing moves until you confirm, and each '
                               'item goes through the sharing check.', 'href': '/admin/spaces#organisation'}],
-                            'Everyone with an Alice role reads the Organisation space. It is empty until you move these from your work space.'))
+                            'Everyone with an Alice role reads the Organisation space. It is empty until you move these from your work space.', info=True))
 
     # 10c. Hand-over items the sharing check held (handover.py): an Owner decides, on Users and permissions
     try: ho = spaces.handover_held() if me.full and me.role == 'owner' else []
@@ -295,7 +295,7 @@ def count():
 
 
 def approve_all(key):
-    """Stefan's Approve all on one section of Actions (6 Oct 2026): the same approval each item's own button gives, for every
+    """The owner's Approve all on one section of Actions (6 Oct 2026): the same approval each item's own button gives, for every
     item in the section (not only those shown), each through its usual checks; anything a check refuses stays and is listed.
     Never for apps (mileage approvals stay per entry on the app's page), opportunities, agents or the information lists."""
     if key not in APPROVE_ALL: raise ValueError('That section cannot be approved all at once.')

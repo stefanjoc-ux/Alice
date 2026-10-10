@@ -1,4 +1,4 @@
-"""Entra groups decide who is in which space (Stefan's decision D-0040, design CR-4 phase 1, 10 Oct 2026).
+"""Entra groups decide who is in which space (decision D-0040, design CR-4 phase 1, 10 Oct 2026).
 
 An Owner or Admin maps an Entra group (its object ID, as Entra puts it in the sign-in's `groups` claim) to one or more spaces, each
 with a role (View, Contribute, Manage), and optionally to a permission profile. The mapping is applied when the person signs in

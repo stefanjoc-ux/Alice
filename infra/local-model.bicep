@@ -1,4 +1,4 @@
-// Temple's local model (Stefan, 9 Oct 2026; temple_model.py): a small open model served by Ollama inside Alice's own Container
+// Temple's local model (9 Oct 2026; temple_model.py): a small open model served by Ollama inside Alice's own Container
 // Apps environment, for the sharing check, categories, tags and keeping them tidy. Optional and off by default: main.bicep deploys
 // this only with localModel = true (azure-setup.ps1 -Step localmodel -LocalModel on).
 //   - INTERNAL INGRESS ONLY: reachable from alice-web and alice-mcp in the same environment (http://<prefix>-local-model), never
