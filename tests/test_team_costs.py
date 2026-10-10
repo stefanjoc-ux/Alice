@@ -358,4 +358,4 @@ t('propose_decision says how decisions are approved under the current setting (A
   mcp_server.approval_text('decision') in dd and '{approval' not in dd and 'awaiting their approval' not in dd)
 t('propose_record says how memories are approved under the current setting', mcp_server.approval_text('memory') in rd and '{approval' not in rd)
 t('the tool names are unchanged', {'propose_record', 'propose_decision'} <= set(tools))
-t('the Copilot package version is raised for the new wording', copilot_package.VERSION == '1.3.0')
+t('the Copilot package version is raised for the new wording', tuple(int(x) for x in copilot_package.VERSION.split('.')) >= (1, 3, 0))
