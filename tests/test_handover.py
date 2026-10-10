@@ -10,7 +10,7 @@ import app
 import knowledge, assistants, temple, spaces, users, handover
 
 temple.save_settings(False, 'claude')
-SCREEN = {'reply': {'personal_data': False, 'special_category': False, 'private': False, 'reasons': []}, 'calls': []}
+SCREEN = {'reply': {'finding': False, 'findings': []}, 'calls': []}
 
 
 def fake_call(provider, system, messages, max_tokens=1500, timeout=60, workload='', meta=None):
@@ -139,9 +139,10 @@ r = go([{'type': 'record', 'id': own}]).json()
 t('an item that is not in her personal space is not moved', len(r['refused']) == 1 and spaces.space_of('record', own) != B)
 
 # ---------------- held items explained on Actions ----------------
-SCREEN['reply'] = {'personal_data': True, 'special_category': True, 'private': False, 'reasons': ['It mentions a colleague\'s surgery.']}
+SCREEN['reply'] = {'finding': True, 'findings': [{'type': 'special_category', 'quote': 'Mira is off for surgery in November', 'about': 'Mira',
+                                                  'reason': 'It mentions a colleague\'s surgery.'}]}
 r = go([{'type': 'record', 'id': m_health}]).json()
-SCREEN['reply'] = {'personal_data': False, 'special_category': False, 'private': False, 'reasons': []}
+SCREEN['reply'] = {'finding': False, 'findings': []}
 t('a health detail is held, not moved', len(r['held']) == 1 and spaces.space_of('record', m_health) == P
   and 'surgery' in ' '.join(r['held'][0]['reasons']))
 r = go([{'type': 'record', 'id': m_family}]).json()

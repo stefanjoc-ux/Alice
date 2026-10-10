@@ -3338,7 +3338,9 @@ def _people(fn, *a):
 def admin_users():
     out = users.listing()
     v = store.viewer()
-    if v is None or (v.full and v.role == 'owner'): out['handover'] = handover.counts(out['users'])     # Hand over: an Owner's only
+    if v is None or (v.full and v.role == 'owner'):
+        out['handover'] = handover.counts(out['users'])     # Hand over: an Owner's only
+        out['can_link'] = True                              # linking a person's accounts: an Owner's only
     return out
 
 @app.put('/admin/api/users/{oid}')
@@ -3424,6 +3426,20 @@ class SpaceDefaultIn(BaseModel):
 
 class SpaceDecideIn(BaseModel):
     action: Literal['share','keep']
+    note: str = Field(default='', max_length=500)
+
+class CaptureIn(BaseModel):
+    default: Optional[str] = Field(default=None, max_length=40)
+    person: Optional[str] = Field(default=None, max_length=64)
+    space: str = Field(default='', max_length=40)
+
+class SweepMoveIn(BaseModel):
+    ids: list[str] = Field(default_factory=list, max_length=500)
+    all: bool = False
+
+class LinkIn(BaseModel):
+    to: str = Field(min_length=1, max_length=64)
+    note: str = Field(default='', max_length=300)
 
 @app.get('/admin/api/spaces')
 def admin_spaces(): return _people(spaces.listing)
@@ -3444,7 +3460,40 @@ def admin_space_default(q: SpaceDefaultIn): return _people(spaces.set_default, q
 def admin_space_move(q: SpaceMoveIn): return _people(spaces.move, q.item_type, q.item_id, q.space)
 
 @app.post('/admin/api/spaces/held/{mid}')
-def admin_space_decide(q: SpaceDecideIn, mid: str = FPath(pattern=r'^[0-9a-f]{32}$')): return _people(spaces.decide, mid, q.action)
+def admin_space_decide(q: SpaceDecideIn, mid: str = FPath(pattern=r'^[0-9a-f]{32}$')): return _people(spaces.decide, mid, q.action, q.note)
+
+@app.post('/admin/api/spaces/retry')
+def admin_space_retry(): return _people(spaces.retry)
+
+# The default capture space: where new items go when no space is given (an organisation setting, Owners and Admins)
+@app.get('/admin/api/spaces/capture')
+def admin_space_capture(): return _people(spaces.capture_overview)
+
+@app.put('/admin/api/spaces/capture')
+def admin_space_capture_set(q: CaptureIn): return _people(spaces.set_capture, q.default, q.person, q.space if q.person is not None else None)
+
+# The one-off sweep: work items stuck in a personal space, listed by Temple, moved only when the person confirms
+@app.get('/admin/api/spaces/sweep')
+def admin_space_sweep(): return _people(spaces.sweep_list)
+
+@app.post('/admin/api/spaces/sweep/scan')
+def admin_space_sweep_scan(): return _people(spaces.sweep_scan)
+
+@app.post('/admin/api/spaces/sweep/move')
+def admin_space_sweep_move(q: SweepMoveIn): return _people(spaces.sweep_move, q.ids, q.all)
+
+@app.post('/admin/api/spaces/sweep/{sid}/dismiss')
+def admin_space_sweep_dismiss(sid: str = FPath(pattern=r'^[0-9a-f]{32}$')): return _people(spaces.sweep_dismiss, sid)
+
+# Linked accounts: one person, one author (an Owner links them; preview first)
+@app.post('/admin/api/users/{oid}/link/preview')
+def admin_user_link_preview(q: LinkIn, oid: str = FPath(pattern=r'^[0-9a-z][0-9a-z-]{0,63}$')): return _people(spaces.link_preview, oid, q.to)
+
+@app.post('/admin/api/users/{oid}/link')
+def admin_user_link(q: LinkIn, oid: str = FPath(pattern=r'^[0-9a-z][0-9a-z-]{0,63}$')): return _people(spaces.link_accounts, oid, q.to, q.note)
+
+@app.delete('/admin/api/users/{oid}/link')
+def admin_user_unlink(oid: str = FPath(pattern=r'^[0-9a-z][0-9a-z-]{0,63}$')): return _people(spaces.unlink_accounts, oid)
 
 @app.put('/admin/api/spaces/{sid}/members')
 def admin_space_member(q: SpaceMemberIn, sid: str = FPath(pattern=r'^[ps]-[0-9a-f]{12}$')): return _people(spaces.set_member, sid, q.member, q.role)

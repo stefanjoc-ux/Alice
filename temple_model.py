@@ -312,13 +312,12 @@ CATEGORY_EXAMPLES = [
 ]
 
 
-def _share_verdict(text):
-    import re
-    m = re.search(r'\{.*\}', text or '', re.S)
-    if not m: return None
-    try: d = json.loads(m.group(0))
-    except ValueError: return None
-    return bool(d.get('personal_data') or d.get('special_category') or d.get('private'))
+def _share_verdict(reply, item):
+    """True (hold) / False (clear) / None (unreadable): Temple's structured answer read exactly as the real sharing check reads it
+    (spaces.findings_from: only a finding with a quoted passage holds)."""
+    import spaces
+    try: return bool(spaces.findings_from(reply, item)[0])
+    except (ValueError, TypeError): return None
 
 
 def _evaluate(place):
@@ -335,7 +334,7 @@ def _evaluate(place):
     start, rows = time.monotonic(), []
     try:
         for title, text, want in SHARE_EXAMPLES:
-            got = _share_verdict(ask(spaces.SCREEN_PROMPT, f'ITEM (memory or decision): {title}\n\n{text}', 400, 'share_gate'))
+            got = _share_verdict(ask(spaces.SCREEN_PROMPT, f'ITEM (memory or decision): {title}\n\n{text}', 600, 'share_gate'), f'{title}\n{text}')
             rows.append({'item': title, 'expected': 'hold' if want else 'clear', 'got': ('hold' if got else 'clear') if got is not None else 'unreadable',
                          'right': got is want})
         res['tasks'].append({'task': 'share_gate', 'label': TASKS['share_gate'][0], 'right': sum(r['right'] for r in rows), 'total': len(rows),

@@ -109,10 +109,14 @@ def schedule(ids):
     """Background categorisation after a proposal, then Temple's tags (which see the category); failures are silent
     (manual runs remain available)."""
     def work():
-        try: run(ids)
+        try: done = (run(ids) or {}).get('status') != 'busy'        # busy: another run has these and retries when it ends
+        except Exception: done = True                                # Temple could not categorise: a person gives the category
+        try:                                # Temple's review is done: shares waiting on it go through the sharing gate now
+            import spaces
+            spaces.retry('record', ids, reviewed=done)
         except Exception: pass
         try:
             import temple_tags
             temple_tags.run(ids)
         except Exception: pass
-    store.spawn(work)
+    return store.spawn(work)

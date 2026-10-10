@@ -281,6 +281,9 @@ def update(fid, title=None, category=None, label=None, review_by=None, status=No
         if fields:
             c.execute(f"UPDATE knowledge_meta SET {','.join(fields)} WHERE file_id=?", args + [fid])
             if audit_it: store.audit(c, 'knowledge_updated', fid, 'human_review', ', '.join(dict.fromkeys(f.split('=')[0] for f in fields)))
+    if category:
+        import spaces
+        spaces.retry_soon('file', [fid])          # a share held for want of a category moves on its own now
     return meta([fid])[fid]
 
 
@@ -561,7 +564,11 @@ def resolve_category_suggestions(ids, action):
 def schedule_background(new_ids=None):
     """Categorising and client tagging; for newly active items, Temple also looks for older items they replace."""
     def work():
-        try: categorise()
+        try: done = (categorise() or {}).get('status') != 'busy'
+        except Exception: done = True
+        try:                                # Temple has categorised: shares of knowledge waiting on it go through the sharing gate now
+            import spaces
+            spaces.retry('file', reviewed=done)
         except Exception: pass
         try:
             import clients; clients.run_tagging()
@@ -570,7 +577,7 @@ def schedule_background(new_ids=None):
             try:
                 import temple_supersede; temple_supersede.check(new_ids)
             except Exception: pass
-    store.spawn(work)
+    return store.spawn(work)
 
 
 # ---------------- meeting extracts ----------------

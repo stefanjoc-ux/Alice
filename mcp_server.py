@@ -104,9 +104,21 @@ def _place(item_type, item_id, space):
     except (PermissionError, LookupError, ValueError) as e:
         return {'status': 'not_moved', 'message': f'It stays in your default space: {e}'}
     msg = {'moved': 'It is in the space you chose.', 'unchanged': 'It is in the space you chose.',
-           'held': 'It stays in your default space for now: Alice\'s sharing check found something for you to confirm first (Spaces page).',
+           'waiting': 'It goes into the space you chose once Temple has reviewed it (Alice\'s sharing check runs after the review).',
+           'held': 'It stays where it is for now: Alice\'s sharing check found something to confirm first: ' + ' '.join(r.get('reasons') or []) +
+                   ' The user, or a manager of that space, decides on the Spaces page.',
            'refused': 'It stays in your default space: ' + ' '.join(r.get('reasons') or [])}.get(r['status'], '')
     return {**r, 'message': msg}
+
+
+def _default_place(item_type, item_id):
+    """Where an item proposed without a space went (the user's own choice, else the organisation's default capture space)."""
+    import spaces
+    try: w = spaces.where(item_type, item_id)
+    except Exception: return {}
+    if w.get('going_to'):
+        return {**w, 'message': f"It goes to {w['going_to_name']} (the default space for new items) once Temple has reviewed it."}
+    return {**w, 'message': f"It is in {w['space_name']} (the default space for new items)." if w.get('space_name') else ''}
 
 
 def _app(tool):
@@ -315,10 +327,12 @@ def search_files(query: Annotated[str, Field(min_length=1, max_length=200)],
     matches, total = [], 0
     try:
         vc, va = store.viewer_clause('file', 'files.id')          # a person without the Owner role: only their own
+        # Read every row first: the checks below open their own connections, and doing that with this cursor still open can
+        # deadlock with a background writer waiting to commit (SQLite, 15 s, "database is locked"; CLAUDE.md lessons).
         if file_id:
-            rows = connection.execute('SELECT id,name,text FROM files WHERE id=?' + vc, (file_id, *va))
+            rows = connection.execute('SELECT id,name,text FROM files WHERE id=?' + vc, (file_id, *va)).fetchall()
         else:
-            rows = connection.execute('SELECT id,name,text FROM files WHERE 1=1' + vc + 'ORDER BY created_at DESC,id', va)
+            rows = connection.execute('SELECT id,name,text FROM files WHERE 1=1' + vc + 'ORDER BY created_at DESC,id', va).fetchall()
         found_file = False
         withheld = retired = 0
         who = _who()
@@ -419,8 +433,8 @@ def propose_record(title: Annotated[str, Field(min_length=1, max_length=200)],
                    category: Annotated[str, Field(max_length=40)] = '',
                    space: Annotated[str, Field(max_length=40)] = '') -> dict:
     """Propose a fact or preference worth remembering when the user asks (for a decision, use propose_decision).
-    space: optional, a space id from list_spaces the user asked for (default: their own default space, usually personal);
-    a shared space only after Alice's sharing check, and only once the memory has a category the user confirmed.
+    space: optional, a space id from list_spaces the user asked for (default: the user's default space for new items, usually their
+    team space); a shared space only after Temple's review and Alice's sharing check.
     Include a source description: user statement/quote or filename and location.
     The source is a claim for human review, not independently verified provenance.
     Optionally give a category only if it is one of the user's existing categories; unknown
@@ -448,6 +462,7 @@ def propose_record(title: Annotated[str, Field(min_length=1, max_length=200)],
                              'if it clashes, it waits for the user on the Actions page.')
     if who and not result.get('duplicate'): _captured('memory', result.get('id')); agents.app_note(run, 'wrote', 'memory', result.get('id'), 'proposed')
     if space and result.get('id') and not result.get('duplicate'): result['space'] = _place('record', result['id'], space)
+    elif result.get('id') and not result.get('duplicate'): result['space'] = _default_place('record', result['id'])
     return result
 
 
@@ -484,6 +499,7 @@ def propose_decision(title: Annotated[str, Field(min_length=1, max_length=200)],
            '(then it waits on their Actions page).' if autoapprove.managing_decisions() else
            'Decision proposed. Decisions wait for the user: they approve it on the Actions page, with Temple\'s recommendation.')
     if space and r.get('id') and not r.get('duplicate'): r = r | {'space': _place('record', r['id'], space)}
+    elif r.get('id') and not r.get('duplicate'): r = r | {'space': _default_place('record', r['id'])}
     return r | {'message': msg}
 
 
@@ -538,6 +554,8 @@ def propose_knowledge(title: Annotated[str, Field(min_length=1, max_length=200)]
     if space and result.get('id'):
         placed = _place('file', result['id'], space)
         msg += ' ' + placed['message']
+    elif result.get('id'):
+        msg += ' ' + _default_place('file', result['id']).get('message', '')
     if supersedes:
         n = len(result.get('replaces') or [])
         msg += (f' It is marked as replacing {n} existing item(s); the user can retire them when approving.' if n else

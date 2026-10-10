@@ -60,6 +60,11 @@ def _schema(c):
     # which have no sign-in to read). Additive; read again at every sign-in, so taking the role away in Entra clears it.
     if 'entra_owner' not in {r['name'] for r in c.execute('PRAGMA table_info(users)')}:
         c.execute('ALTER TABLE users ADD COLUMN entra_owner INTEGER NOT NULL DEFAULT 0')
+    # Linked accounts (Stefan, 10 Oct 2026): one person, several Entra accounts (e.g. an everyday account and a tenant admin
+    # account). A linked account counts as the same author as its primary account and shares that person's space memberships.
+    # Only an Owner links accounts, on Users and permissions; never automatically by name or email.
+    c.execute("CREATE TABLE IF NOT EXISTS user_links (oid TEXT PRIMARY KEY, primary_oid TEXT NOT NULL, linked_at TEXT NOT NULL, "
+              "linked_by TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '')")
     c.execute("CREATE TABLE IF NOT EXISTS permission_profiles (id TEXT PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', "
               "levels TEXT NOT NULL DEFAULT '{}', builtin INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL, updated_by TEXT NOT NULL DEFAULT '')")
 
@@ -288,7 +293,7 @@ def connector_viewer(oid):
     if oid == fallback_oid(): return store.Viewer(oid, '', store.owner_name(), 'owner', True, True)
     row = _row(oid)
     if row is None:
-        if not use_app_roles(): return store.Viewer(oid, '', '', 'owner', True)
+        if not use_app_roles(): return store.Viewer(oid, '', '', 'owner', True, True)     # the owner's own account (said so, not inferred per process)
         raise Refused('Sign in to Alice on the web once, so the owner can set up your access, then try again.', 'unknown_person')
     if row['status'] != 'active': raise Refused('Your access to Alice is suspended.', 'suspended')
     return viewer_for(oid)
@@ -297,6 +302,80 @@ def connector_viewer(oid):
 def person(oid):
     """The users row for an object ID (or None)."""
     return _row((oid or '').strip().lower())
+
+
+# ---------------- linked accounts: one person, one author (Stefan, 10 Oct 2026) ----------------
+_links_cache = []          # [(time read, {linked oid: primary oid})]
+
+
+def links():
+    """{linked oid: primary oid}. Cached briefly (a link made here clears it at once)."""
+    now = time.time()
+    with _lock:
+        if _links_cache and now - _links_cache[0][0] < CACHE_S: return _links_cache[0][1]
+    with store.db() as c:
+        m = {r[0]: r[1] for r in c.execute('SELECT oid, primary_oid FROM user_links')}
+    with _lock:
+        _links_cache[:] = [(now, m)]
+    return m
+
+
+def _forget_links():
+    with _lock: _links_cache.clear()
+
+
+def primary(oid):
+    """The person's primary account: the account this one is linked to, else itself. Links never chain."""
+    oid = (oid or '').strip().lower()
+    return links().get(oid, oid)
+
+
+def group(oid):
+    """Every account of the same person: the primary first, then the accounts linked to it."""
+    p = primary(oid)
+    if not p: return []
+    return [p] + sorted(o for o, q in links().items() if q == p)
+
+
+def link(oid, to, note):
+    """Link account oid to the person whose primary account is `to`. Owner only; a reason is required and logged. Both accounts
+    must have signed in to Alice. Never done automatically, by name or email or anything else."""
+    actor = _actor_viewer()
+    if actor.role != 'owner': raise PermissionError('Only an Owner of Alice can link accounts.')
+    oid, to = (oid or '').strip().lower(), (to or '').strip().lower()
+    note = ' '.join((note or '').split())[:300]
+    if len(note) < 3: raise ValueError('Say why these accounts are the same person (kept in the activity log).')
+    if oid == to: raise ValueError('Choose a different account to link to.')
+    a, b = person(oid), person(to)
+    if not a or not b: raise LookupError('Both accounts must have signed in to Alice once.')
+    to = primary(to)                                    # link to the person's primary account, never to another linked one
+    if to == oid: raise ValueError('That account is already linked to this one.')
+    with store.db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        if c.execute('SELECT 1 FROM user_links WHERE primary_oid=?', (oid,)).fetchone():
+            raise ValueError('Other accounts are linked to this one. Unlink them first, or link them to the other account.')
+        c.execute('INSERT INTO user_links(oid,primary_oid,linked_at,linked_by,note) VALUES (?,?,?,?,?) '
+                  'ON CONFLICT(oid) DO UPDATE SET primary_oid=excluded.primary_oid,linked_at=excluded.linked_at,linked_by=excluded.linked_by,note=excluded.note',
+                  (oid, to, store.now(), _who(), note))
+        with store.acting(note=note):
+            store.audit(c, 'user_linked', oid, 'users', f"{a['email'] or oid} linked to {b['email'] or to}: the same person, one author, "
+                        'the same space memberships')
+    _forget_links(); _forget()
+    return {'linked': oid, 'to': to}
+
+
+def unlink(oid, note=''):
+    actor = _actor_viewer()
+    if actor.role != 'owner': raise PermissionError('Only an Owner of Alice can unlink accounts.')
+    oid = (oid or '').strip().lower()
+    with store.db() as c:
+        r = c.execute('SELECT primary_oid FROM user_links WHERE oid=?', (oid,)).fetchone()
+        if not r: raise LookupError('That account is not linked.')
+        c.execute('DELETE FROM user_links WHERE oid=?', (oid,))
+        with store.acting(note=' '.join((note or '').split())[:300]):
+            store.audit(c, 'user_unlinked', oid, 'users', f'{oid} unlinked from {r[0]}: it is its own author again')
+    _forget_links(); _forget()
+    return {'unlinked': oid}
 
 
 # ---------------- the Users and permissions page ----------------
@@ -309,7 +388,9 @@ def listing():
         rows = [dict(r) for r in c.execute('SELECT * FROM users ORDER BY CASE role WHEN \'owner\' THEN 0 WHEN \'admin\' THEN 1 ELSE 2 END, lower(name), lower(email)')]
         profiles = {r['id']: r['name'] for r in c.execute('SELECT id,name FROM permission_profiles')}
     ow = fallback_oid()
+    lk = links()
     for r in rows:
+        r['linked_to'] = lk.get(r['oid'], '')
         owner = is_owner(r['oid'], row=r)
         ceiling = 'owner' if owner or not use_app_roles() else r['entra_role']
         r['effective_role'] = effective_role(r, ceiling, owner)
