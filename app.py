@@ -3523,6 +3523,17 @@ def admin_space_sweep_move(q: SweepMoveIn): return _people(spaces.sweep_move, q.
 @app.post('/admin/api/spaces/sweep/{sid}/dismiss')
 def admin_space_sweep_dismiss(sid: str = FPath(pattern=r'^[0-9a-f]{32}$')): return _people(spaces.sweep_dismiss, sid)
 
+# Linked accounts (10 Oct 2026): items left in a person's other accounts' personal spaces, repaired with a preview first
+class LinkedRepairIn(BaseModel):
+    actions: dict[str, Literal['move', 'archive', 'leave']] = Field(default_factory=dict, max_length=500)
+    note: str = Field(default='', max_length=300)
+
+@app.get('/admin/api/spaces/linked')
+def admin_space_linked(): return _people(spaces.linked_repair_preview)
+
+@app.post('/admin/api/spaces/linked')
+def admin_space_linked_repair(q: LinkedRepairIn): return _people(spaces.linked_repair, q.actions, q.note)
+
 # Open by default (CR-4 phase 1): closing a team space, the move into the Organisation space, Entra group mappings
 class SpaceCloseIn(BaseModel):
     closed: bool

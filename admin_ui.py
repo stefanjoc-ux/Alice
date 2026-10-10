@@ -3434,13 +3434,26 @@ if(PAGE==='spaces'){
     const b=el('button','Add to this space');b.type='button';b.onclick=()=>run(async()=>{if(!confirm('Add them to '+x.name+'? They will see everything in it.'))return;await api('/admin/api/spaces/'+x.id+'/members','PUT',{member:ps.value,role:rs.value});$('notice').textContent='Added.';await load()});
     f.append(ps,rs,b);c.append(f)}
    list.append(c)}
-  orgMove(d).catch(()=>{});
+  orgMove(d).catch(()=>{});linkedRepair().catch(()=>{});
   const mg=$('sp-migration');mg.replaceChildren();if(d.migration&&d.migration.counts){mg.append(el('p','When spaces arrived, Alice placed your items (nothing was copied or deleted): '+Object.entries(d.migration.counts).map(([k,v])=>v+' '+k.replace(':',' → ')).join(', ')+'.','small muted'))}}
+ // Your other accounts' personal spaces (spaces.linked_repair_*): what was left there after linking, moved or archived as a
+ // duplicate only when you confirm, with a reason. Shown only when there is something left.
+ async function linkedRepair(){const box=$('sp-linked');const p=await api('/admin/api/spaces/linked');box.hidden=!p.items.length;if(!p.items.length)return;
+  box.replaceChildren(el('h2','Left in your other accounts\u2019 personal spaces'),el('p',p.items.length+' item'+(p.items.length===1?'':'s')+' made under an account linked to you sit in '+p.spaces.map(s=>s.name).join(', ')+'. Move each into '+p.to_name+' (it stays private), or archive it when the same item was recorded again (its history is kept). Nothing changes until you confirm.','small muted'));
+  const pick={};for(const i of p.items){const row=el('div','','act-row');const txt=el('div','','act-text');const h=el('div','');if(i.ref){const rf=el('span',i.ref,'ref');rf.style.marginRight='6px';h.append(rf)}h.append(el('strong',i.title));txt.append(h,el('div',i.type_label+' · '+i.space_name+(i.preview?' · '+i.preview:''),'small muted'));
+   if(i.duplicate_of)txt.append(el('div','Recorded again as '+(i.duplicate_of.ref?i.duplicate_of.ref+' ':'')+'“'+i.duplicate_of.title+'”','small'));
+   const sel=document.createElement('select');sel.setAttribute('aria-label','What to do with '+i.title);for(const [v,t] of [['move','Move into '+p.to_name],['archive','Archive (a duplicate)'],['leave','Leave it']]){const o=document.createElement('option');o.value=v;o.textContent=t;sel.append(o)}sel.value=i.suggested;pick[i.id]=sel;
+   row.append(txt,sel);box.append(row)}
+  const why=document.createElement('input');why.maxLength=300;why.placeholder='Why (kept in the activity log)';why.setAttribute('aria-label','Reason');
+  const go=el('button','Do this');go.type='button';go.onclick=()=>run(async()=>{const actions={};for(const [k,s] of Object.entries(pick))actions[k]=s.value;
+   const x=await api('/admin/api/spaces/linked','POST',{actions,note:why.value});$('notice').textContent=x.moved+' moved, '+x.archived+' archived as duplicates'+(x.not_done.length?'; not done: '+x.not_done.map(n=>(n.title||n.id)+' ('+n.why+')').slice(0,3).join(' · '):'')+'.';await load()});
+  const bar=el('div','','row');bar.append(why,go);box.append(bar)}
  // The move into the Organisation space (spaces.org_migration_*): preview with counts first, an Owner confirms
  async function orgMove(d){const box=$('sp-org');box.hidden=!d.can_move_org;if(!d.can_move_org)return;box.replaceChildren(el('h2','The Organisation space'));
   box.append(el('p','Everyone with an Alice role reads the Organisation space. Organisations and their opportunities, general knowledge and decisions belong there; facts from internal sources (pricing, relationship notes) stay in the space they came from. '+(d.open_rule?'Team spaces are open to everyone in the organisation unless closed (rule on the Rules page).':'The rule "Team spaces are open to the organisation" is off: people read only their own spaces.'),'small muted'));
   const st=d.org_move||{};if(st.state)box.append(el('p',st.state==='running'?'Moving: '+st.done+' of '+st.total+'…':'Done '+new Date(st.finished_at||st.started_at).toLocaleString('en-GB')+': '+st.moved+' moved, '+st.held+' held by the sharing check, '+st.waiting+' waiting for Temple, '+st.not_moved+' not moved.','small'));
   const pv=el('button','Preview the move','secondary');pv.type='button';box.append(pv);const out=el('div','','sp-org-plan');box.append(out);
+  if(location.hash==='#organisation'&&!orgMove.opened){orgMove.opened=true;setTimeout(()=>{box.scrollIntoView({block:'start'});pv.click()},50)}
   pv.onclick=()=>run(async()=>{const p=await api('/admin/api/spaces/organisation/move');out.replaceChildren();
    out.append(el('p','From '+p.from_name+' into '+p.to_name+': '+p.counts.organisations+' organisations, '+p.counts.knowledge+' general knowledge items, '+p.counts.decisions+' decisions. Each goes through the sharing check; nothing is deleted.'));
    out.append(el('p','Staying in '+p.from_name+': '+Object.entries(p.stays).map(([k,v])=>v+' '+k).join(', ')+'.'+(p.open?' '+p.from_name+' is open to everyone in the organisation: close it on its card if it should be members only.':''),'small'));
@@ -3457,10 +3470,10 @@ if(PAGE==='spaces'){
 PAGES['spaces'] = ('Spaces', 'Where your memories, decisions, knowledge, organisations, proposals and digital teams live. Your personal space is yours alone; '
                    'a shared space shows everything in it to its members. Sharing is always deliberate: Alice checks an item for personal details '
                    'before it enters a shared space, and adding someone to Alice never adds them to a space.')
-SECTIONS['spaces'] = r'''<section id="sp-approvals-box" hidden><div class="mem-head"><h2>Waiting for your approval</h2><span class="small muted">New items in the spaces you manage that the automatic checks held: approve or reject</span></div><div id="sp-approvals"></div></section>
+SECTIONS['spaces'] = r'''<section id="sp-linked" hidden></section><section id="sp-org" hidden></section><section id="sp-approvals-box" hidden><div class="mem-head"><h2>Waiting for your approval</h2><span class="small muted">New items in the spaces you manage that the automatic checks held: approve or reject</span></div><div id="sp-approvals"></div></section>
 <section><div class="mem-head"><h2>Waiting for you</h2><span class="small muted">Items the sharing check held: share anyway or keep personal</span></div><div id="sp-waiting"></div></section>
 <section><div class="mem-head"><h2>Your spaces</h2><label class="small">New items go to <select id="sp-default"></select></label></div><div id="sp-list" class="sp-grid"></div><div id="sp-migration"></div></section>
-<section id="sp-org" hidden></section>
+
 <section id="sp-new" hidden><div class="mem-head"><h2>New shared space</h2></div><form id="sp-create" class="sp-form"><label>Kind <select id="sp-kind"></select></label><label>Name <input id="sp-name" maxlength="80" required></label>
 <label>What it is for (required for a restricted space) <input id="sp-desc" maxlength="300"></label><label>Tied to a client (optional) <input id="sp-client" maxlength="60" placeholder="Only this space's members then see that client's material"></label>
 <button type="submit">Create space</button></form></section>'''

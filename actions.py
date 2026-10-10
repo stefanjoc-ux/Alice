@@ -239,6 +239,20 @@ def _summary():
                              f"{sw['in_personal']} items sit in your personal space. Ask Temple to look for the ones about the work, so they can go to "
                              f"{sw['target_name'] or 'your team space'}. Nothing moves until you confirm."), info=True) | {'sweep': sw})
 
+    # 10b3. The move into the Organisation space (#42) waits for an Owner to preview and confirm it; until it has run it is
+    # offered here, so it is not missed at the bottom of the Spaces page (10 Oct 2026: the Organisation space stayed empty).
+    try:
+        om = spaces.org_migration_offer() if me.full else None
+    except Exception:
+        om = None
+    if om:
+        c_ = om['counts']
+        out.append(_section('org_move', 'Move shared material into the Organisation space', sum(c_.values()), '/admin/spaces#organisation',
+                            [{'type': 'link', 'id': 'org-move', 'title': f"{c_['organisations']} organisations, {c_['knowledge']} general knowledge items "
+                              f"and {c_['decisions']} decisions in {om['from_name']}", 'detail': 'Preview first: nothing moves until you confirm, and each '
+                              'item goes through the sharing check.', 'href': '/admin/spaces#organisation'}],
+                            'Everyone with an Alice role reads the Organisation space. It is empty until you move these from your work space.'))
+
     # 10c. Hand-over items the sharing check held (handover.py): an Owner decides, on Users and permissions
     try: ho = spaces.handover_held() if me.full and me.role == 'owner' else []
     except Exception: ho = []
