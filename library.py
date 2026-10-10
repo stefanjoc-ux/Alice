@@ -7,7 +7,8 @@ approval". Its settings, never code, decide:
 - what Temple may do on its own (temple_may): approve, categorise (and tag), route, merge, supersede, archive;
 - whether models and Temple may overwrite or delete library items (overwrite_delete, off): off, every attempt is refused and logged
   (guard), the raw captured item is always kept, and merged or superseded items link to it;
-- what is always held for a person (hold): sensitive findings, clashes, anything Temple is unsure about.
+- what is always held for a person (hold): sensitive findings, clashes, anything Temple is unsure about, and anything Temple could
+  not give a category (Temple never approves an item with no category while that is on).
 Switched off, Temple manages nothing: every new item waits for a person.
 
 Every change Temple makes to the library is a library action (table library_actions): what, which items, the reason, who, when, and
@@ -80,7 +81,7 @@ def may(action):
 
 
 def holds(kind):
-    """This is held for a person (sensitive, clash, unsure)."""
+    """This is held for a person (sensitive, clash, unsure, no_category)."""
     return bool(settings()['hold'].get(kind, True))
 
 
@@ -99,7 +100,8 @@ def describe():
     """One plain sentence for connector instructions and tool descriptions, from the current setting."""
     s = settings()
     held = [n for k, n in (('clash', 'clashes with what Alice holds'), ('sensitive', 'sensitive findings about a person'),
-                           ('unsure', 'anything Temple is unsure about')) if s['hold'][k]]
+                           ('unsure', 'anything Temple is unsure about'), ('no_category', 'anything Temple could not give a category'))
+            if s['hold'][k]]
     held_text = (' ' + _cap(_join(held)) + ' wait for a person (the managers of its space, or the user in their personal space).') if held else ''
     if s['approver'] == 'person' or not s['temple_may']['approve']:
         return ('Every new memory, decision and knowledge note waits for a person to approve it (the managers of its space, or the user '

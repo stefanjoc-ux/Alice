@@ -46,6 +46,15 @@ temple.review_record = fake_review
 temple.save_settings(True, 'openai')
 assistants._call = fake_call
 temple_categorise.schedule = lambda ids: None          # categories are given by hand here, so nothing else changes an item meanwhile
+
+
+def fake_categorise(payload):
+    # Temple gives every uncategorised item 'Work' when it approves it (it never approves one with no category)
+    return json.dumps({'assignments': [{'id': m['id'], 'category': 'Work', 'confidence': 0.9, 'reason': 'About the work.'}
+                                       for m in json.loads(payload)['memories']]})
+
+
+temple_categorise._ask = fake_categorise
 SPAWNED = []
 _spawn = store.spawn
 def _tracked_spawn(*a, **k):
@@ -81,7 +90,7 @@ t('"Human approval" is now "Approval and library management", a Core rule in Mem
   ap['name'] == 'Approval and library management' and ap['core'] and ap['set_key'] == 'memory')
 t('its settings: who approves, what Temple may do, overwrite and delete, what is held', set(ap['params']) == {'approver', 'temple_may', 'overwrite_delete', 'hold'}
   and set(ap['params']['temple_may']) == {'approve', 'categorise', 'route', 'merge', 'supersede', 'archive'}
-  and set(ap['params']['hold']) == {'sensitive', 'clash', 'unsure'} and ap['params']['overwrite_delete'] is False)
+  and set(ap['params']['hold']) == {'sensitive', 'clash', 'unsure', 'no_category'} and ap['params']['overwrite_delete'] is False)
 ADMIN = store.Viewer('0000e610-0000-4000-8000-0000000000aa', 'admin@northfield.example.org', 'Admin', 'admin', True)
 with store.as_viewer(ADMIN):
     t('someone who is not an Owner cannot change a Core rule', raises(lambda: R.update_rule('approval_required', enabled=False, reason='I would like to'), PermissionError))
@@ -349,6 +358,7 @@ A.set_on(False, 'Test: hold it while the background review settles')
 new = store.propose('Dog name update', 'The dog Lexi is a spaniel.', 'Stefan said so')['id']
 settle()
 A.set_on(True, 'Test: Temple approves again')
+store.set_category([new], 'Family')          # it has its category, so the approval below is only the supersede (Temple never approves one without)
 before = exact(new, old)
 A.after_review(new)
 with store.db() as c: arch = c.execute('SELECT state,replaced_by FROM memory_archive WHERE record_id=?', (old,)).fetchone()
@@ -360,7 +370,9 @@ r = cl.post(f"/admin/api/library/{sup['id']}/undo", json={'note': 'Lexi is a coc
 t('Undo puts both back exactly as they were, row for row', r.status_code == 200 and exact(new, old) == before)
 t('…the undone approval waits for a person (Temple does not approve it again)', status(new) == 'proposed' and A._state('memory', new)['state'] == 'held')
 t('…logged, and cannot be undone twice', activity('library_undone', new) and cl.post(f"/admin/api/library/{sup['id']}/undo", json={}, headers=H).status_code == 409)
+A.set_on(False, 'Test: no approval while categorising is looked at on its own')
 cat = store.propose('Gym times', 'The office gym opens at 6am on weekdays.', 'Stefan said so')['id']; settle()
+A.set_on(True, 'Test: Temple approves again')
 before = exact(cat)
 temple_categorise._ask = lambda payload: json.dumps({'assignments': [{'id': m['id'], 'category': 'Work', 'confidence': 0.9, 'reason': 'An office matter.'}
                                                                      for m in json.loads(payload)['memories']]})

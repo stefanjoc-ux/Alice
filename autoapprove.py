@@ -189,17 +189,47 @@ def _title(c, rid):
 
 
 def _category_now(rid, category):
-    """The memory's category, once Temple has had the chance to give it one, when some categories need a person."""
-    import library
-    if category or not library.person_categories(): return category
+    """The memory's (or decision's) category, once Temple has had the chance to give it one: Temple never approves an item with no
+    category (an approved item with none could not go to its space; D-0048 waited there for good)."""
+    if category or not store.list_categories()['categories']: return category
     try:
         import temple_categorise
-        temple_categorise.run([rid])
+        st = (temple_categorise.run([rid]) or {}).get('status')
+        if st == 'busy' and temple_categorise._lock.acquire(timeout=120):     # another run holds it: wait, then categorise this one
+            temple_categorise._lock.release()
+            temple_categorise.run([rid])
     except Exception:
         pass
     with store.db() as c:
         r = c.execute("SELECT coalesce(category,'') FROM record_meta WHERE record_id=?", (rid,)).fetchone()
     return r[0] if r else ''
+
+
+def _knowledge_category_now(fid, category):
+    """The same for a knowledge draft: Temple's categorising first, when it has none."""
+    if category or not store.list_categories()['categories']: return category
+    try:
+        import knowledge
+        st = (knowledge.categorise() or {}).get('status')
+        if st == 'busy' and knowledge._lock.acquire(timeout=120):
+            knowledge._lock.release()
+            knowledge.categorise()
+    except Exception:
+        pass
+    with store.db() as c:
+        r = c.execute("SELECT coalesce(category,'') FROM knowledge_meta WHERE file_id=?", (fid,)).fetchone()
+    return r[0] if r else ''
+
+
+NO_CATEGORY_HOLD = ('No category: Temple could not give it one, so it waits for a person to choose its category '
+                    '(Approval and library management holds anything Temple could not give a category).')
+
+
+def no_category_hold(category):
+    """Held for a person because it has no category (the rule Approval and library management, 'Anything Temple could not give a
+    category'): only when the library has categories to choose from. Not held: approved, and its share waits for a category."""
+    import library
+    return not category and bool(store.list_categories()['categories']) and library.holds('no_category')
 
 
 def _approve_memory(rid, note):
@@ -233,6 +263,8 @@ def after_review(rid, reviewed=True):
     cat = _category_now(rid, row['category'])
     if library.needs_person(cat):
         hold('memory', rid, f'It is in {cat}: new items in that category need a person\'s approval (Approval and library management).'); return
+    if no_category_hold(cat):
+        hold('memory', rid, NO_CATEGORY_HOLD); return
     note = 'not checked for clashes (Temple reviews are off)'
     replaces = None
     if reviewed:
@@ -290,6 +322,8 @@ def knowledge_draft(fid, again=False):
     if library.needs_person(m.get('category') or ''):
         hold('knowledge', fid, f'It is in {m["category"]}: new items in that category need a person\'s approval (Approval and library management).')
         return 'held'
+    if no_category_hold(_knowledge_category_now(fid, m.get('category') or '')):
+        hold('knowledge', fid, NO_CATEGORY_HOLD); return 'held'
     note = 'draft from a trusted source'
     named = [p for p in knowledge.replacements('pending', new_id=fid) if p['source'] == 'proposer']
     supersede = bool(named) and library.may('supersede')
@@ -569,6 +603,11 @@ def decide_decision(rid, reviewed=True, force=False):
     p = policy()
     if not p['auto']:
         hold('memory', rid, 'A decision: decisions wait for you (Temple does not manage decisions).'); return 'held'
+    if no_category_hold(_category_now(rid, row['category'] or '')):
+        hold('memory', rid, NO_CATEGORY_HOLD); return 'held'
+    with store.db() as c:
+        row = c.execute("SELECT r.status,r.title,coalesce(m.category,'') AS category FROM records r "
+                        "LEFT JOIN record_meta m ON m.record_id=r.id WHERE r.id=?", (rid,)).fetchone()
     rv = _latest_review(rid) if reviewed else None
     report = rv['report'] if rv and rv['status'] == 'complete' else ''
     im = IMPACT.search(report)
