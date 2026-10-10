@@ -1,4 +1,5 @@
-"""Digital teams: the Members tab (Stefan, 9 Oct 2026).
+"""Digital teams: the Members tab (Stefan, 9 Oct 2026; periods Last 7 days, This month, Last month, Last 12 months, All time and the
+model tier, 10 Oct 2026).
 
 Each member's figures for every period agree with the Overview's Running cost card, the Agents page and Usage; the editor's save is
 one new team version; the hand-off order is saved as a new version (stages follow it only in job types made of your own steps);
@@ -74,12 +75,21 @@ NOW = datetime.now(timezone.utc) + timedelta(seconds=5)
 base = team_costs.team(TID, now=NOW)
 M = team_costs.members(TID, now=NOW)
 keys = [p['key'] for p in M['periods']]
-t('five periods: the card\'s four, then since tracking began (with its date)', keys == ['7d', '30d', 'quarter', '12m', 'all']
-  and M['periods'][4]['label'].startswith('Since tracking began (') and M['periods'][4]['since'] == '')
+t('five periods: last 7 days, this month, last month, last 12 months, all time', keys == ['7d', 'month', 'last_month', '12m', 'all']
+  and [p['label'] for p in M['periods']] == ['Last 7 days', 'This month', 'Last month', 'Last 12 months', 'All time']
+  and M['periods'][4]['since'].startswith('tracked since '))
 card = {m['id']: m for m in base['members']}
-t('each member\'s cost in each of the card\'s periods is exactly the Overview card\'s figure',
-  all(M['members'][mid]['costs'][k] == card[mid]['costs'][k] for mid in M['members'] for k in ('7d', '30d', 'quarter', '12m')))
-t('…and the team total too', all(M['total'][k] == base['total'][k] for k in ('7d', '30d', 'quarter', '12m')))
+t('each member\'s cost for the last 7 days and 12 months is exactly the Overview card\'s figure',
+  all(M['members'][mid]['costs'][k] == card[mid]['costs'][k] for mid in M['members'] for k in ('7d', '12m')))
+t('…and the team total too', all(M['total'][k] == base['total'][k] for k in ('7d', '12m')))
+with s.db() as c:
+    recs = [dict(r) for r in c.execute('SELECT member_id, at, usd FROM team_costs WHERE team_id=?', (TID,))]
+for k, _, st, en in team_costs.member_periods(NOW):
+    want = {}
+    for r in recs:
+        if (st is None or r['at'] >= st.isoformat()) and (en is None or r['at'] < en.isoformat()): want[r['member_id']] = want.get(r['member_id'], D(0)) + D(r['usd'])
+    t(f'{k}: each member\'s cost is the sum of its cost records in the period', all(D(M['members'][mid]['costs'][k]['usd']) == want.get(mid, D(0)) for mid in M['members']))
+t('the team cost per job is the jobs\' cost over the number of jobs', M['jobs']['all'] == 2 and M['per_job']['all']['usd'] > 0)
 t('the average per job over 12 months matches the card\'s "AI per job"',
   all(M['members'][mid]['per_job']['12m'] == card[mid]['per_job'] for mid in M['members']))
 with s.db() as c:
@@ -108,7 +118,41 @@ t('in pounds at the rate you set, with the rate and date for hover', P['member_c
 team_costs.set_fx(None)
 t('…or in dollars, saying so, when no rate is set', page()['member_costs']['members']['lead-qs']['costs']['all']['text'].startswith('$'))
 with s.db() as c: c.execute("UPDATE settings SET value=? WHERE key='team_costs_since'", ((datetime.now(timezone.utc) - timedelta(days=3)).isoformat(),))
-t('a period that starts before tracking says "since <date>"', [p['since'].startswith('since ') for p in team_costs.members(TID)['periods']] == [True, True, True, True, False])
+ps = {p['key']: p['since'] for p in team_costs.members(TID)['periods']}
+t('a period that starts before tracking says "since <date>"; All time says when tracking began', ps['7d'].startswith('since ') and ps['12m'].startswith('since ')
+  and ps['all'].startswith('tracked since '))
+t('the editor and the card show each model\'s tier', page()['model_tiers'] == {'openai': 'Standard', 'claude': 'Light', 'claude_sonnet': 'Standard',
+                                                                              'claude_opus': 'Premium', 'openai_astra': 'Premium'})
+
+# ---------------- the Members tab's periods at their boundaries (calendar months, UTC) ----------------
+pt = teams.create('Member periods team', 'Periods only.', members=[{'id': 'm1', 'role': 'Analyst'}, {'id': 'm2', 'role': 'Reviewer'}])
+PT_ = pt['id']
+NOW2 = datetime(2026, 10, 10, 12, 0, tzinfo=timezone.utc)
+SEC = timedelta(seconds=1)
+W = {k: (st, en) for k, _, st, en in team_costs.member_periods(NOW2)}
+t('this month starts on the 1st; last month is the whole of September; 7 days and 12 months roll back',
+  W['month'] == (datetime(2026, 10, 1, tzinfo=timezone.utc), None) and W['last_month'] == (datetime(2026, 9, 1, tzinfo=timezone.utc), datetime(2026, 10, 1, tzinfo=timezone.utc))
+  and W['7d'][0] == NOW2 - timedelta(days=7) and W['12m'][0] == datetime(2025, 10, 10, 12, tzinfo=timezone.utc) and W['all'] == (None, None))
+t('in January, last month is the previous December', [x[2:] for x in team_costs.member_periods(datetime(2027, 1, 5, tzinfo=timezone.utc)) if x[0] == 'last_month'][0]
+  == (datetime(2026, 12, 1, tzinfo=timezone.utc), datetime(2027, 1, 1, tzinfo=timezone.utc)))
+with s.db() as c:
+    c.execute("UPDATE settings SET value=? WHERE key='team_costs_since'", ((NOW2 - timedelta(days=800)).isoformat(),))
+    for at, mid, usd, jid in [(W['month'][0], 'm1', 1.00, 'ja'), (W['month'][0] - SEC, 'm1', 2.00, 'jb'), (W['last_month'][0], 'm2', 4.00, 'jb'),
+                              (W['last_month'][0] - SEC, 'm2', 8.00, 'jc'), (W['7d'][0], 'm1', 16.00, 'ja'), (W['12m'][0] - SEC, 'm2', 32.00, 'jd'),
+                              (NOW2 + SEC, 'm1', 1000.0, 'ja')]:
+        c.execute('INSERT INTO team_costs(at,team_id,member_id,role,job_id,job_version,usd) VALUES (?,?,?,?,?,?,?)',
+                  (at.isoformat(), PT_, mid, {'m1': 'Analyst', 'm2': 'Reviewer'}[mid], jid, 1, usd))
+M2 = team_costs.members(PT_, now=NOW2)
+u2 = lambda k: M2['total'][k]['usd']
+t('a cost exactly at a period\'s start counts, one a second earlier does not, and last month stops at the 1st of this month',
+  u2('month') == 1 + 16 and u2('last_month') == 2 + 4 and u2('7d') == 16 and u2('12m') == 1 + 2 + 4 + 8 + 16 and u2('all') == 1 + 2 + 4 + 8 + 16 + 32)
+t('…nothing after "now" counts, and members add up to the team in every period', all(
+  sum(D(m['costs'][k]['usd']) for m in M2['members'].values()) == D(M2['total'][k]['usd']) for k in ('7d', 'month', 'last_month', '12m', 'all')))
+t('jobs worked and the cost per job per period, member and team', M2['members']['m1']['jobs']['month'] == 1 and M2['members']['m2']['jobs']['last_month'] == 1
+  and M2['jobs']['last_month'] == 1 and M2['per_job']['last_month']['usd'] == 6.0 and M2['jobs']['all'] == 4 and M2['per_job']['all']['usd'] == 63 / 4)
+with s.db() as c: c.execute("UPDATE settings SET value=? WHERE key='team_costs_since'", ((NOW2 - timedelta(days=5)).isoformat(),))
+lm = {p['key']: p['since'] for p in team_costs.members(PT_, now=NOW2)['periods']}
+t('a month wholly before tracking began says nothing was tracked', lm['last_month'].startswith('before tracking began') and lm['month'].startswith('since '))
 
 # ---------------- the editor: one save, one new version ----------------
 v0 = teams.get(TID)['version']
@@ -214,6 +258,6 @@ t('a member who works on a stage still cannot be removed', cl.delete(f'/admin/ap
 # ---------------- the page ----------------
 html = cl.get(f'/admin/teams/{TID}').text
 t('the Members tab: period switcher, card grid in hand-off order, editor in the side panel, drag and keyboard reorder, Add a member',
-  all(x in html for x in ("store.get('member-period','30d')", "class:'tm-mgrid'", 'function openMember(', "wide:true", 'draggable', 'function moveKey(',
+  all(x in html for x in ("store.get('member-period','month')", "class:'tm-mgrid'", 'function openMember(', "wide:true", 'draggable', 'function moveKey(',
                           "'/member-order'", 'function addCard(', 'function wordDiff(')))
 t('the side panel goes full screen on a phone', 'ic-drawer.ic-wide{top:0;width:100vw' in html)

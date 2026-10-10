@@ -301,25 +301,43 @@ def team(tid, now=None):
             'jobs': job_cost, 'staff_on': bool(figs)}
 
 
-MEMBER_PERIODS = PERIODS + [('all', 'Since tracking began')]
+# The Members tab's periods (Stefan, 10 Oct 2026): calendar months as well as rolling windows, and everything since tracking began.
+MEMBER_PERIODS = [('7d', 'Last 7 days'), ('month', 'This month'), ('last_month', 'Last month'), ('12m', 'Last 12 months'), ('all', 'All time')]
 TREND_WEEKS = 12             # the small trend line on each member's card: the last 12 weeks, week by week
 LAST_JOBS = 10               # the member's last jobs, with what each cost, in its editor
 
 
+def member_periods(now=None):
+    """[(key, label, start, end)] in UTC for the Members tab: a cost counts when start <= at < end (end None = up to now).
+    This month starts on the 1st at 00:00 UTC; last month is the whole previous calendar month; All time has no start."""
+    now = now or datetime.now(timezone.utc)
+    month = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+    prev = datetime(now.year - 1, 12, 1, tzinfo=timezone.utc) if now.month == 1 else datetime(now.year, now.month - 1, 1, tzinfo=timezone.utc)
+    roll = {k: st for k, _, st in periods(now)}
+    win = {'7d': (roll['7d'], None), 'month': (month, None), 'last_month': (prev, month), '12m': (roll['12m'], None), 'all': (None, None)}
+    return [(k, l, *win[k]) for k, l in MEMBER_PERIODS]
+
+
+def _in(at, start, end):
+    return (start is None or at >= start) and (end is None or at < end)
+
+
 def members(tid, now=None, base=None):
-    """The Members tab (Stefan, 9 Oct 2026): for each member, the cost in every period (the Running cost card's four, plus since
-    tracking began), its share of the team total, the jobs it worked on and the average per job in each period, the last 12 weeks
-    week by week, and its last 10 jobs with what each cost. From the same rows as team(), so the figures agree with the Running cost
-    card, Usage and the Agents page. `base` is team()'s result when the caller already has it (its rate and team total are used)."""
+    """The Members tab (Stefan, 9 and 10 Oct 2026): for each member, the cost in every period (last 7 days, this month, last month,
+    the last 12 months and all time, i.e. since tracking began), its share of the team total, the jobs it worked on and the average
+    per job in each period, the last 12 weeks week by week, and its last 10 jobs with what each cost. From the same team_costs rows
+    as team() (the Running cost card), Usage and the Agents page; all arithmetic here, in Decimal. `base` is team()'s result when the
+    caller already has it (its rate is used)."""
     now = now or datetime.now(timezone.utc)
     base = base or team(tid, now)
     f, began = base['fx'], base['since']
     rows = _rows(tid, now)
-    starts = {k: st.isoformat() for k, _, st in periods(now)}
-    starts['all'] = ''
+    wins = {k: (st.isoformat() if st else None, en.isoformat() if en else None) for k, _, st, en in member_periods(now)}
     keys = [k for k, _ in MEMBER_PERIODS]
     week0 = now - timedelta(weeks=TREND_WEEKS)
     total = {k: Decimal('0') for k in keys}
+    team_jobs = {k: set() for k in keys}
+    job_usd = {k: Decimal('0') for k in keys}         # the part of the total spent on jobs (Talk to the team without a job is not)
     per = {}
     for r in rows:
         mid = r['member_id'] or '_'
@@ -327,10 +345,13 @@ def members(tid, now=None, base=None):
                                  'weeks': [Decimal('0')] * TREND_WEEKS, 'by_job': {}})
         usd = _d(r['usd'])
         for k in keys:
-            if r['at'] >= starts[k]:
+            if _in(str(r['at']), *wins[k]):
                 m['sums'][k] += usd
                 total[k] += usd
-                if r['job_id']: m['jobs'][k].add(r['job_id'])
+                if r['job_id']:
+                    m['jobs'][k].add(r['job_id'])
+                    team_jobs[k].add(r['job_id'])
+                    job_usd[k] += usd
         try: at = datetime.fromisoformat(str(r['at']).replace('Z', '+00:00'))
         except ValueError: at = None
         if at is not None and at.tzinfo is None: at = at.replace(tzinfo=timezone.utc)
@@ -346,8 +367,14 @@ def members(tid, now=None, base=None):
         with store.db() as c:
             for r in c.execute('SELECT id, title, status, created_at FROM team_jobs WHERE id IN (' + ','.join('?' * len(ids)) + ')', tuple(ids)):
                 titles[r['id']] = {'ref': teams.ref(r['id']), 'title': r['title'], 'status': r['status'], 'created_at': r['created_at']}
-    info = [{'key': k, 'label': f'{l} ({_day(began)})' if k == 'all' else l, 'start': starts[k],
-             'since': '' if k == 'all' else (f'since {_day(began)}' if starts[k] < began else '')} for k, l in MEMBER_PERIODS]
+    info = []
+    for k, l, st, en in member_periods(now):
+        s0, e0 = wins[k]
+        if k == 'all': since_txt = f'tracked since {_day(began)}'
+        elif e0 is not None and e0 <= began: since_txt = f'before tracking began ({_day(began)}): nothing tracked'
+        elif s0 < began: since_txt = f'since {_day(began)}'
+        else: since_txt = ''
+        info.append({'key': k, 'label': l, 'start': s0 or '', 'end': e0 or '', 'since': since_txt})
     out = {}
     for mid, m in per.items():
         jobs = sorted(m['by_job'].items(), key=lambda kv: kv[1][1], reverse=True)[:LAST_JOBS]
@@ -364,6 +391,9 @@ def members(tid, now=None, base=None):
     import teams
     current = [m['id'] for m in teams.get(tid)['members']]
     return {'fx': f, 'since': began, 'since_text': _day(began), 'periods': info, 'total': {k: money(v, f) for k, v in total.items()},
+            'before_tracking': base.get('before_tracking'), 'before_text': base.get('before_text', ''),
+            'jobs': {k: len(team_jobs[k]) for k in keys},
+            'per_job': {k: (money(job_usd[k] / len(team_jobs[k]), f) if team_jobs[k] else None) for k in keys},
             'members': {mid: out.get(mid, empty) for mid in current},
             'former': {k: money(sum((per[mid]['sums'][k] for mid in per if mid not in current), Decimal('0')), f) for k in keys}}
 

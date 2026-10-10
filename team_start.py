@@ -43,12 +43,15 @@ def page(tid):
 
 
 def _org_defaults(orgs, tid=''):
+    """{organisation: template} for the clients that have a default of their own in this team's settings (D-0039), skipping one
+    removed from the team's list, missing, or tagged to another client: the Start a job screen preselects it, else the team's."""
     import pricing_templates
-    gone = pricing_templates.hidden_paths(tid) if tid else set()       # removed from this team's list: the team's default is used instead
+    if not tid: return {}
+    t = teams.get(tid)
     out = {}
     for o in orgs:
-        p = pricing_templates.org_default(o['name'])
-        if p and p not in gone: out[o['name']] = pricing_templates.describe(p)
+        p, src = pricing_templates.default_for(t, o['name'])
+        if src == 'client': out[o['name']] = pricing_templates.describe(p)
     return out
 
 

@@ -1746,7 +1746,7 @@ def overview(tid):
     for p in pend: p['role'] = roles.get(p['member'], '')
     return {'team': t, 'teams': listing(), 'versions': versions(tid)[:30], 'jobs': jobs(tid), 'suggestions': pend,
             'rates': {'count': rates, 'batches': batches}, 'autonomy': AUTONOMY, 'doc_kinds': DOC_KINDS,
-            'models': {k: v[1] for k, v in assistants.PROVIDERS.items()}, 'packs': {k: p['name'] for k, p in rule_packs.PACKS.items()},
+            'models': {k: v[1] for k, v in assistants.PROVIDERS.items()}, 'model_tiers': {k: assistants.tier(k) for k in assistants.PROVIDERS}, 'packs': {k: p['name'] for k, p in rule_packs.PACKS.items()},
             'categories': [x['name'] for x in store.list_categories()['categories']]}
 
 

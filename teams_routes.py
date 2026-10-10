@@ -242,9 +242,13 @@ class TemplateClientIn(BaseModel):
     client: str = Field('', max_length=80)
 
 
-class OrgTemplateIn(BaseModel):
-    org: str = Field(min_length=1, max_length=120)
+class ClientTemplateIn(BaseModel):
+    client: str = Field(min_length=1, max_length=120)
     path: str = Field('', max_length=400)
+
+
+class OrgMoveIn(BaseModel):
+    counts: dict
 
 
 class JobTemplateIn(BaseModel):
@@ -310,17 +314,17 @@ def pricing_client(c: TemplateClientIn):
     return _do(pricing_templates.set_client, c.path, c.client)
 
 
-@router.get('/admin/api/teams/pricing-templates/all')
-def pricing_all(org: str = Query('', max_length=120)):
+@router.get('/admin/api/teams/pricing-templates/org-move')
+def pricing_org_move_preview():
+    """D-0039: what moving the old organisation-page default templates into the teams' settings would do (nothing changes)."""
     import pricing_templates
-    cur = pricing_templates.org_default(org) if org else ''
-    return {'templates': pricing_templates.all_templates(), 'org_default': pricing_templates.describe(cur) if cur else None}
+    return _do(pricing_templates.org_move_preview)
 
 
-@router.put('/admin/api/teams/pricing-templates/org-default')
-def pricing_org_default(o: OrgTemplateIn):
+@router.post('/admin/api/teams/pricing-templates/org-move')
+def pricing_org_move(m: OrgMoveIn):
     import pricing_templates
-    return _do(pricing_templates.set_org_default, o.org, o.path)
+    return _do(pricing_templates.org_move_apply, m.counts)
 
 
 @router.get('/admin/api/teams/demo-project')
@@ -505,6 +509,13 @@ def teams_pricing_set(p: TeamPricingIn, tid: str = FPath(pattern=ID)):
 def teams_pricing_hidden(d: HideIn, tid: str = FPath(pattern=ID)):
     import pricing_templates
     return _do(pricing_templates.set_hidden, tid, d.path, d.hidden)
+
+
+@router.put('/admin/api/teams/{tid}/pricing-templates/client-default')
+def teams_pricing_client_default(d: ClientTemplateIn, tid: str = FPath(pattern=ID)):
+    """D-0039: add, change or (path '') remove a client's default template in this team's settings."""
+    import pricing_templates
+    return _do(pricing_templates.set_client_default, tid, d.client, d.path)
 
 
 @router.post('/admin/api/teams/{tid}/pricing-templates')

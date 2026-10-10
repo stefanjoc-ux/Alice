@@ -131,7 +131,9 @@ def describe(path, p=None):
 # ---------------- the team's settings: templates folder, default template, outputs folder (versioned) ----------------
 def team_settings(t):
     p = t.get('pricing') if isinstance(t.get('pricing'), dict) else {}
-    return {'folder': p.get('folder', ''), 'default': p.get('default', ''), 'outputs': p.get('outputs', '')}
+    cd = p.get('clients') if isinstance(p.get('clients'), dict) else {}
+    return {'folder': p.get('folder', ''), 'default': p.get('default', ''), 'outputs': p.get('outputs', ''),
+            'clients': {str(k): _rel(v) for k, v in cd.items() if str(k).strip() and _rel(v)}}
 
 
 def set_team(tid, folder=None, default=None, outputs=None):
@@ -153,7 +155,7 @@ def set_team(tid, folder=None, default=None, outputs=None):
         new['default'] = default
     if new == cur: return team_page(tid)
     t['pricing'] = new
-    what = [k for k in new if new[k] != cur[k]]
+    what = [k for k in new if new[k] != cur[k] and k != 'clients']
     teams._save(tid, t, 'Pricing templates: ' + ', '.join({'folder': 'templates folder', 'default': 'default template', 'outputs': 'outputs folder'}[k] for k in what))
     return team_page(tid)
 
@@ -171,8 +173,29 @@ def team_page(tid):
             'templates': [x for x in in_folder(s['folder']) if x['path'] not in gone],
             'default': describe(s['default']) if s['default'] and s['default'] not in gone else None,
             'hidden': [{**describe(h['path']), 'hidden_by': h['by'], 'hidden_at': h['at']} for h in hid],
+            'client_defaults': [{**_tagged(describe(path)), 'client': org, 'hidden': path in gone} for org, path in sorted(_visible_defaults(s).items(), key=lambda kv: kv[0].casefold())],
+            'organisations': _organisations(),
+            'org_move': org_move_preview(brief=True) if store.restricted() is None else None,     # the move is the Owner's (routes 'full')
             'fallbacks': _fallbacks(t, gone), 'can_manage': permissions.level(store.viewer(), 'team', tid) >= permissions.MANAGE,
             'clients': sorted(__import__('clients').names())}
+
+
+def _tagged(d):
+    """A template's description with its client tag under its own name, so 'client' can name the client it is the default for."""
+    return {**{k: v for k, v in d.items() if k != 'client'}, 'tagged_to': d.get('client', '')}
+
+
+def _organisations():
+    """Organisations this person may see, clients first, for the Default template per client picker."""
+    import organisations
+    try: orgs = [{'name': o['name'], 'client': bool(o.get('is_client'))} for o in organisations.listing()['organisations']]
+    except Exception: return []
+    return sorted(orgs, key=lambda o: (not o['client'], o['name'].casefold()))
+
+
+def _visible_defaults(s):
+    """The team's defaults per client, less those for organisations in spaces this person cannot see."""
+    return {org: path for org, path in s['clients'].items() if store.can_see('organisation', org)}
 
 
 # ---------------- "Remove from this list" (Stefan, 9 Oct 2026) ----------------
@@ -197,9 +220,15 @@ def hidden_paths(tid):
     return {h['path'] for h in hidden(tid)}
 
 
-def _org_defaults_for(path):
-    with store.db() as c:
-        return [r[0] for r in c.execute('SELECT org FROM org_pricing_templates WHERE path=? ORDER BY org', (_rel(path),))]
+def _org_defaults_for(path, t=None):
+    """The clients whose default is this template: in the team's own setting (and, until the organisation defaults are moved into
+    the teams, the old per-organisation choices)."""
+    path = _rel(path)
+    out = {org for org, p in (team_settings(t)['clients'].items() if t else ()) if p == path}
+    if not _org_defaults_moved():
+        with store.db() as c:
+            out |= {r[0] for r in c.execute('SELECT org FROM org_pricing_templates WHERE path=? ORDER BY org', (path,))}
+    return sorted(out, key=str.casefold)
 
 
 def _fallbacks(t, gone):
@@ -212,7 +241,7 @@ def _fallbacks(t, gone):
         name = Path(path).name
         if path == s['default']:
             out.append(f'“{name}” was the team\'s default: new jobs now use Alice\'s own layout, unless their client has a default of its own.')
-        orgs = _org_defaults_for(path)
+        orgs = _org_defaults_for(path, t)
         if orgs:
             out.append(f'“{name}” is the default for {", ".join(orgs[:6])}{" and others" if len(orgs) > 6 else ""}: their new jobs in this team use {instead}.')
     return out
@@ -245,7 +274,7 @@ def set_hidden(tid, path, on=True):
         msg = [f'“{name}” removed from this team\'s list. The file in the document source and its mapping are kept; jobs that used it keep their filled copies.']
         msg += [f for f in page['fallbacks'] if f.startswith(f'“{name}”')]
     else:
-        orgs = _org_defaults_for(path)
+        orgs = _org_defaults_for(path, t)
         back = (['the team\'s default'] if path == team_settings(t)['default'] else []) + ([f'the default for {", ".join(orgs[:6])}'] if orgs else [])
         msg = [f'“{name}” is back in this team\'s list' + (f' and is {" and ".join(back)} again.' if back else '.')]
     return {**page, 'message': ' '.join(msg)}
@@ -286,52 +315,163 @@ def set_client(path, client):
     return describe(path)
 
 
-# ---------------- organisation defaults ----------------
-def org_default(org):
+# ---------------- the default template per client: a team setting (D-0039, Stefan 10 Oct 2026) ----------------
+# Each team keeps its own default template per client in its versioned `pricing` setting ({organisation: path}); the organisation's
+# Details page no longer has one. A template tagged to a client can only be that client's default; a shared one works for any.
+# The old per-organisation choices (table org_pricing_templates) are moved into the teams once, after a preview the Owner confirms
+# (org_move_preview / org_move_apply). Until then they still apply; afterwards the table is kept (never deleted, rule 3) but no
+# longer read or written.
+MOVE_SETTING = 'pricing_org_defaults_moved'
+
+
+def _org_defaults_moved():
+    with store.db() as c:
+        return c.execute('SELECT 1 FROM settings WHERE key=?', (MOVE_SETTING,)).fetchone() is not None
+
+
+def _legacy_default(org):
+    """The old organisation-page choice, only while it has not been moved into the teams."""
+    if _org_defaults_moved(): return ''
     with store.db() as c:
         r = c.execute('SELECT path FROM org_pricing_templates WHERE org=?', (_clean(org, 120),)).fetchone()
     return r[0] if r else ''
 
 
-def set_org_default(org, path):
-    """An organisation's default pricing template (on its profile). Several organisations may point at the same shared file;
-    a template tagged to a client can only be that client's default."""
-    import organisations, proposals
+def client_default(team, org):
+    """(path, where it came from) for this client on this team: the team's own setting, else the not-yet-moved organisation choice."""
+    key = (org or '').casefold()
+    if not key: return '', ''
+    for k, p in team_settings(team)['clients'].items():
+        if k.casefold() == key: return p, 'team-setting'
+    p = _legacy_default(org)
+    return (p, 'organisation') if p else ('', '')
+
+
+def _tag_ok(path, org):
+    """A template tagged to a client may only be that client's default; a shared one (no tag) works for any client."""
+    import proposals
+    tagged = (_row(path) or {}).get('client') or ''
+    if tagged and tagged.casefold() != (proposals._client_for(org) or '').casefold():
+        raise ValueError(f'That template is tagged to {tagged}, so it can only be {tagged}\'s default.')
+
+
+def set_client_default(tid, org, path):
+    """Add, change or (path '') remove a client's default template in this team's settings: a new team version, logged."""
+    import organisations, teams
+    t = teams.get(tid)
     org = organisations.canonical(org)
     path = _rel(path)
+    s = team_settings(t)
+    cur = dict(s['clients'])
+    old_key = next((k for k in cur if k.casefold() == org.casefold()), None)
+    if not path:
+        if old_key is None: raise ValueError(f'{org} has no default template in this team.')
+        cur.pop(old_key)
+        what = f'Default template per client: {org} removed (new jobs use the team\'s default)'
+    else:
+        p = resolve(path)
+        if not p or p.suffix.lower() not in EXT_OK: raise ValueError('Choose an Excel or CSV template from the document sources.')
+        if path in hidden_paths(tid): raise ValueError('That template is removed from this team\'s list: add it back first (Show hidden).')
+        _tag_ok(path, org)
+        if old_key is not None and cur[old_key] == path: return team_page(tid)
+        what = f'Default template per client: {org} ' + ('changed to' if old_key is not None else 'set to') + f' {p.name}'
+        if old_key is not None: cur.pop(old_key)
+        cur[org] = path
+    t['pricing'] = {**{k: s[k] for k in ('folder', 'default', 'outputs')}, 'clients': cur}
+    teams._save(tid, t, what)
     with store.db() as c:
-        if not path:
-            c.execute('DELETE FROM org_pricing_templates WHERE org=?', (org,))
-            store.audit(c, 'pricing_template_default', org, 'human_control', f'{org}: no default pricing template')
-            return {'org': org, 'template': None}
-    p = resolve(path)
-    if not p or p.suffix.lower() not in EXT_OK: raise ValueError('Choose an Excel or CSV template from the document sources.')
-    tagged = (_row(path) or {}).get('client') or ''
-    if tagged and tagged != proposals._client_for(org):
-        raise ValueError(f'That template is tagged to {tagged}, so it can only be {tagged}\'s default.')
-    with store.db() as c:
-        c.execute('INSERT INTO org_pricing_templates(org,path,set_by,set_at) VALUES (?,?,?,?) ON CONFLICT(org) DO UPDATE SET path=excluded.path, '
-                  'set_by=excluded.set_by, set_at=excluded.set_at', (org, path, store.actor(), store.now()))
-        store.audit(c, 'pricing_template_default', org, 'human_control', f'{org}: default pricing template {p.name}')
-    return {'org': org, 'template': describe(path)}
+        store.audit(c, 'pricing_template_default', org, 'human_control', f'{t["name"]}: {what}')
+    return {**team_page(tid), 'message': what + '.'}
 
 
-def all_templates():
-    """Every template in any team's folder, for the organisation profile's picker."""
+def _move_targets():
+    """The teams the old organisation defaults move into: every team that prices with templates (a cost estimate job type or a
+    templates folder)."""
     import teams
-    seen, out = set(), []
-    for t in teams.listing():
-        for x in in_folder(team_settings(teams.get(t['id']))['folder']):
-            if x['path'] not in seen: seen.add(x['path']); out.append(x)
+    out = []
+    for x in teams.listing():
+        t = teams.get(x['id'])
+        if team_settings(t)['folder'] or any(jt.get('finish') == 'cost_estimate' for jt in t.get('job_types', [])): out.append(t)
     return out
 
 
+def org_move_preview(brief=False):
+    """What moving the organisation-page choices into the teams would do, before anything changes: each organisation's choice and,
+    per team, whether it is added, already there, or left out and why. `brief` = only whether there is anything to move."""
+    if _org_defaults_moved():
+        with store.db() as c:
+            r = c.execute('SELECT value FROM settings WHERE key=?', (MOVE_SETTING,)).fetchone()
+        try: done = json.loads(r[0]) if r else {}
+        except ValueError: done = {}
+        return {'pending': False, 'done': done}
+    with store.db() as c:
+        rows = [dict(r) for r in c.execute('SELECT org, path, set_by, set_at FROM org_pricing_templates ORDER BY org')]
+    if brief: return {'pending': bool(rows), 'count': len(rows)}
+    targets = _move_targets()
+    items, add, keep, skip = [], 0, 0, 0
+    for r in rows:
+        path = _rel(r['path'])
+        it = {'org': r['org'], 'path': path, 'name': Path(path).name, 'set_by': r['set_by'], 'set_at': r['set_at'], 'teams': []}
+        why = ''
+        p = resolve(path)
+        if not p: why = 'The template is no longer in the document sources.'
+        elif p.suffix.lower() not in EXT_OK: why = 'The template is in the old Excel format (.xls).'
+        else:
+            try: _tag_ok(path, r['org'])
+            except ValueError as e: why = str(e)
+        for t in targets:
+            have = next((v for k, v in team_settings(t)['clients'].items() if k.casefold() == r['org'].casefold()), None)
+            if why: st, note = 'skip', why
+            elif have == path: st, note = 'same', 'Already this team\'s default for this client.'
+            elif have: st, note = 'keep', f'This team already has {Path(have).name} for this client: kept.'
+            else: st, note = 'add', ''
+            add += st == 'add'; keep += st in ('same', 'keep'); skip += st == 'skip'
+            it['teams'].append({'team_id': t['id'], 'team': t['name'], 'status': st, 'note': note})
+        items.append(it)
+    return {'pending': bool(rows), 'items': items, 'teams': [{'id': t['id'], 'name': t['name']} for t in targets],
+            'counts': {'choices': len(rows), 'add': add, 'kept': keep, 'left_out': skip}}
+
+
+def org_move_apply(counts):
+    """Move the organisation-page choices into the teams, as previewed (refused if the preview's counts changed). Each team gets one
+    new version; the old table is kept but no longer read or written. Logged."""
+    import teams
+    pv = org_move_preview()
+    if not pv['pending']: raise ValueError('There are no organisation defaults left to move.')
+    if not isinstance(counts, dict) or any(int(counts.get(k, -1)) != v for k, v in pv['counts'].items()):
+        raise ValueError('The organisation defaults changed since the preview: look at the preview again, then confirm.')
+    per = {}
+    for it in pv['items']:
+        for x in it['teams']:
+            if x['status'] == 'add': per.setdefault(x['team_id'], []).append((it['org'], it['path']))
+    for tid, adds in per.items():
+        t = teams.get(tid)
+        s = team_settings(t)
+        cur = dict(s['clients'])
+        for org, path in adds: cur[org] = path
+        t['pricing'] = {**{k: s[k] for k in ('folder', 'default', 'outputs')}, 'clients': cur}
+        teams._save(tid, t, f'Default template per client: {len(adds)} moved from the organisation pages')
+    done = {'at': store.now(), 'by': store.actor() or '', **pv['counts'], 'teams': len(per)}
+    with store.db() as c:
+        c.execute('INSERT INTO settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', (MOVE_SETTING, json.dumps(done)))
+        store.audit(c, 'pricing_org_defaults_moved', 'org_pricing_templates', 'human_control',
+                    f'Default pricing templates moved from the organisation pages into the teams: {pv["counts"]["add"]} added, '
+                    f'{pv["counts"]["kept"]} already set, {pv["counts"]["left_out"]} left out. The old field is retired (kept, no longer used).')
+    return {**org_move_preview(), 'message': f'Moved: {pv["counts"]["add"]} added across {len(per)} team(s), {pv["counts"]["kept"]} already set, '
+                                              f'{pv["counts"]["left_out"]} left out. The organisation pages no longer hold a default template.'}
+
+
 def default_for(team, client_or_org):
-    """(path, where it came from) for a new job: the client's (organisation's) default, else the team's, else Alice's own layout."""
+    """(path, where it came from) for a new job: the client's default in this team's settings, else the team's default, else
+    Alice's own layout. A template removed from this team's list, missing, or tagged to another client is skipped."""
     gone = hidden_paths(team['id']) if team.get('id') else set()        # removed from this team's list: skipped, the next default used
     if client_or_org:
-        p = org_default(client_or_org)
-        if p and p not in gone and resolve(p): return p, 'client'
+        p, _ = client_default(team, client_or_org)
+        if p and p not in gone and resolve(p):
+            try:
+                _tag_ok(p, client_or_org)
+                return p, 'client'
+            except ValueError: pass
     d = team_settings(team)['default']
     if d and d not in gone and resolve(d): return d, 'team'
     return '', ''

@@ -207,8 +207,7 @@ SECTIONS = {
    <p id="o-client-help" class="muted small">Alice spots a client in chats and files by its name and its other names, so use names of the organisation, not of people.</p>
    <p class="muted small">The account manager is for your own tracking: it is never sent to a model. It is typed here for now and can be looked up from Entra ID once Alice runs in Azure.</p>
    <button id="o-save" type="button" class="secondary">Save details</button>
-   <div id="o-ptpl-wrap"><div class="k-meta-row"><label>Pricing template for digital teams<select id="o-ptpl"></select></label></div>
-   <p class="muted small" id="o-ptpl-note">A new team job for this organisation starts with this template (you can change it on the job). Templates are listed from the teams' templates folders; a template tagged to another client cannot be chosen.</p></div></div></details>
+   <p class="muted small">A digital team's default pricing template for this organisation is set on that team's Knowledge tab (Default template per client).</p></div></details>
   <details class="o-sec" data-sec="facts" open><summary><span>Profile facts</span><span id="o-sum-facts" class="o-sum"></span></summary><div class="o-sec-body"><div id="o-status" class="mem-tabs"></div><div id="o-facts"></div></div></details>
   <details class="o-sec" data-sec="opps"><summary><span>Opportunities</span><span id="o-sum-opps" class="o-sum"></span></summary><div class="o-sec-body">
    <div class="arc-actions o-watch"><label class="act-switch"><input id="o-watch" type="checkbox"> <strong>Watch for news and opportunities</strong></label><select id="o-opp-freq" aria-label="How often"><option value="weekly">weekly</option><option value="fortnightly">fortnightly</option><option value="monthly">monthly</option></select><span id="o-watch-note" class="muted small"></span></div><div id="o-opp-mini"></div></div></details>
@@ -1694,17 +1693,13 @@ if(PAGE==='organisations'){
   const SL={suggested:'Suggested',tracking:'Tracking',pursuing:'Pursuing'};
   for(const x of rows){const r=el('div','','o-mini');r.append(el('span',SL[x.status],'badge v-'+({suggested:'warn',pursuing:'run'}[x.status]||'none')),el('strong',x.title));
    if(x.offering)r.append(el('span',x.offering,'tag know'));if(x.confidence!==null&&x.confidence!==undefined)r.append(el('span',Math.round(x.confidence*100)+'%','small muted'));box.append(r)}}
- async function orgTemplate(o){const w=$('o-ptpl-wrap');w.hidden=DEMO_ORG;if(DEMO_ORG)return;const x=await api('/admin/api/teams/pricing-templates/all?org='+encodeURIComponent(o.name));const sel=$('o-ptpl');sel.replaceChildren();
-  const opt=(v,t,dis)=>{const e=document.createElement('option');e.value=v;e.textContent=t;if(dis)e.disabled=true;return e};sel.append(opt('','None: the team\'s default, else Alice\'s own layout'));
-  for(const t of x.templates.filter(t=>t.readable))sel.append(opt(t.path,t.name+(t.shared?' (shared)':' (for '+t.client+')'),!t.shared&&t.client!==o.name));sel.value=x.org_default?x.org_default.path:'';
-  sel.onchange=()=>run(async()=>{await api('/admin/api/teams/pricing-templates/org-default','PUT',{org:o.name,path:sel.value});$('notice').textContent=sel.value?'Pricing template set for '+o.name+'.':'No pricing template for '+o.name+'.'})}
  async function load(){await loadList();const o=st.L.organisations.find(x=>x.name===st.org);$('o-detail').hidden=!o;$('o-empty').hidden=!!o;if(!o)return;
   $('o-title').textContent=o.name;const meta=$('o-meta');meta.replaceChildren();
   if(o.is_client)meta.append(el('span','Client','o-flag cl'));meta.append(el('span',o.kind));meta.append(el('span',o.account_manager?'Account manager: '+o.account_manager:'No account manager','muted'));
   if(o.website){const a=link(o.website,domain(o.website));meta.append(a)}
   $('o-kind').value=o.kind;$('o-mgr').value=o.account_manager||'';$('o-client').checked=o.is_client;$('o-aliases').value=(o.aliases||[]).join(', ');$('o-aliases-wrap').hidden=!o.is_client;
   const tg=o.tagged;$('o-tagged-sec').hidden=!o.is_client||DEMO_ORG;if(tg){const parts=[[tg.memories,'memory','memories'],[tg.files,'file','files'],[tg.chats,'chat','chats']].map(([n,a,b])=>n+' '+(n===1?a:b));$('o-sum-tagged').textContent=parts.join(' · ');$('o-tagged-text').textContent=(tg.memories+tg.files+tg.chats)?'Tagged to '+o.name+': '+parts.join(', ')+'. In a chat for another client these are kept out.':'Nothing is tagged to '+o.name+' yet. Run Temple tagging, or tag a chat with this client.'}
-$('o-desc').value=o.description||'';$('o-web').value=o.website||'';run(()=>orgTemplate(o));
+$('o-desc').value=o.description||'';$('o-web').value=o.website||'';
   $('o-sum-details').textContent=[o.kind,o.account_manager||'no account manager',domain(o.website)].filter(Boolean).join(' · ');miniOpps(o);
   run(searches);
   const d=await api('/admin/api/organisations/facts?org='+encodeURIComponent(st.org)+'&status=all');const counts={};for(const f of d.facts)counts[f.status]=(counts[f.status]||0)+1;

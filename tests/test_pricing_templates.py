@@ -266,10 +266,13 @@ t('each re-priced version fills the template again, named for its version', fl['
 # ---------------- shared across clients; a client's own template refused elsewhere; copies tagged ----------------
 for n in ('FICTIONAL Aardvark Council', 'FICTIONAL Badger Trust'):
     organisations.create(n, client=True)
+v_before = teams.get(TID)['version']
 for n in ('FICTIONAL Aardvark Council', 'FICTIONAL Badger Trust'):
-    r = cl.put('/admin/api/teams/pricing-templates/org-default', json={'org': n, 'path': SHARED}, headers=H)
-t('several organisations can point their default at the same shared template', r.status_code == 200
-  and PT.org_default('FICTIONAL Aardvark Council') == PT.org_default('FICTIONAL Badger Trust') == SHARED)
+    r = cl.put(f'/admin/api/teams/{TID}/pricing-templates/client-default', json={'client': n, 'path': SHARED}, headers=H)
+t('several clients can have the same shared template as their default in the team\'s settings (Add)', r.status_code == 200
+  and PT.client_default(teams.get(TID), 'FICTIONAL Aardvark Council')[0] == PT.client_default(teams.get(TID), 'FICTIONAL Badger Trust')[0] == SHARED
+  and {x['client'] for x in r.json()['client_defaults']} == {'FICTIONAL Aardvark Council', 'FICTIONAL Badger Trust'})
+t('…each change is a new team version', teams.get(TID)['version'] == v_before + 2)
 mk = lambda title, client, **kw: cl.post(f'/admin/api/teams/{TID}/jobs', json={'job_type': 'cost-estimate', 'title': title, 'client': client,
                                           'brief': 'A fictional single-storey hall, to be estimated in full.',
                                           'uploads': [{'name': DOC, 'kind': 'spec', 'text': 'FICTIONAL specification.'}], **kw}, headers=H)
@@ -287,8 +290,63 @@ t('a client-tagged template is refused on another client\'s job, naming the rule
 with s.db() as c: blk = c.execute("SELECT count(*) FROM activity WHERE action='rule_blocked' AND rule='client_documents' AND target LIKE 'Pricing template%'").fetchone()[0]
 t('…and the refusal is logged as that rule\'s block', blk >= 1)
 t('…but used on that client\'s own job', mk('FICTIONAL Aardvark extension', 'FICTIONAL Aardvark Council', template=BYSHEET).status_code == 200)
-r = cl.put('/admin/api/teams/pricing-templates/org-default', json={'org': 'FICTIONAL Badger Trust', 'path': BYSHEET}, headers=H)
-t('a client-tagged template cannot be another organisation\'s default', r.status_code == 400)
+r = cl.put(f'/admin/api/teams/{TID}/pricing-templates/client-default', json={'client': 'FICTIONAL Badger Trust', 'path': BYSHEET}, headers=H)
+t('a template tagged to client A cannot be client B\'s default', r.status_code == 400 and 'tagged to FICTIONAL Aardvark Council' in r.json()['detail']
+  and PT.client_default(teams.get(TID), 'FICTIONAL Badger Trust')[0] == SHARED)
+r = cl.put(f'/admin/api/teams/{TID}/pricing-templates/client-default', json={'client': 'FICTIONAL Aardvark Council', 'path': BYSHEET}, headers=H)
+t('…but it can be client A\'s own default (Change)', r.status_code == 200 and PT.client_default(teams.get(TID), 'FICTIONAL Aardvark Council')[0] == BYSHEET)
+t('Start a job preselects the client\'s default, else nothing (then the team\'s default)', cl.get(f'/admin/api/teams/{TID}/start').json()['org_defaults'].keys()
+  == {'FICTIONAL Aardvark Council', 'FICTIONAL Badger Trust'})
+ra2 = teams._row(mk('FICTIONAL Aardvark preselect', 'FICTIONAL Aardvark Council').json()['id'])
+t('…a new job for the client uses the client\'s default', ra2['pricing_template'] == BYSHEET and ra2['pricing_template_from'] == 'client')
+r = cl.put(f'/admin/api/teams/{TID}/pricing-templates/client-default', json={'client': 'FICTIONAL Aardvark Council', 'path': SHARED}, headers=H)
+r = cl.put(f'/admin/api/teams/{TID}/pricing-templates/client-default', json={'client': 'FICTIONAL Badger Trust', 'path': ''}, headers=H)
+t('Remove takes a client\'s default out (a new team version)', r.status_code == 200 and PT.client_default(teams.get(TID), 'FICTIONAL Badger Trust') == ('', '')
+  and 'removed' in r.json()['message'])
+cl.put(f'/admin/api/teams/{TID}/pricing-templates', json={'default': ODD}, headers=H)
+rb2 = teams._row(mk('FICTIONAL Badger preselect', 'FICTIONAL Badger Trust').json()['id'])
+t('…then the team\'s default is used', rb2['pricing_template'] == ODD and rb2['pricing_template_from'] == 'team')
+cl.put(f'/admin/api/teams/{TID}/pricing-templates', json={'default': ''}, headers=H)
+rb3 = teams._row(mk('FICTIONAL Badger own layout', 'FICTIONAL Badger Trust').json()['id'])
+t('…and with no team default, Alice\'s own layout', rb3['pricing_template'] == '' and rb3['pricing_template_from'] == '')
+rb4 = teams._row(mk('FICTIONAL Badger chosen', 'FICTIONAL Badger Trust', template=SHARED).json()['id'])
+t('…the job can still choose another template', rb4['pricing_template'] == SHARED and rb4['pricing_template_from'] == 'chosen')
+cl.put(f'/admin/api/teams/{TID}/pricing-templates/client-default', json={'client': 'FICTIONAL Badger Trust', 'path': SHARED}, headers=H)
+
+# ---------------- D-0039: the old organisation-page choices move into the team's setting, after a preview ----------------
+organisations.create('FICTIONAL Curlew Housing', client=True)
+organisations.create('FICTIONAL Dunlin Estates', client=True)
+with s.db() as c:        # choices made on the organisation pages before this release (the throwaway test database)
+    for org, path in (('FICTIONAL Curlew Housing', SHARED), ('FICTIONAL Dunlin Estates', BYSHEET), ('FICTIONAL Badger Trust', ODD)):
+        c.execute('INSERT INTO org_pricing_templates(org,path,set_by,set_at) VALUES (?,?,?,?)', (org, path, 'Owner', s.now()))
+t('until the move is confirmed, an organisation\'s old choice still applies', PT.default_for(teams.get(TID), 'FICTIONAL Curlew Housing') == (SHARED, 'client'))
+t('…the team\'s own setting wins over the old choice', PT.default_for(teams.get(TID), 'FICTIONAL Badger Trust') == (SHARED, 'client'))
+v_before = teams.get(TID)['version']
+pv = cl.get('/admin/api/teams/pricing-templates/org-move').json()
+by = {it['org']: {x['team_id']: x for x in it['teams']} for it in pv['items']}
+t('the preview lists each choice and what would happen in each team, changing nothing', pv['pending'] and pv['counts']['choices'] == 3
+  and by['FICTIONAL Curlew Housing'][TID]['status'] == 'add' and by['FICTIONAL Badger Trust'][TID]['status'] == 'keep'
+  and by['FICTIONAL Dunlin Estates'][TID]['status'] == 'skip' and 'tagged to FICTIONAL Aardvark Council' in by['FICTIONAL Dunlin Estates'][TID]['note']
+  and teams.get(TID)['version'] == v_before)
+r = cl.post('/admin/api/teams/pricing-templates/org-move', json={'counts': {**pv['counts'], 'add': pv['counts']['add'] + 1}}, headers=H)
+t('…confirming with counts that differ from the preview is refused', r.status_code == 400 and teams.get(TID)['version'] == v_before)
+r = cl.post('/admin/api/teams/pricing-templates/org-move', json={'counts': pv['counts']}, headers=H)
+cd = PT.team_settings(teams.get(TID))['clients']
+t('the move keeps existing choices: added to the team\'s setting, the team\'s own kept, a tag clash left out', r.status_code == 200
+  and cd.get('FICTIONAL Curlew Housing') == SHARED and cd.get('FICTIONAL Badger Trust') == SHARED and 'FICTIONAL Dunlin Estates' not in cd
+  and teams.get(TID)['version'] == v_before + 1)
+with s.db() as c:
+    kept = c.execute('SELECT count(*) FROM org_pricing_templates').fetchone()[0]
+    c.execute('UPDATE org_pricing_templates SET path=? WHERE org=?', (ODD, 'FICTIONAL Curlew Housing'))
+    moved_log = c.execute("SELECT count(*) FROM activity WHERE action='pricing_org_defaults_moved'").fetchone()[0]
+t('…the old field is retired: its rows are kept (nothing deleted) but no longer read', kept == 3
+  and PT.default_for(teams.get(TID), 'FICTIONAL Curlew Housing') == (SHARED, 'client') and PT.client_default(teams.get(TID), 'FICTIONAL Dunlin Estates') == ('', ''))
+t('…logged, and the preview now says it is done', moved_log == 1 and cl.get('/admin/api/teams/pricing-templates/org-move').json()['pending'] is False
+  and cl.post('/admin/api/teams/pricing-templates/org-move', json={'counts': pv['counts']}, headers=H).status_code == 400)
+oh = cl.get('/admin/organisations').text
+t('the organisation\'s Details page has no pricing template control any more', 'o-ptpl' not in oh and 'pricing-templates/org-default' not in oh
+  and 'pricing-templates/all' not in oh)
+t('…and the old routes are gone', cl.put('/admin/api/teams/pricing-templates/org-default', json={'org': 'x', 'path': ''}, headers=H).status_code in (404, 405))
 rules_engine.update_rule('client_documents', enabled=False)
 t('switched off on the Rules page, the client\'s template may be used anywhere', mk('FICTIONAL Badger annex', 'FICTIONAL Badger Trust', template=BYSHEET).status_code == 200)
 rules_engine.update_rule('client_documents', enabled=True)
@@ -361,4 +419,5 @@ html = cl.get(f'/admin/teams/{TID}/start').text
 t('the Start a job screen is served and drawn by the Teams page', cl.get(f'/admin/teams/{TID}/start').status_code == 200
   and all(x in html for x in ("'Start a job for '", "'What happens next'", "'Ready to start'", "'Pick from a document library'", "'Drop the documents here'",
                               "'Allow team estimates on this job'", "'Cost/pricing template", "'Confirm mapping'", "'Pricing templates'")))
-t('the organisation profile offers a pricing template', 'o-ptpl' in cl.get('/admin/organisations').text)
+t('the team\'s Knowledge tab has Default template per client (Add, Change, Remove) and the move card', all(x in cl.get(f'/admin/teams/{TID}').text for x in (
+  "'Default template per client'", "'/pricing-templates/client-default'", "btn('Change'", "btn('Remove'", "btn('Add'", "'Preview the move'", "'Confirm the move'")))

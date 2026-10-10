@@ -27,6 +27,12 @@ MAX_OUTPUT = {'openai': 128000, 'claude': 64000, 'claude_sonnet': 128000, 'claud
 STREAM_ABOVE = 16000                                       # longer Claude answers are streamed, so a long answer never hits an HTTP timeout
 PREMIUM = {'claude_opus', 'openai_astra'}                  # proposal writers only: too costly for answering questions
 QA_PROVIDERS = [k for k in PROVIDERS if k not in PREMIUM]
+
+
+def tier(provider):
+    """The model's tier, as the pages show it: Premium (proposal writers' models), Light (Haiku: short answers) or Standard."""
+    if provider in PREMIUM: return 'Premium'
+    return 'Light' if 'haiku' in PROVIDERS.get(provider, ('', ''))[0].lower() else 'Standard'
 KINDS = {'qa': 'Answers questions from knowledge', 'proposal': 'Writes proposals (writer and QA agents)'}
 
 
