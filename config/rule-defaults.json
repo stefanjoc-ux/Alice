@@ -1,0 +1,311 @@
+{
+ "_about": "Alice's shipped rule defaults (Stefan's decision D-0045: no rule is hard-coded). Each rule's switch, settings, guidance text and whether it is Core. A deployment sets its own defaults in a file of the same shape (ALICE_RULE_DEFAULTS, or rule-defaults.json in the data folder): only the rules and fields it names change. Defaults apply when a rule is first created; 'core' and the wording apply at every start. Changes made on the Rules page are kept.",
+ "rules": [
+  {
+   "id": "secret_detection",
+   "set": "security",
+   "name": "Secret detection",
+   "kind": "enforced",
+   "description": "Blocks API keys, passwords, private keys, tokens and connection strings from chat messages sent to models, memories, knowledge notes and uploads.",
+   "enabled": true,
+   "params": {},
+   "core": true
+  },
+  {
+   "id": "protective_marking",
+   "set": "security",
+   "name": "Protective marking guard",
+   "kind": "enforced",
+   "description": "Refuses to send material marked OFFICIAL-SENSITIVE, SECRET or TOP SECRET to any external model. Marked uploads are refused; previously saved marked files are withheld from every tool.",
+   "enabled": true,
+   "params": {
+    "markings": [
+     "OFFICIAL-SENSITIVE",
+     "SECRET",
+     "TOP SECRET"
+    ]
+   },
+   "core": true
+  },
+  {
+   "id": "provider_allow",
+   "set": "security",
+   "name": "Provider allow-list by category",
+   "kind": "enforced",
+   "description": "Memories in a category, and knowledge with a security label, are never sent to the providers you block for them.",
+   "enabled": true,
+   "params": {
+    "blocked": {
+     "Work": [
+      "grok"
+     ]
+    },
+    "labels": {
+     "internal": [
+      "grok"
+     ]
+    }
+   },
+   "core": false
+  },
+  {
+   "id": "external_scope",
+   "set": "security",
+   "name": "External client scope",
+   "kind": "enforced",
+   "description": "Claude Desktop and Claude Code can only read memories in these categories. Empty means all categories.",
+   "enabled": true,
+   "params": {
+    "allowed_categories": []
+   },
+   "core": false
+  },
+  {
+   "id": "pii",
+   "set": "security",
+   "name": "Personal identifiers",
+   "kind": "enforced",
+   "description": "Blocks payment card numbers, National Insurance numbers, UK sort code with account number, and IBANs from memories and knowledge notes.",
+   "enabled": true,
+   "params": {},
+   "core": false
+  },
+  {
+   "id": "data_minimisation",
+   "set": "security",
+   "name": "Data minimisation",
+   "kind": "enforced",
+   "description": "Organisation facts hold organisational information and roles, not people: email addresses and phone numbers are refused (keep contact details in the source system), as is anything about a named person's health, beliefs, ethnicity, sexuality, union membership or criminal matters. Every organisation fact needs a source and a review-by date (default below, at most 24 months).",
+   "enabled": true,
+   "params": {
+    "review_months": 12
+   },
+   "core": false
+  },
+  {
+   "id": "share_gate",
+   "set": "security",
+   "name": "Sharing check",
+   "kind": "enforced",
+   "description": "Before anything enters or moves into a shared space (whoever moves it: a person, Temple, a team or a connector), it is checked for personal identifiers, contact details, health or other special category details about anyone, and anything marked private (Local only, or in a personal-area category); Temple reads it too, after its review, and only an actual finding holds an item: a quoted passage with personal data about a real person, special category data, or something marked private (talking about HR, health or privacy in general is not a finding). A held item waits for its author, the space's managers or an Owner to share anyway or keep it where it is (unless Approval and library management does not hold sensitive findings: then it stays in its author's personal space). An item with no category never enters a shared space; it moves on its own once it has one. Switched off, nothing is checked before it is shared.",
+   "enabled": true,
+   "params": {
+    "temple": true
+   },
+   "core": true
+  },
+  {
+   "id": "temple_category",
+   "set": "security",
+   "name": "Temple's category is enough for work items",
+   "kind": "enforced",
+   "description": "A category Temple gave a memory, decision or knowledge item (or one the proposing app chose from your list) counts for entering a shared space: a person does not have to confirm it first. A person must still decide when the Sharing check finds personal data about a real person, special category data or anything marked private, or when Temple was not sure which category it belongs in. Switched off, only a category a person set counts.",
+   "enabled": true,
+   "params": {},
+   "core": false
+  },
+  {
+   "id": "client_separation",
+   "set": "organisation",
+   "name": "Client separation",
+   "kind": "enforced",
+   "description": "In a chat tagged with a client, memory and file tools return only that client's material plus General (untagged) material. Strict mode also keeps client material out of untagged chats.",
+   "enabled": true,
+   "params": {
+    "strict": false,
+    "external": "all"
+   },
+   "core": false
+  },
+  {
+   "id": "client_documents",
+   "set": "organisation",
+   "name": "Client-facing documents use only that client's material",
+   "kind": "enforced",
+   "description": "Proposals written by Parker and digital team outputs marked client-facing use only General (untagged) material and material tagged to that document's own client; anything tagged to another client is left out and logged. A document with no client uses General material only. Works on its own, whatever the Client separation switch says.",
+   "enabled": true,
+   "params": {},
+   "core": false
+  },
+  {
+   "id": "open_spaces",
+   "set": "organisation",
+   "name": "Team spaces are open to the organisation",
+   "kind": "enforced",
+   "description": "Alice is the organisation's shared store of knowledge (decision D-0040): everyone with an Alice role reads every team space unless its manager closes it, with a reason. Personal spaces, closed spaces and spaces tied to a client are never open; only members add to a space. Switched off, people read only the spaces they are members of, and the Organisation space.",
+   "enabled": true,
+   "params": {},
+   "core": false
+  },
+  {
+   "id": "temple_router",
+   "set": "organisation",
+   "name": "Temple routes new items to the right space",
+   "kind": "enforced",
+   "description": "A new memory, decision or knowledge item heading for a team space is routed by Temple once it has reviewed it: about the work, to the team space; useful to the whole organisation, to the Organisation space (when the person may add to it); about its author, it stays in their personal space; about a named person (their health, absence, performance, pay or private circumstances) or special category data, to the team's restricted space; unsure, it waits for its author. The reason is kept on the item, and the sharing check still runs on anything going into an open space. Switched off, new items go to the default space through the sharing check alone.",
+   "enabled": true,
+   "params": {},
+   "core": false
+  },
+  {
+   "id": "commercial_caution",
+   "set": "organisation",
+   "name": "Commercial caution",
+   "kind": "guidance",
+   "text": "Do not state prices, discounts, rates or Insight commitments unless they come from a saved file or approved memory, and cite that source.",
+   "enabled": true,
+   "params": {},
+   "core": false
+  },
+  {
+   "id": "rate_sources",
+   "set": "organisation",
+   "name": "Where digital teams' rates come from",
+   "kind": "enforced",
+   "description": "Which sources a digital team's Cost Surveyor may price an item from, and in what order: a published rate (a cited page and its date), your rate library, a built-up rate (worked out by Alice from cited published rates for its parts, working shown) or a team estimate (the Cost Surveyor's judgement, with its reasoning, the assumptions it made and any comparable rates it found, cited), or a provisional sum (a lump sum for work the documents do not let the team measure, from typical UK costs for the job's location and date found on the web, with the range found, the reasoning and every page cited with its date). An item no allowed source can price is left unpriced. Estimates can also be allowed for chosen items on one job (Ask the team to estimate these); provisional sums can be switched on or off for one job (the Start a job screen and the job page). Estimates and provisional sums are always badged; estimates are listed as assumptions and provisional sums in their own section. Switched off, every source may be used, in the order set here.",
+   "enabled": true,
+   "params": {
+    "order": [
+     "published",
+     "library",
+     "built_up",
+     "estimate",
+     "provisional"
+    ],
+    "allowed": [
+     "published",
+     "library",
+     "built_up",
+     "provisional"
+    ]
+   },
+   "core": false
+  },
+  {
+   "id": "ai_disclosure",
+   "set": "organisation",
+   "name": "AI disclosure",
+   "kind": "guidance",
+   "text": "When drafting material that will go to a client, remind me once that AI assisted so I can declare it if required.",
+   "enabled": true,
+   "params": {},
+   "core": false
+  },
+  {
+   "id": "retention",
+   "set": "organisation",
+   "name": "Chat retention",
+   "kind": "enforced",
+   "description": "Permanently deletes saved chats that had nothing captured once they are older than the set number of months. Chats with captured memories or knowledge are kept. Off by default because deletion cannot be undone.",
+   "enabled": false,
+   "params": {
+    "months": 12
+   },
+   "core": false
+  },
+  {
+   "id": "approval_required",
+   "set": "memory",
+   "name": "Approval and library management",
+   "kind": "enforced",
+   "description": "Who approves new memories, decisions and knowledge, and what Temple may do to the library on its own (decisions D-0042 and D-0044). By default Temple approves new items under each space's rules, and may categorise, route, merge, supersede and archive. Models and Temple never overwrite or delete unless you allow it here: the raw captured item is always kept, anything merged or superseded links to it, and every library change is logged with its reason and can be undone (Activity). Sensitive findings, clashes and anything Temple is unsure about are held for a person. Switched off, Temple manages nothing: every new item waits for a person.",
+   "enabled": true,
+   "params": {
+    "approver": "temple",
+    "temple_may": {
+     "approve": true,
+     "categorise": true,
+     "route": true,
+     "merge": true,
+     "supersede": true,
+     "archive": true
+    },
+    "overwrite_delete": false,
+    "hold": {
+     "sensitive": true,
+     "clash": true,
+     "unsure": true
+    }
+   },
+   "core": true
+  },
+  {
+   "id": "quality",
+   "set": "memory",
+   "name": "Quality check",
+   "kind": "enforced",
+   "description": "Rejects proposals whose content only repeats the title, is shorter than the minimum, or whose source is missing or just repeats the content.",
+   "enabled": true,
+   "params": {
+    "min_chars": 12
+   },
+   "core": false
+  },
+  {
+   "id": "duplicates",
+   "set": "memory",
+   "name": "Duplicate block",
+   "kind": "enforced",
+   "description": "Rejects proposals that closely match an active memory.",
+   "enabled": true,
+   "params": {
+    "threshold": 0.9
+   },
+   "core": false
+  },
+  {
+   "id": "expiry",
+   "set": "memory",
+   "name": "Review-by dates",
+   "kind": "enforced",
+   "description": "Memories past their review-by date are marked as possibly out of date whenever a model reads them, and flagged on the Memories page.",
+   "enabled": true,
+   "params": {},
+   "core": false
+  },
+  {
+   "id": "spend_cap",
+   "set": "cost",
+   "name": "Spending caps",
+   "kind": "enforced",
+   "description": "Temple automations pause at the warning level; chat is blocked at the cap. Based on estimated spend; unpriced calls (voice) are not counted.",
+   "enabled": true,
+   "params": {
+    "daily_usd": 5.0,
+    "monthly_usd": 50.0,
+    "warn_percent": 80
+   },
+   "core": false
+  },
+  {
+   "id": "opus_manual",
+   "set": "cost",
+   "name": "Opus only when chosen",
+   "kind": "enforced",
+   "description": "Auto routing never selects Opus 5.5; it runs only when you pick it. Switched off, Auto may put heavy asks on Opus 5.5.",
+   "enabled": true,
+   "params": {},
+   "core": true
+  },
+  {
+   "id": "working_style",
+   "set": "personal",
+   "name": "Working style",
+   "kind": "guidance",
+   "text": "Give direct, honest pushback rather than validation. Skip unnecessary caveats, repeated disclaimers and unsolicited commentary on my decisions.",
+   "enabled": true,
+   "params": {},
+   "core": false
+  },
+  {
+   "id": "uk_conventions",
+   "set": "personal",
+   "name": "UK conventions",
+   "kind": "guidance",
+   "text": "Use UK English spelling and show amounts in GBP unless I ask otherwise.",
+   "enabled": true,
+   "params": {},
+   "core": false
+  }
+ ]
+}

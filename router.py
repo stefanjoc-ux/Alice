@@ -161,6 +161,10 @@ async def route(cid, text, file_ids, images):
         calm = 0
 
     selection = TIER_SELECTION[tier]
+    import rules_engine          # rule "Opus only when chosen" (Cost set): switched off, Auto may put heavy asks on Opus 5.5
+    if tier == HEAVY and not rules_engine.on('opus_manual') and 'claude_opus' in have and healthy('claude_opus'):
+        selection = 'claude_opus'
+        reason += '; Opus allowed for Auto (rule "Opus only when chosen" is off)'
     if selection == 'openai' and not healthy('openai') and ('claude' in have or 'claude_sonnet' in have):
         selection = 'claude' if 'claude' in have else 'claude_sonnet'
         reason += f'; GPT-6 Luna failed in the last 10 minutes, so using {LABEL[selection]}'

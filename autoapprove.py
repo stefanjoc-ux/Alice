@@ -21,8 +21,11 @@ organisation facts and Temple's memory/knowledge suggestions go live without a c
 
 The security rules still run when anything is proposed and again on approval (secrets, protective markings, personal
 identifiers, duplicates, client separation): automatic approval never skips them. Each automatic approval is logged
-('auto_approved', actor Alice) and listed on Actions for 7 days with Undo (retire or archive; history kept).
-Switch: settings key 'auto_approve' ('true'/'false'), on the Actions page."""
+('auto_approved', actor Alice).
+Who approves, what Temple may do and what is held for a person are the settings of the Core rule "Approval and library management"
+(Stefan's decisions D-0044 and D-0045; library.py, Rules page), which replaced "Human approval" and the old 'auto_approve' switch:
+on() is "Temple approves" there. Each of Temple's approvals and supersessions is also a library action (library.change), shown on
+the Activity page with Undo."""
 import contextvars
 import json
 import os
@@ -62,16 +65,23 @@ _schema()
 
 
 def on():
-    with store.db() as c:
-        row = c.execute("SELECT value FROM settings WHERE key='auto_approve'").fetchone()
-    return not row or row[0] == 'true'
+    """Temple approves new items (the rule Approval and library management: who approves is Temple, and Temple may approve)."""
+    import library
+    return library.temple_approves()
 
 
-def set_on(value):
-    with store.db() as c:
+def set_on(value, reason=None):
+    """Who approves: Temple (on) or a person for every item (off). A change to the Core rule Approval and library management, so it
+    needs an Owner and a reason (reason=None: a change made by Alice's own code, e.g. a test or the demo loader, says so)."""
+    import rules_engine
+    p = rules_engine.clean_approval(rules_engine.params('approval_required'))
+    p['approver'] = ('temple' if p['approver'] == 'person' else p['approver']) if value else 'person'
+    if value: p['temple_may']['approve'] = True
+    if reason is None: reason = 'Automatic approval switched ' + ('on' if value else 'off') + ' by Alice\'s own code'
+    rules_engine.update_rule('approval_required', enabled=True if value else None, new_params=p, reason=reason)
+    with store.db() as c:          # the old switch, kept in step for anything that still reads it
         c.execute("UPDATE settings SET value=? WHERE key='auto_approve'", ('true' if value else 'false',))
-        store.audit(c, 'auto_approve_setting', 'Alice', 'human_control', 'Automatic approval ' + ('on' if value else 'off'))
-    return {'on': bool(value)}
+    return {'on': on()}
 
 
 # ---------------- who proposed it ----------------
@@ -178,34 +188,79 @@ def _title(c, rid):
     return r[0] if r else ''
 
 
+def _category_now(rid, category):
+    """The memory's category, once Temple has had the chance to give it one, when some categories need a person."""
+    import library
+    if category or not library.person_categories(): return category
+    try:
+        import temple_categorise
+        temple_categorise.run([rid])
+    except Exception:
+        pass
+    with store.db() as c:
+        r = c.execute("SELECT coalesce(category,'') FROM record_meta WHERE record_id=?", (rid,)).fetchone()
+    return r[0] if r else ''
+
+
+def _approve_memory(rid, note):
+    import library
+    with library.change('approve', [('record', rid)], note):
+        with store.acting('Alice', note='Approved automatically: ' + note):
+            store.review(rid, 'approved')
+
+
+def _supersede_memory(rid, old_id, old_title, note):
+    """Temple approves the new memory and supersedes the older one it replaces (archived with a link to the new one; Undo on Activity)."""
+    import library
+    why = f'It replaces “{old_title or old_id[:8]}”: {note}'
+    with library.change('supersede', [('record', rid), ('record', old_id)], why):
+        with store.acting('Alice', note='Approved automatically: ' + why):
+            store.resolve_friction(rid, old_id, f'Temple: replaced by a newer memory ({note})')
+
+
 def after_review(rid, reviewed=True):
-    """Called once Temple's review of a new memory has finished (or straight away when reviews are off)."""
-    import temple
+    """Called once Temple's review of a new memory has finished (or straight away when reviews are off). What Temple may approve and
+    what waits for a person are the settings of the rule Approval and library management (library.py)."""
+    import library, temple
     if not on(): return
     st = _state('memory', rid)
     if st and not (st['state'] == 'held' and st['reason'] == OLD_HOLD and managing_decisions()): return
     with store.db() as c:
-        row = c.execute("SELECT r.status,coalesce(m.kind,'fact') AS kind FROM records r LEFT JOIN record_meta m ON m.record_id=r.id WHERE r.id=?", (rid,)).fetchone()
+        row = c.execute("SELECT r.status,coalesce(m.kind,'fact') AS kind,coalesce(m.category,'') AS category FROM records r "
+                        "LEFT JOIN record_meta m ON m.record_id=r.id WHERE r.id=?", (rid,)).fetchone()
     if not row or row['status'] != 'proposed': return
     if row['kind'] == 'decision': decide_decision(rid, reviewed); return
+    cat = _category_now(rid, row['category'])
+    if library.needs_person(cat):
+        hold('memory', rid, f'It is in {cat}: new items in that category need a person\'s approval (Approval and library management).'); return
     note = 'not checked for clashes (Temple reviews are off)'
+    replaces = None
     if reviewed:
         rv = _latest_review(rid)
         if not rv or rv['status'] != 'complete':
-            hold('memory', rid, 'Temple could not check it for clashes' + (f": {rv['error']}" if rv and rv.get('error') else '') + '.'); return
-        report, verdict = rv['report'] or '', temple.verdict(rv)
-        rep = temple.REPLACES.search(report)
-        if rep:
-            with store.db() as c: old = _title(c, rep.group(1))
-            hold('memory', rid, f'Temple thinks it replaces “{old or rep.group(1)[:8]}”: you choose whether to retire the older one.'); return
-        clash = CONFLICT.search(report)
-        if (clash and clash.group(1).lower() == 'yes') or verdict == 'reject':
+            why = 'Temple could not check it for clashes' + (f": {rv['error']}" if rv and rv.get('error') else '')
+            if library.holds('unsure'): hold('memory', rid, why + '.'); return
+            note = why + ' (the rule does not hold what Temple is unsure about)'
+        else:
+            report, verdict = rv['report'] or '', temple.verdict(rv)
+            rep = temple.REPLACES.search(report)
+            if rep:
+                with store.db() as c: old = _title(c, rep.group(1))
+                if not library.may('supersede'):
+                    hold('memory', rid, f'Temple thinks it replaces “{old or rep.group(1)[:8]}”: you choose whether to retire the older one.'); return
+                replaces = (rep.group(1), old)
+            clash = CONFLICT.search(report)
             why = temple.reason_line(report) or 'Temple found a clash with what Alice already holds.'
-            hold('memory', rid, ('Clashes with an approved memory: ' if clash and clash.group(1).lower() == 'yes' else 'Temple recommends rejecting it: ') + why); return
-        note = f'Temple: {verdict}, no clash'
+            if verdict == 'reject':                  # Temple does not approve what it recommends rejecting
+                hold('memory', rid, 'Temple recommends rejecting it: ' + why); return
+            if clash and clash.group(1).lower() == 'yes':
+                if library.holds('clash'): hold('memory', rid, 'Clashes with an approved memory: ' + why); return
+                note = f'Temple: {verdict}; it clashes with what Alice holds, noted (clashes are not held): {why}'
+            else:
+                note = f'Temple: {verdict}, no clash'
     try:
-        with store.acting('Alice', note='Approved automatically: ' + note):
-            store.review(rid, 'approved')
+        if replaces: _supersede_memory(rid, replaces[0], replaces[1], note)
+        else: _approve_memory(rid, note)
     except ValueError as e:
         hold('memory', rid, f'Not approved automatically: {e}'); return
     _approved('memory', rid, note)
@@ -228,23 +283,33 @@ OLD_OUTSIDE_HOLD = 'Proposed through the outside connector before automatic appr
 
 
 def knowledge_draft(fid, again=False):
-    import knowledge
+    import knowledge, library
     if not fid or (_state('knowledge', fid) and not again): return 'already'
     if not on(): return 'off'
+    m = knowledge.meta([fid]).get(fid) or {}
+    if library.needs_person(m.get('category') or ''):
+        hold('knowledge', fid, f'It is in {m["category"]}: new items in that category need a person\'s approval (Approval and library management).')
+        return 'held'
     note = 'draft from a trusted source'
+    named = [p for p in knowledge.replacements('pending', new_id=fid) if p['source'] == 'proposer']
+    supersede = bool(named) and library.may('supersede')
     if outside():
         app = _app_of(outside(), _outside_provider.get())
         if not connector_knowledge().get(app):
             hold('knowledge', fid, f'Proposed by {outside()} {OUTSIDE_HOLD}'); return 'held'
         import temple_supersede      # Temple's free checks: does it say it replaces, or closely overlap, something Alice holds?
-        named = [p['old_title'] for p in knowledge.replacements('pending', new_id=fid)]
-        near = named + [t for t in temple_supersede.overlaps(fid) if t not in named]
-        if near:
+        titles = [p['old_title'] for p in named]
+        near = [t for t in temple_supersede.overlaps(fid) if t not in titles]
+        waits = (titles if not supersede else []) + (near if library.holds('unsure') else [])
+        if waits:
             hold('knowledge', fid, f'Proposed by {outside()} through the outside connector, and it may replace or overlap '
-                 + ', '.join('“' + t + '”' for t in near[:3]) + ': you decide.'); return 'held'
+                 + ', '.join('“' + t + '”' for t in waits[:3]) + ': you decide.'); return 'held'
         note = f'note from {outside()} (outside connector); Temple found no clash'
-    with store.acting('Alice', note='Approved automatically'):
-        r = knowledge.review([fid], 'approved')
+    if supersede: note += '; it replaces ' + ', '.join('“' + p['old_title'] + '”' for p in named[:3])
+    items = [('file', fid)] + ([('file', p['old_id']) for p in named] if supersede else [])
+    with library.change('supersede' if supersede else 'approve', items, note):
+        with store.acting('Alice', note='Approved automatically'):
+            r = knowledge.review([fid], 'approved', retire_replaced=supersede)
     if r['changed']: _approved('knowledge', fid, note); return 'approved'
     if r['blocked']: hold('knowledge', fid, 'Not approved automatically: ' + ' '.join(r['block_reasons'])); return 'held'
     return 'skipped'
@@ -256,8 +321,10 @@ def org_fact(fid):
     if not on(): return 'off'
     if outside():
         hold('orgfact', fid, f'Proposed by {outside()} through the outside connector.'); return 'held'
-    with store.acting('Alice', note='Approved automatically'):
-        r = organisations.review_facts([fid], 'approved')
+    import library
+    with library.change('approve', [('orgfact', fid)], 'proposed with a source'):
+        with store.acting('Alice', note='Approved automatically'):
+            r = organisations.review_facts([fid], 'approved')
     if r.get('changed'): _approved('orgfact', fid, 'proposed with a source'); return 'approved'
     if r.get('blocked'): hold('orgfact', fid, 'Not approved automatically: ' + ' '.join(r.get('block_reasons') or [])); return 'held'
     return 'skipped'
@@ -303,7 +370,10 @@ def suggestions_for_chat(cid):
             with store.acting('Alice', note='Accepted automatically'):
                 res = accept_suggestion(r['id'], r['content'])
             done += 1
-            if r['kind'] == 'knowledge' and res.get('target'): _approved('knowledge', res['target'], "Temple's note from your own words")
+            if r['kind'] == 'knowledge' and res.get('target'):
+                _approved('knowledge', res['target'], "Temple's note from your own words")
+                import library
+                library.note_linked('approve', 'file', res['target'], '', "Temple's note from your own words in chat", 'auto:knowledge:' + res['target'])
         except Exception:
             pass                        # stays as a suggestion for you
     return {'accepted': done}
@@ -525,7 +595,8 @@ def decide_decision(rid, reviewed=True, force=False):
         # (Spaces page); spaces from before keep 'note' (recorded, the clash noted, as decided on 5 Oct 2026).
         import spaces
         sid = spaces.destination('record', rid)
-        if spaces.clash_policy(sid) == 'wait':
+        import library
+        if spaces.clash_policy(sid) == 'wait' and library.holds('clash'):
             name = (spaces.names().get(sid) or {}).get('name', 'its space')
             hold('memory', rid, f'Clashes with an earlier decision or memory: waits for the managers of {name}. '
                  + (temple.reason_line(report) or ''))
@@ -534,9 +605,11 @@ def decide_decision(rid, reviewed=True, force=False):
            (f', {impact} impact' if impact else '') + ('' if reviewed and report else ', not checked by Temple')
     if clash and clash.group(1).lower() == 'yes':
         note += '. Contradicts an earlier decision or memory, kept as made: ' + (temple.reason_line(report) or 'see Temple\'s review')
+    import library
     try:
-        with store.acting('Alice', note='Recorded automatically: ' + note):
-            store.review(rid, 'approved')
+        with library.change('approve', [('record', rid)], note):
+            with store.acting('Alice', note='Recorded automatically: ' + note):
+                store.review(rid, 'approved')
     except ValueError as e:
         hold('memory', rid, f'Not recorded automatically: {e}'); return 'held'
     _approved('memory', rid, note)

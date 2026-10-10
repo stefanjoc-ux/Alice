@@ -44,7 +44,7 @@ def dec(title, decision, category='', report='Recommendation: approve\nImpact: l
 t('automatic approval off: decisions are not managed', not A.managing_decisions())
 d0 = dec('Laptop bag', 'Use the grey rucksack for client visits')
 t('with automatic approval off a decision waits for you', status(d0) == 'proposed' and state(d0)[0] == 'held')
-cl.put('/admin/api/auto-approve', json={'on': True}, headers=H)
+cl.put('/admin/api/auto-approve', json={'on': True, 'reason': 'Temple manages decisions'}, headers=H)
 t('switched on: Temple manages decisions by default', A.managing_decisions() and A.policy() == {'auto': True, 'categories': {}, 'impact': 'off', 'approver': ''})
 
 # recorded, with who made it

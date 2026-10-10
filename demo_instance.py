@@ -418,7 +418,10 @@ def _load(s, plan, content, facts):
         except Exception: pass
         with store.db() as c:
             c.execute("UPDATE activity SET created_at=? WHERE id=(SELECT max(id) FROM activity WHERE action='rule_blocked')", (_when(12, rnd),))
-            c.execute("INSERT INTO settings(key,value) VALUES ('auto_approve','true') ON CONFLICT(key) DO UPDATE SET value='true'")
+        try:            # Temple approves, as in a live Alice (a change to the Core rule Approval and library management, by the Owner loading it)
+            import autoapprove
+            if not autoapprove.on(): autoapprove.set_on(True, 'Client demo loaded: Temple approves new items, as in a live Alice')
+        except Exception: pass
     finally:
         store.BULK_LOAD = False
         temple.save_settings(was_enabled['enabled'] or True, was_enabled['provider'])

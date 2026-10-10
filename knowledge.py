@@ -250,6 +250,9 @@ def _ensure_row(c, fid):
 
 
 def update(fid, title=None, category=None, label=None, review_by=None, status=None, audit_it=True, owner=None):
+    if title is not None:          # rewording an item: a person's edit; a model or Temple only if Approval and library management allows it
+        import library
+        library.guard('overwrite', 'file', fid, (meta([fid]).get(fid) or {}).get('title', ''))
     fields, args = [], []
     if owner is not None:
         fields.append('owner=?'); args.append(store.clean_person(owner))
@@ -327,6 +330,8 @@ def review(ids, decision, retire_replaced=False):
 
 
 def forget(fid):
+    import library                 # deleting from the library: a person's decision; a model or Temple only if the rule allows it
+    library.guard('delete', 'file', fid, (meta([fid]).get(fid) or {}).get('title', ''))
     with store.db() as c:
         c.execute('DELETE FROM knowledge_meta WHERE file_id=?', (fid,))
         c.execute("DELETE FROM client_tags WHERE item_type='file' AND item_id=?", (fid,))
@@ -522,6 +527,8 @@ def categorise(manual=False):
                 "WHERE m.category='' AND m.category_suggestion='' AND m.category_checked_at IS NULL AND m.status IN ('active','draft') LIMIT 200")]
         names = {c['name'].lower(): c['name'] for c in cats}
         applied = suggested = 0
+        import library      # Temple categorises on its own only when the rule Approval and library management lets it
+        if not library.may('categorise'): mode = 'suggest'
         for i in range(0, len(items), 40):
             chunk = items[i:i + 40]
             payload = json.dumps({'categories': [{'name': c['name'], 'description': c['description']} for c in cats],
@@ -529,7 +536,8 @@ def categorise(manual=False):
             raw = temple_categorise._ask(payload).strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
             parsed = temple_categorise.Assignments.model_validate_json(raw)
             allowed = {x['id'] for x in chunk}
-            with store.db() as c:
+            why = {a.id: a.reason for a in parsed.assignments if a.id in allowed}
+            with library.change('categorise', [('file', a.id) for a in parsed.assignments if a.id in allowed], why, per_item=True), store.db() as c:
                 for a in parsed.assignments:
                     if a.id not in allowed: continue
                     name = names.get((a.category or '').strip().lower())

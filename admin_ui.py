@@ -128,7 +128,7 @@ SECTIONS = {
 <div class="row" style="margin-top:10px"><button id="rp-run" type="button" class="primary">Run through the rules</button></div>
 <div id="rp-result" aria-live="polite"></div></section></aside></div>''',
 'actions': r'''<section><div class="mem-head"><h2 id="act-total">Actions</h2><button id="act-refresh" type="button" class="secondary">Refresh</button></div>
-<div class="act-auto"><label class="act-switch"><input id="act-auto" type="checkbox"> <strong>Automatic approval</strong></label><span id="act-auto-text" class="muted small"></span></div>
+<div class="act-auto"><strong>Approval</strong><span id="act-auto-text" class="muted small"></span><span class="small"><a href="/admin/rules">Change it on Rules (Approval and library management)</a> · <a href="/admin/activity#library">What Temple did on its own</a></span></div>
 <div id="act-conn" class="act-auto act-conn" hidden></div>
 <details id="act-dec" class="act-dec"><summary><strong>Decisions</strong> <span id="act-dec-sum" class="muted small"></span></summary><div id="act-dec-body" class="act-dec-body"></div></details></section><div id="act-sections"></div>''' ,
 'usage': r'''<section><div class="usage-bar"><h2>Spend</h2><label>Period <select id="usage-period"><option value="7d">Last 7 days</option><option value="30d" selected>Last 30 days</option><option value="month">This month</option><option value="all">All time</option></select></label><button id="usage-refresh" type="button">Refresh</button></div><div id="usage-stats" class="stats usage-stats"></div><p id="usage-caveat" class="muted"></p></section>
@@ -284,11 +284,14 @@ SECTIONS = {
 <details><summary>Add a label before Alice has seen it</summary><div class="k-meta-row"><label>Label ID<input id="pv-id" maxlength="40" placeholder="GUID from the Purview portal"></label><label>Name<input id="pv-name" maxlength="120" placeholder="e.g. Confidential"></label><label>Handle as<select id="pv-action"></select></label></div><button id="pv-add" type="button" class="secondary">Add mapping</button></details></section></div>
 <div class="rl-panel" data-tab="guidance" role="tabpanel" hidden><section><h2>Your guidance</h2><p class="muted small">Free text added after the rule sets, and the exact instructions models receive.</p><form id="rule-form"><label><input id="allow" type="checkbox"> Allow new memory proposals</label><label>Free-text guidance, added after the rule sets<textarea id="guidance" maxlength="8000" rows="4"></textarea></label><button>Save</button></form>
 <details><summary>What models receive</summary><pre id="r-effective"></pre></details></section></div>
-<div class="rl-panel" data-tab="blocks" role="tabpanel" hidden><section><h2>Recent rule blocks</h2><div id="r-blocks"></div></section></div>''' ,
+<div class="rl-panel" data-tab="blocks" role="tabpanel" hidden><section><h2>Recent rule blocks</h2><div id="r-blocks"></div></section></div>
+<div class="rl-panel" data-tab="changes" role="tabpanel" hidden><section><h2>Changes to rules</h2><p class="muted small">Every change to a rule, with who made it, when and why. No rule is fixed in code (decision D-0045): Core rules are changed only by an Owner, with a reason, and any change can be reverted in one click. Defaults for this deployment: <span id="r-defaults"></span></p><div id="r-changes"></div></section></div>''' ,
 'activity': r'''<section class="av-bar"><div class="mem-tools"><label>Period <select id="al-period"><option value="today">Today</option><option value="7d" selected>Last 7 days</option><option value="30d">Last 30 days</option><option value="all">All time</option><option value="custom">Custom…</option></select></label>
 <span id="al-custom" hidden><label>From <input id="al-from" type="date"></label> <label>To <input id="al-to" type="date"></label></span>
 <span class="av-views" id="av-views"></span></div></section>
 <div id="av" class="av" aria-live="polite"></div>
+<section id="library"><div class="mem-head"><h2>Temple's library actions</h2><label class="small">Period <select id="lib-days"><option value="7" selected>Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option></select></label></div>
+<p id="lib-describe" class="muted small"></p><div id="lib-list" aria-live="polite"></div></section>
 <section id="al-log"><h2 class="av-h">Everything that happened</h2><div class="mem-tools"><input id="al-q" title="Words, or a log reference such as L-000123" type="search" maxlength="200" placeholder="Search what happened, names and details" aria-label="Search activity"><a id="al-csv" class="button-link" href="#">Export CSV</a></div>
 <div id="al-types" class="mem-cats"></div><div class="table-wrap"><table id="al-table" class="mem-table al-table"></table></div><p id="al-count" class="muted small"></p><button id="al-more" type="button" class="secondary" hidden>Load more</button>
 <p class="muted small">Reads by Claude Desktop and Claude Code are not logged; their proposals, drafts and saved conversations are. Times are shown in your local time; the CSV uses UTC.</p></section>''' ,
@@ -387,7 +390,10 @@ nav{display:flex;gap:20px;flex-wrap:wrap}
 .tag.k-knowledge{background:#e3f1f6;color:#064b63;border-color:#89b1bf}.tag.k-guidance{background:#fdf3e1;color:#6b4406;border-color:#e2bf85}.tag.k-rule_request{background:#eef1f4;color:#4b5a66;border-color:#c1cbd3}
 .mem-detail textarea{width:100%;margin:4px 0 8px}
 .r-set h2{margin-bottom:4px}.r-row{border-top:1px solid #d3dee6;padding:12px 0}.r-row.off{opacity:.62}.r-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.r-desc{margin:6px 0 0 34px;color:#314d62}
-.r-row textarea{width:calc(100% - 34px);margin:8px 0 0 34px}.r-params{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin:8px 0 0 34px}.r-params button,.r-add button{margin:0}.r-param{display:flex;flex-direction:column;font-size:13px;gap:4px;margin:0}.r-param input{width:140px;margin:0}.r-param.wide input{width:360px;max-width:70vw}
+.r-row textarea{width:calc(100% - 34px);margin:8px 0 0 34px}.r-changes{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}.r-change{padding:6px 0;border-bottom:1px dashed var(--line)}.r-change-t{display:flex;gap:8px;flex-wrap:wrap;align-items:baseline}
+.r-change button{margin-top:4px}.r-params .r-fs{flex:1 1 240px}
+.lib-row{display:flex;gap:12px;align-items:flex-start;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line)}.lib-row .lib-t{min-width:0;overflow-wrap:anywhere}.lib-row.undone{opacity:.6}.r-fs{border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin:0 0 10px;min-width:0}.r-fs legend{font-weight:600;font-size:13px;padding:0 4px}.r-fs .r-check{display:block;margin:4px 0}
+.r-params{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin:8px 0 0 34px}.r-params button,.r-add button{margin:0}.r-param{display:flex;flex-direction:column;font-size:13px;gap:4px;margin:0}.r-param input{width:140px;margin:0}.r-param.wide input{width:360px;max-width:70vw}
 .r-toggle input{width:20px;height:20px;margin:0;accent-color:#075e79}.r-grid{display:flex;flex-direction:column;gap:6px;width:100%}.r-grid-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.r-grid-row select{margin:0;width:auto}.r-check{display:inline-flex;gap:4px;align-items:center;font-size:13px;margin:0 8px 0 0}.r-checks{display:flex;flex-wrap:wrap;gap:6px;width:100%}
 .rl-top{padding:14px 16px 0}.rl-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
 .rl-tile{all:unset;box-sizing:border-box;cursor:pointer;display:flex;gap:10px;align-items:center;padding:10px 12px;border:1px solid #dde7ee;border-radius:12px;background:#fff;min-width:0}.rl-tile:hover{border-color:#9cc3d3;background:#f6fafc}.rl-tile:focus-visible{outline:2px solid #075e79;outline-offset:2px}
@@ -916,8 +922,39 @@ if(PAGE==='rules'){
  const fmtD=v=>'$'+Number(v).toFixed(2);
  function num(label,value,min,max,step){const l=el('label',label,'r-param');const i=document.createElement('input');i.type='number';i.value=value;i.min=min;i.max=max;i.step=step;l.append(i);return [l,i]}
  function saveBtn(fn,label='Save'){const b=el('button',label);b.type='button';b.className='secondary';b.onclick=()=>run(fn);return b}
- async function patch(id,body,msg){await api('/admin/api/rules/'+id,'PUT',body);$('notice').textContent=msg||'Rule saved.';await load()}
+ // A Core rule (D-0045): only an Owner changes it, always with a reason, kept in Activity with who and when, and reverted in one click.
+ async function patch(id,body,msg){const r=data.rules.find(x=>x.id===id);
+  if(r&&r.core){if(!data.may_change_core){$('notice').textContent='“'+r.name+'” is a Core rule: only an Owner can change it.';await load();return}
+   const why=prompt('“'+r.name+'” is a Core rule. Why are you changing it? Your reason is kept in Activity with who and when, and the change can be reverted in one click.');
+   if(!why||why.trim().length<3){$('notice').textContent='Not changed: a Core rule needs a reason.';await load();return}body={...body,reason:why.trim()}}
+  await api('/admin/api/rules/'+id,'PUT',body);$('notice').textContent=msg||'Rule saved.';await load()}
+ async function revertChange(ch){const core=ch.core;if(!confirm('Put “'+ch.rule_name+'” back as it was before this change ('+ch.what+')?'))return;
+  await api('/admin/api/rules/changes/'+ch.id+'/revert','POST',{});$('notice').textContent='Reverted: '+ch.rule_name+'.';await load()}
+ function changeRow(ch,showRule){const row=el('div','','r-change');const t=el('div','','r-change-t');
+  t.append(el('span',new Date(ch.changed_at).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}),'small muted'));
+  if(showRule)t.append(el('strong',ch.rule_name));t.append(el('span',ch.what+(ch.actor?' · by '+ch.actor:''),'small'));if(ch.core)t.append(el('span','Core','badge v-none'));
+  if(ch.reverts)t.append(el('span','Revert','badge v-run'));row.append(t);if(ch.reason)row.append(el('div','Why: '+ch.reason,'small'));
+  if(ch.reverted_by)row.append(el('div','Reverted since','small muted'));else if(ch.can_revert&&(!ch.core||data.may_change_core)){const b=el('button','Revert');b.type='button';b.className='secondary';b.onclick=()=>run(()=>revertChange(ch));row.append(b)}
+  return row}
+ function changesFor(r){const mine=(data.history||[]).filter(x=>x.rule_id===r.id);const box=el('div','','r-changes');box.append(el('p','Changes'+(r.core?' (Core: an Owner, with a reason)':''),'small'));
+  if(!mine.length)box.append(el('p','No changes since it was set up.','muted small'));for(const ch of mine)box.append(changeRow(ch,false));
+  const all=el('button','All changes to this rule');all.type='button';all.className='secondary';all.onclick=()=>run(async()=>{const h=await api('/admin/api/rules/'+r.id+'/history');box.replaceChildren(el('p','Changes','small'),...(h.changes.length?h.changes.map(c=>changeRow(c,false)):[el('p','No changes.','muted small')]))});box.append(all);return box}
+ function approvalEditor(r,box){const p=r.params,A=data.approval||{};
+  const who=el('fieldset','','r-fs');who.append(el('legend','Who approves new memories, decisions and knowledge'));const pick={};
+  for(const [k,label] of Object.entries(A.approvers||{})){const l=el('label','','r-check');const i=document.createElement('input');i.type='radio';i.name='ap-who';i.value=k;i.checked=p.approver===k;pick[k]=i;l.append(i,document.createTextNode(' '+label));who.append(l)}
+  const cats=A.decision_categories||[];who.append(el('p',(cats.length?'Categories that need a person: '+cats.join(', ')+'. ':'No categories chosen yet. ')+'Choose them on Actions › Decisions (“Always ask for approval in these categories”).','muted small'));
+  const may=el('fieldset','','r-fs');may.append(el('legend','What Temple may do on its own'));const mayI={};
+  for(const [k,label] of Object.entries(A.actions||{})){const l=el('label','','r-check');const i=document.createElement('input');i.type='checkbox';i.checked=!!(p.temple_may||{})[k];mayI[k]=i;l.append(i,document.createTextNode(' '+label));may.append(l)}
+  const ow=el('fieldset','','r-fs');ow.append(el('legend','Overwrite and delete'));const owl=el('label','','r-check');const owi=document.createElement('input');owi.type='checkbox';owi.checked=!!p.overwrite_delete;owl.append(owi,document.createTextNode(' Models and Temple may overwrite or delete library items'));
+  ow.append(owl,el('p','Off (the default): every attempt is refused and logged; the raw captured item is always kept, and anything merged or superseded links to it.','muted small'));
+  const hold=el('fieldset','','r-fs');hold.append(el('legend','Always held for a person'));const holdI={};
+  for(const [k,label] of Object.entries(A.holds||{})){const l=el('label','','r-check');const i=document.createElement('input');i.type='checkbox';i.checked=(p.hold||{})[k]!==false;holdI[k]=i;l.append(i,document.createTextNode(' '+label));hold.append(l)}
+  hold.append(el('p','Not held: a sensitive finding or an item Temple is unsure about stays in its author\u2019s personal space (never shared); a clash is approved with the clash noted.','muted small'));
+  box.append(who,may,ow,hold,saveBtn(()=>patch(r.id,{params:{approver:Object.keys(pick).find(k=>pick[k].checked)||p.approver,temple_may:Object.fromEntries(Object.entries(mayI).map(([k,i])=>[k,i.checked])),
+   overwrite_delete:owi.checked,hold:Object.fromEntries(Object.entries(holdI).map(([k,i])=>[k,i.checked]))}}),'Save'),el('p','Temple\u2019s library actions, each with its reason and Undo, are on the Activity page.','muted small'))}
  function paramsEditor(r){const box=el('div','','r-params');const p=r.params;
+  if(r.id==='approval_required'){approvalEditor(r,box);return box}
+  if(r.id==='share_gate'){const l=el('label','','r-check');const i=document.createElement('input');i.type='checkbox';i.checked=p.temple!==false;l.append(i,document.createTextNode(' Temple reads it too (after the code checks)'));box.append(l,saveBtn(()=>patch(r.id,{params:{temple:i.checked}})));return box}
   if(r.id==='spend_cap'){const [a,ai]=num('Daily cap (USD)',p.daily_usd,0.1,1000,0.5),[b,bi]=num('Monthly cap (USD)',p.monthly_usd,1,10000,1),[c,ci]=num('Warn and pause Temple at (%)',p.warn_percent,10,99,5);box.append(a,b,c,saveBtn(()=>patch(r.id,{params:{daily_usd:+ai.value,monthly_usd:+bi.value,warn_percent:+ci.value}})))}
   else if(r.id==='retention'){const [a,ai]=num('Delete after (months)',p.months,1,120,1);const go=saveBtn(async()=>{if(!confirm('Delete saved chats older than '+ai.value+' months that had nothing captured? This cannot be undone.'))return;const res=await api('/admin/api/rules/retention/run','POST',{});$('notice').textContent=res.status==='off'?'Switch the rule on first.':res.deleted+' chats deleted.'},'Run now');go.disabled=!r.enabled;box.append(a,saveBtn(()=>patch(r.id,{params:{months:+ai.value}})),go)}
   else if(r.id==='quality'){const [a,ai]=num('Minimum content length',p.min_chars,1,200,1);box.append(a,saveBtn(()=>patch(r.id,{params:{min_chars:+ai.value}})))}
@@ -936,16 +973,16 @@ if(PAGE==='rules'){
   else if(r.id==='external_scope'){const wrap=el('div','','r-checks');const chosen=new Set(p.allowed_categories);for(const c of data.categories){const l=el('label','','r-check');const i=document.createElement('input');i.type='checkbox';i.checked=chosen.has(c);i.onchange=()=>i.checked?chosen.add(c):chosen.delete(c);l.append(i,document.createTextNode(' '+c));wrap.append(l)}box.append(el('p',chosen.size?'Only ticked categories are readable by Claude Desktop and Claude Code.':'Nothing ticked: all categories are readable.','small'),wrap,saveBtn(()=>patch(r.id,{params:{allowed_categories:[...chosen]}})));if(!data.categories.length)box.append(el('p','Create categories on the Memories page first.','muted small'))}
   return box.childElementCount?box:null}
  const RS={set:'',kind:'',q:'',open:new Set()},WANT=new URLSearchParams(location.search).get('rule');if(WANT)RS.open.add(WANT);
- function ruleRow(r){const ed=paramsEditor(r);const hasMore=r.kind==='guidance'||ed||(r.description||'').length>110;
+ function ruleRow(r){const ed=paramsEditor(r);const hasMore=true;
   const row=document.createElement(hasMore?'details':'div');row.className='r-row'+(r.enabled?'':' off');row.dataset.rule=r.id;if(hasMore){row.open=RS.open.has(r.id);row.addEventListener('toggle',()=>row.open?RS.open.add(r.id):RS.open.delete(r.id))}
   const top=el(hasMore?'summary':'div','','r-top');
-  const tl=el('label','','r-switch');tl.title=r.locked?'Core rule: always on':(r.enabled?'On: click to switch off':'Off: click to switch on');const t=document.createElement('input');t.type='checkbox';t.checked=r.enabled;t.disabled=r.locked;t.setAttribute('aria-label',(r.enabled?'Switch off ':'Switch on ')+r.name);tl.append(t,el('span','','r-knob'));tl.addEventListener('click',e=>e.stopPropagation());
+  const tl=el('label','','r-switch');tl.title=r.core?(data.may_change_core?'Core rule: an Owner may change it, with a reason':'Core rule: only an Owner can change it'):(r.enabled?'On: click to switch off':'Off: click to switch on');const t=document.createElement('input');t.type='checkbox';t.checked=r.enabled;t.disabled=r.core&&!data.may_change_core;t.setAttribute('aria-label',(r.enabled?'Switch off ':'Switch on ')+r.name);tl.append(t,el('span','','r-knob'));tl.addEventListener('click',e=>e.stopPropagation());
   t.onchange=()=>run(async()=>{if(!t.checked&&r.set_key==='security'&&!confirm('Switch off the security rule “'+r.name+'”?')){t.checked=true;return}await patch(r.id,{enabled:t.checked},r.name+(t.checked?' switched on.':' switched off.'))});
-  const txt=el('div','','r-txt');const nm=el('div','','r-name');nm.append(el('strong',r.name),el('span',r.kind==='enforced'?'Enforced':'Guidance','badge '+(r.kind==='enforced'?'v-ok':'v-run')));if(r.locked)nm.append(el('span','Core','badge v-none'));if(!r.builtin)nm.append(el('span','Yours','badge v-none'));if(!r.enabled)nm.append(el('span','Off','badge v-warn'));
+  const txt=el('div','','r-txt');const nm=el('div','','r-name');nm.append(el('strong',r.name),el('span',r.kind==='enforced'?'Enforced':'Guidance','badge '+(r.kind==='enforced'?'v-ok':'v-run')));if(r.core){const cb=el('span','Core','badge v-none');cb.title='Only an Owner can change it, with a reason; every change is logged and can be reverted';nm.append(cb)}if(!r.builtin)nm.append(el('span','Yours','badge v-none'));if(!r.enabled)nm.append(el('span','Off','badge v-warn'));
   txt.append(nm,el('div',r.description||r.text||'','r-sum small'));top.append(tl,txt);if(hasMore)top.append(el('span','','r-chev'));row.append(top);
   if(!hasMore)return row;const body=el('div','','r-body');
   if(r.kind==='guidance'){const a=document.createElement('textarea');a.rows=3;a.maxLength=1000;a.value=r.text;a.setAttribute('aria-label','Guidance text for '+r.name);const bar=el('div','','r-params');bar.append(saveBtn(()=>patch(r.id,{text:a.value}),'Save text'));if(!r.builtin){const d=el('button','Delete');d.type='button';d.className='secondary';d.onclick=()=>run(async()=>{if(!confirm('Delete “'+r.name+'”?'))return;await api('/admin/api/rules/'+r.id,'DELETE');await load()});bar.append(d)}body.append(el('div','What the model is told','small muted'),a,bar)}
-  if(ed)body.append(ed);row.append(body);return row}
+  if(ed)body.append(ed);body.append(changesFor(r));row.append(body);return row}
  function renderSets(){const sets=$('r-sets');sets.replaceChildren();const q=RS.q.toLowerCase();let shown=0;
   for(const set of data.sets){if(RS.set&&RS.set!==set.key)continue;
    const rules=data.rules.filter(x=>x.set_key===set.key&&(!RS.kind||(RS.kind==='off'?!x.enabled:x.kind===RS.kind))&&(!q||(x.name+' '+(x.description||'')+' '+(x.text||'')).toLowerCase().includes(q)));
@@ -956,7 +993,7 @@ if(PAGE==='rules'){
   if(!shown&&(q||RS.kind))sets.append(el('p','No rules match.','muted'))}
  function filters(){const R=data.rules;filterChips($('rl-sets'),[['','All sets',R.length]].concat(data.sets.map(x=>[x.key,x.name,R.filter(r=>r.set_key===x.key).length])),RS.set,k=>{RS.set=k;filters();renderSets()});
   filterChips($('rl-kind'),[['','All'],['enforced','Enforced'],['guidance','Guidance'],['off','Switched off',R.filter(r=>!r.enabled).length]],RS.kind,k=>{RS.kind=k;filters();renderSets()})}
- const TABS=[['rules','Rules'],['spend','Spending'],['packs','Rule packs and services'],['labels','Purview labels'],['guidance','Your guidance'],['blocks','Recent blocks']];
+ const TABS=[['rules','Rules'],['spend','Spending'],['packs','Rule packs and services'],['labels','Purview labels'],['guidance','Your guidance'],['blocks','Recent blocks'],['changes','Changes']];
  function tab(k,focus){if(!TABS.some(t=>t[0]===k))k='rules';for(const p of document.querySelectorAll('.rl-panel'))p.hidden=p.dataset.tab!==k;
   $('rl-tabs').replaceChildren(...TABS.map(([key,l])=>{const b=el('button',l,'rl-tab'+(key===k?' on':''));b.type='button';b.setAttribute('role','tab');b.setAttribute('aria-selected',key===k);b.onclick=()=>tab(key,true);return b}));
   try{localStorage.setItem('alice-rules-tab',k)}catch{}if(focus)window.history.replaceState(null,'','#'+k)}
@@ -973,6 +1010,8 @@ if(PAGE==='rules'){
   for(const [label,v,cap] of [['Today',sp.today_usd,sp.daily_usd],['This month',sp.month_usd,sp.monthly_usd]]){const pct=Math.min(100,v/cap*100);const r=el('div','','spend-row');const bar=el('div','','spend-bar');const fill=el('span','','spend-fill '+(pct>=100?'bad':pct>=sp.warn_percent?'warn':'ok'));fill.style.width=pct+'%';bar.append(fill);r.append(el('span',label,'small'),bar,el('span',fmtD(v)+' of '+fmtD(cap),'small num'));box.append(r)}
   box.append(el('p',{ok:'Within limits.',warning:'Warning level reached: Temple automations are paused.',blocked:'Cap reached: chat and Temple are paused.'}[sp.level],'small spend-'+sp.level))}
  async function load(){data=await api('/admin/api/rules');$('r-counts').textContent=data.counts.enforced+' enforced · '+data.counts.guidance+' guidance rules on';spend(data.spend);
+  $('r-changes').replaceChildren(...((data.history||[]).length?data.history.map(c=>changeRow(c,true)):[el('p','No changes yet.','muted small')]));
+  $('r-defaults').textContent=data.defaults_error||(data.defaults_file+' (if present), over the shipped config/rule-defaults.json.');
   if(!dirty){$('guidance').value=data.guidance;$('allow').checked=data.allow_proposals}$('r-effective').textContent=data.effective_guidance||'(no guidance)';
   filters();renderSets();tiles();if(WANT){const w=document.querySelector('[data-rule="'+CSS.escape(WANT)+'"]');if(w){w.scrollIntoView({block:'center'});w.classList.add('r-want')}}
   $('r-requests-box').hidden=!data.requests.length;$('r-requests').replaceChildren(...data.requests.map(q=>{const row=el('div','','r-row');row.append(el('strong',q.title),el('p',q.content,'small'),el('p','From “'+q.chat_title+'” · '+q.status,'muted small'));const sel=document.createElement('select');sel.setAttribute('aria-label','Rule set');for(const st of data.sets){const o=document.createElement('option');o.value=st.key;o.textContent=st.name;sel.append(o)}sel.value='personal';const bar=el('div','','r-params');bar.append(sel,saveBtn(async()=>{await api('/admin/api/rules/custom','POST',{set_key:sel.value,name:q.title.slice(0,60),text:q.content.slice(0,1000),source:q.id});$('notice').textContent='Guidance rule created from Temple request.';await load()},'Create guidance rule'));row.append(bar);return row}));
@@ -1289,7 +1328,7 @@ if(PAGE==='actions'){
     if(i.detail)txt.append(el('div',i.detail,'small muted'));row.append(txt,actionsFor(i));list.append(row)}
    box.append(sec)}
   if(clear.length){const sec=el('section','','act-sec');sec.append(el('h2','All clear'),el('p',clear.map(s=>s.title).join(' · '),'muted small'));box.append(sec)}
-  connPolicy(!!d.auto_on).catch(()=>{});$('act-auto').checked=!!d.auto_on;$('act-auto-text').textContent=d.auto_on?'On: memories, knowledge and organisation facts go live after Alice\u2019s checks, and Temple records decisions (see Decisions below). Clashing memories, replacements, rule changes, and anything from outside apps that clashes or overlaps, or comes from an app you have not ticked below, wait for you here.':'Off: everything waits for your approval.'}
+  connPolicy(!!d.auto_on).catch(()=>{});$('act-auto-text').textContent=(d.approval||'')+' Only what waits for a person is listed here.'}
 
  // Notes from outside apps (decision D-0026): approved after Alice's checks unless they may replace or overlap something she holds.
  async function connPolicy(on){const box=$('act-conn');box.hidden=!on;if(!on)return;const p=await api('/admin/api/auto-approve/connectors');
@@ -1320,11 +1359,28 @@ if(PAGE==='actions'){
   const sets=[box,ir,ar,mail];const showSets=()=>{for(const x of sets)x.hidden=!auto.checked};auto.onchange=showSets;showSets();
   body.append(...sets,save)}
  run(decPolicy);
- $('act-auto').onchange=()=>run(async()=>{const on=$('act-auto').checked;if(!confirm(on?'Turn automatic approval on? Temple records decisions as set under Decisions; clashing memories still wait for you.':'Turn automatic approval off? Everything new will wait for your approval.')){$('act-auto').checked=!on;return}await api('/admin/api/auto-approve','PUT',{on});await load()});
  $('act-refresh').onclick=()=>run(load);run(load);
 }
 """
 SCRIPT += r"""
+"""
+SCRIPT += r"""
+// Temple's library actions (rule Approval and library management, D-0044): what Temple did on its own, with the reason, and Undo,
+// which puts back exactly what that action changed. Actions lists only what waits for a person.
+if(PAGE==='activity'){
+ async function libLoad(){const d=await api('/admin/api/library?days='+$('lib-days').value);
+  $('lib-describe').textContent=d.describe+' Undo puts back exactly what that action changed; an approval undone waits for a person.';
+  const box=$('lib-list');box.replaceChildren();if(!d.items.length){box.append(el('p','Temple has not changed the library on its own in this period.','muted small'));return}
+  for(const a of d.items){const row=el('div','','lib-row'+(a.undone_at?' undone':''));const t=el('div','','lib-t');const h=el('div','');
+   if(a.ref){const rf=el('span',a.ref,'ref');rf.style.marginRight='6px';h.append(rf)}h.append(el('span',a.label,'badge v-run'),document.createTextNode(' '),el('strong',a.title||a.type_label));
+   t.append(h,el('div',a.type_label+' · '+new Date(a.at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+(a.undone_at?' · undone by '+(a.undone_by||'someone'):''),'small muted'));
+   if(a.reason)t.append(el('div','Why: '+a.reason,'small'));row.append(t);
+   if(a.can_undo){const b=el('button','Undo');b.type='button';b.className='secondary';b.onclick=()=>run(async()=>{if(!confirm('Undo: '+a.label.toLowerCase()+' “'+(a.title||a.type_label)+'”? It is put back exactly as it was before.'))return;
+     await api('/admin/api/library/'+a.id+'/undo','POST',{});$('notice').textContent='Undone: '+(a.title||a.type_label);await libLoad()});row.append(b)}
+   box.append(row)}}
+ $('lib-days').onchange=()=>run(libLoad);run(libLoad);
+ if(location.hash==='#library')setTimeout(()=>{const x=$('library');if(x)x.scrollIntoView({block:'start'})},300);
+}
 """
 SCRIPT += r"""
 if(PAGE==='archive'){

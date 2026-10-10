@@ -32,6 +32,8 @@ SAMPLE = 150
 MAX_TOKENS = 8000
 UNDO_DAYS = 7
 OPS = ('create', 'merge', 'rename', 'retire', 'describe', 'split')
+# Which of Temple's library actions each change is (rule Approval and library management, "What Temple may do").
+OP_ACTION = {'create': 'categorise', 'rename': 'categorise', 'describe': 'categorise', 'split': 'categorise', 'merge': 'merge', 'retire': 'archive'}
 _lock = threading.Lock()
 
 with store.db() as _c:
@@ -459,6 +461,9 @@ def review(manual=False):
             raise ValueError('Temple\'s answer could not be read twice in a row (cut off or not JSON). Nothing was changed; try Review now later.')
         ids = {r['id'] for r in sample}
         done = {'applied': 0, 'proposed': 0, 'refused': 0}
+        import library                       # what Temple may do on its own (rule Approval and library management)
+        allowed = {op: library.may(OP_ACTION[op]) for op in OPS}
+        applied = []
         for raw_ch in changes[:30]:          # one transaction per change: a failure leaves the others in place
             try:
                 with store.db() as c:
@@ -468,6 +473,9 @@ def review(manual=False):
                     if not got: done['refused'] += 1; continue
                     ch, state, why = got
                     if state == 'apply' and m != 'auto': state, why = 'proposed', 'Temple is set to suggest changes only.'
+                    if state == 'apply' and not allowed[ch['op']]:
+                        state, why = 'proposed', (f'The rule Approval and library management does not let Temple {OP_ACTION[ch["op"]]} '
+                                                  'on its own.')
                     cid = uuid.uuid4().hex[:12]
                     if state == 'apply':
                         snap, summary = _apply(c, ch)
@@ -475,6 +483,7 @@ def review(manual=False):
                                   (cid, store.now(), ch['kind'], ch['op'], ch['target'], json.dumps(ch['detail']), ch['reason'], 'applied', ch['signature'], json.dumps(snap), 'Temple'))
                         store.audit(c, 'taxonomy_applied', ch['target'], 'advisory_metadata', f"{ch['op']} {ch['kind']}: {summary}. {ch['reason']}"[:500])
                         done['applied'] += 1
+                        applied.append((cid, ch, summary))
                     else:
                         c.execute("INSERT INTO taxonomy_changes(id,created_at,kind,op,target,detail,reason,state,why_waiting,signature) VALUES (?,?,?,?,?,?,?,?,?,?)",
                                   (cid, store.now(), ch['kind'], ch['op'], ch['target'], json.dumps(ch['detail']), ch['reason'], 'proposed', why, ch['signature']))
@@ -485,6 +494,10 @@ def review(manual=False):
                 done['refused'] += 1
         with store.db() as c:
             _put_setting(c, 'taxonomy_new_since', '0')
+        for cid, ch, summary in applied:     # Temple's library actions (Activity), each undone through this change's own snapshot
+            try: library.note_linked(OP_ACTION[ch['op']], 'taxonomy', ch['target'], f"{ch['kind'].capitalize()} {ch['target']}: {summary}",
+                                     ch['reason'], 'taxonomy:' + cid)
+            except Exception: pass
         if done['applied']:
             try:
                 import temple_categorise

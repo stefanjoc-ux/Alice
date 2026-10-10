@@ -83,8 +83,9 @@ def _summary():
                    + [_draft(i, held[('knowledge', i['id'])]) for i in drafts if ('knowledge', i['id']) in held]
                    + [_fact(f, held[('orgfact', f['id'])]) for f in facts if ('orgfact', f['id']) in held])
         out.append(_section('held', 'Held back for you', len(h_items), '/admin/memories?status=proposed', h_items,
-                            'Automatic approval stopped at these: a clash with what Alice holds, a possible replacement, '
-                            'something Temple could not check, or a proposal through the outside connector. Each says why.', top=20))
+                            'Held for a person under the rule Approval and library management: a clash with what Alice holds, a sensitive '
+                            'finding, something Temple was unsure about or could not check, a category that needs a person, or a proposal '
+                            'through the outside connector. Each says why.', top=20))
         w_items = ([_mem(i, 'Temple is checking it' if i['verdict'] == 'running' else '') for i in mems if ('memory', i['id']) not in held]
                    + [_draft(i) for i in drafts if ('knowledge', i['id']) not in held]
                    + [_fact(f) for f in facts if ('orgfact', f['id']) not in held])
@@ -94,7 +95,7 @@ def _summary():
     else:
         w_items = [_mem(i) for i in mems] + [_draft(i) for i in drafts] + [_fact(f) for f in facts]
         out.append(_section('waiting', 'Awaiting approval', len(w_items), '/admin/memories?status=proposed', w_items,
-                            'Automatic approval is off: memories, knowledge and organisation facts wait for you.'))
+                            'Approval and library management says a person approves every new item: memories, knowledge and organisation facts wait for you.'))
 
     # 2-ii. What waits for other spaces' managers (counts only: theirs to decide; an Owner can step in on the Spaces page)
     try: sm = spaces.managers_summary()
@@ -104,19 +105,6 @@ def _summary():
                           'href': '/admin/spaces'} for x in sm],
                         'Approval goes to each space\'s managers. For your information: nothing here waits for you.' if sm else '', info=True))
 
-    # 2a. What went live automatically (for information; each can be undone)
-    if auto_on:
-        recent = autoapprove.recent()
-        by = {}
-        for r in recent: by[r['item_type']] = by.get(r['item_type'], 0) + 1
-        names = {'memory': ('memory', 'memories'), 'knowledge': ('knowledge item', 'knowledge items'), 'orgfact': ('organisation fact', 'organisation facts')}
-        out.append(_section('auto', 'Approved automatically in the last 7 days', len(recent), '/admin/activity?type=memories',
-                            [{'type': 'auto', 'item_type': r['item_type'], 'id': r['item_id'], 'title': r['title'], 'ref': r['ref'],
-                              'detail': names.get(r['item_type'], (r['item_type'],))[0].capitalize() + ' · ' + r['reason'] + ' · ' + r['at'][:16].replace('T', ' ')}
-                             for r in recent],
-                            ' · '.join(f'{n} {names[k][0] if n == 1 else names[k][1]}' for k, n in by.items() if k in names)
-                            + ('. Undo retires it (history kept).' if recent else ''), top=60, info=True))
-
     # 2c. Temple's category and tag housekeeping: changes waiting for you, and what it did itself (Undo for 7 days)
     import temple_taxonomy
     tx_wait = temple_taxonomy.changes('proposed', days=3650)
@@ -124,11 +112,8 @@ def _summary():
                         [{'type': 'taxonomy', 'id': r['id'], 'title': r['summary'], 'detail': (r['why_waiting'] + ' ' if r['why_waiting'] else '') + r['reason']}
                          for r in tx_wait],
                         'Temple keeps categories and tags tidy. Changes to ones you created, or to a category a rule uses, wait for you.', top=20))
-    tx_done = [r for r in temple_taxonomy.changes('applied', days=7) if r['decided_by'] == 'Temple']
-    out.append(_section('taxonomy_done', 'Category and tag housekeeping by Temple in the last 7 days', len(tx_done), '/admin/memories#organise',
-                        [{'type': 'taxonomy_done', 'id': r['id'], 'title': r['summary'], 'detail': r['reason'] + ' · ' + r['created_at'][:16].replace('T', ' '),
-                          'can_undo': r['can_undo']} for r in tx_done],
-                        'For information. Undo puts things back as they were.', top=40, info=True))
+    # What Temple did on its own (approvals, categories, routing, merges, supersessions, archiving) is not listed here: Actions shows
+    # only what waits for a person. It is on the Activity page as Temple's library actions, each with its reason and Undo (library.py).
 
     # 2b. Older knowledge that a newer, approved item replaces (proposer's word or Temple's suggestion)
     reps = [p for p in knowledge.replacements('pending') if p['new_status'] == 'active']
@@ -286,7 +271,8 @@ def _summary():
                                  'detail': 'Chat is paused.' if sp['level'] == 'blocked' else 'Temple automations are paused until the next day or month, or until you raise the cap.',
                                  'href': '/admin/rules'}], level='bad' if sp['level'] == 'blocked' else 'warn'))
     total = sum(s['count'] for s in out if not s.get('info'))
-    return {'total': total, 'sections': out, 'auto_on': auto_on}
+    import library
+    return {'total': total, 'sections': out, 'auto_on': auto_on, 'approval': library.describe()}
 
 
 def count():

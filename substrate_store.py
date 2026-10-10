@@ -98,10 +98,20 @@ def init():
 def rules():
     with db() as c: settings = dict(c.execute('SELECT key,value FROM settings').fetchall())
     return {'guidance': settings['guidance'], 'allow_proposals': settings['allow_proposals']=='true',
-            'enforced': ['All new records are proposals until approved in Admin.',
-                         'Title, content and a source description are required.',
-                         'MCP can never approve, overwrite or delete records.',
-                         'Only approved records are returned by search_records.']}
+            'enforced': _enforced_statements()}
+
+def _enforced_statements():
+    """What is enforced for memories, read from the rule Approval and library management (never fixed here: D-0045)."""
+    try:
+        import library
+        s = library.settings()
+        approval = library.describe()
+        overwrite = ('Models and Temple may overwrite or delete records (allowed under Approval and library management); every change is logged.'
+                     if s['overwrite_delete'] else 'Models and Temple can never overwrite or delete records; the original is always kept.')
+    except Exception:
+        approval, overwrite = 'New records are proposals until approved.', 'Models and Temple can never overwrite or delete records.'
+    return [approval, 'Title, content and a source description are required.', overwrite,
+            'Only approved records are returned by search_records.']
 
 def update_rules(guidance, allow_proposals):
     guidance=guidance.strip()
@@ -136,7 +146,7 @@ def propose(title, content, source):
         temple.automatic_review(rid)
     except Exception:
         pass  # No review entry means Not reviewed in Temple; human review remains available.
-    return {'id':rid,'status':'proposed','message':'Awaiting human approval in Substrate admin. Not yet an approved memory.'}
+    return {'id':rid,'status':'proposed','message':'Proposed: Temple checks it, and it is approved as the rule Approval and library management says. Not yet an approved memory.'}
 
 def review(rid, decision):
     if decision not in ('approved','rejected'): raise ValueError('Invalid decision.')
