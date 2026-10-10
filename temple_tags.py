@@ -102,7 +102,11 @@ def run(ids=None, manual=False):
                     if name in m['has_tags'] or name in m['not_these']: continue
                     results.append((p.id, name, p.confidence, p.reason))
                 agents.note('read', 'memory', ','.join(allowed)[:500], f'{len(send)} memories read for tagging')
-            counts = MT.record_results(results, [m['id'] for m in batch], 'suggest' if current == 'suggest' else 'auto')
+            import library      # Temple categorises and tags on its own only when the rule Approval and library management lets it
+            may_apply = library.may('categorise')
+            why = {r[0]: (r[3] or '') for r in results if r[1]}
+            with library.change('categorise', [('record', r[0]) for r in results if r[1]], why, per_item=True):
+                counts = MT.record_results(results, [m['id'] for m in batch], 'suggest' if current == 'suggest' or not may_apply else 'auto')
             for k in ('checked', 'applied', 'suggested'): totals[k] += counts[k]
             if counts['applied'] or counts['suggested']:
                 agents.note('wrote', 'memory', '', f"{counts['applied']} tags applied, {counts['suggested']} suggested")

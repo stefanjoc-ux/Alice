@@ -1235,16 +1235,23 @@ def admin_category_suggestions(change: SuggestionAction):
 
 class AutoSetting(BaseModel):
     on: bool
+    reason: str = Field(default='',max_length=500)
 
 class AutoUndo(BaseModel):
     item_type: Literal['memory','knowledge','orgfact']
     id: str = Field(min_length=1,max_length=80)
 
 @app.get('/admin/api/auto-approve')
-def admin_auto_approve(): return {'on':autoapprove.on(),'recent':autoapprove.recent()}
+def admin_auto_approve():
+    import library
+    return {'on':autoapprove.on(),'recent':autoapprove.recent(),'settings':library.settings(),'describe':library.describe()}
 
 @app.put('/admin/api/auto-approve')
-def admin_auto_approve_set(update: AutoSetting): return autoapprove.set_on(update.on)
+def admin_auto_approve_set(update: AutoSetting):
+    """Who approves (Temple or a person): a change to the Core rule Approval and library management, so an Owner with a reason."""
+    try: return autoapprove.set_on(update.on, update.reason)
+    except PermissionError as e: raise HTTPException(403,str(e)) from None
+    except ValueError as e: raise HTTPException(400,str(e)) from None
 
 class DecisionPolicyIn(BaseModel):
     auto: bool = True
@@ -2799,6 +2806,10 @@ class RuleChange(BaseModel):
     params: dict|None = None
     text: str|None = Field(default=None,max_length=1000)
     name: str|None = Field(default=None,max_length=60)
+    reason: str = Field(default='',max_length=500)
+
+class RuleRevert(BaseModel):
+    reason: str = Field(default='',max_length=500)
 
 class GuidanceRuleIn(BaseModel):
     set_key: Literal['security','organisation','memory','cost','personal']
@@ -2808,8 +2819,32 @@ class GuidanceRuleIn(BaseModel):
 
 @app.put('/admin/api/rules/{rid}')
 def admin_rule_update(rid: str, change: RuleChange):
-    try: return rules_engine.update_rule(rid,change.enabled,change.params,change.text,change.name)
+    try: return rules_engine.update_rule(rid,change.enabled,change.params,change.text,change.name,reason=change.reason)
+    except PermissionError as e: raise HTTPException(403,str(e)) from None
     except (ValueError,TypeError) as e: raise HTTPException(400,str(e)) from None
+
+@app.get('/admin/api/rules/{rid}/history')
+def admin_rule_history(rid: str): return {'changes': rules_engine.history(rid)}
+
+@app.post('/admin/api/rules/changes/{cid}/revert')
+def admin_rule_revert(cid: str, body: RuleRevert):
+    try: return rules_engine.revert(cid, body.reason)
+    except PermissionError as e: raise HTTPException(403,str(e)) from None
+    except ValueError as e: raise HTTPException(400,str(e)) from None
+
+class LibraryUndo(BaseModel):
+    note: str = Field(default='',max_length=300)
+
+@app.get('/admin/api/library')
+def admin_library(days: int = Query(7, ge=1, le=90), action: str = Query('', max_length=20)):
+    import library
+    return {'items': library.recent(days, action=action), 'settings': library.settings(), 'describe': library.describe(), 'days': days}
+
+@app.post('/admin/api/library/{aid}/undo')
+def admin_library_undo(aid: str, body: LibraryUndo):
+    import library
+    try: return library.undo(aid, body.note)
+    except ValueError as e: raise HTTPException(409,str(e)) from None
 
 @app.post('/admin/api/rules/custom')
 def admin_rule_create(rule: GuidanceRuleIn):

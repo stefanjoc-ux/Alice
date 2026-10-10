@@ -7,8 +7,10 @@ Findings never echo the sensitive value itself.
 """
 import contextvars
 import json
+import logging
 import os
 import re
+from pathlib import Path
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 import substrate_store as store
@@ -23,103 +25,68 @@ SETS = [
 RANK = {k: i for i, (k, _, _) in enumerate(SETS)}
 PROVIDERS = ['openai', 'claude', 'grok', 'copilot']   # copilot: Microsoft 365 Copilot via the external endpoint
 
-# id, set, name, kind, description, default enabled, default params, guidance text, locked
-BUILTIN = [
-    ('secret_detection', 'security', 'Secret detection', 'enforced',
-     'Blocks API keys, passwords, private keys, tokens and connection strings from chat messages sent to models, '
-     'memories, knowledge notes and uploads.', True, {}, '', False),
-    ('protective_marking', 'security', 'Protective marking guard', 'enforced',
-     'Refuses to send material marked OFFICIAL-SENSITIVE, SECRET or TOP SECRET to any external model. Marked uploads '
-     'are refused; previously saved marked files are withheld from every tool.', True,
-     {'markings': ['OFFICIAL-SENSITIVE', 'SECRET', 'TOP SECRET']}, '', False),
-    ('provider_allow', 'security', 'Provider allow-list by category', 'enforced',
-     'Memories in a category, and knowledge with a security label, are never sent to the providers you block for them.', True,
-     {'blocked': {'Work': ['grok']}, 'labels': {'internal': ['grok']}}, '', False),
-    ('external_scope', 'security', 'External client scope', 'enforced',
-     'Claude Desktop and Claude Code can only read memories in these categories. Empty means all categories.',
-     True, {'allowed_categories': []}, '', False),
-    ('pii', 'security', 'Personal identifiers', 'enforced',
-     'Blocks payment card numbers, National Insurance numbers, UK sort code with account number, and IBANs '
-     'from memories and knowledge notes.', True, {}, '', False),
-    ('data_minimisation', 'security', 'Data minimisation', 'enforced',
-     'Organisation facts hold organisational information and roles, not people: email addresses and phone numbers '
-     'are refused (keep contact details in the source system), as is anything about a named person\'s health, '
-     'beliefs, ethnicity, sexuality, union membership or criminal matters. Every organisation fact needs a source '
-     'and a review-by date (default below, at most 24 months).', True, {'review_months': 12}, '', False),
-    ('share_gate', 'security', 'Sharing check', 'enforced',
-     'Before anything enters or moves into a shared space (whoever moves it: a person, Temple, a team or a connector), it is checked for '
-     'personal identifiers, contact details, health or other special category details about anyone, and anything marked private (Local only, '
-     'or in a personal-area category); Temple reads it too, after its review, and only an actual finding holds an item: a quoted passage '
-     'with personal data about a real person, special category data, or something marked private (talking about HR, health or privacy '
-     'in general is not a finding). A held item waits for its author, the space\'s managers or an Owner to share anyway or keep it where '
-     'it is. An item with no category never enters a shared space; it moves on its own once it has one.', True, {'temple': True}, '', True),
-    ('temple_category', 'security', 'Temple\'s category is enough for work items', 'enforced',
-     'A category Temple gave a memory, decision or knowledge item (or one the proposing app chose from your list) counts for entering a '
-     'shared space: a person does not have to confirm it first. A person must still decide when the Sharing check finds personal data '
-     'about a real person, special category data or anything marked private, or when Temple was not sure which category it belongs in. '
-     'Switched off, only a category a person set counts.', True, {}, '', False),
-    ('client_separation', 'organisation', 'Client separation', 'enforced',
-     'In a chat tagged with a client, memory and file tools return only that client\'s material plus General '
-     '(untagged) material. Strict mode also keeps client material out of untagged chats.', True,
-     {'strict': False, 'external': 'all'}, '', False),
-    ('client_documents', 'organisation', 'Client-facing documents use only that client\'s material', 'enforced',
-     'Proposals written by Parker and digital team outputs marked client-facing use only General (untagged) material and material '
-     'tagged to that document\'s own client; anything tagged to another client is left out and logged. A document with no client uses '
-     'General material only. Works on its own, whatever the Client separation switch says.', True, {}, '', False),
-    ('open_spaces', 'organisation', 'Team spaces are open to the organisation', 'enforced',
-     'Alice is the organisation\'s shared store of knowledge (decision D-0040): everyone with an Alice role reads every team space '
-     'unless its manager closes it, with a reason. Personal spaces, closed spaces and spaces tied to a client are never open; only '
-     'members add to a space. Switched off, people read only the spaces they are members of, and the Organisation space.', True, {}, '', False),
-    ('temple_router', 'organisation', 'Temple routes new items to the right space', 'enforced',
-     'A new memory, decision or knowledge item heading for a team space is routed by Temple once it has reviewed it: about the work, '
-     'to the team space; useful to the whole organisation, to the Organisation space (when the person may add to it); about its author, '
-     'it stays in their personal space; about a named person (their health, absence, performance, pay or private circumstances) or '
-     'special category data, to the team\'s restricted space; unsure, it waits for its author. The reason is kept on the item, and the '
-     'sharing check still runs on anything going into an open space. Switched off, new items go to the default space through the '
-     'sharing check alone.', True, {}, '', False),
-    ('commercial_caution', 'organisation', 'Commercial caution', 'guidance', '', True, {},
-     'Do not state prices, discounts, rates or Insight commitments unless they come from a saved file or approved '
-     'memory, and cite that source.', False),
-    ('rate_sources', 'organisation', 'Where digital teams\' rates come from', 'enforced',
-     'Which sources a digital team\'s Cost Surveyor may price an item from, and in what order: a published rate (a cited page and its date), '
-     'your rate library, a built-up rate (worked out by Alice from cited published rates for its parts, working shown) or a team estimate '
-     '(the Cost Surveyor\'s judgement, with its reasoning, the assumptions it made and any comparable rates it found, cited), or a provisional '
-     'sum (a lump sum for work the documents do not let the team measure, from typical UK costs for the job\'s location and date found on the '
-     'web, with the range found, the reasoning and every page cited with its date). An item no allowed source can price is left unpriced. '
-     'Estimates can also be allowed for chosen items on one job (Ask the team to estimate these); provisional sums can be switched on or off '
-     'for one job (the Start a job screen and the job page). Estimates and provisional sums are always badged; estimates are listed as '
-     'assumptions and provisional sums in their own section. Switched off, every source may be used, in the order set here.', True,
-     {'order': ['published', 'library', 'built_up', 'estimate', 'provisional'], 'allowed': ['published', 'library', 'built_up', 'provisional']}, '', False),
-    ('ai_disclosure', 'organisation', 'AI disclosure', 'guidance', '', True, {},
-     'When drafting material that will go to a client, remind me once that AI assisted so I can declare it if required.',
-     False),
-    ('retention', 'organisation', 'Chat retention', 'enforced',
-     'Permanently deletes saved chats that had nothing captured once they are older than the set number of months. '
-     'Chats with captured memories or knowledge are kept. Off by default because deletion cannot be undone.',
-     False, {'months': 12}, '', False),
-    ('approval_required', 'memory', 'Human approval', 'enforced',
-     'Every new memory is a proposal until you approve it. Models and Temple can never approve, overwrite or delete.',
-     True, {}, '', True),
-    ('quality', 'memory', 'Quality check', 'enforced',
-     'Rejects proposals whose content only repeats the title, is shorter than the minimum, or whose source is '
-     'missing or just repeats the content.', True, {'min_chars': 12}, '', False),
-    ('duplicates', 'memory', 'Duplicate block', 'enforced',
-     'Rejects proposals that closely match an active memory.', True, {'threshold': 0.9}, '', False),
-    ('expiry', 'memory', 'Review-by dates', 'enforced',
-     'Memories past their review-by date are marked as possibly out of date whenever a model reads them, and '
-     'flagged on the Memories page.', True, {}, '', False),
-    ('spend_cap', 'cost', 'Spending caps', 'enforced',
-     'Temple automations pause at the warning level; chat is blocked at the cap. Based on estimated spend; '
-     'unpriced calls (voice) are not counted.', True, {'daily_usd': 5.0, 'monthly_usd': 50.0, 'warn_percent': 80}, '',
-     False),
-    ('opus_manual', 'cost', 'Opus only when chosen', 'enforced',
-     'Auto routing never selects Opus 5.5; it runs only when you pick it.', True, {}, '', True),
-    ('working_style', 'personal', 'Working style', 'guidance', '', True, {},
-     'Give direct, honest pushback rather than validation. Skip unnecessary caveats, repeated disclaimers and '
-     'unsolicited commentary on my decisions.', False),
-    ('uk_conventions', 'personal', 'UK conventions', 'guidance', '', True, {},
-     'Use UK English spelling and show amounts in GBP unless I ask otherwise.', False),
-]
+# The shipped defaults live in config/rule-defaults.json, not in code (Stefan's decision D-0045: no rule is hard-coded). A deployment
+# sets its own defaults in a file of the same shape: ALICE_RULE_DEFAULTS (a path), else rule-defaults.json in the data folder. Only the
+# rules and fields it names change; params merge into the shipped ones. Defaults apply when a rule is first created; the wording and
+# whether a rule is Core apply at every start. What anyone changes on the Rules page is kept, and logged (rule_changes).
+SHIPPED_DEFAULTS = Path(__file__).resolve().with_name('config') / 'rule-defaults.json'
+DEFAULTS_ERROR = ''
+_log = logging.getLogger('alice.rules')
+
+
+def _merge(base, extra):
+    out = dict(base)
+    for k, v in (extra or {}).items():
+        out[k] = _merge(out[k], v) if isinstance(v, dict) and isinstance(out.get(k), dict) else v
+    return out
+
+
+def deployment_defaults_path():
+    p = os.environ.get('ALICE_RULE_DEFAULTS', '').strip()
+    if p: return Path(p)
+    return store.DB.parent / 'rule-defaults.json'
+
+
+def _deployment_overrides():
+    """{rule id: {enabled, params, text, core}} from this deployment's own defaults file (none: {})."""
+    global DEFAULTS_ERROR
+    path = deployment_defaults_path()
+    if not path.is_file(): return {}
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'))
+        rules_in = data.get('rules', data) if isinstance(data, dict) else data
+        if isinstance(rules_in, list): rules_in = {r['id']: r for r in rules_in if isinstance(r, dict) and r.get('id')}
+        if not isinstance(rules_in, dict): raise ValueError('expected {"rules": {rule id: {...}}}')
+        return {k: v for k, v in rules_in.items() if isinstance(v, dict) and not k.startswith('_')}
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        DEFAULTS_ERROR = f'This deployment\'s rule defaults ({path.name}) could not be read, so the shipped defaults apply: {str(e)[:200]}'
+        _log.warning(DEFAULTS_ERROR)
+        return {}
+
+
+def defaults():
+    """Every built-in rule as shipped, with this deployment's defaults applied: [{id, set, name, kind, description, text, enabled,
+    params, core}]."""
+    shipped = json.loads(SHIPPED_DEFAULTS.read_text(encoding='utf-8'))['rules']
+    over = _deployment_overrides()
+    # Test databases (tests/_util.py) start with these off, as a deployment's defaults would set them.
+    env = {'open_spaces': {'enabled': False} if os.environ.get('ALICE_OPEN_SPACES_DEFAULT') == 'off' else {},
+           'temple_router': {'enabled': False} if os.environ.get('ALICE_ROUTER_DEFAULT') == 'off' else {},
+           'approval_required': {'params': {'approver': 'person'}} if os.environ.get('ALICE_AUTO_APPROVE_DEFAULT') == 'off' else {}}
+    out = []
+    for d in shipped:
+        d = {'description': '', 'text': '', 'params': {}, 'core': False, **d}
+        for extra in (env.get(d['id']) or {}, over.get(d['id']) or {}):
+            for k in ('enabled', 'core'):
+                if k in extra: d[k] = bool(extra[k])
+            if isinstance(extra.get('text'), str) and extra['text'].strip() and d['kind'] == 'guidance': d['text'] = extra['text'].strip()[:1000]
+            if isinstance(extra.get('params'), dict): d['params'] = _merge(d['params'], extra['params'])
+        out.append(d)
+    return out
+
+
+# id, set, name, kind, description, default enabled, default params, guidance text, core (read from the defaults above)
+BUILTIN = [(d['id'], d['set'], d['name'], d['kind'], d['description'], d['enabled'], d['params'], d['text'], d['core']) for d in defaults()]
 
 
 # Where a digital team's rates may come from (rule rate_sources). 'Unpriced' is not a source: it is always last.
@@ -149,20 +116,41 @@ def _init():
             description TEXT NOT NULL DEFAULT '', text TEXT NOT NULL DEFAULT '', enabled INTEGER NOT NULL,
             params TEXT NOT NULL DEFAULT '{}', builtin INTEGER NOT NULL DEFAULT 0, locked INTEGER NOT NULL DEFAULT 0,
             source TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL)''')
-        for rid, set_key, name, kind, desc, enabled, params, text, locked in BUILTIN:
-            # Test databases start with open team spaces off (tests/_util.py), as with automatic approval; test_spaces_teams switches it on.
-            if rid == 'open_spaces' and os.environ.get('ALICE_OPEN_SPACES_DEFAULT') == 'off': enabled = False
-            if rid == 'temple_router' and os.environ.get('ALICE_ROUTER_DEFAULT') == 'off': enabled = False
-            # INSERT OR IGNORE keeps your changes; descriptions refresh with each update.
+        # Every change to a rule, with who, when, why and the settings before and after: shown on the Rules page and reverted in one click.
+        c.execute('''CREATE TABLE IF NOT EXISTS rule_changes (
+            id TEXT PRIMARY KEY, rule_id TEXT NOT NULL, changed_at TEXT NOT NULL, actor TEXT NOT NULL DEFAULT '',
+            reason TEXT NOT NULL DEFAULT '', core INTEGER NOT NULL DEFAULT 0, what TEXT NOT NULL DEFAULT '',
+            before TEXT NOT NULL DEFAULT '{}', after TEXT NOT NULL DEFAULT '{}', reverts TEXT NOT NULL DEFAULT '',
+            reverted_by TEXT NOT NULL DEFAULT '')''')
+        c.execute('CREATE INDEX IF NOT EXISTS rule_changes_by_rule ON rule_changes(rule_id, changed_at)')
+        old_approval = c.execute("SELECT params FROM rules WHERE id='approval_required'").fetchone()
+        for rid, set_key, name, kind, desc, enabled, params, text, core in BUILTIN:
+            # INSERT OR IGNORE keeps your changes; the wording and whether a rule is Core refresh at every start.
             c.execute('INSERT OR IGNORE INTO rules VALUES (?,?,?,?,?,?,?,?,1,?,?,?,?)',
-                      (rid, set_key, name, kind, desc, text, int(enabled), json.dumps(params), int(locked), '',
+                      (rid, set_key, name, kind, desc, text, int(enabled), json.dumps(params), int(core), '',
                        store.now(), store.now()))
-            c.execute('UPDATE rules SET description=?,locked=? WHERE id=? AND builtin=1', (desc, int(locked), rid))
+            c.execute('UPDATE rules SET name=?,description=?,locked=? WHERE id=? AND builtin=1', (name, desc, int(core), rid))
+        # "Human approval" became "Approval and library management" (D-0044): its settings start from the automatic approval switch
+        # it replaces (on = Temple approves; off = a person approves every item), the rest at their defaults.
+        if old_approval is not None and 'approver' not in json.loads(old_approval[0] or '{}'):
+            row = c.execute("SELECT value FROM settings WHERE key='auto_approve'").fetchone()
+            p = dict(next(b[6] for b in BUILTIN if b[0] == 'approval_required'))
+            if row is not None: p['approver'] = 'temple' if row[0] == 'true' else 'person'
+            c.execute("UPDATE rules SET params=?,enabled=1 WHERE id='approval_required'", (json.dumps(p),))
+            store.audit(c, 'rule_migrated', 'approval_required', 'approval_required',
+                        f"Human approval became Approval and library management: {APPROVER_NAMES[p['approver']].lower()}")
         # Client separation started as guidance; it is enforced now that clients can be tagged.
         c.execute("UPDATE rules SET kind='enforced',text='',params=? WHERE id='client_separation' AND kind='guidance'",
                   (json.dumps({'strict': False, 'external': 'all'}),))
         cols = {r['name'] for r in c.execute('PRAGMA table_info(record_meta)')}
         if 'review_by' not in cols: c.execute('ALTER TABLE record_meta ADD COLUMN review_by TEXT')
+
+
+APPROVER_NAMES = {'temple': 'Temple approves new items under each space\'s rules', 'person': 'A person approves every new item',
+                  'categories': 'Temple approves, except in the categories that need a person'}
+LIBRARY_ACTIONS = {'approve': 'Approve', 'categorise': 'Categorise and tag', 'route': 'Route to a space', 'merge': 'Merge',
+                   'supersede': 'Supersede', 'archive': 'Archive'}
+LIBRARY_HOLDS = {'sensitive': 'Sensitive findings', 'clash': 'Clashes', 'unsure': 'Anything Temple is unsure about'}
 
 
 _init()
@@ -174,7 +162,7 @@ def _load_rules():
         rows = [dict(r) for r in c.execute('SELECT * FROM rules')]
     for r in rows:
         r['params'] = json.loads(r['params'] or '{}'); r['enabled'] = bool(r['enabled'])
-        r['builtin'] = bool(r['builtin']); r['locked'] = bool(r['locked'])
+        r['builtin'] = bool(r['builtin']); r['locked'] = r['core'] = bool(r['locked'])   # 'locked' is the column; it means Core
         if r['id'] == 'rate_sources' and r['params']:          # a source added since the settings were saved shows, in its default state
             r['params'] = _clean_params('rate_sources', r['params'])
     return sorted(rows, key=lambda r: (RANK.get(r['set_key'], 99), not r['builtin'], r['created_at'], r['name']))
@@ -188,8 +176,9 @@ def all_rules():
 
 
 def _rules_changed():
-    import speed
+    import speed, sys
     speed.forget('rules')
+    if 'spaces' in sys.modules: sys.modules['spaces'].forget()      # its rule switches are cached for a few seconds
 
 
 def rule(rid):
@@ -216,28 +205,115 @@ def log_block(rid, target, detail):
         store.audit(c, 'rule_blocked', target[:200], rid, detail[:500])
 
 
-def update_rule(rid, enabled=None, new_params=None, text=None, name=None):
+def _state(r):
+    return {'enabled': bool(r['enabled']), 'params': r['params'], 'text': r['text'], 'name': r['name']}
+
+
+def may_change_core():
+    """Core rules are an Owner's (permissions.is_owner_person: Alice.Owner in Entra; on the PC, whoever is at this computer)."""
+    import permissions
+    return permissions.is_owner_person(store.viewer())
+
+
+def _clean_reason(reason, core, what='change'):
+    reason = ' '.join((reason or '').split())[:500]
+    if core and len(reason) < 3:
+        raise ValueError(f'Give a reason: this is a Core rule, so every {what} needs one (it is kept in Activity with who and when).')
+    if reason and (find_secrets(reason) or find_markings(reason)): raise RuleViolation('The reason looks like it contains a credential or a protective marking.')
+    return reason
+
+
+def _describe_change(r, before, after):
+    parts = []
+    if before['enabled'] != after['enabled']: parts.append('switched ' + ('on' if after['enabled'] else 'off'))
+    if before['params'] != after['params']:
+        keys = sorted({k for k in set(before['params']) | set(after['params']) if before['params'].get(k) != after['params'].get(k)})
+        parts.append('settings changed' + (f" ({', '.join(k.replace('_', ' ') for k in keys)})" if keys else ''))
+    if before['text'] != after['text']: parts.append('guidance text changed')
+    if before['name'] != after['name']: parts.append('renamed')
+    return ', '.join(parts) or 'no change'
+
+
+def _apply_state(rid, r, new, reason, reverts=''):
+    """Write a rule's new state, record the change (before and after, who, when, why) and log it in Activity."""
+    import uuid
+    before = _state(r)
+    after = {**before, **new}
+    if after == before: return None
+    what = _describe_change(r, before, after)
+    cid = uuid.uuid4().hex[:16]
+    with store.acting(note=reason or None):
+        with store.db() as c:
+            c.execute('UPDATE rules SET enabled=?,params=?,text=?,name=?,updated_at=? WHERE id=?',
+                      (int(after['enabled']), json.dumps(after['params']), after['text'], after['name'], store.now(), rid))
+            c.execute('INSERT INTO rule_changes(id,rule_id,changed_at,actor,reason,core,what,before,after,reverts) VALUES (?,?,?,?,?,?,?,?,?,?)',
+                      (cid, rid, store.now(), store.actor(), reason, int(r['core']), what, json.dumps(before), json.dumps(after), reverts))
+            if reverts: c.execute('UPDATE rule_changes SET reverted_by=? WHERE id=?', (cid, reverts))
+            store.audit(c, 'rule_reverted' if reverts else 'rule_updated', rid, rid if r['core'] else 'human_control',
+                        f'{r["name"]}' + (' (Core)' if r['core'] else '') + f': {what}' + (f'. Why: {reason}' if reason else ''))
+    _rules_changed()
+    return cid
+
+
+def update_rule(rid, enabled=None, new_params=None, text=None, name=None, reason=None):
+    """Change a rule. A Core rule only by an Owner, with a reason. Every change is kept (history) and can be reverted."""
     r = rule(rid)
     if not r: raise ValueError('Rule not found.')
-    if r['locked'] and enabled is False: raise ValueError(f'"{r["name"]}" is a core safeguard and cannot be switched off.')
-    fields, args = [], []
-    if enabled is not None: fields.append('enabled=?'); args.append(int(enabled))
-    if new_params is not None: fields.append('params=?'); args.append(json.dumps(_clean_params(rid, new_params)))
+    if r['core'] and not may_change_core():
+        raise PermissionError(f'"{r["name"]}" is a Core rule: only an Owner can change it.')
+    new = {}
+    if enabled is not None: new['enabled'] = bool(enabled)
+    if new_params is not None: new['params'] = _clean_params(rid, new_params)
     if text is not None:
         if r['kind'] != 'guidance': raise ValueError('Only guidance rules have editable text.')
         text = text.strip()
         if not text or len(text) > 1000: raise ValueError('Guidance text must be 1 to 1,000 characters.')
-        fields.append('text=?'); args.append(text)
+        new['text'] = text
     if name is not None and not r['builtin']:
         name = ' '.join(name.split())[:60]
         if not name: raise ValueError('Enter a rule name.')
-        fields.append('name=?'); args.append(name)
-    if not fields: return rule(rid)
-    with store.db() as c:
-        c.execute(f"UPDATE rules SET {','.join(fields)},updated_at=? WHERE id=?", args + [store.now(), rid])
-        store.audit(c, 'rule_updated', rid, 'human_control', ', '.join(f.split('=')[0] for f in fields))
-    _rules_changed()
+        new['name'] = name
+    if not new or {**_state(r), **new} == _state(r): return rule(rid)
+    reason = _clean_reason(reason, r['core'])
+    _apply_state(rid, r, new, reason)
     return rule(rid)
+
+
+def history(rid=None, limit=50):
+    """Changes to one rule (or every rule), newest first, each with whether it can still be reverted."""
+    with store.db() as c:
+        where, args = ('WHERE rule_id=? ', [rid]) if rid else ('', [])
+        rows = [dict(x) for x in c.execute('SELECT * FROM rule_changes ' + where + 'ORDER BY changed_at DESC, id DESC LIMIT ?',
+                                           args + [max(1, min(500, int(limit)))])]
+    names = {r['id']: r['name'] for r in all_rules()}
+    for x in rows:
+        x['before'], x['after'] = json.loads(x['before'] or '{}'), json.loads(x['after'] or '{}')
+        x['core'] = bool(x['core']); x['rule_name'] = names.get(x['rule_id'], x['rule_id'])
+        x['can_revert'] = not x['reverted_by'] and x['rule_id'] in names
+    return rows
+
+
+def revert(change_id, reason=''):
+    """Put a rule back as it was before one change, in one click. The revert is itself a change (logged, and revertible)."""
+    with store.db() as c:
+        ch = c.execute('SELECT * FROM rule_changes WHERE id=?', (change_id,)).fetchone()
+    if not ch: raise ValueError('That change was not found.')
+    ch = dict(ch)
+    if ch['reverted_by']: raise ValueError('That change has already been reverted.')
+    r = rule(ch['rule_id'])
+    if not r: raise ValueError('That rule no longer exists.')
+    if r['core'] and not may_change_core():
+        raise PermissionError(f'"{r["name"]}" is a Core rule: only an Owner can revert a change to it.')
+    before = json.loads(ch['before'] or '{}')
+    new = {k: before[k] for k in ('enabled', 'params', 'text', 'name') if k in before}
+    if 'params' in new: new['params'] = _clean_params(r['id'], new['params']) if new['params'] else {}
+    reason = ' '.join((reason or '').split())[:500] or f'Reverted the change made {ch["changed_at"][:16].replace("T", " ")} UTC by {ch["actor"] or "someone"}'
+    reason = _clean_reason(reason, r['core'], 'revert')
+    cid = _apply_state(r['id'], r, new, reason, reverts=change_id)
+    if cid is None:                      # already as it was: mark the change reverted all the same
+        with store.db() as c:
+            c.execute('UPDATE rule_changes SET reverted_by=? WHERE id=?', ('-', change_id))
+    return rule(r['id'])
 
 
 def _clean_params(rid, p):
@@ -287,7 +363,25 @@ def _clean_params(rid, p):
         return {'order': order, 'allowed': allowed}
     if rid == 'external_scope':
         return {'allowed_categories': [str(x).strip() for x in p.get('allowed_categories', []) if str(x).strip()][:50]}
+    if rid == 'approval_required':
+        return clean_approval(p)
+    if rid == 'share_gate':
+        return {'temple': bool(p.get('temple', True))}
     return {}
+
+
+def clean_approval(p):
+    """Approval and library management: who approves new items, what Temple may do, overwrite and delete, what is held for a person.
+    A setting left out keeps the shipped default."""
+    base = next((b[6] for b in BUILTIN if b[0] == 'approval_required'), {})
+    p = p or {}
+    approver = p.get('approver', base.get('approver', 'temple'))
+    if approver not in APPROVER_NAMES: raise ValueError('Who approves: temple, person or categories.')
+    may_in, hold_in = p.get('temple_may') or {}, p.get('hold') or {}
+    return {'approver': approver,
+            'temple_may': {k: bool(may_in.get(k, (base.get('temple_may') or {}).get(k, True))) for k in LIBRARY_ACTIONS},
+            'overwrite_delete': bool(p.get('overwrite_delete', base.get('overwrite_delete', False))),
+            'hold': {k: bool(hold_in.get(k, (base.get('hold') or {}).get(k, True))) for k in LIBRARY_HOLDS}}
 
 
 def create_guidance(set_key, name, text, source=''):
@@ -700,6 +794,14 @@ def recent_blocks(limit=15):
                                            'ORDER BY id DESC LIMIT ?', (limit,))]
 
 
+def _decision_categories():
+    try:
+        import autoapprove
+        return sorted(autoapprove.policy()['categories'])
+    except Exception:
+        return []
+
+
 def overview():
     base = store.rules_base()
     rules = all_rules()
@@ -709,5 +811,8 @@ def overview():
             'requests': rule_requests(), 'blocks': recent_blocks(),
             'categories': [c['name'] for c in store.list_categories()['categories']], 'providers': PROVIDERS,
             'rate_source_names': RATE_SOURCES,
+            'approval': {'approvers': APPROVER_NAMES, 'actions': LIBRARY_ACTIONS, 'holds': LIBRARY_HOLDS, 'decision_categories': _decision_categories()},
+            'history': history(limit=30), 'may_change_core': may_change_core(), 'defaults_error': DEFAULTS_ERROR,
+            'defaults_file': str(deployment_defaults_path()),
             'counts': {'enforced': sum(1 for r in rules if r['enabled'] and r['kind'] == 'enforced'),
                        'guidance': sum(1 for r in rules if r['enabled'] and r['kind'] == 'guidance')}}

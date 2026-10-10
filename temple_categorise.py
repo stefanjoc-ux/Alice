@@ -97,7 +97,11 @@ def run(ids=None, manual=False):
                     results.append((a.id, name, a.confidence, a.reason))   # unknown category -> treated as no fit
             seen = {r[0] for r in results}
             results += [(i, None, 0.0, '') for i in {b['id'] for b in batch} - seen]  # omitted and left-out ones marked checked
-            counts = store.record_temple_results(results, 'suggest' if current == 'suggest' else 'auto')
+            import library      # Temple categorises and tags on its own only when the rule Approval and library management lets it
+            may_apply = library.may('categorise')
+            why = {r[0]: (r[3] or '') for r in results if r[1]}
+            with library.change('categorise', [('record', r[0]) for r in results if r[1]], why, per_item=True):
+                counts = store.record_temple_results(results, 'suggest' if current == 'suggest' or not may_apply else 'auto')
             for k in ('checked', 'applied', 'suggested'): totals[k] += counts[k]
             if ids: break
         return {'status': 'complete', **totals}
@@ -109,7 +113,12 @@ def schedule(ids):
     """Background categorisation after a proposal, then Temple's tags (which see the category); failures are silent
     (manual runs remain available)."""
     def work():
-        try: done = (run(ids) or {}).get('status') != 'busy'        # busy: another run has these and retries when it ends
+        try:
+            st = (run(ids) or {}).get('status')
+            if st == 'busy' and ids and _lock.acquire(timeout=120):   # another run (for other items) holds the lock: wait for it, then
+                _lock.release()                                     # categorise these, so they are never left unchecked
+                st = (run(ids) or {}).get('status')
+            done = st != 'busy'
         except Exception: done = True                                # Temple could not categorise: a person gives the category
         try:                                # Temple's review is done: shares waiting on it go through the sharing gate now
             import spaces

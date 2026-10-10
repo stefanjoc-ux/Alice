@@ -143,7 +143,7 @@ for rid in ('open_spaces', 'temple_router'):
     with store.db() as c: c.execute('UPDATE rules SET enabled=1 WHERE id=?', (rid,))
 rules_engine._rules_changed(); spaces.forget()
 t('the router rule is on the Rules page (Organisation set)', any(r['id'] == 'temple_router' and r['set_key'] == 'organisation' for r in rules_engine.all_rules()))
-cl.put('/admin/api/auto-approve', json={'on': True}, headers=E)
+cl.put('/admin/api/auto-approve', json={'on': True, 'reason': 'Temple approves under each space\'s rules'}, headers=E)
 t('automatic approval is on', autoapprove.on())
 
 HR = cl.post('/admin/api/spaces', headers=A, json={'name': 'HR', 'description': 'HR policy and practice'}).json()['id']

@@ -21,7 +21,9 @@ def wait(rid, n=60):
 
 t('off by default in a test database', not A.on())
 r = cl.put('/admin/api/auto-approve', json={'on': True}, headers=H)
-t('switched on from Actions', r.status_code == 200 and A.on())
+t('switching it on without a reason is refused (Approval and library management is a Core rule)', r.status_code == 400 and not A.on())
+r = cl.put('/admin/api/auto-approve', json={'on': True, 'reason': 'Temple manages the library (D-0044)'}, headers=H)
+t('switched on, with a reason', r.status_code == 200 and A.on())
 t('the switch needs the admin token', cl.put('/admin/api/auto-approve', json={'on': False}).status_code in (401, 403))
 
 # 1. Temple reviews off: a memory goes live straight away
@@ -53,7 +55,9 @@ t('clash: held for you with the reason', status(m3['id']) == 'proposed' and stat
   and 'Clashes' in A._state('memory', m3['id'])['reason'])
 REPORTS['Dog name update'] = f"Recommendation: approve\nReasons: newer version.\nReplaces: {m1['id']}\nConflict: no"
 m4 = s.propose('Dog name update', 'The dog Lexi is a spaniel', 'Stefan said so'); wait(m4['id'])
-t('a replacement: held, naming the older memory', state('memory', m4['id']) == 'held' and '“Dog name”' in A._state('memory', m4['id'])['reason'])
+with s.db() as c: arch = c.execute('SELECT state,replaced_by FROM memory_archive WHERE record_id=?', (m1['id'],)).fetchone()
+t('a replacement: Temple approves it and supersedes the older memory, which is kept and links to it (D-0044, "supersede" ticked)',
+  status(m4['id']) == 'approved' and arch and arch['state'] == 'superseded' and arch['replaced_by'] == m4['id'])
 REPORTS['Reject me'] = 'Recommendation: reject\nReasons: no real source.\nConflict: no'
 m5 = s.propose('Reject me', 'Something Temple would reject outright', 'Unknown'); wait(m5['id'])
 t('Temple recommends rejecting: held', state('memory', m5['id']) == 'held')
@@ -107,11 +111,13 @@ t('Actions: the decision with why it is a decision and what it is for', dc['id']
   and dc['why_decision'].startswith('It chooses polycarbonate') and 'carport' in dc['for'])
 t('Actions: options, reason and Temple\'s recommendation', dc['options'] == ['EPDM', 'Cedar shingles', 'Polycarbonate']
   and dc['rationale'] == 'Keeps light under the roof' and dc['recommendation'] == 'approve' and 'clear choice' in dc['reason'])
-t('Actions: held items say why', {i['id'] for i in sec['held']['items']} >= {m3['id'], m4['id'], m5['id'], m6['id'], m7['id']}
+t('Actions: held items say why', {i['id'] for i in sec['held']['items']} >= {m3['id'], m5['id'], m6['id'], m7['id']}
   and all(i['detail'] for i in sec['held']['items']))
-t('Actions: what went live automatically, with references, not counted as waiting', {i['id'] for i in sec['auto']['items']} >= {m1['id'], m2['id']}
-  and sec['auto']['info'] and all(i['ref'] for i in sec['auto']['items'] if i['item_type'] == 'memory')
-  and sm['total'] == sum(x['count'] for x in sm['sections'] if not x['info']))
+import library
+lib = library.recent()
+t('Actions shows only what waits; what Temple approved is on Activity as library actions, with references',
+  'auto' not in sec and {x['item_id'] for x in lib if x['action'] == 'approve'} >= {m1['id'], m2['id']}
+  and all(x['ref'] for x in lib if x['item_type'] == 'record') and sm['total'] == sum(x['count'] for x in sm['sections'] if not x['info']))
 t('decision explained without a review too (from its options)', A.explain_decision({'id': d1['id'], 'content': '', 'reviews': [], 'source': 'x'})['why_decision'].startswith('It chooses one option'))
 cl.post(f"/admin/api/records/{d1['id']}/review", json={'decision': 'approved', 'note': 'Agreed'}, headers=H)
 t('you approve the decision', status(d1['id']) == 'approved')
@@ -191,13 +197,13 @@ t('undo archives knowledge', K.meta([k1['id']])[k1['id']]['status'] == 'archived
 t('undone items leave the recent list', m2['id'] not in {x['item_id'] for x in A.recent()})
 
 # 8. off, then the backlog
-A.set_on(False)
+A.set_on(False, 'Testing: a person approves every item')
 b1 = s.propose('Van colour', 'The van is dark green', 'Stefan said so')
 k3 = K.create('note', 'Old draft', 'A draft written while automatic approval was off.', 'Claude', 'model via Claude Desktop', status='draft')
 t('off: nothing goes live by itself', status(b1['id']) == 'proposed' and A.knowledge_draft(k3['id']) == 'off')
 sm = cl.get('/admin/api/actions').json()
 t('off: Actions lists them as awaiting approval', any(x['key'] == 'waiting' and x['title'] == 'Awaiting approval' and x['count'] >= 2 for x in sm['sections']))
-A.set_on(True)
+A.set_on(True, 'Testing: Temple approves again')
 r = cl.post('/admin/api/auto-approve/backlog', headers=H).json()
 t('backlog: earlier proposals approved by the same checks', status(b1['id']) == 'approved' and K.meta([k3['id']])[k3['id']]['status'] == 'active')
 t('backlog leaves decisions and held items alone', status(m3['id']) == 'proposed' and status(m7['id']) == 'proposed')

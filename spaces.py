@@ -897,6 +897,7 @@ def gate(item_type, item_id, reviewed=False):
     if item_type in ('record', 'file'):
         state, why = classification(item_type, item_id, reviewed)
         if state != 'ok': return False, [why], state
+    if not rules_engine.on('share_gate'): return True, [], 'off'      # the Sharing check switched off on the Rules page
     reasons = rules_engine.check_share(text)
     if private: reasons.append('It is marked private (Local only, or in a personal-area category).')
     by = 'checks'
@@ -1046,18 +1047,24 @@ def attempt(r, reviewed=False):
         _set_move(r['id'], 'gone', ['The item no longer exists.'], r['screened_by'], 'Alice'); return 'held'
     who = users.owner_viewer() if r['requested_by'] == OWNER else users.viewer_for(r['requested_by'])
     team = target
+    routed = None
+    if r.get('kind') == 'capture' and (r.get('note') or '').startswith('routed:'):
+        routed = (route_of(t, i) or {}).get('reason', '')
     if r.get('kind') == 'capture' and router_on() and not (r.get('note') or '').startswith('routed:'):
         if t in ('record', 'file') and classification(t, i, reviewed)[0] == 'pending':
             _set_move(r['id'], 'waiting', ['New: Temple routes it once it has reviewed it.'], 'pending'); return 'waiting'
-        routed = _route_capture(r, who)
-        if routed in ('moved', 'held', 'personal'): return 'held' if routed == 'held' else 'moved'
-        target = r['to_space'] = routed
+        went = _route_capture(r, who)
+        if went in ('moved', 'held', 'personal'): return 'held' if went == 'held' else 'moved'
+        target = r['to_space'] = went
+        routed = (route_of(t, i) or {}).get('reason', '')
     if who is None or not may_contribute(who, target):
         _set_move(r['id'], 'held', ['Whoever asked no longer contributes to that space: its managers decide.'], 'no_access')
         return 'held'
     ok, reasons, by = gate(t, i, reviewed)
     if by == 'pending':
         _set_move(r['id'], 'waiting', reasons, by); return 'waiting'
+    if not ok and r.get('kind') == 'capture' and _not_held(r, by, reasons):
+        return 'moved'
     if not ok and by not in WAITS_FOR_CATEGORY and r.get('kind') == 'capture' and _kind(target) != 'restricted':
         # An actual finding about a person on a captured item: it goes to the team's restricted space when there is one
         # (special category data never lands in an open space), else it waits for its author.
@@ -1070,7 +1077,12 @@ def attempt(r, reviewed=False):
             store.audit(c, 'space_share_held', i, 'share_gate', f'{TYPE_LABEL.get(t, t)} "{r["title"][:120]}" → '
                         f'{(names().get(target) or {}).get("name", "a shared space")}: ' + '; '.join(reasons)[:400])
         return 'held'
-    _place(t, i, target)
+    if routed is not None:           # Temple's routing: a library action (Activity, with Undo)
+        import library
+        with library.change('route', [(t, i)], f'To {(names().get(target) or {}).get("name", "a shared space")}: ' + (routed or 'Temple routed it')):
+            _place(t, i, target)
+    else:
+        _place(t, i, target)
     _set_move(r['id'], 'shared', [], by, 'Alice')
     with store.db() as c:
         store.audit(c, 'space_shared', i, 'share_gate', f'{TYPE_LABEL.get(t, t)} "{r["title"][:120]}" moved to '
@@ -1746,8 +1758,8 @@ ROUTE_LABEL = {'work': 'about the work', 'general': 'for the whole organisation'
 
 def router_on():
     def read():
-        import rules_engine
-        return rules_engine.on('temple_router')
+        import library, rules_engine          # the router's own rule, and "route" ticked under Approval and library management
+        return rules_engine.on('temple_router') and library.may('route')
     return _cached('router-rule', read)
 
 
@@ -1827,8 +1839,30 @@ def route_of(item_type, item_id):
     return d
 
 
+def _not_held(r, by, reasons):
+    """A captured item the sharing check (or Temple's category) stopped, when the rule Approval and library management does not hold
+    that kind for a person: Temple keeps it in its author's personal space instead (never shared), logged with the reason, and Undo
+    on Activity puts it back to wait for a person. Returns True when settled here."""
+    import library
+    kind = 'unsure' if by in ('unsure', 'unavailable', 'held:local') else 'sensitive' if by not in WAITS_FOR_CATEGORY else ''
+    if not kind or library.holds(kind): return False
+    _keep_private(r, ('Temple was not sure, so it stays private: ' if kind == 'unsure' else 'The sharing check found something, so it stays private: ')
+                  + '; '.join(reasons)[:300])
+    return True
+
+
+def _keep_private(r, why):
+    import library
+    with store.db() as c:
+        c.execute("UPDATE space_moves SET status='kept',reasons=?,decided_at=?,decided_by='Temple' WHERE id=?",
+                  (json.dumps([why]), store.now(), r['id']))
+    library.note_linked('keep', r['item_type'], r['item_id'], r.get('title', ''), why, 'move:' + r['id'])
+
+
 def _to_restricted(r, rs, why):
-    _place(r['item_type'], r['item_id'], rs)
+    import library
+    with library.change('route', [(r['item_type'], r['item_id'])], why):
+        _place(r['item_type'], r['item_id'], rs)
     with store.db() as c:
         c.execute("UPDATE space_moves SET status='shared',to_space=?,reasons=?,screened_by='router',decided_at=?,decided_by='Temple',note=? WHERE id=?",
                   (rs, json.dumps([why]), store.now(), 'routed:sensitive', r['id']))
@@ -1843,6 +1877,7 @@ def _route_capture(r, who):
     Organisation space (when the person may add to it); about the author → stays in their personal space; about a named person or
     special category → the team's restricted space; unsure → waits for its author. Returns the target to go on to (through the
     sharing check), or 'moved' / 'personal' / 'held' when it is settled here. The reason is kept on the item (route_of)."""
+    import library
     t, i = r['item_type'], r['item_id']
     title, text, _, _ = _item(t, i)
     try:
@@ -1868,12 +1903,20 @@ def _route_capture(r, who):
         why = (f'Temple says it is about a named person ({reason}) and ' if reason else 'Temple says it is about a named person and ') + \
               ('your team has no restricted space for it: a manager names one on the Spaces page.' if not rs else 'you cannot add to its restricted space.')
         _record_route(t, i, rt, why, r['from_space'])
-        _set_move(r['id'], 'held', [why], 'route_sensitive'); note(rt)
+        note(rt)
+        if not library.holds('sensitive'):            # not held for a person (Approval and library management): it stays private
+            _keep_private(r, why.replace(' and your team', ', so it stays in its author\'s personal space: your team').replace(' and you cannot', ', so it stays in its author\'s personal space: you cannot'))
+            return 'personal'
+        _set_move(r['id'], 'held', [why], 'route_sensitive')
         return 'held'
     if rt == 'unsure':
         why = reason if reason.startswith('Temple could not') else 'Temple was not sure where it belongs' + (f': {reason}' if reason else '') + '. Share it or keep it personal.'
         _record_route(t, i, rt, why, r['from_space'])
-        _set_move(r['id'], 'held', [why], 'route_unsure'); note(rt)
+        note(rt)
+        if not library.holds('unsure'):
+            _keep_private(r, why.replace('. Share it or keep it personal.', '') + ': it stays in its author\'s personal space.')
+            return 'personal'
+        _set_move(r['id'], 'held', [why], 'route_unsure')
         return 'held'
     target = team
     if rt == 'general' and ORG in names() and who is not None and may_contribute(who, ORG):

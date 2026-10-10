@@ -48,8 +48,10 @@ wait = [x for x in st['changes'] if x['state'] == 'proposed']
 t('renaming one you created waits for you, and says why', len(wait) == 1 and 'You created' in wait[0]['why_waiting'] and wait[0]['summary'] == 'Rename category “Home” to “House”')
 t('the memories sent to Temple are titles and starts only', all(set(m) == {'id', 'title', 'content', 'category', 'tags'} for m in SENT['p']['memories']))
 sec = {x['key']: x for x in actions.summary()['sections']}
-t('Actions lists the change to approve, and what Temple did (with Undo)', sec['taxonomy']['count'] == 1 and sec['taxonomy_done']['count'] == 3
-  and all(i['can_undo'] for i in sec['taxonomy_done']['items']))
+import library
+done = [x for x in library.recent() if x['link'].startswith('taxonomy:')]
+t('Actions lists the change to approve; what Temple did is on Activity as library actions (with Undo)', sec['taxonomy']['count'] == 1
+  and 'taxonomy_done' not in sec and len(done) == 3 and all(x['can_undo'] for x in done))
 
 # reject: never proposed again; approve: applied
 cl.post('/admin/api/taxonomy/' + wait[0]['id'], json={'action': 'reject'}, headers=H)

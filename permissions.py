@@ -296,6 +296,7 @@ ROUTES = {
     'PUT /admin/api/decision-policy': 'full', 'GET /admin/api/auto-approve/connectors': 'full', 'PUT /admin/api/auto-approve/connectors': 'full',
     'POST /admin/api/actions/approve-all': 'full', 'POST /admin/api/auto-approve/undo': 'full', 'POST /admin/api/auto-approve/backlog': 'full',
     'GET /admin/api/actions': 'full', 'GET /admin/api/cards/{kind}/{ref}': 'full',
+    'GET /admin/api/library': 'full', 'POST /admin/api/library/{aid}/undo': 'full',     # Temple's library actions (Activity), Undo
     'GET /admin/api/review-items/{key}/discussion': 'full', 'POST /admin/api/review-items/{key}/discussion': 'full',
     # home, apps, speed, usage, activity
     'GET /admin/api/home': 'home:view', 'GET /admin/api/apps': 'apps:view', 'GET /admin/api/speed': 'speed:view',
@@ -335,6 +336,7 @@ ROUTES = {
     # rules and rule packs (Admin or Owner)
     'GET /admin/api/rules': 'admin', 'PUT /admin/api/rules': 'admin', 'PUT /admin/api/rules/{rid}': 'admin', 'POST /admin/api/rules/custom': 'admin',
     'DELETE /admin/api/rules/{rid}': 'admin', 'POST /admin/api/rules/retention/run': 'admin',
+    'GET /admin/api/rules/{rid}/history': 'admin', 'POST /admin/api/rules/changes/{cid}/revert': 'admin',   # a Core rule: an Owner (rules_engine)
     'GET /admin/api/purview-labels': 'admin', 'PUT /admin/api/purview-labels': 'admin',
     'GET /admin/api/rule-packs/applied': 'admin', 'POST /admin/api/rule-packs/apply': 'admin', 'POST /admin/api/rule-packs/services': 'admin',
     'GET /admin/api/rule-packs': 'admin', 'POST /admin/api/rule-packs/state': 'admin', 'POST /admin/api/rule-packs/test': 'admin',
