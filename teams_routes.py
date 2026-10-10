@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 import teams
 import team_qs
+import team_compare
 
 router = APIRouter()
 ID = r'^[A-Za-z0-9_-]{1,80}$'
@@ -356,10 +357,14 @@ def teams_library_files():
     return {'files': out[:500]}
 
 
+class SuggestionIn(BaseModel):
+    action: str = Field(pattern='^(approve|reject)$')
+    text: str | None = Field(None, max_length=6000)        # your edits to Temple's suggested instructions, approved as edited
+
+
 @router.post('/admin/api/teams/suggestions/{sid}')
-def teams_suggestion(d: DecideIn, sid: str = FPath(pattern=HEX)):
-    if d.action not in ('approve', 'reject'): raise HTTPException(400, 'Approve or reject.')
-    return _do(teams.decide_suggestion, sid, d.action)
+def teams_suggestion(d: SuggestionIn, sid: str = FPath(pattern=HEX)):
+    return _do(teams.decide_suggestion, sid, d.action, d.text)
 
 
 @router.get('/admin/api/teams/jobs/{jid}')
@@ -667,3 +672,88 @@ def teams_rates_demo(tid: str = FPath(pattern=ID)):
 @router.delete('/admin/api/teams/{tid}/rates/{batch}')
 def teams_rates_remove(tid: str = FPath(pattern=ID), batch: str = FPath(pattern=r'^[0-9a-f]{12}$')):
     return _do(team_qs.remove_rates, tid, batch)
+
+
+# ---------------- comparing a job with a reference cost plan, and benchmarks (team_compare.py; 10 Oct 2026) ----------------
+CID = r'^[0-9a-f]{16}$'
+DID = r'^[RQ][A-Za-z0-9.-]{0,30}$'
+
+
+class CompareIn(BaseModel):
+    uploads: list[UploadIn] = Field(min_length=1, max_length=team_compare.MAX_FILES)
+    note: str = Field('', max_length=1000)
+
+
+class MarkIn(BaseModel):
+    mark: str = Field(pattern='^(reference|team|both|unclear|)$')
+    note: str = Field('', max_length=1000)
+
+
+class RatesPickIn(BaseModel):
+    differences: list[str] | None = Field(None, max_length=500)
+
+
+class BenchmarkIn(BaseModel):
+    on: bool
+    comparison: str = Field('', max_length=16)
+
+
+class BenchJobsIn(BaseModel):
+    jobs: list[str] = Field(default_factory=list, max_length=50)
+
+
+@router.get('/admin/api/teams/jobs/{jid}/comparisons')
+def teams_job_comparisons(jid: str = FPath(pattern=HEX)):
+    return _do(team_compare.job_panel, jid)
+
+
+@router.post('/admin/api/teams/jobs/{jid}/comparisons')
+def teams_job_compare(d: CompareIn, jid: str = FPath(pattern=HEX)):
+    """Compare a signed-off or stopped job with a reference cost plan (kept with the job, never used by the team)."""
+    return _do(team_compare.compare, jid, [u.model_dump() for u in d.uploads], d.note)
+
+
+@router.get('/admin/api/teams/jobs/{jid}/comparisons/{cid}')
+def teams_job_comparison(jid: str = FPath(pattern=HEX), cid: str = FPath(pattern=CID)):
+    return _do(team_compare.view, jid, cid)
+
+
+@router.post('/admin/api/teams/jobs/{jid}/comparisons/{cid}/marks/{did}')
+def teams_job_comparison_mark(d: MarkIn, jid: str = FPath(pattern=HEX), cid: str = FPath(pattern=CID), did: str = FPath(pattern=DID)):
+    return _do(team_compare.mark, jid, cid, did, d.mark, d.note)
+
+
+@router.post('/admin/api/teams/jobs/{jid}/comparisons/{cid}/lessons')
+def teams_job_comparison_lessons(jid: str = FPath(pattern=HEX), cid: str = FPath(pattern=CID)):
+    return _do(team_compare.draft_lessons, jid, cid)
+
+
+@router.post('/admin/api/teams/jobs/{jid}/comparisons/{cid}/rates')
+def teams_job_comparison_rates(d: RatesPickIn, jid: str = FPath(pattern=HEX), cid: str = FPath(pattern=CID)):
+    return _do(team_compare.add_rates, jid, cid, d.differences)
+
+
+@router.post('/admin/api/teams/jobs/{jid}/comparisons/{cid}/instructions')
+def teams_job_comparison_instructions(jid: str = FPath(pattern=HEX), cid: str = FPath(pattern=CID)):
+    return _do(team_compare.propose_instructions, jid, cid)
+
+
+@router.put('/admin/api/teams/jobs/{jid}/benchmark')
+def teams_job_benchmark(d: BenchmarkIn, jid: str = FPath(pattern=HEX)):
+    return _do(team_compare.set_benchmark, jid, d.on, d.comparison)
+
+
+@router.get('/admin/api/teams/{tid}/accuracy')
+def teams_accuracy(tid: str = FPath(pattern=ID)):
+    return _do(team_compare.accuracy, tid)
+
+
+@router.post('/admin/api/teams/{tid}/benchmarks/estimate')
+def teams_benchmarks_estimate(d: BenchJobsIn, tid: str = FPath(pattern=ID)):
+    return _do(team_compare.estimate, tid, d.jobs)
+
+
+@router.post('/admin/api/teams/{tid}/benchmarks/run')
+def teams_benchmarks_run(d: BenchJobsIn, tid: str = FPath(pattern=ID)):
+    """Re-run benchmark jobs with the current instructions and models (the estimate is shown first; the spending cap applies)."""
+    return _do(team_compare.run_benchmarks, tid, d.jobs)

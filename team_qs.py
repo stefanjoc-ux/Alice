@@ -220,9 +220,18 @@ def remove_rates(tid, batch):
     return {'removed': n}
 
 
-def library(tid):
+def library(tid, job=None):
+    """The team's rate library. For a job, rows tagged to a client (e.g. confirmed rates from a reference cost plan) are used only where
+    the job's client rule allows (teams.client_rule, from the Rules page); what is left out is logged as that rule's block."""
     with store.db() as c:
-        return [dict(r) for r in c.execute('SELECT id, code, description, unit, rate, region, as_of, source, batch_name FROM team_rates WHERE team_id=? ORDER BY description', (tid,))]
+        rows = [dict(r) for r in c.execute('SELECT id, code, description, unit, rate, region, as_of, source, batch_name, client FROM team_rates WHERE team_id=? '
+                                           'ORDER BY description', (tid,))]
+    if job is None: return rows
+    import clients
+    keep, rule_id = teams.client_rule(job)
+    out = [r for r in rows if not r.get('client') or keep(r['client'])]
+    clients.log_withheld(rule_id, f'Digital team: rate library for {teams.ref(job["id"])}', len(rows) - len(out))
+    return out
 
 
 # ---------------- the stages ----------------
@@ -400,8 +409,8 @@ def _split_refs(piece):
     return {**piece, 'refs': piece['refs'][:h]}, {**piece, 'refs': piece['refs'][h:], 'factor': False}
 
 
-def _library_candidates(tid, items):
-    lib = library(tid)
+def _library_candidates(tid, items, job=None):
+    lib = library(tid, job)
     picks = {}
     for it in items:
         same = sorted(((_score(it['description'], r['description']), r) for r in lib if r['unit'] == it['unit']), key=lambda x: -x[0])
@@ -610,7 +619,7 @@ def qs_price(job, stage, member, ctx):
     ps_ok_refs = ps_refs(outs) | (set(redo) if partial and rr.get('provisional') else set())
     ps_ok = lambda ref: ps_job or ref in ps_ok_refs
     excluded = (outs.get('_excluded') or {})                  # items the user excluded (not in scope): never priced again
-    lib = library(job['team_id'])
+    lib = library(job['team_id'], job)
     prov = member['provider'] if member.get('provider') in assistants.PROVIDERS else 'claude_sonnet'
     fam = assistants.family(prov)
     model = assistants.PROVIDERS[prov][0] if fam in org_research.KEYS else ''
@@ -629,7 +638,7 @@ def qs_price(job, stage, member, ctx):
 
     def run(part, info):
         mine = [byref[r] for p in part for r in p['refs']]
-        _, cands = _library_candidates(job['team_id'], mine)
+        _, cands = _library_candidates(job['team_id'], mine, job)
         factor = any(p.get('factor') for p in part)
         query = (f'JOB: {job["title"]}\nBRIEF\n{job["brief"][:3000]}\n\nLOCATION: {location or "not given (use national rates)"}\n'
                  f'ALL ELEMENTS OF THE ESTIMATE: {elements}\n'

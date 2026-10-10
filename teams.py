@@ -135,7 +135,9 @@ with store.db() as c:
                            ('team_jobs', 'pricing_template', "TEXT NOT NULL DEFAULT ''"), ('team_jobs', 'pricing_template_from', "TEXT NOT NULL DEFAULT ''"),
                            ('team_jobs', 'autonomy', "TEXT NOT NULL DEFAULT ''"),
                            # 10 Oct 2026: a file added to a job may be a new revision of one already there: the old one is kept and linked
-                           ('team_job_docs', 'replaces', "TEXT NOT NULL DEFAULT ''"), ('team_job_docs', 'replaced_by', "TEXT NOT NULL DEFAULT ''")):
+                           ('team_job_docs', 'replaces', "TEXT NOT NULL DEFAULT ''"), ('team_job_docs', 'replaced_by', "TEXT NOT NULL DEFAULT ''"),
+                           # 10 Oct 2026: each job version records the team version it ran on and the models set for its members
+                           ('team_job_versions', 'team_version', 'INTEGER NOT NULL DEFAULT 0'), ('team_job_versions', 'models', "TEXT NOT NULL DEFAULT ''")):
         if _col not in {r['name'] for r in c.execute(f'PRAGMA table_info({_t})')}:
             try: c.execute(f'ALTER TABLE {_t} ADD COLUMN {_col} {_ddl}')
             except Exception as e:             # web and mcp start together: the other one may have just added it
@@ -1007,7 +1009,7 @@ def _run(jid):
             _set(jid, stage=i + 1); continue
         nxt = stages[n]
         nm = members.get(nxt['member']) or {}
-        pending = (job.get('autonomy') or team['autonomy']) == 'approve'
+        pending = (job.get('autonomy') or team['autonomy']) == 'approve' and not (job['outputs'].get('_rerun') or {}).get('auto')   # benchmark re-runs
         _add_step(jid, 'handoff', st['key'], member['id'], to_member=nxt['member'], status='pending' if pending else 'auto',
                   note=res.get('note') or res.get('summary', ''), content={'from_role': member['role'], 'to_role': nm.get('role', ''),
                                                                           'summary': res.get('summary', ''), 'next_stage': nxt['key']})
@@ -1296,7 +1298,8 @@ def _finish(job, team, jt):
     """The last stage is done: build the outputs (e.g. Word and Excel) and hold the job for the user's sign-off."""
     fn = FINISHERS.get(jt.get('finish') or '')
     outputs = job['outputs']
-    if outputs.pop('_rerun', None) is not None: _set(job['id'], outputs=outputs)      # the re-run is complete: this version is whole again
+    rerun = outputs.pop('_rerun', None)
+    if rerun is not None: _set(job['id'], outputs=outputs)      # the re-run is complete: this version is whole again
     if fn and not outputs.get('_finished'):
         try:
             outputs.update(fn(job, team, jt) or {})
@@ -1309,6 +1312,12 @@ def _finish(job, team, jt):
         _add_step(job['id'], 'signoff', last['key'], last['member'], to_member=YOU, status='pending',
                   note='The final output is ready for your sign-off.', content={'summary': (outputs.get('summary') or '')[:600]})
     _set(job['id'], status='waiting', holder=USER)
+    for hook in FINISH_HOOKS:                     # e.g. a benchmark re-run is compared with its reference (team_compare); never stops the job
+        try: hook(job['id'], rerun or {})
+        except Exception as e: LOG.warning('Digital team job %s: after-finish step failed: %s', job['id'], e)
+
+
+FINISH_HOOKS = []            # functions(job id, the re-run that finished or {}) run once the final output waits for sign-off
 
 
 GENERIC_SPEC = ('{"accept": true, "reasons": [], "output": "your work for this stage, plain text", "summary": "one sentence for the board", '
@@ -1773,7 +1782,20 @@ def _resume_stopped(jid, job, note=''):
 
 
 # ---------------- versions of a job, and copying one (8 Oct 2026) ----------------
-VERSION_KINDS = {'first': 'First run', 'reprice': 'Re-priced', 'remeasure': 'Re-measured', 'resume': 'Resumed', 'files': 'New files'}
+VERSION_KINDS = {'first': 'First run', 'reprice': 'Re-priced', 'remeasure': 'Re-measured', 'resume': 'Resumed', 'files': 'New files',
+                 'benchmark': 'Benchmark re-run'}
+
+
+def models_of(team):
+    """[{id, role, provider, model}]: the model set for each member in this team version."""
+    import assistants
+    return [{'id': m['id'], 'role': m['role'], 'provider': m.get('provider') or '',
+             'model': (assistants.PROVIDERS.get(m.get('provider')) or ('', m.get('provider') or ''))[1]} for m in team.get('members') or []]
+
+
+def _models_json(tid, version):
+    try: return json.dumps(models_of(get(tid, version)), ensure_ascii=False)
+    except ValueError: return ''
 
 
 def _signed_off(c, jid):
@@ -1790,23 +1812,28 @@ def _ensure_version(jid):
     with store.db() as c:
         if c.execute('SELECT 1 FROM team_job_versions WHERE job_id=? AND version=1', (jid,)).fetchone(): return
         so = _signed_off(c, jid).get(1)
-        c.execute('INSERT INTO team_job_versions(job_id,version,kind,what,asked_by,started_at,signed_off_at,signed_off_by) VALUES (?,?,?,?,?,?,?,?) '
+    models = _models_json(j['team_id'], j['team_version'])
+    with store.db() as c:
+        c.execute('INSERT INTO team_job_versions(job_id,version,kind,what,asked_by,started_at,signed_off_at,signed_off_by,team_version,models) VALUES (?,?,?,?,?,?,?,?,?,?) '
                   'ON CONFLICT(job_id, version) DO NOTHING', (jid, 1, 'first', 'The team\'s first run', j['created_by'], j['created_at'],
-                                                             so[0] if so else None, so[1] if so else ''))
+                                                             so[0] if so else None, so[1] if so else '', j['team_version'], models))
 
 
-def new_version(jid, kind, what, note=''):
+def new_version(jid, kind, what, note='', team_version=None):
     """Start the job's next version (a re-price or re-measure): the outputs as they stand are kept with the version they belong to, so
-    it stays readable. Returns the new version number."""
+    it stays readable. Each version records the team version it runs on and its members' models. team_version: run this version on
+    another version of the team (a benchmark re-run uses the team as it is now). Returns the new version number."""
     _ensure_version(jid)
     j = _row(jid)
     cur = j.get('version') or 1
+    tv = int(team_version or j['team_version'])
     snap = {k: v for k, v in j['outputs'].items() if k not in ('_parts', '_rerun')}
+    models = _models_json(j['team_id'], tv)
     with store.db() as c:
         c.execute('UPDATE team_job_versions SET outputs=? WHERE job_id=? AND version=?', (json.dumps(snap, ensure_ascii=False), jid, cur))
-        c.execute('INSERT INTO team_job_versions(job_id,version,kind,what,asked_by,note,started_at) VALUES (?,?,?,?,?,?,?)',
-                  (jid, cur + 1, kind, _clean(what, 600), _actor(), _block(note, 1000), store.now()))
-        c.execute('UPDATE team_jobs SET version=? WHERE id=?', (cur + 1, jid))
+        c.execute('INSERT INTO team_job_versions(job_id,version,kind,what,asked_by,note,started_at,team_version,models) VALUES (?,?,?,?,?,?,?,?,?)',
+                  (jid, cur + 1, kind, _clean(what, 600), _actor(), _block(note, 1000), store.now(), tv, models))
+        c.execute('UPDATE team_jobs SET version=?, team_version=? WHERE id=?', (cur + 1, tv, jid))
     return cur + 1
 
 
@@ -1816,11 +1843,11 @@ def job_versions(jid):
     cur = j.get('version') or 1
     with store.db() as c:
         rows = {r['version']: dict(r) for r in c.execute('SELECT job_id, version, kind, what, asked_by, note, started_at, signed_off_at, signed_off_by, '
-                                                          'outputs<>? AS kept FROM team_job_versions WHERE job_id=? ORDER BY version', ('', jid))}
+                                                          'team_version, models, outputs<>? AS kept FROM team_job_versions WHERE job_id=? ORDER BY version', ('', jid))}
         so = _signed_off(c, jid)
     if 1 not in rows:
         rows[1] = {'version': 1, 'kind': 'first', 'what': 'The team\'s first run', 'asked_by': j['created_by'], 'note': '', 'started_at': j['created_at'],
-                   'signed_off_at': None, 'signed_off_by': '', 'kept': 0}
+                   'signed_off_at': None, 'signed_off_by': '', 'kept': 0, 'team_version': j['team_version'], 'models': ''}
     costs = team_costs.job(jid)
     out = []
     for v in sorted(rows):
@@ -1829,7 +1856,9 @@ def job_versions(jid):
         out.append({'version': v, 'label': f'v{v}', 'kind': r['kind'], 'kind_label': VERSION_KINDS.get(r['kind'], r['kind']), 'what': r['what'],
                     'asked_by': r['asked_by'], 'note': r['note'], 'started_at': r['started_at'], 'current': v == cur,
                     'signed_off': bool(when_), 'signed_off_at': when_, 'signed_off_by': who or '',
-                    'readable': v == cur or bool(r.get('kept')), 'cost': costs['versions'].get(v) or team_costs.money(0, costs['fx'])})
+                    'readable': v == cur or bool(r.get('kept')), 'cost': costs['versions'].get(v) or team_costs.money(0, costs['fx']),
+                    'team_version': r.get('team_version') or (j['team_version'] if v == cur else None),
+                    'models': json.loads(r['models']) if r.get('models') else None})
     if not _cap(j['team_id'], 'costs'):              # costs only with "see costs" (users.py profiles)
         for o in out: o['cost'] = None
         return {'versions': out, 'current': cur, 'fx': costs['fx'], 'before_tracking': None, 'before_text': ''}
@@ -2154,7 +2183,8 @@ def _coach(tid, mid, message):
     return {'reply': reply, 'suggestion': sid, 'model': model, 'messages': temple_discuss.history(key)}
 
 
-def decide_suggestion(sid, action):
+def decide_suggestion(sid, action, text=None):
+    """approve (as Temple wrote it, or with your edits in `text`) or reject. Never applied without this."""
     with store.db() as c:
         g = c.execute('SELECT * FROM team_suggestions WHERE id=?', (sid,)).fetchone()
     if not g: raise ValueError('No such suggestion.')
@@ -2165,7 +2195,11 @@ def decide_suggestion(sid, action):
     if action == 'approve':
         t = get(g['team_id'])
         m = _member(t, g['member'])
-        out = update_member(g['team_id'], g['member'], {'instructions': g['proposed']}, what=f'{m["role"]}: instructions changed (Temple\'s suggestion, approved)')
+        edited = text is not None and _block(text, 6000) and _block(text, 6000) != g['proposed']
+        new = _block(text, 6000) if edited else g['proposed']
+        if not new: raise ValueError('The instructions cannot be empty.')
+        out = update_member(g['team_id'], g['member'], {'instructions': new},
+                            what=f'{m["role"]}: instructions changed (Temple\'s suggestion, ' + ('edited by you, then approved)' if edited else 'approved)'))
     with store.db() as c:
         c.execute('UPDATE team_suggestions SET status=?, decided_at=?, decided_by=? WHERE id=?', ('approved' if action == 'approve' else 'rejected', store.now(), _actor(), sid))
         store.audit(c, 'team_suggestion_' + ('approved' if action == 'approve' else 'rejected'), g['team_id'], 'human_review',
@@ -2795,7 +2829,11 @@ def job_page(jid):
             'drawings': _drawings_view(jid), 'assumed': _flags_view(raw, jt, _cap(d['team_id'], 'costs')),
             'missing_info': {'mode': missing_info(team), 'label': MISSING_INFO[missing_info(team)], 'limit': float(assume_limit(team))},
             'files_pending': raw.get('_files_pending'), 'files_review': _review_view(raw.get('_files_review'), _cap(d['team_id'], 'costs')),
-            'lessons_filed': raw.get('lessons_filed') or [], 'lessons': raw.get('lessons')}
+            'lessons_filed': raw.get('lessons_filed') or [], 'lessons': raw.get('lessons'),
+            **{k: fn(jid) for k, fn in PAGE_EXTRAS.items()}}
+
+
+PAGE_EXTRAS = {}             # key -> function(job id) -> more for the job page (team_compare adds 'compare')
 
 
 def _flags_view(raw, jt, costs):
