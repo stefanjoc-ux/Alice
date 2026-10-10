@@ -197,7 +197,7 @@ t('the setting is saved as a new team version', r.status_code == 200 and teams.g
 STATE['plan'] = plan('Walls', questions=['Is there a mezzanine?'])
 jk = start(TID, 'FICTIONAL hall, ask me', [{'name': SPEC, 'kind': 'spec', 'text': 'FICTIONAL specification. Page 1: walls.'}])
 t('Ask me still asks (no reason needed)', jk['status'] == 'waiting' and jk['pending'][0]['kind'] == 'question' and 'mezzanine' in jk['pending'][0]['note']
-  and 'ask Stefan in "questions" rather than guessing' in [c for c in CALLS if 'Lead QS' in c['workload']][-1]['system'])
+  and 'ask the user in "questions" rather than guessing' in [c for c in CALLS if 'Lead QS' in c['workload']][-1]['system'])
 t('an unknown setting is refused', cl.put(f'/admin/api/teams/{TID}/missing-info', json={'mode': 'guess'}, headers=H).status_code == 422)
 teams.set_missing_info(TID, 'assume')
 

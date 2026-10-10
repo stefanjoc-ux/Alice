@@ -267,6 +267,7 @@ ROUTES = {
     'GET /admin/api/spaces/capture': 'admin', 'PUT /admin/api/spaces/capture': 'admin',
     'GET /admin/api/spaces/sweep': 'any', 'POST /admin/api/spaces/sweep/scan': 'any', 'POST /admin/api/spaces/sweep/move': 'any',
     'POST /admin/api/spaces/sweep/{sid}/dismiss': 'any',
+    'GET /admin/api/spaces/linked': 'any', 'POST /admin/api/spaces/linked': 'any',     # a person's own linked accounts only (spaces.py)
     # open by default (CR-4 phase 1): a manager closes a team space (spaces.py checks); the move into the Organisation space is an
     # Owner's; Entra group mappings and which organisation sections are internal: Owners and Admins
     'PUT /admin/api/spaces/{sid}/closed': 'any', 'PUT /admin/api/spaces/{sid}/rules': 'any',

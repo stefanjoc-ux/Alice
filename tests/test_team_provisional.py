@@ -67,7 +67,7 @@ PS = {'Connection to the existing sewer': {'sum': 2500, 'low': 1800, 'high': 320
 def fake_call(provider, system, messages, max_tokens=1500, timeout=60, workload='', meta=None):
     payload = messages[0]['content']
     CALLS.append({'workload': workload, 'payload': payload, 'system': system})
-    if 'Lead QS' in workload and "STEFAN'S NOTE TO ACT ON" in payload:
+    if 'Lead QS' in workload and "THE USER'S NOTE TO ACT ON" in payload:
         return json.dumps(STATE['requests'].pop(0) if STATE['requests'] else {'provisional_sums': [], 'estimates': []})
     if 'Lead QS' in workload and 'COST PLAN FIGURES' in payload:
         return json.dumps({'accept': True, 'summary': 'A hall.', 'assumptions': [], 'exclusions': ['VAT'], 'risks': [], 'note': 'On.'})

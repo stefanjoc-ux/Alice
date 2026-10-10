@@ -1,15 +1,15 @@
-"""Pricing templates for digital teams (Stefan, 8 Oct 2026), following Parker's template pattern.
+"""Pricing templates for digital teams (8 Oct 2026), following Parker's template pattern.
 
 A pricing template is a spreadsheet (.xlsx or .xlsm, or a .csv) kept in a document source, never inside Alice: each team has
 a templates folder (like Parker's template_folder) and "Add a template" saves an upload there with doc_library.save (checked,
-never overwrites). A template is general (usable on any job, by any number of organisations as their default) unless Stefan
+never overwrites). A template is general (usable on any job, by any number of organisations as their default) unless the user
 tags it to a client; then client separation (clients.item_filter, from the Rules page) decides where it may be used. The
 template never holds job data: a filled copy is made per job version, tagged to the job's client.
 
 Mapping: the first time a template is used its layout is detected in code (the header row; the item reference, description,
 quantity, unit, rate, amount and notes/source columns; sheets or section headings as elements). Only when code cannot find a
 header does a model look (agent team-template-mapper, the team lead's model, through check_outbound and the Purview label
-check). Stefan confirms or corrects the mapping; it is saved with the template, keyed by the file and its modified time, and
+check). The user confirms or corrects the mapping; it is saved with the template, keyed by the file and its modified time, and
 asked again when the file changes.
 
 Filling: the measured items go into the template's rows under the matching elements (rows added within the template's own
@@ -175,7 +175,7 @@ def team_page(tid):
             'clients': sorted(__import__('clients').names())}
 
 
-# ---------------- "Remove from this list" (Stefan, 9 Oct 2026) ----------------
+# ---------------- "Remove from this list" (9 Oct 2026) ----------------
 # A per-team list of templates hidden from that team's list and pickers, in settings ('pricing_hidden:<team id>'), keyed by the
 # file's path. The file in the document source is never touched, its saved mapping is kept, and jobs that used it keep their
 # filled copies. A hidden default is skipped: an organisation's default falls back to the team's, the team's to Alice's own layout.
@@ -599,7 +599,7 @@ def preview(raw, name, rows=14):
 
 
 def confirm(path, data):
-    """Stefan's confirmed (or corrected) mapping, saved with the template and keyed by the file as it is now. Stays editable."""
+    """The user's confirmed (or corrected) mapping, saved with the template and keyed by the file as it is now. Stays editable."""
     path = _rel(path)
     p = resolve(path)
     if not p or p.suffix.lower() not in EXT_OK: raise ValueError('That template is not in the document sources.')

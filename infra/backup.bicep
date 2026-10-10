@@ -1,4 +1,4 @@
-// Backups for Alice (Stefan, 8 Oct 2026). A module of main.bicep, deployed when its parameter `backup` is true, which
+// Backups for Alice (8 Oct 2026). A module of main.bicep, deployed when its parameter `backup` is true, which
 // azure-setup.ps1 -Step backup switches on (and every later step keeps on). It adds:
 //   1. Azure Backup for the file share: a Recovery Services vault and a daily policy (snapshots kept filesRetentionDays),
 //      so one file or folder can be restored.

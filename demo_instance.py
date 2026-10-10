@@ -1,5 +1,5 @@
 """Client demo: a second Alice (its own Container Apps and its own database) filled with a fictional team's memories,
-decisions, knowledge and saved conversations, built around a real organisation's PUBLIC information, so Stefan can
+decisions, knowledge and saved conversations, built around a real organisation's PUBLIC information, so the owner can
 show a prospective client how Alice looks with a team's data, in Alice and through Copilot.
 
 Only ever runs where ALICE_DEMO_INSTANCE=1 (the demo deployment). On live Alice every function here refuses, and the
@@ -200,7 +200,7 @@ def _generate(sid):
         raise ValueError(f"Too little public information was found ({len(res['facts'])} facts). Research said: {res['research'] or 'nothing'}. "
                          'Check the website address, or try again in a few minutes.')
     _set(sid, progress=f"Found {len(res['facts'])} public facts. Designing the team…", facts=res)
-    head = f"Organisation: {res['org']['name']} ({res['org']['kind']})\n{res['org']['description']}\nNotes from Stefan: {s['notes'] or 'none'}\nPublic facts:\n{facts_text}"
+    head = f"Organisation: {res['org']['name']} ({res['org']['kind']})\n{res['org']['description']}\nNotes from the presenter: {s['notes'] or 'none'}\nPublic facts:\n{facts_text}"
     plan = _ask_json(PLAN_PROMPT, head, 6000)
     org_words = [w for w in re.findall(r'[a-z]{4,}', res['org']['name'].lower())]
     plan['team'] = _fictional(plan.get('team') or [], head + json.dumps(res['sources']), org_words)

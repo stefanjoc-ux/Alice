@@ -191,7 +191,7 @@ t('history: no secret is recorded, whatever its name; unknown and secret-named s
 t('history: IDs and names are kept as given', 'ab3be6b7-f5df-413d-ac2d-abf1e3fd9c0b=Microsoft Copilot:copilot' == last['params'].get('ExtCallers'))
 t('history: the storage key never appears on a command line', not any(KEY in ' '.join(c) for c, _ in az.calls))
 t('history: the steps run before it existed are the first entries (backup, users, apps, users -UseAppRoles on, apps)',
-  [h['step'] for h in hist[:5]] == ['backup', 'users', 'apps', 'users', 'apps'] and 'alice2zqufdoffsite' in hist[0]['note'] and 'alice-do-not-delete' in hist[0]['note'] and 'alice-backup-vault' in hist[0]['note']
+  [h['step'] for h in hist[:5]] == ['backup', 'users', 'apps', 'users', 'apps'] and 'off-site storage account' in hist[0]['note'] and 'alice-do-not-delete' in hist[0]['note'] and 'alice-backup-vault' in hist[0]['note']
   and hist[3]['params'].get('UseAppRoles') == 'on')
 mirror = az.share.get((SHARE, 'setup/setup-history.json'))
 t('history: copied to the file share for the What\'s new page', mirror and json.loads(mirror)[S.HISTORY][-1]['id'] == last['id'])

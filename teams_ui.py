@@ -1,4 +1,4 @@
-"""The Digital teams pages (Workspace › Teams; Stefan, 7 Oct 2026): All teams (/admin/teams), a team (/admin/teams/{id}) and a
+"""The Digital teams pages (Workspace › Teams; 7 Oct 2026): All teams (/admin/teams), a team (/admin/teams/{id}) and a
 job (/admin/teams/{id}/jobs/{job}). One Console page ('teams'); the script reads which screen from the address. Registered in
 admin_ui (PAGES, SECTIONS, SCRIPT, NAV_GROUPS, NAV_ICONS). Every safeguard shown here is read from rules_engine through the API."""
 
@@ -399,7 +399,7 @@ if(PAGE==='teams'){
  function suggBox(s){const w=h('div',{class:'tm-sugg'},h('strong',null,'Temple suggests new instructions'+(s.role?' for '+s.role:'')),h('p',{class:'small'},s.reason));
   w.append(h('details',null,h('summary',null,'Current instructions'),h('pre',null,s.current_text)),h('div',{class:'small'},'Suggested instructions'),h('pre',null,s.proposed));
   w.append(h('div',{class:'tm-acts'},btn('Approve: use these',async()=>{await api('/admin/api/teams/suggestions/'+s.id,'POST',{action:'approve'});$('notice').textContent='Applied as a new team version.';await loadTeam()}),btn('Reject',async()=>{await api('/admin/api/teams/suggestions/'+s.id,'POST',{action:'reject'});await loadTeam()},'secondary')));return w}
- // ---- Members tab (Stefan, 9 Oct 2026): cards in hand-off order with their costs for a period you choose; each card opens its editor
+ // ---- Members tab (9 Oct 2026): cards in hand-off order with their costs for a period you choose; each card opens its editor
  // in the side panel (the information card pattern). Drag a card, or use its handle with the keyboard, to change the hand-off order.
  const M={grab:'',order:null,orig:null,ro:null};
  const memberPeriod=()=>{const C=V.d.member_costs;const k=store.get('member-period','30d');return C&&C.periods.some(p=>p.key===k)?k:'30d'};
@@ -583,7 +583,7 @@ if(PAGE==='teams'){
   tb.append(body);wrap.append(tb);v.append(wrap);
   const recent=h('section',{class:'tm-panel'},h('h3',null,'Lately in jobs'));const steps=d.jobs.flatMap(j=>j.steps.map(s=>({...s,job:j}))).sort((a,b)=>b.created_at.localeCompare(a.created_at)).slice(0,30);
   if(!steps.length)recent.append(h('p',{class:'tm-empty'},'Nothing yet.'));const ul=h('ul',{class:'tm-tl'});const KIND={turn:'worked on',handoff:'handed on',sendback:'sent work back',question:'asked you',signoff:'sign-off',rates:'rates decided'};
-  for(const s of steps)ul.append(h('li',null,s.member==='stefan'?avatar('You','You',false,'','you'):avatar(((s.role||'?').match(/[A-Za-z0-9]+/g)||['?']).slice(0,2).map(w=>w[0]).join('').toUpperCase(),s.role||'A member'),h('div',null,h('span',{class:'w'},(s.member==='stefan'?'You':s.role)+' '+(KIND[s.kind]||s.kind)),' · ',h('a',{href:'/admin/teams/'+enc(t.id)+'/jobs/'+s.job.id},s.job.ref),h('div',null,s.note||''),tm(s.created_at))));
+  for(const s of steps)ul.append(h('li',null,s.member==='you'?avatar('You','You',false,'','you'):avatar(((s.role||'?').match(/[A-Za-z0-9]+/g)||['?']).slice(0,2).map(w=>w[0]).join('').toUpperCase(),s.role||'A member'),h('div',null,h('span',{class:'w'},(s.member==='you'?'You':s.role)+' '+(KIND[s.kind]||s.kind)),' · ',h('a',{href:'/admin/teams/'+enc(t.id)+'/jobs/'+s.job.id},s.job.ref),h('div',null,s.note||''),tm(s.created_at))));
   recent.append(ul);p.append(v,recent)}
  // ---------- Talk to the team (a team or a job) ----------
  function talkPanel(tid,jid){const key=tid+'/'+(jid||'');V.talk=V.talk||{};if(V.talk[key])return V.talk[key];const box=h('div',{class:'tm-talk'});V.talk[key]=box;const log=h('div',{class:'log','aria-live':'polite'}),ta=h('textarea',{maxlength:'4000',placeholder:'Write to the team. The lead answers and passes it on to whoever should act.','aria-label':'Message to the team'}),send=h('button',{type:'submit'},'Send');
@@ -598,7 +598,7 @@ if(PAGE==='teams'){
  async function loadJob(){const d=await api('/admin/api/teams/jobs/'+V.jid+'/page');V.d=d;setIconsFrom(d.nav);if(d.team_id!==V.tid){location.replace(d.url);return}
   const qa=new URLSearchParams(location.search).get('add');if(qa!==null&&!J.addOpened){J.addOpened=true;if(d.can.add_files){J.panel='files';J.add={docs:[],els:[],note:'',answers:/^[0-9a-f]{32}$/.test(qa)&&d.pending.some(x=>x.id===qa)?qa:''}}}
   drawJob();clearTimeout(V.timer);if(d.status==='running')V.timer=setTimeout(()=>run(loadJob),2500)}
- // ---- Add files to a job that has started (Stefan, 9 Oct 2026): the Start screen's roles; re-runs only what depends on them ----
+ // ---- Add files to a job that has started (9 Oct 2026): the Start screen's roles; re-runs only what depends on them ----
  const ROLE_NAMES={drawing:'Drawing',spec:'Specification',schedule:'Schedule',template:'Cost/pricing template',brief:'Other'};
  function filesPanel(){const d=V.d;const s=h('section',{class:'tm-rp',id:'tm-rp','aria-labelledby':'tm-rp-h'});J.add=J.add||{docs:[],els:[],note:''};const A=J.add;
   const q=A.answers?d.pending.find(x=>x.id===A.answers):null;
@@ -779,7 +779,7 @@ if(PAGE==='teams'){
   if(d.outputs.filed){const fl=d.outputs.filed;s.append(h('p',{class:'small'},fl.category?'Filed in Knowledge under “'+fl.category+'”.':'Saved to Knowledge (not filed: '+fl.not_filed+')'))}
   if(docs.length||d.knowledge_id){const o=h('div',{class:'tm-out'});for(const x of docs)o.append(h('a',{href:'/documents/'+x.id+'/download'},'⬇ '+x.kind+': '+x.name));if(d.knowledge_id)o.append(h('a',{href:'/admin/knowledge'},'Saved to Knowledge ↗'));s.append(o)}return s}
  function timeline(){const d=V.d;const ms={};for(const m of d.members)ms[m.id]=m;const ul=h('ol',{class:'tm-tl'});if(!d.timeline.length)return h('p',{class:'tm-empty'},'Nothing yet.');
-  for(const x of d.timeline){const m=ms[x.member];const av=x.member==='stefan'?avatar('You','You',false,'','you'):avatar(m?m.initials:'A',x.who,m&&m.id===d.lead.id,d.identity.hex);
+  for(const x of d.timeline){const m=ms[x.member];const av=x.member==='you'?avatar('You','You',false,'','you'):avatar(m?m.initials:'A',x.who,m&&m.id===d.lead.id,d.identity.hex);
    const reply=x.raw_reply?h('details',{class:'tm-reply'},h('summary',null,'What it replied'+(x.part?' ('+x.part+')':'')),h('p',{class:'small muted'},'The first 500 characters of the reply, as received.'),h('pre',null,x.raw_reply)):null;
    const parts=x.parts&&x.parts.parts>1?h('div',{class:'small muted'},'Worked in '+plural(x.parts.parts,'part')+(x.parts.halved?', '+x.parts.halved+' halved after an answer was cut off':'')):null;
    const li=h('li',null,av,h('div',null,h('span',{class:'w'},x.who),x.stage?h('span',{class:'small muted'},' · '+x.stage):null,h('div',null,x.text),parts,reply,x.outcome?h('div',{class:'o'},x.outcome):null,tm(x.at)));
@@ -813,7 +813,7 @@ if(PAGE==='teams'){
   dlg.append(msg,h('div',{class:'tm-acts'},ok,again,cancel));dlg.addEventListener('cancel',e=>{e.preventDefault();close()});dlg.showModal()}
  const tplTag=t=>t?(t.shared?h('span',{class:'ts-tag'},'Shared'):h('span',{class:'ts-tag'},'For '+t.client)):null;
  const mapTag=t=>t?h('span',{class:'ts-tag '+(t.mapping==='confirmed'?'ok':'warn')},t.mapping==='confirmed'?'Mapping confirmed':t.mapping_label||'Mapping not confirmed'):null;
- // ---------- Start a job (Stefan approved the mock-up, 8 Oct 2026) ----------
+ // ---------- Start a job (mock-up approved, 8 Oct 2026) ----------
  const S={d:null,title:'',client:'',location:'',jt:'',brief:'',docs:[],estimates:false,ps:null,autonomy:'',tpl:null,own:false,check:null,lib:null,n:0,timer:null};
  const ROLE_KIND={drawing:'drawing',spec:'spec',schedule:'schedule',brief:'brief'};
  async function loadStart(){const d=await api('/admin/api/teams/'+enc(V.tid)+'/start');S.d=d;setIconsFrom(d);if(!S.jt&&d.job_types[0])S.jt=d.job_types[0].id;if(!S.autonomy)S.autonomy=d.autonomy;defaultTemplate();drawStart();scheduleCheck()}

@@ -118,7 +118,7 @@ def rates_from_sheet(name, raw):
         tables.append(('CSV', list(csv.reader(io.StringIO(text), dialect))))
     else:
         raise ValueError('Upload the pricing tool as an Excel (.xlsx) or CSV file.')
-    m = _cost_sell_matrix(tables)                      # a pricing tool with separate cost and sell sheets by country (e.g. Insight's scheduler)
+    m = _cost_sell_matrix(tables)                      # a pricing tool with separate cost and sell sheets by country (e.g. a resource scheduler)
     if m: return m
     def num(v):
         if isinstance(v, (int, float)) and not isinstance(v, bool): return float(v)
@@ -161,7 +161,7 @@ COUNTRIES = {'UK': 'UK', 'GB': 'UK'}
 
 def _cost_sell_matrix(tables, country='UK'):
     """A pricing tool that keeps standard costs and sell prices on separate sheets, one column per country, hourly, with a
-    working-hours-per-day row above (Insight's Resource Utilisation Scheduler: StdCosts and SellPricing, by Persona).
+    working-hours-per-day row above (e.g. a resource utilisation scheduler: StdCosts and SellPricing, by Persona).
     Returns day rates for the country (hourly rate x hours per day), or None if the workbook is not laid out like that."""
     def sheet(word):
         return next(((t, r) for t, r in tables if word in t.lower()), None)
@@ -308,7 +308,7 @@ def own_layout():
 
 def outline(a, template=None):
     """The sections of a new proposal: the template's Heading 1s, or Alice's own layout when there is no template (or it has no
-    Heading 1s). Since 7 Oct 2026 (Stefan) there is no Format and flow: the assistant's stored settings.sections are no longer added;
+    Heading 1s). Since 7 Oct 2026  there is no Format and flow: the assistant's stored settings.sections are no longer added;
     anything to emphasise goes in Notes for the writer."""
     st = a['settings']
     _, t = _template(st.get('template') if template is None else template)
