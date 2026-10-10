@@ -399,10 +399,10 @@ if(PAGE==='teams'){
  function suggBox(s){const w=h('div',{class:'tm-sugg'},h('strong',null,'Temple suggests new instructions'+(s.role?' for '+s.role:'')),h('p',{class:'small'},s.reason));
   w.append(h('details',null,h('summary',null,'Current instructions'),h('pre',null,s.current_text)),h('div',{class:'small'},'Suggested instructions'),h('pre',null,s.proposed));
   w.append(h('div',{class:'tm-acts'},btn('Approve: use these',async()=>{await api('/admin/api/teams/suggestions/'+s.id,'POST',{action:'approve'});$('notice').textContent='Applied as a new team version.';await loadTeam()}),btn('Reject',async()=>{await api('/admin/api/teams/suggestions/'+s.id,'POST',{action:'reject'});await loadTeam()},'secondary')));return w}
- // ---- Members tab (9 Oct 2026): cards in hand-off order with their costs for a period you choose; each card opens its editor
+ // ---- Members tab (9 and 10 Oct 2026): cards in hand-off order with their costs for a period you choose; each card opens its editor
  // in the side panel (the information card pattern). Drag a card, or use its handle with the keyboard, to change the hand-off order.
  const M={grab:'',order:null,orig:null,ro:null};
- const memberPeriod=()=>{const C=V.d.member_costs;const k=store.get('member-period','30d');return C&&C.periods.some(p=>p.key===k)?k:'30d'};
+ const memberPeriod=()=>{const C=V.d.member_costs;const k=store.get('member-period','month');return C&&C.periods.some(p=>p.key===k)?k:'month'};
  const initials=role=>((role||'?').match(/[A-Za-z0-9]+/g)||['?']).slice(0,2).map(w=>w[0]).join('').toUpperCase();
  function shownOrder(){const d=V.d,ms=d.team.members.slice();ms.sort((a,b)=>(b.id===d.lead)-(a.id===d.lead));return ms.map(m=>m.id)}
  function spark(trend,label){const W=120,H=28,vs=trend.map(x=>x.usd),hi=Math.max(...vs,0);const NS='http://www.w3.org/2000/svg';const svg=document.createElementNS(NS,'svg');
@@ -423,7 +423,7 @@ if(PAGE==='teams'){
   handle.onkeydown=e=>moveKey(e,m.id);handle.onclick=e=>e.stopPropagation();
   card.append(h('div',{class:'top'},avatar(mv.initials||initials(m.role),m.role,lead,d.identity.hex,'lg'),h('div',{class:'nm'},h('h4',null,open),m.purpose?h('p',{class:'purpose'},m.purpose):h('p',{class:'purpose muted'},'No purpose yet.')),lead?h('span',{class:'tm-chip tm-lead'},'Lead'):null,handle));
   const tools=(d.member_tools[m.id]||[]),cats=m.categories||[],packs=(m.packs||[]).map(k=>d.packs[k]||k);
-  const chips=h('div',{class:'tm-chips tm-mchips'},h('span',{class:'tm-chip',title:'Model'},d.models[m.provider]||m.provider),...tools.map(x=>h('span',{class:'tm-chip t'},x)),
+  const chips=h('div',{class:'tm-chips tm-mchips'},h('span',{class:'tm-chip',title:'Model and its tier'},(d.models[m.provider]||m.provider)+(d.model_tiers&&d.model_tiers[m.provider]?' · '+d.model_tiers[m.provider]:'')),...tools.map(x=>h('span',{class:'tm-chip t'},x)),
    ...(cats.length?cats.map(x=>h('span',{class:'tm-chip k',title:'Knowledge category'},x)):[]),...packs.map(x=>h('span',{class:'tm-chip p',title:'Its own rule pack'},x)));card.append(chips);
   if(C){const mc=C.members[m.id],P=C.periods.find(x=>x.key===per);const share=mc.share_pct[per];
    card.append(h('div',{class:'tm-mcost'},h('div',{class:'big'},money(mc.costs[per],C.fx),P.since?h('span',{class:'small muted'},' '+P.since):null),
@@ -453,7 +453,9 @@ if(PAGE==='teams'){
   const head=h('div',{class:'tm-mhead'});
   if(C){const seg=h('div',{class:'tm-seg tm-period',role:'group','aria-label':'Costs for'});for(const pr of C.periods){const b=h('button',{type:'button',class:'ghost','aria-pressed':String(pr.key===per)},pr.label);b.onclick=()=>{store.set('member-period',pr.key);drawTeam()};seg.append(b)}
    const P=C.periods.find(x=>x.key===per);head.append(seg,h('p',{class:'tm-mtot'},'Team total, '+P.label.toLowerCase()+(P.since?' ('+P.since+')':'')+': ',h('b',null,money(C.total[per],C.fx)),
-    C.former[per].usd?h('span',{class:'small muted'},' (includes ',money(C.former[per],C.fx),' by members no longer in the team)'):null));head.append(fxLine(C.fx))}
+    C.jobs?' · '+plural(C.jobs[per],'job'):null,C.jobs&&C.per_job[per]?[' · ',money(C.per_job[per],C.fx),' a job on average']:null,
+    C.former[per].usd?h('span',{class:'small muted'},' (includes ',money(C.former[per],C.fx),' by members no longer in the team)'):null));
+   if(per==='all'&&C.before_tracking)head.append(h('p',{class:'small muted'},C.before_text+': ',money(C.before_tracking,C.fx),' for the whole team. It is one figure: it was never recorded by member, so it is not in the cards.'));head.append(fxLine(C.fx))}
   else head.append(h('p',{class:'small muted'},'Costs are not shown: your permissions for this team do not include seeing costs.'));
   p.append(head);
   p.append(h('p',{class:'small muted tm-mhelp'},'In hand-off order, the lead first. Click a member to edit it; drag a card, or use its ⠿ handle with Space and the arrow keys, to change the order. '
@@ -484,7 +486,7 @@ if(PAGE==='teams'){
  function openMember(mid,tpl){const d=V.d,t=d.team,isNew=!mid;const src=isNew?{...d.member_templates[tpl||'blank']}:t.members.find(m=>m.id===mid);if(!src)return;
   const m={role:src.role||'',purpose:src.purpose||'',instructions:src.instructions||'',provider:src.provider||'claude_sonnet',categories:src.categories||[],packs:src.packs||[],tools:src.tools||null};
   const mv=isNew?{to:[],from:[],warnings:[],works_on:[],builtin_tools:[]}:d.member_view[mid];
-  const role=h('input',{type:'text',maxlength:'80',value:m.role,required:true,placeholder:'e.g. Services Engineer'}),prov=h('select');for(const [k,l] of Object.entries(d.models))prov.append(h('option',{value:k},l));prov.value=m.provider;
+  const role=h('input',{type:'text',maxlength:'80',value:m.role,required:true,placeholder:'e.g. Services Engineer'}),prov=h('select');for(const [k,l] of Object.entries(d.models))prov.append(h('option',{value:k},l+(d.model_tiers&&d.model_tiers[k]?' · '+d.model_tiers[k]:'')));prov.value=m.provider;
   const purpose=h('textarea',{maxlength:'600',rows:'3'});purpose.value=m.purpose;const ins=h('textarea',{maxlength:'6000',rows:'16',class:'tm-ins'});ins.value=m.instructions;
   const sw=isNew?Object.fromEntries(Object.keys(d.tool_names).map(k=>[k,!!(m.tools&&m.tools[k])])):(d.tool_switches[mid]||{});const tools=checks(Object.entries(d.tool_names),Object.keys(sw).filter(k=>sw[k]));
   const cats=checks(d.categories.map(x=>[x,x]),m.categories),packs=checks(Object.entries(d.packs),m.packs);
@@ -911,6 +913,7 @@ if(PAGE==='teams'){
    body.append(h('tr',null,h('td',null,x.name,h('div',{class:'small muted'},x.path)),h('td',null,x.readable?cs:'—'),h('td',null,mapTag(x)),h('td',null,h('div',{class:'tm-acts'},x.readable?btn('Check mapping',()=>openMapping(x.path,{team:t.id,onDone:async()=>{T.pt=null;drawTeam()}}),'secondary'):null,rm))))}
   tb.append(body);wrap.append(tb);s.append(P.templates.length?wrap:h('p',{class:'tm-empty'},P.settings.folder?'No templates in '+P.settings.folder+' yet.':'Choose the templates folder first.'));
   for(const f of P.fallbacks||[])s.append(h('p',{class:'small',role:'note'},f));
+  s.append(clientDefaults(P,t));
   if((P.hidden||[]).length){const tg=h('button',{type:'button',class:'secondary','aria-expanded':String(!!T.showHidden)},(T.showHidden?'Hide the removed templates':'Show hidden')+' ('+P.hidden.length+')');tg.onclick=()=>{T.showHidden=!T.showHidden;drawTeam()};s.append(h('div',{class:'tm-acts',style:'margin-top:8px'},tg));
    if(T.showHidden){const ul=h('ul',{class:'tm-ver','aria-label':'Templates removed from this team’s list'});for(const x of P.hidden){const back=P.can_manage?btn('Add back',async()=>{T.pt=await api('/admin/api/teams/'+enc(t.id)+'/pricing-templates/hidden','PUT',{path:x.path,hidden:false});$('notice').textContent=T.pt.message;drawTeam()},'secondary'):null;
      ul.append(h('li',null,h('div',{class:'h'},h('b',null,x.name),back),h('div',{class:'small muted'},x.path+(x.exists?'':' · not in the document sources any more')),h('div',{class:'small muted'},'Removed'+(x.hidden_by?' by '+x.hidden_by:'')+' '+when(x.hidden_at))))}
@@ -918,6 +921,34 @@ if(PAGE==='teams'){
   const up=h('input',{type:'file',accept:'.xlsx,.xlsm,.csv','aria-label':'Add a pricing template'});up.onchange=()=>run(async()=>{const fl=up.files[0];if(!fl)return;const data=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]);r.onerror=()=>no(Error('Could not read '+fl.name));r.readAsDataURL(fl)});
    const x=await api('/admin/api/teams/'+enc(t.id)+'/pricing-templates','POST',{name:fl.name,data});up.value='';T.pt=null;$('notice').textContent=x.name+' added to '+P.settings.folder+'. Check its mapping before a job uses it.';drawTeam()});
   s.append(h('div',{class:'tm-acts',style:'margin-top:8px'},h('label',{class:'small'},'Add a template (saved into the templates folder, never overwriting) ',up),btn('Refresh',async()=>{T.pt=null;drawTeam()},'secondary')));return s}
+ // Default template per client (D-0039, 10 Oct 2026): a team setting, no longer on the organisation's page. A client's default comes
+ // first on Start a job, then the team's default, then Alice's own layout. A template tagged to a client is offered only for that client.
+ function clientDefaults(P,t){const box=h('div',{class:'tm-cdef'},h('h4',{style:'margin:14px 0 4px'},'Default template per client'),
+   h('p',{class:'small muted'},'A new job for one of these clients starts with its template (you can still change it on the job). Other clients get the team’s default, else Alice’s own layout. A template tagged to a client can only be that client’s default; a shared one works for any client.'));
+  const usable=org=>P.templates.filter(x=>x.readable&&(x.shared||x.client.toLowerCase()===org.toLowerCase()));
+  const tsel=(org,v,label)=>{const x=h('select',{'aria-label':label},h('option',{value:''},'Choose a template'));for(const y of usable(org))x.append(h('option',{value:y.path},y.name+(y.shared?' (shared)':' (only '+y.client+')')));x.value=v||'';return x};
+  const save=async(org,path)=>{T.pt=await api('/admin/api/teams/'+enc(t.id)+'/pricing-templates/client-default','PUT',{client:org,path});$('notice').textContent=T.pt.message;drawTeam()};
+  const rows=P.client_defaults||[];
+  if(rows.length){const tb=h('table',{class:'tm-tbl'},h('thead',null,h('tr',null,['Client','Template','Mapping',''].map(x=>h('th',{scope:'col'},x)))));const body=h('tbody');
+   for(const r of rows){const sel=tsel(r.client,r.path,'Template for '+r.client);if(!sel.value){sel.append(h('option',{value:r.path},r.name));sel.value=r.path}
+    const ch=P.can_manage?btn('Change',async()=>{if(sel.value&&sel.value!==r.path)await save(r.client,sel.value)},'secondary'):null;
+    const rm=P.can_manage?btn('Remove',async()=>{if(!confirm('Remove '+r.client+'’s default template from this team? Its new jobs will use the team’s default.'))return;await save(r.client,'')},'secondary'):null;
+    if(!P.can_manage)sel.disabled=true;
+    body.append(h('tr',null,h('th',{scope:'row'},r.client),h('td',null,sel,r.exists?null:h('div',{class:'small',role:'note'},'Not in the document sources any more: new jobs use the team’s default.'),r.hidden?h('div',{class:'small',role:'note'},'Removed from this team’s list: new jobs use the team’s default.'):null),h('td',null,mapTag(r)),h('td',null,h('div',{class:'tm-acts'},ch,rm))))}
+   tb.append(body);box.append(h('div',{class:'table-wrap'},tb))}
+  else box.append(h('p',{class:'tm-empty'},'No client has a default of its own in this team.'));
+  if(P.can_manage){const have=new Set(rows.map(r=>r.client.toLowerCase()));const os=h('select',{'aria-label':'Client'},h('option',{value:''},'Choose a client'));
+   for(const o of (P.organisations||[]).filter(o=>!have.has(o.name.toLowerCase())))os.append(h('option',{value:o.name},o.name+(o.client?'':' (not marked Client)')));
+   let ts=tsel('','','Template');const slot=h('span',null,ts);os.onchange=()=>{ts=tsel(os.value,'','Template');slot.replaceChildren(ts)};
+   box.append(h('div',{class:'tm-acts',style:'margin-top:6px'},os,slot,btn('Add',async()=>{if(!os.value||!ts.value){$('notice').textContent='Choose a client and a template.';return}await save(os.value,ts.value)})))}
+  const mv=P.org_move;if(mv&&mv.pending)box.append(orgMoveCard(mv));
+  return box}
+ function orgMoveCard(mv){const c=h('div',{class:'tm-panel tm-orgmove',role:'region','aria-label':'Move the organisation defaults'},h('h4',{style:'margin:0 0 4px'},'Move the defaults set on organisation pages'),
+   h('p',{class:'small'},plural(mv.count,'organisation')+' still '+(mv.count===1?'has':'have')+' a default template set on the organisation’s page. Until you move them they still apply. Preview first: nothing changes until you confirm.'));
+  const out=h('div');c.append(h('div',{class:'tm-acts'},btn('Preview the move',async()=>{const pv=await api('/admin/api/teams/pricing-templates/org-move');out.replaceChildren();if(!pv.pending){out.append(h('p',{class:'small'},'Nothing left to move.'));return}
+   const ul=h('ul',{class:'tm-ver'});for(const it of pv.items)ul.append(h('li',null,h('div',{class:'h'},h('b',null,it.org),' · ',it.name),...it.teams.map(x=>h('div',{class:'small'+(x.status==='skip'?'':' muted')},x.team+': '+({add:'will be added',same:'already set',keep:'kept as it is',skip:'left out'}[x.status])+(x.note?' ('+x.note+')':'')))));
+   const k=pv.counts;out.append(ul,h('p',{class:'small'},k.add+' to add, '+k.kept+' already set, '+k.left_out+' left out, across '+plural(pv.teams.length,'team')+'.'),
+    btn('Confirm the move',async()=>{const r=await api('/admin/api/teams/pricing-templates/org-move','POST',{counts:k});$('notice').textContent=r.message;T.pt=null;drawTeam()}))},'secondary')),out);return c}
  // ---------- the job's pricing template (job page) ----------
  function templateCard(){const d=V.d,tp=d.pricing_template;if(!tp)return null;const s=h('section',{class:'tm-panel','aria-labelledby':'tm-tp-h'},h('h3',{id:'tm-tp-h'},'Pricing template'));
   const from={client:'Default for '+(d.client||'the client'),team:'The team’s default',chosen:'Chosen for this job'}[tp.from]||'';

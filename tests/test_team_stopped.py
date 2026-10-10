@@ -292,7 +292,7 @@ if node:
 
 # ---------------- Remove from this list ----------------
 organisations.create('FICTIONAL Otter Council', client=True)
-cl.put('/admin/api/teams/pricing-templates/org-default', json={'org': 'FICTIONAL Otter Council', 'path': SECOND}, headers=H)
+cl.put(f'/admin/api/teams/{TID}/pricing-templates/client-default', json={'client': 'FICTIONAL Otter Council', 'path': SECOND}, headers=H)
 used = start('FICTIONAL hall H', template=SECOND)
 used_fills = PT.fills(used['id'])
 raw_before, mtime = (TPL / 'FICTIONAL second plan.xlsx').read_bytes(), (TPL / 'FICTIONAL second plan.xlsx').stat().st_mtime_ns
@@ -306,7 +306,7 @@ t('…the file in the document source is never touched', (TPL / 'FICTIONAL secon
 t('…its saved mapping is kept', PT.confirmed(SECOND) == mapping_before and PT.describe(SECOND)['mapping'] == 'confirmed')
 t('…an organisation\'s default falls back to the team\'s, and the page says so', PT.default_for(teams.get(TID), 'FICTIONAL Otter Council') == (SHARED, 'team')
   and any('FICTIONAL Otter Council' in f_ and 'FICTIONAL shared cost plan.xlsx' in f_ for f_ in P['fallbacks']) and 'FICTIONAL Otter Council' in P['message'])
-t('…the organisation\'s own setting is left as it is (other teams still use it)', PT.org_default('FICTIONAL Otter Council') == SECOND)
+t('…the client\'s default in the team\'s settings is left as it is (Add back restores it)', PT.client_default(teams.get(TID), 'FICTIONAL Otter Council')[0] == SECOND)
 sp = cl.get(f'/admin/api/teams/{TID}/start').json()
 t('…the Start a job screen no longer offers it, nor the organisation default pointing at it', SECOND not in [x['path'] for x in sp['templates']['templates']]
   and 'FICTIONAL Otter Council' not in sp['org_defaults'])
