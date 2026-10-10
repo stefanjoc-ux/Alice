@@ -175,11 +175,14 @@ def update(name, kind=None, description=None, website=None, account_manager=None
 def listing():
     import clients
     today = _today()
+    import spaces
     vc, va = store.viewer_clause('organisation', 'organisations.name')      # the organisations in this person's spaces
+    fc, fa = spaces.fact_clause('org_facts.id')                             # facts from internal sources: their space's readers only
     with store.db() as c:
         orgs = {r['name'].lower(): dict(r) for r in c.execute('SELECT * FROM organisations WHERE 1=1' + vc, va)}
         counts = {}
-        for r in c.execute("SELECT lower(org) AS o,status,count(*) AS n,sum(CASE WHEN review_by<? THEN 1 ELSE 0 END) AS due FROM org_facts GROUP BY lower(org),status", (today,)):
+        for r in c.execute("SELECT lower(org) AS o,status,count(*) AS n,sum(CASE WHEN review_by<? THEN 1 ELSE 0 END) AS due FROM org_facts "
+                           "WHERE 1=1" + fc + "GROUP BY lower(org),status", (today, *fa)):
             d = counts.setdefault(r['o'], {'approved': 0, 'proposed': 0, 'retired': 0, 'rejected': 0, 'due': 0})
             d[r['status']] = r['n']
             if r['status'] == 'approved': d['due'] = r['due'] or 0
@@ -200,8 +203,14 @@ def listing():
 def propose_fact(org, section, statement, source_system, source_ref='', as_of='', review_by='', label='general', by='you'):
     """Models propose (status 'proposed'); facts you add yourself on the Organisations page are approved at once."""
     import rules_engine
+    import spaces
     org = canonical(org)
-    if not store.can_change('organisation', org): raise ValueError('You can only add facts to organisations in a space you contribute to.')
+    if not store.can_change('organisation', org):
+        # A fact from an internal source stays in the space it came from (CR-4), so contributing there is enough.
+        v = store.viewer()
+        internal = spaces.internal_fact({'section': section, 'label': label, 'source_system': source_system, 'source_ref': source_ref})
+        if not (internal and v is not None and spaces.may_contribute(v, spaces.default_for(v))):
+            raise ValueError('You can only add facts to organisations in a space you contribute to.')
     if section not in SECTION_NAMES: raise ValueError('Section must be one of: ' + ', '.join(SECTION_NAMES) + '.')
     statement = _clean(statement, MAX_STATEMENT + 1)
     if len(statement) < 12: raise ValueError('Write the fact as a short sentence (at least 12 characters).')
@@ -232,6 +241,10 @@ def propose_fact(org, section, statement, source_system, source_ref='', as_of=''
             c.execute('INSERT INTO organisations(name,kind,description,created_at) VALUES (?,?,?,?)', (org, 'other', '', store.now()))
         store.audit(c, 'org_fact_added' if status == 'approved' else 'org_fact_proposed', fid,
                     'human_review' if status == 'approved' else 'approval_required', f'{org} · {SECTION_NAMES[section]} · by {by}')
+    if store.DATASET.get() != 'demo':           # an internal fact stays in the space it came from (spaces.internal_fact)
+        import spaces
+        spaces.place_fact(fid, {'org': org, 'section': section, 'label': label, 'source_system': source_system, 'source_ref': source_ref},
+                          store.viewer())
     if status == 'proposed' and store.DATASET.get() != 'demo':
         import autoapprove        # approved automatically unless it came through the outside connector (held for you)
         if autoapprove.org_fact(fid) == 'approved': status = 'approved'
@@ -296,19 +309,24 @@ def update_fact(fid, review_by=None, label=None):
 def facts(org, status='approved', section=''):
     org = canonical(org)
     today = _today()
+    import spaces
+    fc, fa = spaces.fact_clause('org_facts.id')      # a fact from an internal source only for people who can see its space
     with store.db() as c:
         rows = [dict(r) for r in c.execute(
-            "SELECT * FROM org_facts WHERE org=? AND (?='all' OR status=?) AND (?='' OR section=?) ORDER BY section,created_at",
-            (org, status, status, section, section))]
+            "SELECT * FROM org_facts WHERE org=? AND (?='all' OR status=?) AND (?='' OR section=?)" + fc + "ORDER BY section,created_at",
+            (org, status, status, section, section, *fa))]
     order = {k: i for i, (k, _, _) in enumerate(SECTIONS)}
     for r in rows: r['overdue'] = r['status'] == 'approved' and r['review_by'] < today
     return sorted(rows, key=lambda r: (order.get(r['section'], 99), r['created_at']))
 
 
 def pending(limit=50):
+    import spaces
     vc, va = store.viewer_clause('organisation', 'org_facts.org')     # facts about organisations in this person's spaces
+    fc, fa = spaces.fact_clause('org_facts.id')                       # …and only internal facts from spaces they can see
     with store.db() as c:
-        return [dict(r) for r in c.execute("SELECT * FROM org_facts WHERE status='proposed'" + vc + "ORDER BY created_at DESC LIMIT ?", (*va, limit))]
+        return [dict(r) for r in c.execute("SELECT * FROM org_facts WHERE status='proposed'" + vc + fc + "ORDER BY created_at DESC LIMIT ?",
+                                           (*va, *fa, limit))]
 
 
 def by_source(source_system, source_ref=''):

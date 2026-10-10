@@ -38,6 +38,7 @@ ENTRA_ROLES = {'Alice.Owner': 'owner', 'Alice.Admin': 'admin', 'Alice.Member': '
 OWNER_ROLE = 'Alice.Owner'          # the app role that makes an account an owner of Alice (is_owner)
 STATUSES = ('active', 'suspended')
 DEFAULT_PROFILE = 'member'          # the default profile id for anyone new
+TEAM_PROFILE = 'team-member'        # built in: what an Entra group mapping usually gives (CR-4 phase 1)
 CACHE_S = 15                        # a change on the Users page reaches every request within this (same process: at once)
 TOUCH_S = 300                       # last seen is written at most every 5 minutes per person
 OID = re.compile(r'^[0-9a-z][0-9a-z-]{0,63}$')       # Entra object IDs are GUIDs; anything else odd is refused
@@ -79,6 +80,10 @@ def _seed():
             c.execute('INSERT INTO permission_profiles(id,name,description,levels,builtin,updated_at) VALUES (?,?,?,?,1,?)',
                       (DEFAULT_PROFILE, 'Member (default)', 'Chat and their own saved chats. Nothing of anyone else\'s.',
                        json.dumps(permissions.default_levels()), store.now()))
+        if not c.execute('SELECT 1 FROM permission_profiles WHERE id=?', (TEAM_PROFILE,)).fetchone():
+            c.execute('INSERT INTO permission_profiles(id,name,description,levels,builtin,updated_at) VALUES (?,?,?,?,1,?)',
+                      (TEAM_PROFILE, 'Team member', 'Chat, assistants, digital teams and Knowledge to use; Organisations, Memories and '
+                       'Decisions to view. For people who join through an Entra group.', json.dumps(permissions.team_member_levels()), store.now()))
 
 
 # ---------------- settings from the environment ----------------
@@ -141,7 +146,7 @@ def principal(headers):
     if not trusted(): return {}
     email = ' '.join((headers.get('x-ms-client-principal-name') or '').split())[:200].lower()
     oid = (headers.get('x-ms-client-principal-id') or '').strip().lower()
-    name, roles = '', []
+    name, roles, groups = '', [], None
     try:
         p = json.loads(base64.b64decode((headers.get('x-ms-client-principal') or '') + '==').decode('utf-8'))
         role_typ = p.get('role_typ') or 'roles'
@@ -149,12 +154,13 @@ def principal(headers):
             typ, val = str(c.get('typ', '')), str(c.get('val', ''))
             if typ == 'name' and not name: name = val
             elif typ in (role_typ, 'roles', 'http://schemas.microsoft.com/ws/2008/06/identity/claims/role'): roles.append(val)
+            elif typ in ('groups', 'http://schemas.microsoft.com/ws/2008/06/identity/claims/groups'): groups = (groups or []) + [val.strip().lower()]
             elif typ in ('http://schemas.microsoft.com/identity/claims/objectidentifier', 'oid') and not oid: oid = val.strip().lower()
             elif typ in ('preferred_username', 'email') and not email: email = ' '.join(val.split())[:200].lower()
     except Exception:
         pass
     if oid and not OID.fullmatch(oid): oid = ''
-    return {'oid': oid, 'email': email, 'name': ' '.join(str(name).split())[:120], 'roles': roles}
+    return {'oid': oid, 'email': email, 'name': ' '.join(str(name).split())[:120], 'roles': roles, 'groups': groups}
 
 
 def entra_ceiling(p):
@@ -233,6 +239,12 @@ def identify(headers):
         _touch(row, p, ceiling)
     if row['status'] == 'suspended' and not owner:
         raise Refused('Your access to Alice is suspended. Ask its owner if you think this is wrong.', 'suspended')
+    if p.get('groups') is not None or (row.get('groups') or '[]') != '[]':
+        # Entra group mappings (groups.py): when their groups changed, or once a day. Entra leaves the claim out when someone is
+        # in no group, so once Alice has seen groups for them, no claim means they have left them all.
+        import groups
+        groups.on_signin(p['oid'], p.get('groups') or [])
+        row = _row(p['oid']) or row
     role = effective_role(row, ceiling, owner)
     if not role:
         raise Refused('You do not have access to Alice. Ask its owner to give you a role (Alice Member, Admin or Owner).', 'no_role')
@@ -425,6 +437,7 @@ def _check_can_change(actor, target):
 
 def update(oid, role=None, profile=None, status=None):
     """Set a person's role, profile or status (suspend/restore). Logged with who did it."""
+    import groups  # noqa: F401  (its columns on users exist before the write below; never import inside a transaction)
     actor = _actor_viewer()
     oid = (oid or '').strip().lower()
     target = person(oid)
@@ -450,6 +463,8 @@ def update(oid, role=None, profile=None, status=None):
         if not changes: return {'changed': False, 'user': person(oid)}
         c.execute('UPDATE users SET role=coalesce(?,role),profile=coalesce(?,profile),status=coalesce(?,status),updated_at=?,updated_by=? WHERE oid=?',
                   (role, profile, status, store.now(), _who(), oid))
+        if profile is not None and profile != target['profile']:      # set by hand: an Entra group mapping no longer changes it
+            c.execute("UPDATE users SET profile_via='hand' WHERE oid=?", (oid,))
         store.audit(c, 'user_changed', oid, 'users', f"{target['email'] or oid}: " + '; '.join(changes))
     _forget(oid)
     return {'changed': True, 'user': person(oid)}
@@ -502,7 +517,7 @@ def delete_profile(pid):
         c.execute('BEGIN IMMEDIATE')
         r = c.execute('SELECT * FROM permission_profiles WHERE id=?', (pid,)).fetchone()
         if not r: raise LookupError('No such profile.')
-        if r['builtin']: raise ValueError('The default Member profile cannot be deleted.')
+        if r['builtin']: raise ValueError('A built-in profile cannot be deleted.')
         n = c.execute('SELECT count(*) FROM users WHERE profile=?', (pid,)).fetchone()[0]
         if n: raise ValueError(f'{n} {"person uses" if n == 1 else "people use"} this profile: give them another one first.')
         c.execute('DELETE FROM permission_profiles WHERE id=?', (pid,))

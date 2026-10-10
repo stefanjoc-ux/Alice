@@ -56,6 +56,7 @@ os.environ['ALICE_NO_SCHEDULER'] = '1'   # no background schedules during tests
 os.environ['ALICE_NO_RELEASE_RECORD'] = '1'   # CHANGELOG.md is not imported at app start; test_changelog runs it
 os.environ['ALICE_TAXONOMY_DEFAULT'] = 'off'      # Temple's category/tag housekeeping; test_taxonomy switches it on
 os.environ['ALICE_AUTO_APPROVE_DEFAULT'] = 'off'   # suites test the approval gates; test_autoapprove switches it on
+os.environ['ALICE_OPEN_SPACES_DEFAULT'] = 'off'    # team spaces members-only in tests; test_spaces_teams switches the rule on
 try:
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')

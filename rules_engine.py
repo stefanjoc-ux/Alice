@@ -7,6 +7,7 @@ Findings never echo the sensitive value itself.
 """
 import contextvars
 import json
+import os
 import re
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
@@ -65,6 +66,10 @@ BUILTIN = [
      'Proposals written by Parker and digital team outputs marked client-facing use only General (untagged) material and material '
      'tagged to that document\'s own client; anything tagged to another client is left out and logged. A document with no client uses '
      'General material only. Works on its own, whatever the Client separation switch says.', True, {}, '', False),
+    ('open_spaces', 'organisation', 'Team spaces are open to the organisation', 'enforced',
+     'Alice is the organisation\'s shared store of knowledge (decision D-0040): everyone with an Alice role reads every team space '
+     'unless its manager closes it, with a reason. Personal spaces, closed spaces and spaces tied to a client are never open; only '
+     'members add to a space. Switched off, people read only the spaces they are members of, and the Organisation space.', True, {}, '', False),
     ('commercial_caution', 'organisation', 'Commercial caution', 'guidance', '', True, {},
      'Do not state prices, discounts, rates or Insight commitments unless they come from a saved file or approved '
      'memory, and cite that source.', False),
@@ -138,6 +143,8 @@ def _init():
             params TEXT NOT NULL DEFAULT '{}', builtin INTEGER NOT NULL DEFAULT 0, locked INTEGER NOT NULL DEFAULT 0,
             source TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL)''')
         for rid, set_key, name, kind, desc, enabled, params, text, locked in BUILTIN:
+            # Test databases start with open team spaces off (tests/_util.py), as with automatic approval; test_spaces_teams switches it on.
+            if rid == 'open_spaces' and os.environ.get('ALICE_OPEN_SPACES_DEFAULT') == 'off': enabled = False
             # INSERT OR IGNORE keeps your changes; descriptions refresh with each update.
             c.execute('INSERT OR IGNORE INTO rules VALUES (?,?,?,?,?,?,?,?,1,?,?,?,?)',
                       (rid, set_key, name, kind, desc, text, int(enabled), json.dumps(params), int(locked), '',

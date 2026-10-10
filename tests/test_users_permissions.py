@@ -49,6 +49,7 @@ own_file = knowledge.create('note', 'Owner strategy note', 'Larkspur strategy: t
 own_chat = store.create_chat()['id']
 import organisations, spaces
 organisations.create('Larkspur Council', 'council', 'A fictional council the owner works with.')
+spaces._place('organisation', 'Larkspur Council', spaces.WORK)    # an organisation kept in the owner's work space, not the directory
 t('the owner\'s items carry no author (they are the owner\'s)', store.author_of('record', own_mem['id']) == '' and store.author_of('chat', own_chat) == '')
 
 # ---------------- behind sign-in, with Entra app roles ----------------

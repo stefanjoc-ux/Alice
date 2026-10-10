@@ -3397,6 +3397,8 @@ def admin_handover_decide(q: HandoverDecisionIn, mid: str = FPath(pattern=r'^[0-
 # ---- spaces (spaces.py): shared team memory with explicit membership ----
 import spaces
 spaces.ensure_migrated()          # at start-up, outside any transaction: the owner's existing items placed once (logged with counts)
+spaces.ensure_org_space()         # the Organisation space (once); internal organisation facts pinned where they are (nothing moves)
+import groups                     # Entra group → spaces and profile (users.identify applies it at sign-in; daily from the middleware)
 
 # ---- what changed (changelog.py): CHANGELOG.md read at each start; the first process to see a new release records it ----
 import changelog
@@ -3485,6 +3487,55 @@ def admin_space_sweep_move(q: SweepMoveIn): return _people(spaces.sweep_move, q.
 @app.post('/admin/api/spaces/sweep/{sid}/dismiss')
 def admin_space_sweep_dismiss(sid: str = FPath(pattern=r'^[0-9a-f]{32}$')): return _people(spaces.sweep_dismiss, sid)
 
+# Open by default (CR-4 phase 1): closing a team space, the move into the Organisation space, Entra group mappings
+class SpaceCloseIn(BaseModel):
+    closed: bool
+    reason: str = Field(default='', max_length=300)
+
+class OrgMoveIn(BaseModel):
+    counts: dict[str, int] = Field(default_factory=dict)
+
+class InternalSectionsIn(BaseModel):
+    sections: list[str] = Field(default_factory=list, max_length=20)
+
+class SpaceRoleIn(BaseModel):
+    space: str = Field(min_length=1, max_length=40)
+    role: Literal['view','contribute','manage']
+
+class GroupMapIn(BaseModel):
+    group_id: str = Field(min_length=36, max_length=36)
+    label: str = Field(default='', max_length=80)
+    spaces: list[SpaceRoleIn] = Field(default_factory=list, max_length=20)
+    profile: str = Field(default='', max_length=40)
+
+@app.put('/admin/api/spaces/{sid}/closed')
+def admin_space_closed(q: SpaceCloseIn, sid: str = FPath(pattern=r'^[ps]-[0-9a-f]{12}$')): return _people(spaces.set_closed, sid, q.closed, q.reason)
+
+@app.get('/admin/api/spaces/organisation/move')
+def admin_org_move_preview(): return _people(spaces.org_migration_preview)
+
+@app.post('/admin/api/spaces/organisation/move')
+def admin_org_move(q: OrgMoveIn): return _people(spaces.org_migration_apply, q.counts)
+
+@app.put('/admin/api/spaces/organisation/internal-sections')
+def admin_org_internal_sections(q: InternalSectionsIn): return _people(spaces.set_internal_sections, q.sections)
+
+@app.get('/admin/api/groups')
+def admin_groups(): return _people(groups.listing)
+
+@app.post('/admin/api/groups')
+def admin_group_add(q: GroupMapIn): return _people(groups.save, '', q.group_id, q.label, [x.model_dump() for x in q.spaces], q.profile)
+
+@app.put('/admin/api/groups/{mid}')
+def admin_group_set(q: GroupMapIn, mid: str = FPath(pattern=r'^[0-9a-f]{32}$')):
+    return _people(groups.save, mid, q.group_id, q.label, [x.model_dump() for x in q.spaces], q.profile)
+
+@app.delete('/admin/api/groups/{mid}')
+def admin_group_delete(mid: str = FPath(pattern=r'^[0-9a-f]{32}$')): return _people(groups.delete, mid)
+
+@app.post('/admin/api/groups/apply')
+def admin_groups_apply(): return _people(lambda: (groups._check_admin(), groups.apply_all())[1])
+
 # Linked accounts: one person, one author (an Owner links them; preview first)
 @app.post('/admin/api/users/{oid}/link/preview')
 def admin_user_link_preview(q: LinkIn, oid: str = FPath(pattern=r'^[0-9a-z][0-9a-z-]{0,63}$')): return _people(spaces.link_preview, oid, q.to)
@@ -3556,6 +3607,7 @@ async def people_and_permissions(request: Request, call_next):
     try:
         viewer = await asyncio.to_thread(users.identify, request.headers)
         await asyncio.to_thread(spaces.prepare, viewer)          # outside any transaction: the migration (once) and their personal space
+        groups.maybe_daily()                                       # Entra group mappings applied again once a day (in the background)
     except users.Refused as e:
         permissions.log_refusal(None, method, path, f'{e.reason}: {who}')
         if acting is not None: store.ACTOR.reset(acting)

@@ -994,7 +994,7 @@ Viewer = _namedtuple('Viewer', 'oid email name role full owner', defaults=(False
 VIEWER = contextvars.ContextVar('alice_viewer', default=None)
 SPACE = contextvars.ContextVar('alice_space', default='')     # the space switcher: '' = all my spaces
 AUTHOR_TYPES = ('chat', 'document')                            # private to whoever made them
-SPACE_TYPES = ('record', 'file', 'organisation', 'proposal', 'team', 'team_job', 'pricing_template')
+SPACE_TYPES = ('record', 'file', 'organisation', 'proposal', 'team', 'team_job', 'pricing_template', 'org_fact')
 ITEM_TYPES = AUTHOR_TYPES + SPACE_TYPES
 CLIENT_TAG = {'record': 'memory', 'file': 'file'}              # client_tags.item_type for the types tagged there
 
@@ -1097,7 +1097,9 @@ def stamp(item_type, item_id, oid=None, space=None):
     if item_type in SPACE_TYPES:
         sp = _spaces()
         target = space or (sp.default_for(v) if v is not None else '')
-        if target and not space and item_type in ('record', 'file') and sp._kind(target) == 'shared' \
+        if item_type == 'organisation' and not space and sp.ORG in sp.names():
+            target = sp.ORG          # the organisations directory lives in the Organisation space (CR-4 phase 1)
+        if target and not space and item_type in ('record', 'file') and sp._kind(target) in sp.SHARED_KINDS \
                 and not exists_in_space(item_type, item_id):
             # A memory, decision or knowledge item whose default space is shared (the default capture space, or the person's own
             # choice): it starts in its author's personal space and moves through the sharing gate once Temple has reviewed it.
