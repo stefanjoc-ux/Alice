@@ -140,7 +140,7 @@ t('the job runs to sign-off', j['status'] == 'waiting' and j['pending'][0]['kind
 stop(j['id'])
 pg = cl.get(f'/admin/api/teams/jobs/{j["id"]}/page').json()
 t('a stopped job offers Re-price, Re-measure, Resume and Copy as a new job', pg['status'] == 'stopped'
-  and pg['can'] == {'reprice': True, 'remeasure': True, 'resume': True, 'copy': True, 'add_files': True})
+  and pg['can'] == {'reprice': True, 'remeasure': True, 'resume': True, 'copy': True, 'add_files': True, 'decide_flags': True})
 n = len(CALLS)
 fills0 = len(PT.fills(j['id']))
 r = cl.put(f'/admin/api/teams/jobs/{j["id"]}/template', json={'path': SECOND}, headers=H)
