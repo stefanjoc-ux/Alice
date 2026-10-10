@@ -88,6 +88,7 @@ t('no object ID but Microsoft\'s fixed IDs and Alice\'s own (named above)', not 
 import json, deployment
 shipped = json.load(open(os.path.join(_util.ROOT, 'config', 'deployment.json'), encoding='utf-8'))
 t('the shipped deployment settings name no one', not any(v for k, v in shipped.items() if not k.startswith('_') and k != 'product'))
+for k in ('ALICE_REPO_URL', 'ALICE_OWNER_NAME', 'ALICE_ORGANISATION', 'ALICE_TENANT'): os.environ.pop(k, None)   # the image sets ALICE_REPO_URL at build
 t('without configuration Alice calls the owner "Owner" and the organisation "your organisation"',
   deployment.owner_name() == 'Owner' and deployment.organisation() == 'your organisation' and deployment.repo_url() == '')
 os.environ['ALICE_ORGANISATION'] = 'FICTIONAL Example Ltd'
