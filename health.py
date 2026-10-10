@@ -1,16 +1,16 @@
 """Health Insights (app under Apps, /admin/health): blood results from Thriva report downloads (PDF) and CSVs, turned into
-structured markers, trends and a tracker of decisions and experiments, with a health context that the models Stefan
+structured markers, trends and a tracker of decisions and experiments, with a health context that the models the owner
 allows can read so results can be discussed across models.
 
 INFORMATIONAL ONLY: never a diagnosis, never a medication change. The safety rules are code here, not prompt text:
-- Identifiers (name, date of birth, NHS number, address, postcode, email, phone, order/kit ids, and any names Stefan
+- Identifiers (name, date of birth, NHS number, address, postcode, email, phone, order/kit ids, and any names the owner
   lists) are stripped on upload, before anything is stored or sent to a model. The original file is never kept.
-- Only the providers Stefan allows (Claude and GPT by default; Grok never) may receive health data, and only when asked:
+- Only the providers the owner allows (Claude and GPT by default; Grok never) may receive health data, and only when asked:
   the Health page, Alice's chat tool health_context (offered only to those providers) and the connector tools
   get_health_context / propose_health_note (Claude through the connector only; Copilot and other outside apps never).
   Health data is a separate store: it never appears in memory or knowledge search.
 - Lab values, reference ranges and flags come from the report and are kept as reported; Alice never substitutes generic
-  ranges. Uncertain values wait for Stefan to confirm. Trends compare like units only (or a known conversion).
+  ranges. Uncertain values wait for the owner to confirm. Trends compare like units only (or a known conversion).
 - Every view, upload, edit, deletion and context read is in the activity log (what and when, never the values).
 """
 import csv
@@ -684,10 +684,10 @@ def marker_card(canon):
 # ---------------- the context models read ----------------
 def context(provider, caller='Alice chat', marker='', since=''):
     """What an allowed model may know: confirmed results (latest per marker with range, status and change), notable trends,
-    what Stefan is tracking, and the safety rules. Refused for any provider he has not allowed."""
+    what the owner is tracking, and the safety rules. Refused for any provider they have not allowed."""
     if not allowed(provider):
         _log('health_context_refused', caller, f'{provider} is not allowed health data')
-        raise ValueError(f'Health data is not shared with {provider}. Stefan allows: ' + (', '.join(PROVIDERS[p] for p in settings()['providers']) or 'nobody') + '.')
+        raise ValueError(f'Health data is not shared with {provider}. The owner allows: ' + (', '.join(PROVIDERS[p] for p in settings()['providers']) or 'nobody') + '.')
     t = trends()
     if marker: t = [x for x in t if marker.lower() in x['canonical'].lower() or any(marker.lower() in n.lower() for n in x['original_names'])]
     lines = []
@@ -701,4 +701,4 @@ def context(provider, caller='Alice chat', marker='', since=''):
     _log('health_context_read', caller, f'{provider}: {len(lines)} markers, {len(es)} tracked items')
     return {'rules': SAFETY + ' Explain in plain English; separate the lab value, the lab range, the trend and your interpretation; '
                      'frame diet, supplement, exercise and sleep ideas as things to discuss or track, not treatment.',
-            'results': lines, 'tracking': es, 'checking_note': 'Only results Stefan has confirmed are included.'}
+            'results': lines, 'tracking': es, 'checking_note': 'Only results the owner has confirmed are included.'}

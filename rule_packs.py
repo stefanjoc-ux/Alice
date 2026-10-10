@@ -667,7 +667,7 @@ def evaluate(pack, text, provider='tenant', enabled=None, prov=None):
 
 # ---------------- live: packs applied to Alice's own rules ----------------
 APPLIED_KEY, SERVICES_KEY = 'rule_packs_applied', 'rule_pack_services'
-SERVICE_NAMES = {'openai': 'OpenAI (GPT-6 Luna)', 'claude': 'Anthropic (Claude)', 'grok': 'xAI (Grok)', 'copilot': 'Microsoft 365 Copilot (Tuduma)'}
+SERVICE_NAMES = {'openai': 'OpenAI (GPT-6 Luna)', 'claude': 'Anthropic (Claude)', 'grok': 'xAI (Grok)', 'copilot': 'Microsoft 365 Copilot (your tenant)'}
 SERVICE_DEFAULTS = {'openai': False, 'claude': False, 'grok': False, 'copilot': True}   # inside your tenant / UK?
 SCOPE = ('Applied packs are checked on chat messages before they are saved or sent (identifiers removed, requests '
          'blocked or sent to a person) and on requests Temple sends to a model (blocks and escalations). Their guidance '

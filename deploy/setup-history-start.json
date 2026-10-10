@@ -1,14 +1,14 @@
 [
-  {"id": "2026-10-09-1-backup", "at": "2026-10-09", "step": "backup", "who": "Stefan", "result": "ok",
+  {"id": "2026-10-09-1-backup", "at": "2026-10-09", "step": "backup", "who": "Owner", "result": "ok",
    "params": {"PgBackupDays": "35"},
-   "note": "Backups set up: file share snapshots in vault alice-backup-vault, off-site account alice2zqufdoffsite, resource group lock alice-do-not-delete, PostgreSQL backups kept 35 days. The first off-site copy was taken. Recorded by hand: the setup history did not exist yet."},
-  {"id": "2026-10-09-2-users", "at": "2026-10-09", "step": "users", "who": "Stefan", "result": "ok",
-   "params": {"OwnerObjectId": "f955e821-…", "AdminObjectIds": "e610cc9b-…"},
-   "note": "f955e821-… given Alice.Owner and e610cc9b-… Alice.Admin on the web sign-in app; Assignment required switched on. Recorded by hand."},
-  {"id": "2026-10-09-3-apps", "at": "2026-10-09", "step": "apps", "who": "Stefan", "result": "ok", "params": {},
+   "note": "Backups set up: file share snapshots in vault alice-backup-vault, an off-site storage account, resource group lock alice-do-not-delete, PostgreSQL backups kept 35 days. The first off-site copy was taken. Recorded by hand: the setup history did not exist yet."},
+  {"id": "2026-10-09-2-users", "at": "2026-10-09", "step": "users", "who": "Owner", "result": "ok",
+   "params": {"OwnerObjectId": "(the owner's account)", "AdminObjectIds": "(the admin account)"},
+   "note": "The owner's account given Alice.Owner and the admin account Alice.Admin on the web sign-in app; Assignment required switched on. Recorded by hand."},
+  {"id": "2026-10-09-3-apps", "at": "2026-10-09", "step": "apps", "who": "Owner", "result": "ok", "params": {},
    "note": "The owner setting put live on alice-web, alice-mcp and the backup job. Recorded by hand."},
-  {"id": "2026-10-09-4-users", "at": "2026-10-09", "step": "users", "who": "Stefan", "result": "ok", "params": {"UseAppRoles": "on"},
+  {"id": "2026-10-09-4-users", "at": "2026-10-09", "step": "users", "who": "Owner", "result": "ok", "params": {"UseAppRoles": "on"},
    "note": "App roles switched on in the setup state (put live by the next -Step apps). Recorded by hand."},
-  {"id": "2026-10-09-5-apps", "at": "2026-10-09", "step": "apps", "who": "Stefan", "result": "ok", "params": {},
+  {"id": "2026-10-09-5-apps", "at": "2026-10-09", "step": "apps", "who": "Owner", "result": "ok", "params": {},
    "note": "Entra app roles now decide who gets in. Recorded by hand."}
 ]

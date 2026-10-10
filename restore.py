@@ -1,4 +1,4 @@
-"""Restore Alice from a nightly off-site copy (Stefan, 8 Oct 2026), run as ALICE_ROLE=restore.
+"""Restore Alice from a nightly off-site copy (8 Oct 2026), run as ALICE_ROLE=restore.
 
 It only ever restores into NEW, EMPTY resources: it refuses a target database that already holds tables and a target
 folder that already holds files, so it can never overwrite live data. It reads the copy (database dump, file share

@@ -1,15 +1,15 @@
-"""What digital teams cost (Stefan, 8 Oct 2026).
+"""What digital teams cost (8 Oct 2026).
 
 Every model call made for a team (a member's turn on a job, Talk to the team) is recorded against the team, the member (role),
 the job and the job's version, in `team_costs`, from the same figure usage_meter writes to the Usage ledger and agents adds to
 the agent run (agents.COST_HOOKS), so team totals match Usage and the Agents page. Calls made before tracking began are never
 split or guessed: they are shown as one figure, "before tracking began".
 
-Costs are kept in US dollars (what the providers charge). Pounds are shown only at an exchange rate Stefan sets (setting
+Costs are kept in US dollars (what the providers charge). Pounds are shown only at an exchange rate the user sets (setting
 `usd_gbp_rate`), with the rate and the date it was set beside every figure; without one, figures stay in dollars and say so.
 Alice never fetches or invents a rate. All arithmetic is here, in Decimal.
 
-"Your figures" (optional, off by default, per member): a day rate Stefan enters for the human role and the days a job would take
+"Your figures" (optional, off by default, per member): a day rate the user enters for the human role and the days a job would take
 (setting `team_staff:<team id>`), shown beside the AI cost. Never a market rate from Alice.
 """
 import contextvars
@@ -84,7 +84,7 @@ def _day(iso):
 
 
 def fx():
-    """The exchange rate Stefan set (never fetched or invented): {rate, set_at, set_by, currency, note}."""
+    """The exchange rate the user set (never fetched or invented): {rate, set_at, set_by, currency, note}."""
     try: v = json.loads(_setting('usd_gbp_rate') or 'null')
     except ValueError: v = None
     if isinstance(v, dict) and v.get('rate'):
@@ -301,7 +301,7 @@ def team(tid, now=None):
             'jobs': job_cost, 'staff_on': bool(figs)}
 
 
-# The Members tab's periods (Stefan, 10 Oct 2026): calendar months as well as rolling windows, and everything since tracking began.
+# The Members tab's periods (10 Oct 2026): calendar months as well as rolling windows, and everything since tracking began.
 MEMBER_PERIODS = [('7d', 'Last 7 days'), ('month', 'This month'), ('last_month', 'Last month'), ('12m', 'Last 12 months'), ('all', 'All time')]
 TREND_WEEKS = 12             # the small trend line on each member's card: the last 12 weeks, week by week
 LAST_JOBS = 10               # the member's last jobs, with what each cost, in its editor
@@ -323,7 +323,7 @@ def _in(at, start, end):
 
 
 def members(tid, now=None, base=None):
-    """The Members tab (Stefan, 9 and 10 Oct 2026): for each member, the cost in every period (last 7 days, this month, last month,
+    """The Members tab (9 and 10 Oct 2026): for each member, the cost in every period (last 7 days, this month, last month,
     the last 12 months and all time, i.e. since tracking began), its share of the team total, the jobs it worked on and the average
     per job in each period, the last 12 weeks week by week, and its last 10 jobs with what each cost. From the same team_costs rows
     as team() (the Running cost card), Usage and the Agents page; all arithmetic here, in Decimal. `base` is team()'s result when the

@@ -1,6 +1,6 @@
 """Live check of Alice's external (Entra-signed-in) endpoint, before any Azure hosting.
 
-Uses the Azure CLI as a stand-in for Copilot: it signs you in to the Tuduma tenant, asks Entra for an Alice token,
+Uses the Azure CLI as a stand-in for Copilot: it signs you in to your Microsoft 365 tenant, asks Entra for an Alice token,
 starts the external endpoint on this PC (localhost:8002, nothing exposed), and checks that:
   1. Alice's sign-in details are published (protected-resource metadata),
   2. a request with no token is refused,
@@ -50,7 +50,7 @@ def get_token(cfg):
     args = ('account', 'get-access-token', '--scope', scope, '--tenant', cfg.tenant_id, '--query', 'accessToken', '-o', 'tsv')
     r = az(*args)
     if r.returncode != 0:
-        print('Signing you in to the Tuduma tenant: a browser window opens; pick your Tuduma work account...')
+        print('Signing you in to your Microsoft 365 tenant: a browser window opens; pick your work account...')
         login = az('login', '--tenant', cfg.tenant_id, '--allow-no-subscriptions', '--scope', scope, '--output', 'none')
         if login.returncode != 0:
             print(login.stderr.strip()[-1500:])
@@ -120,7 +120,7 @@ def main():
         check('no token: refused', post(url + '/mcp') == 401)
         check('forged token: refused', post(url + '/mcp', 'eyJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJ4In0.c2ln') == 401)
         status = post(url + '/mcp', token)
-        check('your Tuduma token: accepted', status == 200, f'HTTP {status}')
+        check('your token: accepted', status == 200, f'HTTP {status}')
         if status == 200:
             import asyncio
             from fastmcp import Client
@@ -143,7 +143,7 @@ def main():
         log.close()
 
     ok = all(results)
-    print('\n' + ('ALL CHECKS PASSED. Tuduma sign-in works; next is hosting and the Copilot agent.' if ok else
+    print('\n' + ('ALL CHECKS PASSED. Sign-in works; next is hosting and the Copilot agent.' if ok else
                   'SOME CHECKS FAILED. Refusal reasons are in Console -> Activity; send this output to Claude.'))
     print('The test calls appear on the Agents page as "Azure CLI test".')
     return 0 if ok else 1

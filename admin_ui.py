@@ -1296,11 +1296,12 @@ if(PAGE==='actions'){
    run(async()=>{try{const r=await api('/admin/api/records/'+i.id+'/discussion','POST',{message:msg});show(r.messages)}catch(err){wait.remove();ta.value=msg;throw err}finally{send.disabled=false}})};
   if(keen&&!i.discussion)wrap.classList.add('dec-talk-keen');return wrap}
  // Work items in personal spaces (spaces.sweep_*): Temple lists them, you confirm; each move goes through the sharing check
- function sweepBlock(w){const box=el('div','','sweep');
+ function sweepBlock(w,head){const box=el('div','','sweep');
   const look=btn(w.scanned_at?'Ask Temple to look again':'Ask Temple to look',async()=>{look.disabled=true;$('notice').textContent='Temple is reading your personal space…';try{const x=await api('/admin/api/spaces/sweep/scan','POST',{});$('notice').textContent='Temple found '+x.counts.work+' about the work, '+x.counts.self+' about you, '+x.counts.sensitive+' sensitive and '+x.counts.unsure+' it was not sure about. Nothing has moved.'}finally{look.disabled=false}},!!w.scanned_at);
   const bar=el('div','','sweep-bar');bar.append(look);
   if(w.scanned_at){bar.append(el('span','Last looked '+new Date(w.scanned_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+' · '+w.counts.work+' work · '+w.counts.self+' about you · '+w.counts.sensitive+' sensitive · '+w.counts.unsure+' unsure'+(w.counts.moved?' · '+w.counts.moved+' moved':''),'small muted'))}
-  if(w.items.length&&w.target){bar.append(btn('Move all '+w.items.length+' to '+w.target_name,async()=>{if(!confirm('Move all '+w.items.length+' to '+w.target_name+'? Everyone in that space will see them. Each goes through the sharing check first.'))return;const x=await api('/admin/api/spaces/sweep/move','POST',{all:true});$('notice').textContent=sweepSaid(x)}))}
+  // Move all sits with the list, top right of the card (as Approve all does on the other Actions cards), not in the status line.
+  if(w.items.length&&w.target){const all=btn('Move all '+w.items.length+' to '+w.target_name,async()=>{if(!confirm('Move all '+w.items.length+' to '+w.target_name+'? Everyone in that space will see them. Each goes through the sharing check first.'))return;const x=await api('/admin/api/spaces/sweep/move','POST',{all:true});$('notice').textContent=sweepSaid(x)},true);all.classList.add('act-all');if(head)head.prepend(all);else bar.append(all)}
   if(w.items.length&&!w.target)bar.append(el('span','You have no team space to move them to yet: an Admin sets one on Users and permissions.','small'));
   box.append(bar);
   for(const i of w.items){const row=el('div','','act-row');const txt=el('div','','act-text');txt.append(el('strong',i.title),el('div',i.detail,'small muted'));if(i.reason)txt.append(el('div','Temple: '+i.reason,'small'));
@@ -1319,7 +1320,7 @@ if(PAGE==='actions'){
    if(s.key==='waiting'&&d.auto_on){const go=btn('Approve these automatically',async()=>{const x=await api('/admin/api/auto-approve/backlog','POST',{});$('notice').textContent='Checked '+x.memories+' memories ('+x.checking+' being reviewed by Temple), '+x.drafts+' knowledge drafts, '+x.facts+' organisation facts'+(x.suggestions?', accepted '+x.suggestions+' suggestions':'')+'. Anything that failed a check is held back for you.'});go.classList.remove('secondary');sec.append(go)}
    let list=sec;if(s.info&&s.items.length>6){const det=document.createElement('details');det.append(el('summary','Show '+s.items.length));sec.append(det);list=det}
    if(s.key==='decisions'){for(const i of s.items)sec.append(decisionCard(i));box.append(sec);continue}
-   if(s.key==='sweep'){sec.append(sweepBlock(s.sweep));box.append(sec);continue}
+   if(s.key==='sweep'){sec.append(sweepBlock(s.sweep,hr));box.append(sec);continue}
    for(const i of s.items){const row=el('div','','act-row');const txt=el('div','','act-text');if(i.ref){const rf=el('span',i.ref,'ref');rf.style.marginRight='6px';txt.append(rf)}const tl=el('strong',i.title);
     if(CARD_KEY[i.type]){const ob=el('button','','act-open');ob.type='button';ob.title='Open the full details, and ask Temple';ob.append(tl);const lst=s.items.filter(x=>CARD_KEY[x.type]),ix=lst.indexOf(i);ob.onclick=()=>openItem(lst,ix);txt.append(ob)}else txt.append(tl);
     if(i.verdict){const [l,c]=V[i.verdict]||V.unclear;const bd=el('span',l,'badge '+c);bd.style.marginLeft='8px';txt.append(bd)}if(i.kind==='decision'&&i.type==='proposal'){const db=el('span','Decision','badge v-run');db.style.marginLeft='6px';txt.append(db)}
@@ -2017,7 +2018,7 @@ if(PAGE==='backup'){
    tile(f.last&&f.last.time?at(f.last.time).split(' (')[1].replace(')',''):'–','last file share snapshot'),
    tile(db.earliest_restore?Math.max(0,Math.round((Date.now()-new Date(db.earliest_restore))/86400000))+' days':'–','database restore window'),
    tile(d.lock.on?'On':'Off','resource group lock'));
-  $('bk-note').textContent=!d.configured?'Backups are not set up yet. In Azure Cloud Shell run azure-setup.ps1 -Step backup (see the pull request). On the PC, back up the data folder by copying it while Alice is stopped.':
+  $('bk-note').textContent=!d.configured?(d.platform==='pc'?'This Alice runs on a PC: '+(d.advice||'copy its data folder while Alice is stopped.'):'Backups are not set up yet. In Azure Cloud Shell run azure-setup.ps1 -Step backup.'):
    d.lock.on?'Nothing in Alice\'s resource group can be deleted while the lock ('+d.lock.name+') is on. Lift it deliberately: az lock delete --name '+d.lock.name+' --resource-group <your resource group>, then run -Step backup -NoLock so it is not put back.':'The resource group lock is off.';
   const last=o.last;
   const offState=!o.configured?badge(null,'not set up'):!last?badge(null,'no copy yet'):last.status==='ok'?badge(true,'OK'):last.status==='running'?badge('run','running'):badge(false,'failed');
@@ -2966,7 +2967,7 @@ PAGES['teams'] = teams_ui.TITLE
 SECTIONS['teams'] = teams_ui.SECTION
 SCRIPT += teams_ui.SCRIPT
 
-PERSONAL_PAGES = {'health', 'trading', 'mileage'}      # Stefan's own apps: never on the demo Alice
+PERSONAL_PAGES = {'health', 'trading', 'mileage'}      # The owner's own apps: never on the demo Alice
 NAV_GROUPS = [('', ['home', 'actions']),
               ('Workspace', ['temple', 'assistants', 'teams', 'apps', 'organisations']),
               ('Knowledge', ['memories', 'knowledge', 'documents', 'archive']),
@@ -2998,16 +2999,19 @@ NAV_ICONS = {
  'signins': _I('<rect x="3" y="5" width="18" height="11" rx="2"/><path d="M2 19h20"/><rect x="9.5" y="9" width="5" height="4" rx="1"/><path d="M10.5 9V8a1.5 1.5 0 0 1 3 0v1"/>'),
 }
 # ---- Users and permissions (users.py, permissions.py): people, roles, permission profiles ----
-PAGES['users'] = ('Users and permissions', 'Who can use Alice and what each person may see and do. Adding someone in Entra never shares anything by itself: '
-                  'they start with the default Member profile (Chat and their own saved chats). Until shared Spaces arrive, everyone but an Owner '
-                  'sees only what they created themselves. Health, Trading, Mileage and Backups are always the owner\'s alone.')
+PAGES['users'] = ('Users and permissions', 'Who can use Alice and what each person may do. Entra decides who gets in and their role (Owner, '
+                  'Admin, Member); a profile here sets what they may do in each section. What they see is decided by spaces: everyone reads the '
+                  'Organisation space and, while the rule "Team spaces are open to the organisation" is on, every team space a manager has not '
+                  'closed; each person has a personal space only they see; restricted spaces and spaces tied to a client are members only. Entra '
+                  'groups mapped below add people to spaces (and can set their profile). Adding someone in Entra never puts them in a team space '
+                  'by itself. Health, Trading, Mileage and Backups are always the owners\' alone.')
 SECTIONS['users'] = r'''<section><div class="mem-head"><h2>People</h2><span class="small muted" id="us-mode"></span></div>
 <div id="us-tiles" class="mi-tiles"></div><div class="table-wrap"><table id="us-people" class="mem-table"></table></div>
 <p class="small muted">A person appears here after their first sign-in. Their role is the lower of their Entra role and the role set here; the owner of Alice always has full access.
 Someone with more than one account (for example an everyday account and a tenant admin account): <b>Link</b> them, so they are one author with one set of spaces. Alice never links accounts by itself.</p></section>
 <section id="us-link" hidden aria-labelledby="us-link-title"><div class="mem-head"><h2 id="us-link-title">Link accounts</h2><button type="button" id="us-link-close" class="secondary">Close</button></div>
 <form id="us-link-form" class="us-form"><label>The same person as <select id="us-link-to" required></select></label>
-<label>Why (kept in the activity log) <input id="us-link-note" maxlength="300" required placeholder="For example: both are Stefan's accounts (everyday and tenant admin)"></label>
+<label>Why (kept in the activity log) <input id="us-link-note" maxlength="300" required placeholder="For example: both are the owner's accounts (everyday and tenant admin)"></label>
 <button type="button" id="us-link-check" class="secondary">Show what changes</button></form><div id="us-link-preview" class="small"></div>
 <button type="button" id="us-link-go" hidden>Link and repair</button></section>
 <section id="us-groups" hidden><div class="mem-head"><h2>Entra groups</h2><button type="button" id="us-groups-apply" class="secondary">Apply now</button></div>
@@ -3116,7 +3120,9 @@ if(PAGE==='users'){
    const st=el('td','');const b=el('button',u.status==='active'?'Suspend':'Restore access','secondary');b.type='button';b.disabled=fixed;
    b.onclick=()=>{if(u.status==='active'&&!confirm('Suspend '+(u.name||u.email)+'? They are refused at once, everywhere in Alice.'))return;run(async()=>{try{await api('/admin/api/users/'+u.oid,'PUT',{status:u.status==='active'?'suspended':'active'})}finally{await load()}})};
    st.append(el('span',u.status==='active'?'Active ':'Suspended ','badge '+(u.status==='active'?'v-ok':'v-bad')),b);
-   if(u.linked_to){const to=D.users.find(x=>x.oid===u.linked_to);who.append(el('div','Linked to '+(to?(to.name||to.email):u.linked_to)+': one person','small'))}
+   {const nm=x=>x.name&&x.email?x.name+' ('+x.email+')':(x.name||x.email||x.oid);   // both rows of a linked pair say so, each naming the other
+    const others=u.linked_to?[D.users.find(x=>x.oid===u.linked_to)||{oid:u.linked_to}]:D.users.filter(x=>x.linked_to===u.oid);
+    if(others.length)who.append(el('div','Linked to '+others.map(nm).join(', ')+': one person','small'))}
    if(D.can_link&&D.users.length>1){const lk=el('button',u.linked_to?'Unlink':'Link…','secondary mini');lk.type='button';
     lk.onclick=()=>{if(u.linked_to){if(!confirm('Unlink '+(u.email||u.oid)+'? It becomes its own author again; nothing it wrote moves.'))return;run(async()=>{await api('/admin/api/users/'+u.oid+'/link','DELETE');await load()})}else openLink(u)};who.append(lk)}
    if(D.handover&&u.oid in D.handover){const ho=el('button','Hand over ('+D.handover[u.oid]+')','secondary');ho.type='button';ho.title='Their personal space stays private until you hand items over';ho.onclick=()=>handOver(u.oid);st.append(' ',ho)}
@@ -3423,13 +3429,26 @@ if(PAGE==='spaces'){
     const b=el('button','Add to this space');b.type='button';b.onclick=()=>run(async()=>{if(!confirm('Add them to '+x.name+'? They will see everything in it.'))return;await api('/admin/api/spaces/'+x.id+'/members','PUT',{member:ps.value,role:rs.value});$('notice').textContent='Added.';await load()});
     f.append(ps,rs,b);c.append(f)}
    list.append(c)}
-  orgMove(d).catch(()=>{});
+  orgMove(d).catch(()=>{});linkedRepair().catch(()=>{});
   const mg=$('sp-migration');mg.replaceChildren();if(d.migration&&d.migration.counts){mg.append(el('p','When spaces arrived, Alice placed your items (nothing was copied or deleted): '+Object.entries(d.migration.counts).map(([k,v])=>v+' '+k.replace(':',' → ')).join(', ')+'.','small muted'))}}
+ // Your other accounts' personal spaces (spaces.linked_repair_*): what was left there after linking, moved or archived as a
+ // duplicate only when you confirm, with a reason. Shown only when there is something left.
+ async function linkedRepair(){const box=$('sp-linked');const p=await api('/admin/api/spaces/linked');box.hidden=!p.items.length;if(!p.items.length)return;
+  box.replaceChildren(el('h2','Left in your other accounts\u2019 personal spaces'),el('p',p.items.length+' item'+(p.items.length===1?'':'s')+' made under an account linked to you sit in '+p.spaces.map(s=>s.name).join(', ')+'. Move each into '+p.to_name+' (it stays private), or archive it when the same item was recorded again (its history is kept). Nothing changes until you confirm.','small muted'));
+  const pick={};for(const i of p.items){const row=el('div','','act-row');const txt=el('div','','act-text');const h=el('div','');if(i.ref){const rf=el('span',i.ref,'ref');rf.style.marginRight='6px';h.append(rf)}h.append(el('strong',i.title));txt.append(h,el('div',i.type_label+' · '+i.space_name+(i.preview?' · '+i.preview:''),'small muted'));
+   if(i.duplicate_of)txt.append(el('div','Recorded again as '+(i.duplicate_of.ref?i.duplicate_of.ref+' ':'')+'“'+i.duplicate_of.title+'”','small'));
+   const sel=document.createElement('select');sel.setAttribute('aria-label','What to do with '+i.title);for(const [v,t] of [['move','Move into '+p.to_name],['archive','Archive (a duplicate)'],['leave','Leave it']]){const o=document.createElement('option');o.value=v;o.textContent=t;sel.append(o)}sel.value=i.suggested;pick[i.id]=sel;
+   row.append(txt,sel);box.append(row)}
+  const why=document.createElement('input');why.maxLength=300;why.placeholder='Why (kept in the activity log)';why.setAttribute('aria-label','Reason');
+  const go=el('button','Do this');go.type='button';go.onclick=()=>run(async()=>{const actions={};for(const [k,s] of Object.entries(pick))actions[k]=s.value;
+   const x=await api('/admin/api/spaces/linked','POST',{actions,note:why.value});$('notice').textContent=x.moved+' moved, '+x.archived+' archived as duplicates'+(x.not_done.length?'; not done: '+x.not_done.map(n=>(n.title||n.id)+' ('+n.why+')').slice(0,3).join(' · '):'')+'.';await load()});
+  const bar=el('div','','row');bar.append(why,go);box.append(bar)}
  // The move into the Organisation space (spaces.org_migration_*): preview with counts first, an Owner confirms
  async function orgMove(d){const box=$('sp-org');box.hidden=!d.can_move_org;if(!d.can_move_org)return;box.replaceChildren(el('h2','The Organisation space'));
   box.append(el('p','Everyone with an Alice role reads the Organisation space. Organisations and their opportunities, general knowledge and decisions belong there; facts from internal sources (pricing, relationship notes) stay in the space they came from. '+(d.open_rule?'Team spaces are open to everyone in the organisation unless closed (rule on the Rules page).':'The rule "Team spaces are open to the organisation" is off: people read only their own spaces.'),'small muted'));
   const st=d.org_move||{};if(st.state)box.append(el('p',st.state==='running'?'Moving: '+st.done+' of '+st.total+'…':'Done '+new Date(st.finished_at||st.started_at).toLocaleString('en-GB')+': '+st.moved+' moved, '+st.held+' held by the sharing check, '+st.waiting+' waiting for Temple, '+st.not_moved+' not moved.','small'));
   const pv=el('button','Preview the move','secondary');pv.type='button';box.append(pv);const out=el('div','','sp-org-plan');box.append(out);
+  if(location.hash==='#organisation'&&!orgMove.opened){orgMove.opened=true;setTimeout(()=>{box.scrollIntoView({block:'start'});pv.click()},50)}
   pv.onclick=()=>run(async()=>{const p=await api('/admin/api/spaces/organisation/move');out.replaceChildren();
    out.append(el('p','From '+p.from_name+' into '+p.to_name+': '+p.counts.organisations+' organisations, '+p.counts.knowledge+' general knowledge items, '+p.counts.decisions+' decisions. Each goes through the sharing check; nothing is deleted.'));
    out.append(el('p','Staying in '+p.from_name+': '+Object.entries(p.stays).map(([k,v])=>v+' '+k).join(', ')+'.'+(p.open?' '+p.from_name+' is open to everyone in the organisation: close it on its card if it should be members only.':''),'small'));
@@ -3446,10 +3465,10 @@ if(PAGE==='spaces'){
 PAGES['spaces'] = ('Spaces', 'Where your memories, decisions, knowledge, organisations, proposals and digital teams live. Your personal space is yours alone; '
                    'a shared space shows everything in it to its members. Sharing is always deliberate: Alice checks an item for personal details '
                    'before it enters a shared space, and adding someone to Alice never adds them to a space.')
-SECTIONS['spaces'] = r'''<section id="sp-approvals-box" hidden><div class="mem-head"><h2>Waiting for your approval</h2><span class="small muted">New items in the spaces you manage that the automatic checks held: approve or reject</span></div><div id="sp-approvals"></div></section>
+SECTIONS['spaces'] = r'''<section id="sp-linked" hidden></section><section id="sp-org" hidden></section><section id="sp-approvals-box" hidden><div class="mem-head"><h2>Waiting for your approval</h2><span class="small muted">New items in the spaces you manage that the automatic checks held: approve or reject</span></div><div id="sp-approvals"></div></section>
 <section><div class="mem-head"><h2>Waiting for you</h2><span class="small muted">Items the sharing check held: share anyway or keep personal</span></div><div id="sp-waiting"></div></section>
 <section><div class="mem-head"><h2>Your spaces</h2><label class="small">New items go to <select id="sp-default"></select></label></div><div id="sp-list" class="sp-grid"></div><div id="sp-migration"></div></section>
-<section id="sp-org" hidden></section>
+
 <section id="sp-new" hidden><div class="mem-head"><h2>New shared space</h2></div><form id="sp-create" class="sp-form"><label>Kind <select id="sp-kind"></select></label><label>Name <input id="sp-name" maxlength="80" required></label>
 <label>What it is for (required for a restricted space) <input id="sp-desc" maxlength="300"></label><label>Tied to a client (optional) <input id="sp-client" maxlength="60" placeholder="Only this space's members then see that client's material"></label>
 <button type="submit">Create space</button></form></section>'''

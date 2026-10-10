@@ -1,4 +1,4 @@
-"""The pull request check: a change to Alice's code carries its line in CHANGELOG.md (Stefan, 9 Oct 2026).
+"""The pull request check: a change to Alice's code carries its line in CHANGELOG.md (9 Oct 2026).
 
     python3 deploy/changelog_check.py --base origin/main
 
@@ -44,7 +44,7 @@ def decide(files, changelog_text=None):
     if code and not touched:
         shown = ', '.join(code[:8]) + (f' and {len(code) - 8} more' if len(code) > 8 else '')
         return False, ('This pull request changes code (' + shown + ') but not CHANGELOG.md. Add one line under today\'s date, '
-                       'e.g. "- #<pull request number> What changed for Stefan. You need to: … (only when there is a manual step)". '
+                       'e.g. "- #<pull request number> What changed, for the owner. You need to: … (only when there is a manual step)". '
                        'Documentation-only and test-only changes do not need one.')
     if not files: return True, 'No changed files.'
     if code: return True, f'Code changed ({len(code)} file(s)) and CHANGELOG.md has its entry.'

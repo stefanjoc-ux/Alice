@@ -1,4 +1,4 @@
-"""Information cards for the items waiting on Actions (Stefan, 6 Oct 2026: "to approve and reject with this limited data would be
+"""Information cards for the items waiting on Actions (the owner, 6 Oct 2026: "to approve and reject with this limited data would be
 hard"): a memory or decision, a knowledge draft, an organisation fact and Temple's category and tag changes each open as a standard
 information card (see CLAUDE.md, Information cards) with the full content, where it came from, why it waits, Temple's review and the
 items it was compared with, plus Discuss with Temple (`temple_discuss`, keyed by `key()`) while it still waits.

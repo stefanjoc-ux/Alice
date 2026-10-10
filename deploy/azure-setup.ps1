@@ -1,6 +1,6 @@
 <#
-Alice on Azure: build everything in the Tuduma subscription, step by step. Safe to run again: each step picks up
-where things are. Run from the repo folder (D:\AISubstrate) in PowerShell, after `az login` to the Tuduma tenant.
+Alice on Azure: build everything in your Azure subscription, step by step. Safe to run again: each step picks up
+where things are. Run from the repo folder (D:\AISubstrate) in PowerShell, after `az login` to your Microsoft 365 tenant.
 
   .\deploy\azure-setup.ps1 -SubscriptionId <id> -ExtAppId <Alice API app id> -ExtCallers "<copilot app id>=Microsoft Copilot:copilot"
 
@@ -43,7 +43,8 @@ Steps (all by default, or one with -Step):
              -Step localmodel -LocalModel off      Alice stops using it, and it is scaled to zero (no charge while idle)
   users    (run on its own) people and roles: adds the app roles Alice.Owner, Alice.Admin and Alice.Member to the "Alice web
            sign-in" app registration (and the "Alice connector sign-in" one if it exists), sets "Assignment required" on the web
-           sign-in's enterprise application, and assigns the roles. ENTRA DECIDES THE OWNER: anyone with Alice.Owner is an owner
+           sign-in's enterprise application, and assigns the roles on BOTH apps (the connector's sign-in too, so the owner's
+           Claude and ChatGPT calls run as the owner, not as whichever account happened to be assigned). ENTRA DECIDES THE OWNER: anyone with Alice.Owner is an owner
            of Alice (full access, including Health, Trading, Mileage and Backups). This step assigns Alice.Owner to the owner
            (ownerObjectId, below) and Alice.Admin to the admins (-AdminObjectIds, remembered; you, if you are not the owner, and a
            previous owner) and takes Alice.Owner away from those admins, never from the owner, so there is always an Owner. Other
@@ -86,9 +87,11 @@ param(
   [string]$ExtCallers = '',
   [string]$ExtAllowedUsers = '',
   [string]$GitHubRepo = '',
-  [string]$AlsoAllow = '',      # other accounts allowed to sign in, comma separated (e.g. stefan@yourdomain); remembered
-  [string]$CustomDomain = '',
-  [string]$GitHubSubject = '',  # the exact OIDC subject GitHub presents, if it uses owner and repo IDs (shown in a failed deploy log)   # e.g. alice.northants.it, after binding it once with a managed certificate; remembered
+  [string]$AlsoAllow = '',      # other accounts allowed to sign in, comma separated (e.g. someone@example.org); remembered
+  [string]$CustomDomain = '',   # e.g. alice.example.org, after binding it once with a managed certificate; remembered
+  [string]$GitHubSubject = '',  # the exact OIDC subject GitHub presents, if it uses owner and repo IDs (shown in a failed deploy log)
+  [string]$OwnerName = '',      # what Alice calls the owner when no one is signed in (ALICE_OWNER_NAME; default: what alice-web has, else Owner); remembered
+  [string]$Organisation = '',   # your organisation's name, used in Alice's wording (ALICE_ORGANISATION); remembered
   [string]$CopilotAudience = '',      # Application ID URI(s) from the Developer Portal Entra SSO registration(s), comma separated
   [string]$CopilotAuthId = '',        # its auth config ID (live Alice)
   [string]$CopilotDemoAudience = '',
@@ -163,7 +166,7 @@ function Save-State($s) {
   if ($fresh._azure) { Set-Prop $s '_azure' $fresh._azure }
 }
 function Record-Step($result, $err) {
-  # The setup history (Stefan, 9 Oct 2026): one line per step that changes Azure (who, when, step, settings, result), kept in the
+  # The setup history (9 Oct 2026): one line per step that changes Azure (who, when, step, settings, result), kept in the
   # setup state in Azure and copied to the file share for Admin › What's new. azure_state.py records only the settings it knows
   # by name and never a value that looks like a key or password. Best effort: it never changes the step's own outcome.
   $a = @('history', '--resource-group', $ResourceGroup, '--file', $StateFile, '--who', "$Me", '--who-name', "$MeName", '--step', $Step, '--result', $result)
@@ -227,6 +230,21 @@ function Resolve-User($u) {
   if (-not $id) { throw "No account '$u' in tenant $Tenant (give its object ID, or its sign-in name user@domain). Nothing was changed." }
   return "$id".Trim().ToLower()
 }
+# Names live in configuration, never in the code (decision D-0052): the owner's name and the organisation are parameters, remembered in
+# the setup state; an existing deployment keeps what alice-web already has.
+function Deployment-Names {
+  foreach ($p in @(@('ownerName', $OwnerName, 'ALICE_OWNER_NAME'), @('organisation', $Organisation, 'ALICE_ORGANISATION'))) {
+    if ($p[1]) { Set-Prop $State $p[0] $p[1].Trim() }
+    elseif (-not $State.($p[0])) {
+      $cur = AzTry containerapp show -g $ResourceGroup -n alice-web --query "properties.template.containers[0].env[?name=='$($p[2])'].value | [0]" -o tsv
+      if ("$cur".Trim()) { Set-Prop $State $p[0] "$cur".Trim() }
+    }
+  }
+  $v = @{}
+  if ($State.ownerName) { $v['ownerName'] = "$($State.ownerName)" }
+  if ($State.organisation) { $v['organisation'] = "$($State.organisation)" }
+  return $v
+}
 function Owner { return "$($State.ownerObjectId)".Trim().ToLower() }
 function Admins { return @($State.adminObjectIds | Where-Object { $_ } | ForEach-Object { "$_".ToLower() } | Where-Object { $_ -ne (Owner) } | Select-Object -Unique) }
 function Add-Admin($oid) {
@@ -278,6 +296,7 @@ function Deploy($stage, $extra) {
   if ($State.pgGeoBackup) { $values['pgGeoRedundantBackup'] = $true }
   if ($State.databaseHost) { $values['databaseHost'] = "$($State.databaseHost)" }
   if ($State.useAppRoles) { $values['useAppRoles'] = $true }     # -Step users -UseAppRoles on: kept by every later step
+  $names = Deployment-Names; foreach ($k in $names.Keys) { $values[$k] = $names[$k] }
   # Temple's local model (-Step localmodel): kept by every later step; switched off = parked at zero replicas
   if ($State.localModel) { $values['localModel'] = $true }
   elseif ($State.localModelParked) { $values['localModelParked'] = $true }
@@ -518,29 +537,45 @@ if (Want 'users') {
   Add-Admin $Me
   Save-State $State
   if (-not (Owner)) { throw 'No owner of Alice set: give -OwnerObjectId. Nothing was assigned.' }
-  $assignedUrl = "https://graph.microsoft.com/v1.0/servicePrincipals/$sp/appRoleAssignedTo"
-  function Assignments { return @((AzCli rest --method GET --url $assignedUrl -o json | ConvertFrom-Json).value) }
-  function Assign($o, $role, $label) {
-    if (@(Assignments | Where-Object { $_.principalId -eq $o -and $_.appRoleId -eq $role.id }).Count) { Write-Host "Already $($role.value): $o ($label)"; return }
-    $tmp = New-TemporaryFile
-    try {
-      [IO.File]::WriteAllText($tmp, (@{ principalId = $o; resourceId = $sp; appRoleId = $role.id } | ConvertTo-Json -Compress))
-      Retry "Assigning $o $($role.value)" { AzCli rest --method POST --url $assignedUrl --headers 'Content-Type=application/json' --body "@$tmp" --output none | Out-Null }
-    } finally { Remove-Item $tmp -ErrorAction SilentlyContinue }
-    Write-Host "Assigned $($role.value): $o ($label)"
-  }
-  Assign (Owner) $roles[0] 'the owner of Alice'
-  if (-not @(Assignments | Where-Object { $_.principalId -eq (Owner) -and $_.appRoleId -eq $roles[0].id }).Count) { throw 'The owner does not hold Alice.Owner yet: nothing else was changed. Run -Step users again in a minute.' }
-  foreach ($o in (Admins)) {
-    Assign $o $roles[1] 'admin'
-    foreach ($x in @(Assignments | Where-Object { $_.principalId -eq $o -and $_.appRoleId -eq $roles[0].id })) {
-      Retry "Taking Alice.Owner from $o" { AzCli rest --method DELETE --url "$assignedUrl/$($x.id)" --output none | Out-Null }
-      Write-Host "Alice.Owner taken away from $o (an admin, not an owner)."
+  # The same assignments on every app a person signs in to Alice through: the web sign-in and, when it exists, the connector
+  # sign-in (Claude and ChatGPT). Lesson (10 Oct 2026): the connector app had only the admin account assigned, so the owner's
+  # connector calls signed in as the admin account. Each app has its own role IDs (an existing role keeps its own).
+  function Assign-People($appId, $spId, $label) {
+    $ids = @{}
+    foreach ($r in $roles) {
+      $ids[$r.value] = "$(AzCli ad app show --id $appId --query "appRoles[?value=='$($r.value)'].id | [0]" -o tsv)".Trim()
+      if (-not $ids[$r.value]) { throw "$label has no $($r.value) role after the update. Nothing was assigned there." }
     }
+    $assignedUrl = "https://graph.microsoft.com/v1.0/servicePrincipals/$spId/appRoleAssignedTo"
+    function Assignments { return @((AzCli rest --method GET --url $assignedUrl -o json | ConvertFrom-Json).value) }
+    function Assign($o, $role, $why) {
+      if (@(Assignments | Where-Object { $_.principalId -eq $o -and $_.appRoleId -eq $ids[$role] }).Count) { Write-Host "$label`: already $role`: $o ($why)"; return }
+      $tmp = New-TemporaryFile
+      try {
+        [IO.File]::WriteAllText($tmp, (@{ principalId = $o; resourceId = $spId; appRoleId = $ids[$role] } | ConvertTo-Json -Compress))
+        Retry "Assigning $o $role on $label" { AzCli rest --method POST --url $assignedUrl --headers 'Content-Type=application/json' --body "@$tmp" --output none | Out-Null }
+      } finally { Remove-Item $tmp -ErrorAction SilentlyContinue }
+      Write-Host "$label`: assigned $role`: $o ($why)"
+    }
+    Assign (Owner) 'Alice.Owner' 'the owner of Alice'
+    if (-not @(Assignments | Where-Object { $_.principalId -eq (Owner) -and $_.appRoleId -eq $ids['Alice.Owner'] }).Count) { throw "The owner does not hold Alice.Owner on $label yet: nothing else was changed there. Run -Step users again in a minute." }
+    foreach ($o in (Admins)) {
+      Assign $o 'Alice.Admin' 'admin'
+      foreach ($x in @(Assignments | Where-Object { $_.principalId -eq $o -and $_.appRoleId -eq $ids['Alice.Owner'] })) {
+        Retry "Taking Alice.Owner from $o on $label" { AzCli rest --method DELETE --url "$assignedUrl/$($x.id)" --output none | Out-Null }
+        Write-Host "$label`: Alice.Owner taken away from $o (an admin, not an owner)."
+      }
+    }
+    foreach ($o in (Sign-In-Others @())) { if ((Admins) -notcontains $o) { Assign $o 'Alice.Member' 'allowed to sign in: raise it in Entra if needed' } }
+    $others = @(Assignments | Where-Object { $_.appRoleId -eq $ids['Alice.Owner'] -and $_.principalId -ne (Owner) } | ForEach-Object { $_.principalId })
+    if ($others) { Write-Host "$label`: also owners, assigned in Entra (anyone with Alice.Owner is an owner of Alice): $($others -join ', ')" -ForegroundColor Yellow }
   }
-  foreach ($o in (Sign-In-Others @())) { if ((Admins) -notcontains $o) { Assign $o $roles[2] 'allowed to sign in: raise it in Entra if needed' } }
-  $others = @(Assignments | Where-Object { $_.appRoleId -eq $roles[0].id -and $_.principalId -ne (Owner) } | ForEach-Object { $_.principalId })
-  if ($others) { Write-Host "Also owners, assigned in Entra (anyone with Alice.Owner is an owner of Alice): $($others -join ', ')" -ForegroundColor Yellow }
+  Assign-People $State.webAuthClientId $sp 'Alice web sign-in'
+  if ($State.connectorClientId) {
+    $csp = AzTry ad sp show --id $State.connectorClientId --query id -o tsv
+    if (-not $csp) { $csp = Retry 'Creating the connector sign-in service principal' { AzCli ad sp create --id $State.connectorClientId --query id -o tsv } }
+    Assign-People $State.connectorClientId $csp 'Alice connector sign-in'
+  }
   # Assignment required on the web sign-in's enterprise application: Entra itself refuses anyone without a role.
   Retry 'Setting Assignment required' { AzCli ad sp update --id $State.webAuthClientId --set appRoleAssignmentRequired=true | Out-Null }
   Write-Host 'Alice web sign-in: Assignment required (Entra refuses anyone without an Alice role).'
@@ -609,6 +644,7 @@ function Deploy-Demo {
   $values = @{ image = (Image-Ref); pgAdminPassword = (Kv-Get $State.keyVault 'pg-admin-password'); ownerObjectId = (Owner); location = $Location
                allowedUserObjectIds = (Sign-In-Others @()); webAuthClientId = $State.webAuthClientId; keyVaultSecretNames = (Key-Names)
                extAppId = $State.extAppId; extAllowedUsers = $users; extCallers = $State.extCallers; extAudiences = (Audiences) }
+  $names = Deployment-Names; foreach ($k in $names.Keys) { $values[$k] = $names[$k] }
   $doc = @{ '$schema' = 'https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#'; contentVersion = '1.0.0.0'; parameters = @{} }
   foreach ($k in $values.Keys) { $doc.parameters[$k] = @{ value = $values[$k] } }
   $pfile = New-TemporaryFile
@@ -883,7 +919,7 @@ if (Want 'github') {
   $sp = AzTry ad sp show --id $app --query id -o tsv
   if (-not $sp) { $sp = Retry 'Creating the GitHub service principal' { AzCli ad sp create --id $app --query id -o tsv } }
   # The deploy job runs in the "production" environment, and GitHub names the repo by owner and repo ID as well as name,
-  # e.g. repo:stefanjoc-ux@336622755/Alice@1403454494:environment:production (the deploy log shows the exact subject).
+  # e.g. repo:<owner>@<owner id>/<repo>@<repo id>:environment:production (the deploy log shows the exact subject).
   $subjects = @(@('github-main', "repo:${GitHubRepo}:ref:refs/heads/main"), @('github-production', "repo:${GitHubRepo}:environment:production"))
   if ($GitHubSubject) { $subjects += ,@('github-production-ids', $GitHubSubject) }
   $existing = @(AzTry ad app federated-credential list --id $app --query '[].subject' -o tsv)

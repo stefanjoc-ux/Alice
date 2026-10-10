@@ -1,4 +1,4 @@
-"""Approval and library management (Stefan's decisions D-0042, D-0044 and D-0045, 10 Oct 2026).
+"""Approval and library management (the owner's decisions D-0042, D-0044 and D-0045, 10 Oct 2026).
 
 The rule "Approval and library management" (id approval_required, Memory governance, Core) on the Rules page replaced "Human
 approval". Its settings, never code, decide:

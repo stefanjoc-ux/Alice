@@ -140,9 +140,11 @@ os.environ.pop('ALICE_TRUST_EASYAUTH', None)
 
 # which release is running, at the bottom of the Console menu
 from ui_theme import version_info
-vi = version_info({'ALICE_VERSION': '5c49135', 'ALICE_BUILT': '2026-10-04T15:40:00Z', 'CONTAINER_APP_REVISION': 'alice-web--r5c49135'})
-t('version: the release code, when it was built, the running revision and a link to the change',
-  vi['version'] == '5c49135' and vi['revision'] == 'alice-web--r5c49135' and vi['link'] == 'https://github.com/stefanjoc-ux/Alice/commit/5c49135')
+vi = version_info({'ALICE_VERSION': '5c49135', 'ALICE_BUILT': '2026-10-04T15:40:00Z', 'CONTAINER_APP_REVISION': 'alice-web--r5c49135',
+                   'ALICE_REPO_URL': 'https://github.com/example-org/Alice'})
+t('version: the release code, when it was built, the running revision and a link to the change (the repository is a setting, D-0052)',
+  vi['version'] == '5c49135' and vi['revision'] == 'alice-web--r5c49135' and vi['link'] == 'https://github.com/example-org/Alice/commit/5c49135')
+t('version: no repository configured, no link', version_info({'ALICE_VERSION': '5c49135'})['link'] == '')
 t('version: on the PC it says local, with no link', version_info({}) == {'version': 'local', 'built': '', 'revision': '', 'link': ''})
 t('version: anything odd is not shown', version_info({'ALICE_VERSION': '<script>'})['version'] == 'local')
 h = cl.get('/admin/memories').text

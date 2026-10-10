@@ -1,4 +1,4 @@
-"""Handing over a departing person's work (Stefan, 9 Oct 2026; Users and permissions › Hand over).
+"""Handing over a departing person's work (9 Oct 2026; Users and permissions › Hand over).
 
 When someone is suspended in Alice, or loses their Alice role in Entra, their personal space stays private and untouched.
 An Owner (the Owner role) may hand over what is in it:

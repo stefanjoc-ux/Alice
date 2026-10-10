@@ -1,4 +1,4 @@
-"""The Start a job screen (Stefan, 8 Oct 2026; he approved the mock-up): what the page needs, what each file is before it is added,
+"""The Start a job screen (8 Oct 2026; mock-up approved): what the page needs, what each file is before it is added,
 the "Ready to start" checklist worked out from the form, and the typical run time and AI cost of this team's past jobs (never
 invented: hidden when there are none). Nothing here stores anything; starting the job is teams.start_job, with its own checks."""
 import base64
@@ -152,7 +152,7 @@ def _looks_like_template(raw, name, m):
 
 
 def guess(name, text, info=None):
-    """Alice's guess at a file's role, from its name and contents; Stefan can change it."""
+    """Alice's guess at a file's role, from its name and contents; the user can change it."""
     n = (name or '').lower()
     if info and (info.get('template') or {}).get('looks_like'): return 'template'
     if Path(n).suffix in ('.png', '.jpg', '.jpeg', '.webp'): return 'drawing'      # an image: read visually as a drawing

@@ -1,7 +1,7 @@
-"""What changed in Alice (Stefan, 9 Oct 2026): CHANGELOG.md, read at each deploy.
+"""What changed in Alice (9 Oct 2026): CHANGELOG.md, read at each deploy.
 
 - CHANGELOG.md at the repository root: a `## YYYY-MM-DD` heading per day, newest first, and one line per pull request,
-  `- #<number> <what changed for Stefan>`, with "You need to: …" at the end when there is a manual step. `parse()` reads it
+  `- #<number> <what changed, for the owner>`, with "You need to: …" at the end when there is a manual step. `parse()` reads it
   and lists anything malformed; deploy/changelog_check.py (the pull request check) uses the same parser.
 - At start-up of the web app (`record_release()`, once per process, outside any transaction) Alice imports the entries
   (`changelog_entries`, one row per pull request, so a restart or a second process never duplicates one) and records the
@@ -9,8 +9,13 @@
   once it serves its first request through the public address rather than its own revision address, when it went live,
   `note_live()`). The process that records a new release also writes ONE knowledge item for it in the category
   "Alice changes" (general, in the work space), listing the entries new in that release, through knowledge.create (its
-  checks) and then the same approval call automatic approval uses (Stefan's say, 9 Oct 2026: approved automatically,
-  logged auto_approved). A refused item is not stored; the reason is kept on the release. On the PC (release 'local') and
+  checks) and then the same approval call automatic approval uses (the owner's decision, 9 Oct 2026: approved automatically,
+  logged auto_approved). A refused item is not stored; the reason is kept on the release. Each item is titled
+  "Alice changes: release <commit> (#41, #42), <date>" and names its pull requests first, so it is found by the category's name
+  and by its pull request numbers (search is literal: until 10 Oct 2026 items were titled "Alice release <commit>: 1 change"
+  and a search for "Alice changes" found only the first one). A release whose item was never written (the process stopped
+  part-way) is written at the next start, and items in the old form are rewritten once in the new one, the old item superseded
+  and linked to it (`backfill()`). On the PC (release 'local') and
   on the demo Alice (its database holds only the fictional team, and its loader refuses a database with other knowledge)
   entries are imported but no knowledge item is written.
 - The setup steps run in Azure (`setup_steps()`): the history that deploy/azure_state.py appends to the setup state and
@@ -32,7 +37,7 @@ SETUP_START = os.path.join(ROOT, 'deploy', 'setup-history-start.json')
 CATEGORY = 'Alice changes'
 CATEGORY_NOTE = "What changed in Alice: one item per release, from CHANGELOG.md. Written automatically at each deploy."
 NEED = 'You need to:'
-REPO = 'https://github.com/stefanjoc-ux/Alice'
+ITEM_PREFIX = 'Alice changes: release'
 _DAY = re.compile(r'^##\s+(\d{4}-\d{2}-\d{2})\s*$')
 _ENTRY = re.compile(r'^- #(\d{1,6})\s+(\S.*)$')
 _SETUP_FIELDS = ('id', 'at', 'step', 'who', 'params', 'result', 'error', 'from', 'note')
@@ -138,13 +143,28 @@ def record_release(path=FILE, env=None):
     import demo_instance
     if claimed and new and version != 'local' and not demo_instance.ON:     # the demo Alice holds only its fictional team's material
         out['knowledge'] = _knowledge_item(version, info, new)
+    if version != 'local' and not demo_instance.ON:
+        try: out['backfilled'] = backfill()
+        except Exception as e: out['backfilled'] = {'error': str(e)[:200]}
     return out
 
 
+def _prs(new):
+    return ', '.join(f"#{e['pr']}" for e in sorted(new, key=lambda e: e['pr']))
+
+
+def _title(version, new):
+    return f"{ITEM_PREFIX} {version} ({_prs(new)}), {_long(max(e['date'] for e in new))}"
+
+
 def _item_text(version, info, new):
-    lines = [f'Release {version} of Alice' + (f', built {info["built"][:10]}' if info.get('built') else '') + '.',
-             f'Commit: {REPO}/commit/{version}' if re.fullmatch(r'[0-9a-f]{7,40}', version) else '', '',
-             'What changed in this release (from CHANGELOG.md, newest first):']
+    import deployment
+    repo = deployment.repo_url()
+    n = len(new)
+    lines = [f'Alice changes: the release notes for release {version} of Alice' + (f', built {info["built"][:10]}' if info.get('built') else '') + '.',
+             f'Pull requests in this release ({n}): {_prs(new)}.',
+             f'Commit: {repo}/commit/{version}' if repo and re.fullmatch(r'[0-9a-f]{7,40}', version) else '', '',
+             'What each pull request did (from CHANGELOG.md, newest first):']
     day = ''
     for e in sorted(new, key=lambda e: (e['date'], e['pr']), reverse=True):
         if e['date'] != day:
@@ -157,7 +177,7 @@ def _item_text(version, info, new):
 def _knowledge_item(version, info, new):
     """One knowledge item for the release, through the normal knowledge checks, approved automatically. Returns its id, or ''."""
     import substrate_store as store, knowledge, autoapprove
-    title = f'Alice release {version}: ' + (f'{len(new)} changes' if len(new) != 1 else '1 change') + f' ({_long(max(e["date"] for e in new))})'
+    title = _title(version, new)
     note = ''
     try:
         _category()
@@ -176,6 +196,44 @@ def _knowledge_item(version, info, new):
         c.execute('UPDATE releases SET knowledge_id=?,note=? WHERE version=?', (fid, note[:500], version))
         if note: store.audit(c, 'release_notes_refused', version, 'human_control', note[:500])
     return fid
+
+
+def backfill():
+    """Once per release, at start-up: a release with change log entries whose item was never written (the process stopped part-way,
+    so it was never retried) gets its item now; an item in the old form ("Alice release <commit>: 1 change", not found by a search for
+    "Alice changes" and not naming its pull requests) is rewritten in the new form and the old one superseded, kept and linked to it.
+    A release whose notes were refused by the knowledge checks stays as it is (the reason is on the release). Returns counts."""
+    import substrate_store as store, knowledge
+    _ready()
+    with store.db() as c:
+        rels = [dict(r) for r in c.execute("SELECT version,built,knowledge_id,note FROM releases WHERE version<>'local' ORDER BY started_at")]
+        ents = {}
+        for r in c.execute('SELECT pr,day,text,action,release FROM changelog_entries'):
+            ents.setdefault(r['release'], []).append({'pr': r['pr'], 'date': r['day'], 'text': r['text'], 'action': r['action']})
+    done = {'written': 0, 'rewritten': 0}
+    for r in rels:
+        new = ents.get(r['version']) or []
+        if not new: continue
+        old = r['knowledge_id']
+        if not old and r['note']: continue                      # refused by the knowledge checks: stays refused, the reason is kept
+        if old:
+            m = knowledge.meta([old]).get(old)
+            if m and (m['title'].startswith(ITEM_PREFIX) or m['status'] not in ('active', 'draft')): continue
+        fid = _knowledge_item(r['version'], {'built': r['built']}, new)
+        if not fid: continue
+        if old and old != fid:
+            try:
+                with store.acting('Alice', note='Release notes rewritten so they name their pull requests'):
+                    knowledge.supersede(old, fid, 'Rewritten as "Alice changes" release notes that name each pull request', by='Alice')
+            except ValueError: pass
+            done['rewritten'] += 1
+        else:
+            done['written'] += 1
+    if done['written'] or done['rewritten']:
+        with store.db() as c:
+            store.audit(c, 'release_notes_backfilled', 'Alice changes', 'human_control',
+                        f"Release notes: {done['written']} written for releases that had none, {done['rewritten']} rewritten to name their pull requests")
+    return done
 
 
 def _category():
@@ -261,7 +319,9 @@ def entries(days=None, limit=500):
         q += ' WHERE day>=?'; a.append((date.today() - timedelta(days=int(days))).isoformat())
     with store.db() as c:
         rows = [dict(r) for r in c.execute(q + ' ORDER BY day DESC, pr DESC LIMIT ?', (*a, int(limit)))]
-    for r in rows: r['link'] = f"{REPO}/pull/{r['pr']}"
+    import deployment
+    repo = deployment.repo_url()
+    for r in rows: r['link'] = f"{repo}/pull/{r['pr']}" if repo else ''
     return rows
 
 
@@ -274,8 +334,10 @@ def releases(limit=50):
     known = {}
     try: known = refs.of('file', [r['knowledge_id'] for r in rows if r['knowledge_id']])
     except Exception: pass
+    import deployment
+    repo = deployment.repo_url()
     for r in rows:
-        r['link'] = f"{REPO}/commit/{r['version']}" if re.fullmatch(r'[0-9a-f]{7,40}', r['version']) else ''
+        r['link'] = f"{repo}/commit/{r['version']}" if repo and re.fullmatch(r'[0-9a-f]{7,40}', r['version']) else ''
         r['knowledge_ref'] = known.get(r['knowledge_id'], '')
     return rows
 

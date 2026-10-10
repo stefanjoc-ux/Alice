@@ -1,4 +1,4 @@
-"""Bids and versions of Parker's proposals (Stefan, 7 Oct 2026).
+"""Bids and versions of Parker's proposals (7 Oct 2026).
 
 A bid is a chain of versions of one proposal; its current version is the one nobody superseded. The link is two columns on
 `proposals` (added in proposals.py): `superseded_by` (the proposal that replaced this one; '' = current) is the truth, and `bid_id`
