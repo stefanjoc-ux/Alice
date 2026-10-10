@@ -3429,7 +3429,7 @@ def admin_handover_move(q: HandoverIn, oid: str = FPath(pattern=OID_PATTERN)):
 def admin_handover_decide(q: HandoverDecisionIn, mid: str = FPath(pattern=r'^[0-9a-f]{32}$')):
     return _people(handover.decide, mid, q.action, q.note)
 
-# ---- spaces (spaces.py): shared team memory with explicit membership ----
+# ---- spaces (spaces.py): personal, team, Organisation and restricted spaces; open by default (D-0040) ----
 import spaces
 spaces.ensure_migrated()          # at start-up, outside any transaction: the owner's existing items placed once (logged with counts)
 spaces.ensure_org_space()         # the Organisation space (once); internal organisation facts pinned where they are (nothing moves)
@@ -3465,6 +3465,7 @@ class SpaceDefaultIn(BaseModel):
 class SpaceDecideIn(BaseModel):
     action: Literal['share','keep']
     note: str = Field(default='', max_length=500)
+    category: str = Field(default='', max_length=60)       # for a share held only for want of a category: give it this one, then share
 
 class CaptureIn(BaseModel):
     default: Optional[str] = Field(default=None, max_length=40)
@@ -3498,7 +3499,7 @@ def admin_space_default(q: SpaceDefaultIn): return _people(spaces.set_default, q
 def admin_space_move(q: SpaceMoveIn): return _people(spaces.move, q.item_type, q.item_id, q.space)
 
 @app.post('/admin/api/spaces/held/{mid}')
-def admin_space_decide(q: SpaceDecideIn, mid: str = FPath(pattern=r'^[0-9a-f]{32}$')): return _people(spaces.decide, mid, q.action, q.note)
+def admin_space_decide(q: SpaceDecideIn, mid: str = FPath(pattern=r'^[0-9a-f]{32}$')): return _people(spaces.decide, mid, q.action, q.note, q.category)
 
 @app.post('/admin/api/spaces/retry')
 def admin_space_retry(): return _people(spaces.retry)
@@ -3571,6 +3572,19 @@ def admin_org_move_preview(): return _people(spaces.org_migration_preview)
 
 @app.post('/admin/api/spaces/organisation/move')
 def admin_org_move(q: OrgMoveIn): return _people(spaces.org_migration_apply, q.counts)
+
+class SpaceDetailsIn(BaseModel):
+    name: str|None = Field(default=None, max_length=80)
+    description: str|None = Field(default=None, max_length=300)
+
+class SpaceRetireIn(BaseModel):
+    reason: str = Field(default='', max_length=300)
+
+@app.put('/admin/api/spaces/{sid}/details')
+def admin_space_details(q: SpaceDetailsIn, sid: str = FPath(pattern=r'^[ps]-[0-9a-f]{12}$')): return _people(spaces.set_details, sid, q.name, q.description)
+
+@app.post('/admin/api/spaces/{sid}/retire')
+def admin_space_retire(q: SpaceRetireIn, sid: str = FPath(pattern=r'^[ps]-[0-9a-f]{12}$')): return _people(spaces.retire, sid, q.reason)
 
 @app.put('/admin/api/spaces/organisation/internal-sections')
 def admin_org_internal_sections(q: InternalSectionsIn): return _people(spaces.set_internal_sections, q.sections)

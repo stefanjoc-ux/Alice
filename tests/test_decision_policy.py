@@ -151,7 +151,7 @@ t('a recorded decision can be undone (taken back out, history kept)', r.status_c
 
 # decisions waiting from before Temple managed them: the backlog runs them through
 A.set_policy(auto=False)
-dold = dec('Old decision', 'Keep the motorhome at the farm over winter', report='Recommendation: approve\nImpact: low\nConflict: no')
+dold = dec('Old decision', 'Keep the motorhome at the farm over winter', category='Home', report='Recommendation: approve\nImpact: low\nConflict: no')
 t('switched off: waits', state(dold)[0] == 'held' and status(dold) == 'proposed')
 A.set_policy(auto=True, categories={'Finance': 'finance.owner@example.org'}, impact='high', approver='approver@example.org')
 with s.db() as c:   # as it was before this release: held with the old reason

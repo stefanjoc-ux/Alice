@@ -222,21 +222,23 @@ clients.tag('memory', [tagged], 'Fernley Council', 'human')
 memo = item('Stefan prefers mornings', 'Stefan prefers client calls in the morning.', W)
 t('a Member cannot see the preview', cl.get('/admin/api/spaces/organisation/move', headers=N).status_code == 403)
 pv = cl.get('/admin/api/spaces/organisation/move', headers=E).json()
-t('the preview counts what moves', pv['counts'] == {'organisations': 1, 'knowledge': 1, 'decisions': 1}
-  and 'Old Partner Ltd' in pv['titles']['organisations'] and 'Expenses guide' in pv['titles']['knowledge']
-  and 'Use the travel desk' in pv['titles']['decisions'])
-t('…and what stays (memories, tagged decisions, internal knowledge, internal facts)', pv['stays']['memories and decisions'] >= 2
-  and pv['stays']['knowledge items'] >= 1)
+ids = lambda k: {x['id'] for x in pv['organisation'][k]}
+t('the preview counts what moves (D-0053: everything in the work space is organisational)', pv['counts']['organisations'] >= 1
+  and 'Old Partner Ltd' in ids('organisations') and {gen, loc} <= ids('knowledge') and {dec, tagged} <= ids('decisions') and memo in ids('memories')
+  and all(pv['counts'][k] == len(pv['organisation'][k]) for k in ('organisations', 'knowledge', 'memories', 'decisions')))
+t('…tagged and labelled items are shown with their client and label', any(x['id'] == tagged and x['client'] == 'Fernley Council' for x in pv['organisation']['decisions'])
+  and any(x['id'] == loc and x['label'] == 'internal' for x in pv['organisation']['knowledge']))
 t('nothing moved by previewing', spaces.space_of('organisation', 'Old Partner Ltd') == W and spaces.space_of('file', gen) == W)
 t('confirming with other counts is refused (nothing moves that was not seen)',
-  cl.post('/admin/api/spaces/organisation/move', headers=E, json={'counts': {'organisations': 9, 'knowledge': 1, 'decisions': 1}}).status_code == 400)
+  cl.post('/admin/api/spaces/organisation/move', headers=E, json={'counts': {**pv['counts'], 'organisations': 9}}).status_code == 400)
 n_screens = len(SCREENS)
 r = cl.post('/admin/api/spaces/organisation/move', headers=E, json={'counts': pv['counts']})
 st = r.json()
-t('the move matches the preview exactly', r.status_code == 200 and st['state'] == 'done' and st['moved'] == 3
+t('the move matches the preview exactly', r.status_code == 200 and st['state'] == 'done' and st['moved'] >= 6
   and spaces.space_of('organisation', 'Old Partner Ltd') == O and spaces.space_of('file', gen) == O and spaces.space_of('record', dec) == O)
-t('…each through the sharing check', len(SCREENS) >= n_screens + 3)
-t('…and the rest stays in Stefan: work', spaces.space_of('file', loc) == W and spaces.space_of('record', tagged) == W and spaces.space_of('record', memo) == W)
+t('…each through the sharing check', len(SCREENS) >= n_screens + 6)
+t('…client-tagged and internal items move too, keeping their tag and label', spaces.space_of('file', loc) == O and spaces.space_of('record', tagged) == O
+  and spaces.space_of('record', memo) == O and clients.client_of('memory', tagged) == 'Fernley Council' and knowledge.meta([loc])[loc]['label'] == 'internal')
 t('the internal fact stays pinned to its space when its organisation is in the directory', spaces.space_of('org_fact', internal) == SALES)
 with store.db() as c:
     acts = {r[0] for r in c.execute("SELECT action FROM activity WHERE rule='spaces'")}

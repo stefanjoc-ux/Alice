@@ -918,9 +918,10 @@ def propose_health_note(kind: Annotated[str, Field(pattern='^(decision|experimen
 @mcp.tool(annotations={'readOnlyHint': True, 'destructiveHint': False})
 @_marked
 def list_spaces() -> dict:
-    """The user's spaces in Alice (their personal space and the shared spaces they belong to), with their role in each. Pass a
-    space id as `space` to propose_record, propose_decision or propose_knowledge when the user asks for something to go into a
-    particular space; otherwise leave it out and it goes to their default space."""
+    """The user's spaces in Alice, with their role in each: their personal space, the Organisation space everyone reads, team spaces
+    open to the organisation (role view: read only) and the spaces they are a member of (restricted spaces only to their members).
+    Pass a space id as `space` to propose_record, propose_decision or propose_knowledge when the user asks for something to go into
+    a particular space; otherwise leave it out: Temple routes it once it has reviewed it."""
     agent, run = _app('list_spaces')
     import spaces
     v = store.viewer(); nm = spaces.names()

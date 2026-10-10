@@ -214,8 +214,10 @@ def _summary():
     me = spaces._actor()
     sh = [h for h in spaces.held(me) if h['as'] in ('author', 'manager')]     # an Owner steps in on the Spaces page, not here
     AS = {'author': 'Your', 'manager': 'For a space you manage:', 'owner': 'As an Owner of Alice:'}
+    cats = [x['name'] for x in store.list_categories()['categories']]
     out.append(_section('shares', 'Shares the sharing check held', len(sh), '/admin/spaces',
-                        [{'type': 'link', 'id': h['id'], 'title': f"{h['title']} → {h['to_name'] or 'a shared space'}",
+                        [{'type': 'share_category' if h['needs_category'] and cats else 'link', 'id': h['id'], 'categories': cats,
+                          'title': f"{h['title']} → {h['to_name'] or 'a shared space'}", 'to_name': h['to_name'],
                           'detail': (f"Your {h['type_label']}" if h['as'] == 'author' else f"{AS[h['as']]} {h['author_name']}'s {h['type_label']}") +
                                     (' is waiting for a category: ' if h['needs_category'] else ' was held before it entered a shared space: ') +
                                     ' '.join(h['reasons'] or ['personal or private details.']),
@@ -223,6 +225,25 @@ def _summary():
                         'Before anything enters a shared space, Temple reviews it, then Alice and Temple check it for an actual finding: personal '
                         'data about a real person, special category data, or something marked private. Open Spaces to share one anyway or keep it '
                         'where it is (a manager or an Owner gives a reason). One waiting for a category moves on its own once it has one.' if sh else ''))
+
+    # 10b1. Approved without a category (D-0048 was): it cannot go to a shared space until it has one. The Owner picks one here;
+    # nothing changes until then. Items already listed above (their share is held for a category) are not listed twice.
+    try:
+        unc = spaces.uncategorised(me) if me.full else {'items': [], 'total': 0}
+    except Exception:
+        unc = {'items': [], 'total': 0}
+    shown = {(h['item_type'], str(h['item_id'])) for h in sh}
+    ui = [x for x in unc['items'] if (x['item_type'], str(x['id'])) not in shown]
+    KL = {'decision': 'Decision', 'fact': 'Memory', 'knowledge': 'Knowledge item'}
+    out.append(_section('uncategorised', 'Approved without a category', max(0, unc['total'] - (len(unc['items']) - len(ui))), '/admin/memories',
+                        [{'type': 'uncategorised', 'id': x['id'], 'item_type': x['item_type'], 'title': x['title'], 'categories': cats,
+                          'suggestion': x['suggestion'],
+                          'detail': f"{KL.get(x['kind'], 'Memory')} in {x['space_name'] or 'its space'}" +
+                                    (f", waiting to go to {x['going_to_name']}" if x['going_to_name'] else '') +
+                                    (f". Temple suggested {x['suggestion']}." if x['suggestion'] else '.')} for x in ui],
+                        'These were approved with no category. An item needs one before it can go to a shared space, and the library is '
+                        'easier to search with one. Pick a category for each: nothing changes until you do, and one waiting to go to a '
+                        'space moves there once it has its category (through the sharing check).' if ui else '', top=20, info=True))
 
     # 10b2. The one-off sweep: work items stuck in your personal space (Temple lists them; nothing moves until you confirm)
     try:

@@ -1,17 +1,21 @@
-"""Spaces: shared team memory with explicit membership (Stefan, 8 Oct 2026).
+"""Spaces: where team memory lives (Stefan, 8 Oct 2026; open by default since D-0040, 10 Oct 2026).
 
 Every memory, decision, knowledge item, organisation, proposal, digital team, team job and pricing template belongs to
 exactly one space (store.item_spaces; an item with no row belongs to the default work space). Each person has a personal
-space only they can see. A shared space has members, each View, Contribute or Manage; only its managers (and an Owner of
-Alice) add or remove members, and adding a person to Alice never adds them to any shared space. A space may be tied to a
-client: that client's material, wherever it sits, is then seen only by that space's members (store.viewer_clause), on top
-of client separation, never instead of it. Chats and generated documents stay private to whoever made them.
+space only they can see. The Organisation space is read by everyone with an Alice role, and team spaces are open to the
+organisation unless a manager closes them (rule open_spaces); restricted spaces (for casework such as HR) are only ever seen by
+their members. Membership is View, Contribute or Manage, set by a space's managers (and an Owner of Alice) or by Entra groups
+mapped to spaces (groups.py); adding a person to Alice never adds them to a space by itself. A space may be tied to a client:
+that client's material, wherever it sits, is then seen only by that space's members (store.viewer_clause), on top of client
+separation, never instead of it. Chats and generated documents stay private to whoever made them.
 
-Sharing is always deliberate, and it goes through Temple's sharing gate (rule share_gate on the Rules page): before an item
-enters or moves into a shared space, whoever moves it (a person, Temple, a team or a connector), it is checked for personal
-identifiers, personal or special-category details about the author or anyone else, and anything marked private; Temple reads
-it too. A hit holds the move for the item's author to confirm or keep it personal (Spaces page and Actions). An item with no
-category confirmed by a person never enters a shared space. Every share and move is logged.
+New items are routed by Temple once it has reviewed them (rule temple_router): work to the team space, general material to the
+Organisation space, items about their author to the author's personal space, items about a named person or sensitive details to
+the team's restricted space, and anything Temple is unsure about is held for the author. Whatever goes into a shared space goes
+through the sharing check (rule share_gate): personal identifiers, personal or special-category details about the author or
+anyone else, and anything marked private; Temple reads it too. A finding holds the move for the item's author or the space's
+managers (Spaces page and Actions). An item needs a category before it enters a shared space (Temple's counts while the rule
+temple_category is on); one approved without a category is held for a category, with a picker. Every share and move is logged.
 
 The owner is keyed 'owner' in memberships (on the PC and in Azure alike). Health, Trading, Mileage and Backups are not in
 spaces: they stay the owner's alone (permissions.OWNER_ONLY).
@@ -67,6 +71,9 @@ def _schema(c):
     # Temple's router and restricted spaces (CR-4 phase 2): a team space may name its restricted space; each space says whether a
     # clash waits for its managers ('wait') or is noted ('note': as decisions were before; '' = the space predates this, 'note').
     for col, ddl in (('restricted_space', "TEXT NOT NULL DEFAULT ''"), ('clash_policy', "TEXT NOT NULL DEFAULT ''")):
+        if col not in scols: c.execute(f'ALTER TABLE spaces ADD COLUMN {col} {ddl}')
+    # A retired space (D-0053, 10 Oct 2026): archived, never deleted. Additive.
+    for col, ddl in (('archived_at', "TEXT NOT NULL DEFAULT ''"), ('archived_by', "TEXT NOT NULL DEFAULT ''")):
         if col not in scols: c.execute(f'ALTER TABLE spaces ADD COLUMN {col} {ddl}')
     c.execute("CREATE TABLE IF NOT EXISTS item_routes (item_type TEXT NOT NULL, item_id TEXT NOT NULL, route TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '', "
               "space_id TEXT NOT NULL DEFAULT '', at TEXT NOT NULL, PRIMARY KEY (item_type, item_id))")
@@ -223,6 +230,7 @@ def my_spaces(v):
     key = person_key(v)
     if key == '-' or not _has_role(v): return {}
     m = _memberships(key)
+    for sid in retired(): m.pop(sid, None)
     m[personal_space(key)] = 'manage'
     if key == OWNER and not migrated(): m[WORK] = 'manage'
     if ORG in names():
@@ -265,7 +273,7 @@ def open_rule():
 def open_spaces():
     """Team spaces everyone in the organisation reads: shared, not closed, not tied to a client (while the rule is on)."""
     if not open_rule(): return []
-    return [sid for sid, s in names().items() if s['kind'] == 'shared' and not s['closed'] and not s['client']]
+    return [sid for sid, s in names().items() if s['kind'] == 'shared' and not s['closed'] and not s['client'] and not s.get('archived')]
 
 
 def is_member(v, sid):
@@ -301,8 +309,10 @@ def may_manage(v, sid):
 
 
 def default_space():
-    """Where items with no space row belong (everything made by the system): the owner's work space."""
-    return WORK
+    """Where items with no space row belong (everything made by the system): the owner's work space, or the Organisation space once
+    the work space's material has moved there (setting spaces_default, D-0053)."""
+    d = _cached('spaces-default', lambda: _setting('spaces_default'))
+    return d if d == ORG else WORK
 
 
 def default_for(v):
@@ -363,7 +373,7 @@ def set_capture(default=None, person=None, space=None):
     nm = names()
     what = ''
     if default is not None:
-        if default not in CAPTURE_MODES and (nm.get(default) or {}).get('kind') not in SHARED_KINDS:
+        if default not in CAPTURE_MODES and ((nm.get(default) or {}).get('kind') not in SHARED_KINDS or (nm.get(default) or {}).get('archived')):
             raise ValueError('Choose team space, personal space or a shared space.')
         pol['default'] = default
         what = 'default: ' + (CAPTURE_MODES.get(default) or nm[default]['name'])
@@ -412,7 +422,7 @@ def capture_overview():
                           'options': [{'id': s, 'name': nm[s]['name']} for s, r in _memberships(OWNER).items()
                                       if r in ('contribute', 'manage') and (nm.get(s) or {}).get('kind') in SHARED_KINDS]})
     return {'default': pol['default'], 'modes': [{'id': k, 'name': n} for k, n in CAPTURE_MODES.items()],
-            'spaces': [{'id': k, 'name': x['name']} for k, x in nm.items() if x['kind'] in SHARED_KINDS], 'people': people}
+            'spaces': [{'id': k, 'name': x['name']} for k, x in nm.items() if x['kind'] in SHARED_KINDS and not x.get('archived')], 'people': people}
 
 
 def blocked_clients(v):
@@ -448,9 +458,14 @@ def of(item_type, ids):
 def names():
     def load():
         with store.db() as c:
-            return {r[0]: {'name': r[1], 'kind': r[2], 'client': r[3], 'closed': bool(r[4])}
-                    for r in c.execute('SELECT id, name, kind, client, closed FROM spaces')}
+            return {r[0]: {'name': r[1], 'kind': r[2], 'client': r[3], 'closed': bool(r[4]), 'archived': bool(r[5])}
+                    for r in c.execute("SELECT id, name, kind, client, closed, coalesce(archived_at,'') FROM spaces")}
     return _cached('names', load)
+
+
+def retired():
+    """Team spaces retired (archived, never deleted): left out of every listing, never open, never a place for new items."""
+    return {sid for sid, s in names().items() if s.get('archived')}
 
 
 def forget():
@@ -699,11 +714,14 @@ def listing():
     out = []
     for s in rows:
         if s['id'] not in mine and not (v.full and s['kind'] in SHARED_KINDS): continue     # Owners see every shared space's members, never its items unless a member
+        if s.get('archived_at') and not v.full: continue                                       # retired: only an Owner still sees it listed
         out.append({**s, 'my_role': mine.get(s['id']), 'members': members.get(s['id'], []) if s['id'] in mine or v.full else [],
                     'counts': counts(s['id']) if s['id'] in mine else {}, 'can_manage': may_manage(v, s['id']) and s['kind'] in SHARED_KINDS,
                     'member': is_member(v, s['id']), 'closed': bool(s.get('closed')), 'kind_label': KIND_LABEL.get(s['kind'], s['kind']),
                     'clash_policy': s.get('clash_policy') or 'note', 'restricted_space': s.get('restricted_space') or '',
-                    'open': s['id'] in open_spaces() or s['kind'] == 'organisation'})
+                    'open': s['id'] in open_spaces() or s['kind'] == 'organisation', 'archived': bool(s.get('archived_at')),
+                    'can_rename': may_manage(v, s['id']) and s['kind'] in SHARED_KINDS and not s.get('archived_at'),
+                    'can_retire': s['kind'] == 'shared' and not s.get('archived_at') and may_manage(v, s['id']) and s['id'] != default_space()})
     people = []
     if v.full or v.role == 'admin' or any(may_manage(v, s) for s in mine):
         for u in users.listing()['users']:
@@ -716,7 +734,8 @@ def listing():
             'open_rule': open_rule(), 'org': ORG, 'org_move': org_migration_status() if v.full else None, 'can_move_org': bool(v.full),
             'internal_sections': list(internal_sections()), 'approvals': approvals(v), 'router_on': router_on(),
             'can_create_restricted': v.full or v.role == 'admin' or any(r == 'manage' and _kind(x) in SHARED_KINDS for x, r in _memberships(person_key(v)).items()),
-            'roles': [{'key': r, 'label': ROLE_LABEL[r]} for r in ROLES]}
+            'roles': [{'key': r, 'label': ROLE_LABEL[r]} for r in ROLES],
+            'categories': [x['name'] for x in store.list_categories()['categories']]}
 
 
 # ---------------- moving and sharing items ----------------
@@ -847,16 +866,25 @@ def route():
 
 # ---------------- is the item categorised (the order: Temple's review first, the sharing check after) ----------------
 def _category(item_type, item_id):
-    """{'cat', 'by', 'checked'} for a memory/decision or knowledge item: its category, who set it (human, temple, model), and
-    whether Temple has looked at it yet."""
+    """{'cat', 'by', 'checked', 'sug', 'approved'} for a memory/decision or knowledge item: its category, who set it (human, temple,
+    model), whether Temple has looked at it yet, Temple's suggestion, and whether it is already approved (a memory or decision
+    approved, a knowledge item active): an approved item has been reviewed, so it never waits for Temple's review."""
     with store.db() as c:
         if item_type == 'record':
-            r = c.execute("SELECT coalesce(category,'') AS cat, coalesce(assigned_by,'') AS by, temple_checked_at AS checked, "
-                          "coalesce(suggestion,'') AS sug FROM record_meta WHERE record_id=?", (item_id,)).fetchone()
+            r = c.execute("SELECT coalesce(m.category,'') AS cat, coalesce(m.assigned_by,'') AS by, m.temple_checked_at AS checked, "
+                          "coalesce(m.suggestion,'') AS sug, r.status AS status FROM records r LEFT JOIN record_meta m ON m.record_id=r.id "
+                          "WHERE r.id=?", (item_id,)).fetchone()
         else:
             r = c.execute("SELECT coalesce(category,'') AS cat, coalesce(category_by,'') AS by, category_checked_at AS checked, "
-                          "coalesce(category_suggestion,'') AS sug FROM knowledge_meta WHERE file_id=?", (item_id,)).fetchone()
-    return dict(r) if r else {'cat': '', 'by': '', 'checked': None, 'sug': ''}
+                          "coalesce(category_suggestion,'') AS sug, status FROM knowledge_meta WHERE file_id=?", (item_id,)).fetchone()
+    if not r: return {'cat': '', 'by': '', 'checked': None, 'sug': '', 'approved': False}
+    d = dict(r)
+    d['approved'] = d.pop('status', '') in (('approved',) if item_type == 'record' else ('active',))
+    return d
+
+
+NO_CATEGORY = ('It was approved without a category, so it cannot go to a shared space yet. Give it a category and it moves '
+               'to its space.')
 
 
 def _temple_categorises(item_type):
@@ -872,7 +900,8 @@ def classification(item_type, item_id, reviewed=False):
     """('ok', how) when the item's category lets it enter a shared space; ('pending', why) while Temple has not categorised it yet;
     ('unsure', why) when Temple could not place it; ('unclassified', why) when only a person's category counts (rule
     temple_category off). reviewed: Temple's categorising has just run for it (so no category now means it was not sure, even if
-    the run failed before marking it looked at). A category a person set always counts; Temple's (or the proposing app's, chosen from your list) counts
+    the run failed before marking it looked at). ('no_category', why) when it is already approved and has none: its review has
+    happened, so it is held for a category, never left waiting. A category a person set always counts; Temple's (or the proposing app's, chosen from your list) counts
     while the rule "Temple's category is enough for work items" is on."""
     import rules_engine
     k = _category(item_type, item_id)
@@ -882,6 +911,8 @@ def classification(item_type, item_id, reviewed=False):
     if not temple_ok:
         return 'unclassified', ('It has no category confirmed by a person, and the rule "Temple\'s category is enough for work items" is off. '
                                 'Give it a category and it moves on its own.')
+    if k['approved']:            # approved means reviewed: never "waiting for Temple's review" (D-0048 waited there for good)
+        return 'no_category', NO_CATEGORY + (f' Temple suggested {k["sug"]}.' if k['sug'] else '')
     if not k['checked'] and not reviewed and _temple_categorises(item_type):
         return 'pending', 'Temple has not finished reviewing it yet: it moves once Temple has given it a category.'
     return 'unsure', ('Temple was not sure which category it belongs in' + (f' (it suggested {k["sug"]})' if k['sug'] else '') +
@@ -917,7 +948,7 @@ def gate(item_type, item_id, reviewed=False):
     return not reasons, reasons, by
 
 
-WAITS_FOR_CATEGORY = ('pending', 'unsure', 'unclassified')       # held only for want of a category: retried once categorised
+WAITS_FOR_CATEGORY = ('pending', 'unsure', 'unclassified', 'no_category')     # held only for want of a category: retried once categorised
 
 
 def _record_move(item_type, item_id, title, src, target, requested_by, akey, status, reasons, by):
@@ -1020,8 +1051,9 @@ def retry(item_type=None, ids=None, reviewed=False):
     a new share. Moved when clear and whoever asked still contributes to the space; otherwise it stays held, with the reason
     (Actions and the Spaces page). Returns counts."""
     import users
-    q = ("SELECT * FROM space_moves WHERE kind<>'handover' AND (status='waiting' OR (status='held' AND screened_by IN ('pending','unsure','unclassified')))")
-    a = []
+    q = ("SELECT * FROM space_moves WHERE kind<>'handover' AND (status='waiting' OR (status='held' AND screened_by IN "
+         f"({','.join('?' * len(WAITS_FOR_CATEGORY))})))")
+    a = list(WAITS_FOR_CATEGORY)
     if item_type: q += ' AND item_type=?'; a.append(item_type)
     if ids:
         q += f" AND item_id IN ({','.join('?' * len(ids))})"; a += [str(i) for i in ids]
@@ -1051,8 +1083,12 @@ def attempt(r, reviewed=False):
     if r.get('kind') == 'capture' and (r.get('note') or '').startswith('routed:'):
         routed = (route_of(t, i) or {}).get('reason', '')
     if r.get('kind') == 'capture' and router_on() and not (r.get('note') or '').startswith('routed:'):
-        if t in ('record', 'file') and classification(t, i, reviewed)[0] == 'pending':
+        state, why = classification(t, i, reviewed) if t in ('record', 'file') else ('ok', '')
+        if state == 'pending':
             _set_move(r['id'], 'waiting', ['New: Temple routes it once it has reviewed it.'], 'pending'); return 'waiting'
+        if state == 'no_category':      # reviewed and approved, but no category: held for one (routed once it has it)
+            if _not_held(r, state, [why]): return 'moved'
+            _set_move(r['id'], 'held', [why], state); return 'held'
         went = _route_capture(r, who)
         if went in ('moved', 'held', 'personal'): return 'held' if went == 'held' else 'moved'
         target = r['to_space'] = went
@@ -1141,16 +1177,22 @@ def _deciders(v, r):
 def held(v, waiting=False):
     """Shares held by the sharing gate that this person may decide: their own items, and items going into a space they manage (an
     Owner of Alice: any shared space). waiting: also the ones still waiting for Temple's review."""
-    states = ('held', 'waiting') if waiting else ('held',)
     with store.db() as c:
-        rows = [dict(r) for r in c.execute(f"SELECT * FROM space_moves WHERE status IN ({','.join('?' * len(states))}) AND kind<>'handover' "
-                                           "ORDER BY created_at DESC", states)]
+        rows = [dict(r) for r in c.execute("SELECT * FROM space_moves WHERE status IN ('held','waiting') AND kind<>'handover' "
+                                           "ORDER BY created_at DESC")]
     nm = names()
     out = []
     for r in rows:
         role = _deciders(v, r)
         if not role and r['requested_by'] != person_key(v): continue
-        r['reasons'] = json.loads(r['reasons'] or '[]'); r['to_name'] = (nm.get(r['to_space']) or {}).get('name', '')
+        r['reasons'] = json.loads(r['reasons'] or '[]')
+        if r['status'] == 'waiting' and r['item_type'] in ('record', 'file'):
+            # Its review has already happened (it is approved) but it has no category: held for a category, never "waiting for
+            # Temple's review" (D-0048). Shown as held here; the row itself changes when someone gives it a category.
+            state, why = classification(r['item_type'], r['item_id'])
+            if state == 'no_category': r.update(status='held', screened_by=state, reasons=[why])
+        if r['status'] == 'waiting' and not waiting: continue
+        r['to_name'] = (nm.get(r['to_space']) or {}).get('name', '')
         r['type_label'] = TYPE_LABEL.get(r['item_type'], r['item_type'])
         r['as'] = role
         r['needs_category'] = r['screened_by'] in WAITS_FOR_CATEGORY
@@ -1159,10 +1201,12 @@ def held(v, waiting=False):
     return out
 
 
-def decide(mid, action, note=''):
+def decide(mid, action, note='', category=''):
     """A call on a held share: 'share' (share it anyway) or 'keep' (keep it where it was). The item's author (any of their linked
     accounts), a manager of the space it was going to, or an Owner of Alice decides; anyone but the author gives a reason. Logged
-    with who, in what capacity and why."""
+    with who, in what capacity and why. category (with 'share'): for a share held only for want of a category, the category to
+    give it (a person's, so it always counts); it then goes on exactly as it would have: Temple routes it and the sharing check
+    runs, so a finding can still hold it."""
     v = _actor()
     with store.db() as c:
         r = c.execute('SELECT * FROM space_moves WHERE id=?', (mid,)).fetchone()
@@ -1172,6 +1216,10 @@ def decide(mid, action, note=''):
     if action not in ('share', 'keep'): raise ValueError('Choose share or keep.')
     role = _deciders(v, r)
     if not role: raise PermissionError('Only the person whose item it is, a manager of that space or an Owner of Alice can decide.')
+    category = ' '.join((category or '').split())[:40]
+    if category:
+        if action != 'share' or r['item_type'] not in ('record', 'file'): raise ValueError('A category is given only when sharing a memory, decision or knowledge item.')
+        return _share_with_category(v, r, role, category, note)
     note = ' '.join((note or '').split())[:500]
     if role != 'author' and len(note) < 3: raise ValueError('Say why: you are deciding someone else\'s item (kept in the activity log).')
     if note:
@@ -1194,6 +1242,61 @@ def decide(mid, action, note=''):
                     (f'shared after {label} read why the sharing check held it' if action == 'share' else f'kept where it was, by {label}') +
                     (f'. Why: {note}' if note else ''))
     return {'status': 'shared' if action == 'share' else 'kept', 'as': role}
+
+
+def _share_with_category(v, r, role, category, note=''):
+    """Give a held item the category it was waiting for (as a person's choice), then try its share again at once: the router and
+    the sharing check run as for any share. Returns {status: moved|held|waiting, as, space}."""
+    if role == 'author' and not may_contribute(v, r['to_space']):
+        raise PermissionError('You no longer contribute to that space, so its managers decide this one.')
+    if space_of(r['item_type'], r['item_id']) != r['from_space']: raise ValueError('It has moved since it was held: share it again from where it is now.')
+    note = ' '.join((note or '').split())[:500]
+    if note:
+        import rules_engine
+        rules_engine.check_file(note, 'reason for a sharing decision')
+    with store.acting(note=note or f'Category given on the Spaces page so it can be shared ({ {"author": "the author", "manager": "a manager of the space", "owner": "an Owner of Alice"}[role] })'):
+        if r['item_type'] == 'record': store.set_category([r['item_id']], category)
+        else:
+            import knowledge
+            knowledge.update(r['item_id'], category=category)
+    with store.db() as c:
+        row = c.execute('SELECT * FROM space_moves WHERE id=?', (r['id'],)).fetchone()
+    row = dict(row) if row else r
+    st = attempt(row, reviewed=True) if row['status'] in ('held', 'waiting') else ('moved' if row['status'] == 'shared' else 'held')
+    with store.db() as c:
+        now = c.execute('SELECT status,to_space FROM space_moves WHERE id=?', (r['id'],)).fetchone()
+    return {'status': st, 'as': role, 'category': category, 'space': (now['to_space'] if now else r['to_space']),
+            'space_name': (names().get(now['to_space'] if now else r['to_space']) or {}).get('name', '')}
+
+
+def uncategorised(v, limit=50):
+    """Approved memories and decisions, and active knowledge, that have no category (the Owner's list on Actions: nothing changes
+    until a category is picked). Each says where it is and, when a share waits on it, where it is going."""
+    rows, total = [], 0
+    with store.as_viewer(v):
+        vr, ar = store.viewer_clause('record', 'r.id')
+        vk, ak = store.viewer_clause('file', 'm.file_id')
+        with store.db() as c:
+            q1 = ("FROM records r LEFT JOIN record_meta m ON m.record_id=r.id LEFT JOIN memory_archive a ON a.record_id=r.id "
+                  "WHERE r.status='approved' AND a.record_id IS NULL AND coalesce(m.category,'')=''" + vr)
+            q2 = "FROM knowledge_meta m WHERE m.status='active' AND coalesce(m.category,'')=''" + vk
+            total = c.execute('SELECT count(*) ' + q1, ar).fetchone()[0] + c.execute('SELECT count(*) ' + q2, ak).fetchone()[0]
+            rows += [{'item_type': 'record', 'id': x[0], 'title': x[1], 'kind': x[2], 'suggestion': x[3], 'at': x[4]} for x in c.execute(
+                "SELECT r.id, r.title, coalesce(m.kind,'fact'), coalesce(m.suggestion,''), coalesce(r.reviewed_at, r.created_at) "
+                + q1 + ' ORDER BY coalesce(r.reviewed_at, r.created_at) DESC LIMIT ?', (*ar, limit))]
+            rows += [{'item_type': 'file', 'id': x[0], 'title': x[1], 'kind': 'knowledge', 'suggestion': x[2], 'at': x[3]} for x in c.execute(
+                "SELECT m.file_id, m.title, coalesce(m.category_suggestion,''), coalesce(m.reviewed_at, m.created_at) "
+                + q2 + ' ORDER BY coalesce(m.reviewed_at, m.created_at) DESC LIMIT ?', (*ak, limit))]
+            going = {(x[0], x[1]): x[2] for x in c.execute(
+                "SELECT item_type, item_id, to_space FROM space_moves WHERE status IN ('held','waiting') AND kind<>'handover' ORDER BY created_at")}
+    rows.sort(key=lambda x: x['at'] or '', reverse=True)
+    nm = names()
+    for x in rows[:limit]:
+        x['space_name'] = (nm.get(space_of(x['item_type'], x['id'])) or {}).get('name', '')
+        to = going.get((x['item_type'], str(x['id'])))
+        x['going_to'] = to or ''
+        x['going_to_name'] = (nm.get(to) or {}).get('name', '') if to else ''
+    return {'items': rows[:limit], 'total': total}
 
 
 def where(item_type, item_id):
@@ -1657,43 +1760,113 @@ def _items_in(c, sid):
     return out
 
 
+ORG_MOVE_KINDS = (('organisations', 'organisation', 'Organisations'), ('knowledge', 'file', 'Knowledge items'),
+                  ('memories', 'record', 'Memories'), ('decisions', 'record', 'Decisions'), ('proposals', 'proposal', 'Proposals'),
+                  ('org_facts', 'org_fact', 'Internal organisation facts'))
+TEAM_MOVE_KINDS = (('teams', 'team', 'Digital team'), ('team_jobs', 'team_job', 'Team jobs'), ('pricing_templates', 'pricing_template', 'Pricing templates'))
+
+
+def _team_of_template(c, path, teams_):
+    """Which digital team a pricing template belongs to: the one whose jobs used it, else whose templates folder holds it, else the
+    only team there is; '' when it cannot be told (it then goes to the Organisation space)."""
+    for (tid,) in c.execute('SELECT DISTINCT team_id FROM team_jobs WHERE pricing_template=?', (path,)) if _has_col(c, 'team_jobs', 'pricing_template') else []:
+        if tid in teams_: return tid
+    for tid, t in teams_.items():
+        folder = ((t['definition'].get('pricing') or {}).get('folder') or '').strip('/')
+        if folder and path.startswith(folder + '/'): return tid
+    return next(iter(teams_)) if len(teams_) == 1 else ''
+
+
 def org_migration_plan():
-    """What moves into the Organisation space, from the owner's work space: every organisation profile (its opportunities follow
-    it; internal facts stay pinned to the work space), general knowledge (label General, active, no client tag, not a personal-area
-    category) and decisions (approved, no client tag, not a personal-area category). Memories and everything else stay."""
+    """What moves out of the owner's work space (decision D-0053: everything in it is organisational). Into the Organisation space:
+    organisations (their opportunities follow them), knowledge, memories, decisions, proposals and the internal organisation facts
+    pinned there. Into a team space for each digital team (named after the team; made on confirm when there is none): the team, its
+    jobs and its pricing templates. Items in a personal-area category stay where they are. Client tags, labels and client-tied
+    spaces are not touched: client separation and the labels still decide who may use client material, wherever it sits."""
     ensure_org_space()
     src = WORK
     with store.db() as c:
         here = _items_in(c, src)
-        tagged = {(r[0], str(r[1])) for r in c.execute("SELECT item_type, item_id FROM client_tags")} if _has_table(c, 'client_tags') else set()
+        tagged = {(r[0], str(r[1])): r[2] for r in c.execute("SELECT item_type, item_id, client FROM client_tags WHERE coalesce(client,'')<>''")} \
+            if _has_table(c, 'client_tags') else {}
         areas = {r[0]: r[1] for r in c.execute("SELECT name, coalesce(area,'') FROM categories")} if _has_col(c, 'categories', 'area') else {}
-        orgs = sorted(here.get('organisation', set()), key=str.lower)
-        kn = [dict(r) for r in c.execute("SELECT file_id AS id, title, label, status, coalesce(category,'') AS cat FROM knowledge_meta")]
-        dec = [dict(r) for r in c.execute("SELECT r.id, r.title, coalesce(m.category,'') AS cat FROM records r JOIN record_meta m ON m.record_id=r.id "
-                                          "LEFT JOIN memory_archive a ON a.record_id=r.id WHERE m.kind='decision' AND coalesce(a.state,r.status)='approved'")]
-        pinned = c.execute("SELECT count(*) FROM item_spaces WHERE item_type='org_fact' AND space_id=?", (src,)).fetchone()[0]
-    files = here.get('file', set())
-    recs = here.get('record', set())
-    knowledge = [k for k in kn if k['id'] in files and k['label'] == 'general' and k['status'] == 'active'
-                 and ('file', k['id']) not in tagged and areas.get(k['cat']) != 'personal']
-    decisions = [d for d in dec if d['id'] in recs and ('memory', d['id']) not in tagged and areas.get(d['cat']) != 'personal']
-    moving = {'organisation': orgs, 'file': [k['id'] for k in knowledge], 'record': [d['id'] for d in decisions]}
+        recs = {r['id']: dict(r) for r in c.execute("SELECT r.id, r.title, coalesce(m.kind,'fact') AS kind, coalesce(m.category,'') AS cat "
+                                                    "FROM records r LEFT JOIN record_meta m ON m.record_id=r.id")}
+        kn = {r['id']: dict(r) for r in c.execute("SELECT file_id AS id, title, label, coalesce(category,'') AS cat FROM knowledge_meta")} \
+            if _has_table(c, 'knowledge_meta') else {}
+        files = {r[0]: r[1] for r in c.execute('SELECT id, name FROM files')}
+        props = {r[0]: r[1] or 'Untitled proposal' for r in c.execute("SELECT id, title FROM proposals")} if _has_table(c, 'proposals') else {}
+        facts = {r[0]: f'{r[1]}: {r[2][:80]}' for r in c.execute('SELECT id, org, statement FROM org_facts')} if _has_table(c, 'org_facts') else {}
+        teams_ = {}
+        if _has_table(c, 'teams'):
+            for r in c.execute('SELECT id, name, definition FROM teams'):
+                try: d = json.loads(r[2] or '{}')
+                except ValueError: d = {}
+                teams_[r[0]] = {'name': r[1], 'definition': d if isinstance(d, dict) else {}}
+        jobs = {r[0]: (r[1], r[2]) for r in c.execute('SELECT id, team_id, title FROM team_jobs')} if _has_table(c, 'team_jobs') else {}
+        tmpl_team = {p: _team_of_template(c, p, teams_) for p in here.get('pricing_template', set())}
+        existing = {r[0].lower(): (r[1], r[2]) for r in c.execute("SELECT name, id, kind FROM spaces")}
+    personal = lambda cat: areas.get(cat) == 'personal'
+    org = {k: [] for k, _, _ in ORG_MOVE_KINDS}
+    stays = []
+    for name in sorted(here.get('organisation', set()), key=str.lower): org['organisations'].append({'id': name, 'title': name})
+    for fid in sorted(here.get('file', set())):
+        m = kn.get(fid) or {'title': files.get(fid, fid), 'label': 'general', 'cat': ''}
+        x = {'id': fid, 'title': m['title'] or files.get(fid, fid), 'client': tagged.get(('file', fid), ''), 'label': m['label']}
+        (stays.append({**x, 'type': 'knowledge item'}) if personal(m['cat']) else org['knowledge'].append(x))
+    for rid in sorted(here.get('record', set())):
+        r = recs.get(rid)
+        if not r: continue
+        x = {'id': rid, 'title': r['title'], 'client': tagged.get(('memory', rid), '')}
+        if personal(r['cat']): stays.append({**x, 'type': 'decision' if r['kind'] == 'decision' else 'memory'})
+        else: org['decisions' if r['kind'] == 'decision' else 'memories'].append(x)
+    for pid in sorted(here.get('proposal', set())):
+        if pid in props: org['proposals'].append({'id': pid, 'title': props[pid]})
+    for fid in sorted(here.get('org_fact', set())):
+        if fid in facts: org['org_facts'].append({'id': fid, 'title': facts[fid]})
+    teams_out = {}
+    def team_entry(tid):
+        if tid not in teams_out:
+            nm_ = teams_[tid]['name']
+            sp = existing.get(nm_.lower())
+            teams_out[tid] = {'team_id': tid, 'name': nm_, 'space': sp[0] if sp and sp[1] == 'shared' else '',
+                              'exists': bool(sp and sp[1] == 'shared'), 'clash': bool(sp and sp[1] != 'shared'),
+                              **{k: [] for k, _, _ in TEAM_MOVE_KINDS}}
+        return teams_out[tid]
+    for tid in sorted(here.get('team', set())):
+        if tid in teams_: team_entry(tid)['teams'].append({'id': tid, 'title': teams_[tid]['name']})
+    for jid in sorted(here.get('team_job', set())):
+        j = jobs.get(jid)
+        if not j: continue
+        if j[0] in teams_: team_entry(j[0])['team_jobs'].append({'id': jid, 'title': j[1]})
+        else: stays.append({'id': jid, 'title': j[1], 'type': 'team job (its team is gone)'})
+    for path in sorted(here.get('pricing_template', set())):
+        tid = tmpl_team.get(path)
+        x = {'id': path, 'title': path.rsplit('/', 1)[-1]}
+        if tid: team_entry(tid)['pricing_templates'].append(x)
+        else: org.setdefault('pricing_templates', []).append(x)
+    for e in teams_out.values():
+        if e['clash']: e['space_name'] = e['name'] + ' (team)'          # a space of another kind has the team's name: use a distinct one
+        else: e['space_name'] = e['name']
     nm = names()
+    counts = {k: len(v) for k, v in org.items()}
+    for k, _, _ in TEAM_MOVE_KINDS: counts[k] = sum(len(e[k]) for e in teams_out.values())
+    counts['staying'] = len(stays)
+    client_items = sum(1 for k in ('knowledge', 'memories', 'decisions') for x in org[k] if x.get('client'))
     return {'from': src, 'from_name': (nm.get(src) or {}).get('name', ''), 'to': ORG, 'to_name': (nm.get(ORG) or {}).get('name', ''),
-            'counts': {'organisations': len(orgs), 'knowledge': len(knowledge), 'decisions': len(decisions)},
-            'stays': {'memories and decisions': len(recs) - len(decisions), 'knowledge items': len(files) - len(knowledge),
-                      'internal organisation facts': pinned},
-            'titles': {'organisations': orgs[:50], 'knowledge': [k['title'] for k in knowledge][:50], 'decisions': [d['title'] for d in decisions][:50]},
-            'moving': moving, 'open': not (nm.get(src) or {}).get('closed') and open_rule(),
-            'status': org_migration_status()}
+            'counts': counts, 'organisation': org, 'teams': list(teams_out.values()), 'staying': stays,
+            'client_items': client_items, 'labels': ORG_MOVE_KINDS, 'team_labels': TEAM_MOVE_KINDS,
+            'open': not (nm.get(src) or {}).get('closed') and open_rule(), 'status': org_migration_status(),
+            'capture_after': CAPTURE_AFTER}
+
+
+CAPTURE_AFTER = 'After the move, new items go to the Organisation space unless a person has chosen their own space.'
 
 
 def org_migration_preview():
     v = _actor()
     if not v.full: raise PermissionError('Only an Owner of Alice can move items into the Organisation space.')
-    p = org_migration_plan()
-    p.pop('moving')
-    return p
+    return org_migration_plan()
 
 
 def org_migration_status():
@@ -1701,39 +1874,186 @@ def org_migration_status():
     except ValueError: return {}
 
 
+def _team_space_for(e):
+    """The team space a digital team's material goes to: the existing team space of that name, else a new one (the Owner manages
+    it; open to the organisation like any team space unless closed)."""
+    if e['space']: return e['space']
+    with store.db() as c:
+        r = c.execute("SELECT id FROM spaces WHERE lower(name)=lower(?) AND kind='shared'", (e['space_name'],)).fetchone()
+    if r: return r[0]
+    return create(e['space_name'], f'Material of the digital team {e["name"]}, moved from the work space (decision D-0053).')['id']
+
+
+def _pin_unplaced(src):
+    """Items with no space row count as the default space's. Before the default changes, each one still in it gets its own row, so
+    nothing changes space just because the default did (an item the sharing check holds stays exactly where it was)."""
+    with store.db() as c:
+        c.execute('BEGIN IMMEDIATE')
+        n = 0
+        for t, table, col in (('record', 'records', 'id'), ('file', 'files', 'id'), ('organisation', 'organisations', 'name')):
+            for (iid,) in c.execute(f'SELECT {col} FROM {table} x WHERE NOT EXISTS (SELECT 1 FROM item_spaces i WHERE i.item_type=? AND i.item_id=x.{col})', (t,)).fetchall():
+                c.execute('INSERT OR IGNORE INTO item_spaces(item_type,item_id,space_id,placed_at,placed_by) VALUES (?,?,?,?,?)',
+                          (t, str(iid), src, store.now(), 'Alice'))
+                n += 1
+    return n
+
+
 def org_migration_apply(confirm_counts):
     """Move exactly what the preview showed (the counts must match, so nothing moves that was not seen), each item through the
-    sharing check (move): a finding holds it for its author. Runs in the background; progress in setting org_migration."""
+    sharing check (move; organisation facts through the code checks): a finding holds it for its author. Then new items go to the
+    Organisation space (the default capture space, and the space system-made items belong to). Runs in the background; progress in
+    setting org_migration. Nothing is deleted."""
     v = _actor()
     if not v.full: raise PermissionError('Only an Owner of Alice can move items into the Organisation space.')
     plan = org_migration_plan()
     if dict(confirm_counts or {}) != plan['counts']:
         raise ValueError('What would move has changed since the preview: look at the preview again, then confirm.')
     if org_migration_status().get('state') == 'running': raise ValueError('The move is already running.')
-    items = [(t, i) for t in ('organisation', 'file', 'record') for i in plan['moving'][t]]
+    items = [(t, x['id'], ORG) for k, t, _ in ORG_MOVE_KINDS for x in plan['organisation'][k]]
+    items += [('pricing_template', x['id'], ORG) for x in plan['organisation'].get('pricing_templates', [])]
+    for e in plan['teams']:
+        sid = _team_space_for(e)
+        items += [(t, x['id'], sid) for k, t, _ in TEAM_MOVE_KINDS for x in e[k]]
+    c_ = plan['counts']
     _save_status({'state': 'running', 'total': len(items), 'done': 0, 'moved': 0, 'held': 0, 'waiting': 0, 'not_moved': 0,
-                  'counts': plan['counts'], 'started_at': store.now(), 'by': _who()})
+                  'counts': c_, 'started_at': store.now(), 'by': _who()})
+    _pin_unplaced(plan['from'])
     with store.db() as c:
-        store.audit(c, 'org_migration_started', ORG, 'spaces', f"Into the Organisation space: {plan['counts']['organisations']} organisations, "
-                    f"{plan['counts']['knowledge']} knowledge items, {plan['counts']['decisions']} decisions, each through the sharing check")
+        store.audit(c, 'org_migration_started', ORG, 'spaces', 'Out of ' + plan['from_name'] + ' (D-0053): ' + ', '.join(
+            f'{c_[k]} {label.lower()}' for k, _, label in ORG_MOVE_KINDS + TEAM_MOVE_KINDS if c_.get(k)) +
+            f'; {c_["staying"]} personal-area items stay. Each through the sharing check.')
+    owner = users_owner_viewer()
     def work():
         st = org_migration_status()
-        for t, i in items:
-            try:
-                r = move(t, i, ORG)
-                k = {'moved': 'moved', 'unchanged': 'moved', 'waiting': 'waiting'}.get(r['status'], 'held')
-            except Exception:
-                k = 'not_moved'
-            st[k] = st.get(k, 0) + 1; st['done'] += 1
-            if st['done'] % 10 == 0: _save_status(st)
+        with store.as_viewer(owner):
+            for t, i, sid in items:
+                try:
+                    r = _move_fact(i, sid) if t == 'org_fact' else move(t, i, sid)
+                    k = {'moved': 'moved', 'unchanged': 'moved', 'waiting': 'waiting'}.get(r['status'], 'held')
+                except Exception:
+                    k = 'not_moved'
+                st[k] = st.get(k, 0) + 1; st['done'] += 1
+                if st['done'] % 10 == 0: _save_status(st)
+        _after_org_move()
         st['state'] = 'done'; st['finished_at'] = store.now()
         _save_status(st)
         with store.db() as c:
-            store.audit(c, 'org_migration_done', ORG, 'spaces', f"Organisation space: {st['moved']} moved, {st['held']} held by the sharing check, "
-                        f"{st['waiting']} waiting for Temple, {st['not_moved']} not moved. Nothing deleted.")
+            store.audit(c, 'org_migration_done', ORG, 'spaces', f"Out of {plan['from_name']}: {st['moved']} moved, {st['held']} held by the sharing check, "
+                        f"{st['waiting']} waiting for Temple, {st['not_moved']} not moved. New items now go to the Organisation space. Nothing deleted.")
     if BACKGROUND: store.spawn(work)
     else: work()
     return org_migration_status()
+
+
+def users_owner_viewer():
+    v = store.viewer()
+    if v is not None: return v
+    import users
+    return users.owner_viewer()
+
+
+def _move_fact(fid, sid):
+    """An internal organisation fact pinned to the work space, re-pinned (its label and its organisation's client tag are kept, so
+    the same rules decide its use). The sharing check's code checks run on its statement first."""
+    import rules_engine
+    with store.db() as c:
+        r = c.execute('SELECT org, statement FROM org_facts WHERE id=?', (fid,)).fetchone()
+    if not r: return {'status': 'gone'}
+    if rules_engine.on('share_gate'):
+        reasons = rules_engine.check_share(r['statement'])
+        if reasons:
+            with store.db() as c:
+                store.audit(c, 'space_share_held', fid, 'share_gate', f'Organisation fact about {r["org"]} stays where it is: ' + '; '.join(reasons)[:400])
+            return {'status': 'held', 'reasons': reasons}
+    _place('org_fact', fid, sid)
+    with store.db() as c:
+        store.audit(c, 'space_moved', fid, 'spaces', f'Organisation fact about {r["org"]} moved to {(names().get(sid) or {}).get("name", "a shared space")}')
+    return {'status': 'moved'}
+
+
+def _after_org_move():
+    """New items go to the Organisation space: the organisation's default capture space, and the space items made by the system
+    belong to (setting spaces_default; every item still in the work space was pinned there first). Logged."""
+    pol = capture_policy()
+    with store.db() as c:
+        if pol['default'] != ORG:
+            pol['default'] = ORG
+            _set_setting(c, 'capture_space', json.dumps(pol))
+            store.audit(c, 'capture_space_set', 'capture_space', 'spaces', 'Where new items go: default: the Organisation space (after the move, D-0053)')
+        _set_setting(c, 'spaces_default', ORG)
+    _changed()
+
+
+# ---------------- renaming and retiring a space (D-0053) ----------------
+def set_details(sid, name=None, description=None):
+    """A space's managers (or an Owner of Alice) rename it or change its description. Never a personal space. Logged."""
+    v = _actor()
+    s = _space(sid)
+    if s['kind'] not in SHARED_KINDS: raise ValueError('A personal space keeps its name.')
+    if not may_manage(v, sid): raise PermissionError('Only someone who manages this space (or an Owner of Alice) can rename it or change its description.')
+    what = []
+    new_name, new_desc = s['name'], s['description']
+    if name is not None:
+        new_name = _clean(name, 80)
+        if len(new_name) < 2: raise ValueError('Give the space a name.')
+    if description is not None:
+        new_desc = _clean(description, 300)
+        if s['kind'] == 'restricted' and len(new_desc) < 5: raise ValueError('Say what the restricted space is for.')
+    import rules_engine
+    rules_engine.check_file(f'{new_name}\n{new_desc}', 'space name and description')
+    with store.db() as c:
+        if new_name != s['name']:
+            if c.execute('SELECT 1 FROM spaces WHERE lower(name)=lower(?) AND id<>?', (new_name, sid)).fetchone():
+                raise ValueError('There is already a space with that name.')
+            what.append(f'renamed from "{s["name"]}" to "{new_name}"')
+        if new_desc != s['description']: what.append('description changed')
+        if not what: return {'id': sid, 'name': new_name, 'description': new_desc, 'changed': False}
+        c.execute('UPDATE spaces SET name=?, description=? WHERE id=?', (new_name, new_desc, sid))
+        store.audit(c, 'space_renamed' if new_name != s['name'] else 'space_described', sid, 'spaces', f'{new_name}: ' + '; '.join(what))
+    forget()
+    return {'id': sid, 'name': new_name, 'description': new_desc, 'changed': True}
+
+
+def retire(sid, reason=''):
+    """An emptied team space retired: archived, never deleted. Its members keep their rows (so it can be brought back), it is closed,
+    it no longer lists anywhere, and new items never go to it. Items in a personal-area category still in it go to the owner's
+    personal space (narrower, never wider). Refused while anything else is in it. An Owner of Alice or its managers; logged."""
+    v = _actor()
+    s = _space(sid)
+    if s['kind'] != 'shared': raise ValueError('Only a team space can be retired.')
+    if not may_manage(v, sid): raise PermissionError('Only someone who manages this space (or an Owner of Alice) can retire it.')
+    if s.get('archived_at'): return {'id': sid, 'archived': True}
+    reason = _clean(reason, 300) or 'Emptied: its material moved to the Organisation space and team spaces.'
+    import rules_engine
+    rules_engine.check_file(reason, 'reason for retiring a space')
+    if sid == default_space(): raise ValueError('New items without a space still belong to it: move what is in it first (the Organisation space move).')
+    left = retire_check(sid)
+    if left['other']: raise ValueError(f'It still holds {left["other"]} items. Move them first; nothing is deleted.')
+    mine = personal_space(OWNER)
+    for t, i in left['personal_items']: _place(t, i, mine)
+    with store.db() as c, store.acting(note=reason):
+        c.execute("UPDATE spaces SET archived_at=?, archived_by=?, closed=1, closed_reason=?, closed_by=?, closed_at=? WHERE id=?",
+                  (store.now(), _who(), 'Retired: ' + reason, _who(), store.now(), sid))
+        store.audit(c, 'space_retired', sid, 'spaces', f'{s["name"]} retired (archived, not deleted). Why: {reason}'
+                    + (f'. {len(left["personal_items"])} personal-area items went to the owner\'s personal space.' if left['personal_items'] else ''))
+    forget()
+    return {'id': sid, 'archived': True, 'personal_moved': len(left['personal_items'])}
+
+
+def retire_check(sid):
+    """What is still in a space: personal-area memories and knowledge (they go to the owner's personal space on retiring), and anything else."""
+    with store.db() as c:
+        here = _items_in(c, sid)
+        areas = {r[0]: r[1] for r in c.execute("SELECT name, coalesce(area,'') FROM categories")} if _has_col(c, 'categories', 'area') else {}
+        rcat = {r[0]: r[1] for r in c.execute("SELECT record_id, coalesce(category,'') FROM record_meta")}
+        kcat = {r[0]: r[1] for r in c.execute("SELECT file_id, coalesce(category,'') FROM knowledge_meta")} if _has_table(c, 'knowledge_meta') else {}
+    pers, other = [], 0
+    for t, ids in here.items():
+        for i in ids:
+            cat = rcat.get(i, '') if t == 'record' else kcat.get(i, '') if t == 'file' else ''
+            if t in ('record', 'file') and areas.get(cat) == 'personal': pers.append((t, i))
+            else: other += 1
+    return {'personal_items': pers, 'other': other}
 
 
 def _save_status(st):
@@ -1844,10 +2164,11 @@ def _not_held(r, by, reasons):
     that kind for a person: Temple keeps it in its author's personal space instead (never shared), logged with the reason, and Undo
     on Activity puts it back to wait for a person. Returns True when settled here."""
     import library
-    kind = 'unsure' if by in ('unsure', 'unavailable', 'held:local') else 'sensitive' if by not in WAITS_FOR_CATEGORY else ''
+    kind = ('unsure' if by in ('unsure', 'unavailable', 'held:local') else 'no_category' if by == 'no_category'
+            else 'sensitive' if by not in WAITS_FOR_CATEGORY else '')
     if not kind or library.holds(kind): return False
-    _keep_private(r, ('Temple was not sure, so it stays private: ' if kind == 'unsure' else 'The sharing check found something, so it stays private: ')
-                  + '; '.join(reasons)[:300])
+    _keep_private(r, {'unsure': 'Temple was not sure, so it stays private: ', 'no_category': 'It has no category, so it stays private: '}.get(
+        kind, 'The sharing check found something, so it stays private: ') + '; '.join(reasons)[:300])
     return True
 
 

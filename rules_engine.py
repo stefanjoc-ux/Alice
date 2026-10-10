@@ -150,7 +150,8 @@ APPROVER_NAMES = {'temple': 'Temple approves new items under each space\'s rules
                   'categories': 'Temple approves, except in the categories that need a person'}
 LIBRARY_ACTIONS = {'approve': 'Approve', 'categorise': 'Categorise and tag', 'route': 'Route to a space', 'merge': 'Merge',
                    'supersede': 'Supersede', 'archive': 'Archive'}
-LIBRARY_HOLDS = {'sensitive': 'Sensitive findings', 'clash': 'Clashes', 'unsure': 'Anything Temple is unsure about'}
+LIBRARY_HOLDS = {'sensitive': 'Sensitive findings', 'clash': 'Clashes', 'unsure': 'Anything Temple is unsure about',
+                 'no_category': 'Anything Temple could not give a category'}
 
 
 _init()

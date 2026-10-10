@@ -54,7 +54,7 @@ ROLE_SECTIONS = {'users': 'Users and permissions', 'rules': 'Rules', 'rule-packs
 OWNER_ONLY = {'health': 'Health Insights', 'trading': 'Trading desk', 'mileage': 'Mileage', 'backup': 'Backups'}
 # Parts of Alice that show everyone's material at once: Owner role only until Spaces (what a profile gives is not enough).
 FULL_ONLY_PAGES = {'temple', 'actions', 'demo'}   # Organisations: a shared directory since CR-4 phase 1 (its own section)
-FULL_ONLY_REASON = ('This part of Alice shows material from everyone, so until shared Spaces arrive only an Owner can use it.')
+FULL_ONLY_REASON = ('This part of Alice shows material from every space at once, so only an Owner can use it.')
 
 
 def default_levels():
@@ -269,7 +269,7 @@ ROUTES = {
     'POST /admin/api/spaces/sweep/{sid}/dismiss': 'any',
     # open by default (CR-4 phase 1): a manager closes a team space (spaces.py checks); the move into the Organisation space is an
     # Owner's; Entra group mappings and which organisation sections are internal: Owners and Admins
-    'PUT /admin/api/spaces/{sid}/closed': 'any', 'PUT /admin/api/spaces/{sid}/rules': 'any',
+    'PUT /admin/api/spaces/{sid}/closed': 'any', 'PUT /admin/api/spaces/{sid}/details': 'any', 'POST /admin/api/spaces/{sid}/retire': 'any', 'PUT /admin/api/spaces/{sid}/rules': 'any',
     # Temple's router and restricted spaces (CR-4 phase 2): each space's managers approve what waits in it (spaces.py checks)
     'GET /admin/api/spaces/approvals': 'any', 'POST /admin/api/spaces/approvals/{kind}/{iid}': 'any', 'GET /admin/api/spaces/organisation/move': 'full', 'POST /admin/api/spaces/organisation/move': 'full',
     'PUT /admin/api/spaces/organisation/internal-sections': 'admin',
@@ -514,7 +514,7 @@ def my_access(v, pages):
     """What this person may do: their role, pages and levels, for the page and the menu."""
     return {'role': 'owner' if full(v) else v.role, 'owner_person': is_owner_person(v),
             'pages': allowed_pages(v, pages), 'levels': None if full(v) else profile_of(v),
-            'restricted': not full(v), 'note': '' if full(v) else 'You see only what you created yourself, until shared Spaces arrive.'}
+            'restricted': not full(v), 'note': '' if full(v) else 'You see your personal space, the Organisation space, team spaces open to the organisation and the spaces you are a member of.'}
 
 
 def catalogue():
