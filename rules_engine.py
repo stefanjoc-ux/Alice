@@ -70,6 +70,13 @@ BUILTIN = [
      'Alice is the organisation\'s shared store of knowledge (decision D-0040): everyone with an Alice role reads every team space '
      'unless its manager closes it, with a reason. Personal spaces, closed spaces and spaces tied to a client are never open; only '
      'members add to a space. Switched off, people read only the spaces they are members of, and the Organisation space.', True, {}, '', False),
+    ('temple_router', 'organisation', 'Temple routes new items to the right space', 'enforced',
+     'A new memory, decision or knowledge item heading for a team space is routed by Temple once it has reviewed it: about the work, '
+     'to the team space; useful to the whole organisation, to the Organisation space (when the person may add to it); about its author, '
+     'it stays in their personal space; about a named person (their health, absence, performance, pay or private circumstances) or '
+     'special category data, to the team\'s restricted space; unsure, it waits for its author. The reason is kept on the item, and the '
+     'sharing check still runs on anything going into an open space. Switched off, new items go to the default space through the '
+     'sharing check alone.', True, {}, '', False),
     ('commercial_caution', 'organisation', 'Commercial caution', 'guidance', '', True, {},
      'Do not state prices, discounts, rates or Insight commitments unless they come from a saved file or approved '
      'memory, and cite that source.', False),
@@ -145,6 +152,7 @@ def _init():
         for rid, set_key, name, kind, desc, enabled, params, text, locked in BUILTIN:
             # Test databases start with open team spaces off (tests/_util.py), as with automatic approval; test_spaces_teams switches it on.
             if rid == 'open_spaces' and os.environ.get('ALICE_OPEN_SPACES_DEFAULT') == 'off': enabled = False
+            if rid == 'temple_router' and os.environ.get('ALICE_ROUTER_DEFAULT') == 'off': enabled = False
             # INSERT OR IGNORE keeps your changes; descriptions refresh with each update.
             c.execute('INSERT OR IGNORE INTO rules VALUES (?,?,?,?,?,?,?,?,1,?,?,?,?)',
                       (rid, set_key, name, kind, desc, text, int(enabled), json.dumps(params), int(locked), '',

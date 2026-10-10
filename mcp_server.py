@@ -434,13 +434,16 @@ def propose_record(title: Annotated[str, Field(min_length=1, max_length=200)],
                    space: Annotated[str, Field(max_length=40)] = '') -> dict:
     """Propose a fact or preference worth remembering when the user asks (for a decision, use propose_decision).
     space: optional, a space id from list_spaces the user asked for (default: the user's default space for new items, usually their
-    team space); a shared space only after Temple's review and Alice's sharing check.
+    team space); a shared space only after Temple's review and Alice's sharing check. Temple routes it: about the work to the team
+    space, for the whole organisation to the Organisation space, about the user to their personal space, about a named person to
+    the team's restricted space; unsure, it waits for the user.
     Include a source description: user statement/quote or filename and location.
     The source is a claim for human review, not independently verified provenance.
     Optionally give a category only if it is one of the user's existing categories; unknown
     names are ignored and Temple assigns a category instead. The user can always change it.
     Temple checks every memory. Alice approves it automatically after those checks unless it clashes with, or would replace,
-    a memory she already holds, or Temple recommends against it; those wait for the user on the Actions page. A memory from an
+    a memory she already holds, or Temple recommends against it; those wait for the managers of its space (the user's own, in
+    their personal space). A memory from an
     outside app is checked the same way only if the user has ticked that app under "Memories from outside apps"; otherwise it
     waits for the user. Pass on the message returned.
     """
@@ -479,7 +482,9 @@ def propose_decision(title: Annotated[str, Field(min_length=1, max_length=200)],
                      category: Annotated[str, Field(max_length=40)] = '',
                      space: Annotated[str, Field(max_length=40)] = '') -> dict:
     """Propose a DECISION the user made. space: optional, as for propose_record. Temple checks it and Alice records it as made, with who made it and through which app,
-    and Temple's impact rating; a clash with an earlier decision is noted on it, never held. It waits for the user's approval (and
+    and Temple's impact rating; a clash with an earlier decision is noted on it, or waits for the managers of its space when that space's
+    rule says so. Temple routes it to the right space (team, Organisation, personal, or the team's restricted space for anything about a
+    named person). It waits for the user's approval (and
     its owner is emailed) only when their decision policy holds it: a category that always needs approval, or an impact at or above
     a level (with the policy switched off, every decision waits). Pass on the message returned.
     decision: what was chosen. rationale: why. options_considered: the alternatives weighed.

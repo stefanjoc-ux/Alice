@@ -3327,7 +3327,7 @@ function spaceControl(type,id,current,after){const box=el('div','','space-ctl');
 if(PAGE==='spaces'){
  const RL={view:'View',contribute:'Contribute',manage:'Manage'};
  async function load(){const d=await api('/admin/api/spaces');SPACES_MINE=null;
-  $('sp-new').hidden=!d.can_create;
+  $('sp-new').hidden=!(d.can_create||d.can_create_restricted);const kd=$('sp-kind');kd.replaceChildren();if(d.can_create){const o=el('option','Team space');o.value='shared';kd.append(o)}if(d.can_create_restricted){const o=el('option','Restricted space (for example HR casework)');o.value='restricted';kd.append(o)}
   const w=$('sp-waiting');w.replaceChildren();
   if(!d.waiting.length)w.append(el('p','Nothing waiting for you.','muted small'));
   for(const h of d.waiting){const c=el('div','','sp-held');c.append(el('b',h.title),el('div',h.type_label+' → '+h.to_name+(h.as&&h.as!=='author'?' · '+h.author_name+'\u2019s item':'')+(h.status==='waiting'?' · waiting for Temple\u2019s review':''),'small muted'));const ul=el('ul','');for(const r of h.reasons)ul.append(el('li',r));c.append(ul);
@@ -3337,9 +3337,15 @@ if(PAGE==='spaces'){
    if(h.as){const k=el('button',mine?'Keep it where it is':'Keep it out of '+h.to_name,'secondary');k.type='button';k.onclick=()=>{const note=why();if(note===null)return;run(async()=>{await api('/admin/api/spaces/held/'+h.id,'POST',{action:'keep',note});await load()})};c.append(k)}
    if(!h.as)c.append(el('p','A manager of '+h.to_name+' decides this one.','small muted'));
    w.append(c)}
+  const ap=$('sp-approvals');ap.replaceChildren();$('sp-approvals-box').hidden=!d.approvals.length;
+  for(const a of d.approvals){const c=el('div','','sp-held');c.append(el('b',(a.decision?'Decision: ':'')+a.title),el('div',(a.type==='memory'?(a.decision?'Decision':'Memory'):'Knowledge draft')+' · '+(a.as==='author'?'your personal space':a.space_name)+(a.as==='owner'?' · its managers have not decided yet':''),'small muted'));
+   if(a.preview)c.append(el('p',a.preview,'small'));c.append(el('p','Why it waits: '+a.reason,'small'));
+   for(const [lab,dec,cls] of [['Approve','approved',''],['Reject','rejected','secondary']]){const b=el('button',lab,cls);b.type='button';b.onclick=()=>{const note=prompt(lab+' \u201c'+a.title+'\u201d. A note (optional, kept in the activity log):','');if(note===null)return;
+    run(async()=>{await api('/admin/api/spaces/approvals/'+a.type+'/'+encodeURIComponent(a.id),'POST',{decision:dec,note});$('notice').textContent=lab==='Approve'?'Approved.':'Rejected.';await load()})};c.append(b)}
+   ap.append(c)}
   const def=$('sp-default');def.replaceChildren();for(const x of d.spaces.filter(x=>x.my_role&&x.my_role!=='view')){const o=document.createElement('option');o.value=x.id;o.textContent=x.name;def.append(o)}def.value=d.default;
   const list=$('sp-list');list.replaceChildren();
-  for(const x of d.spaces){const c=el('section','','sp-card');const h=el('h3',x.name);h.append(el('span',x.kind==='personal'?'Personal':x.kind==='organisation'?'Organisation':'Team','badge v-none'));if(x.client)h.append(el('span','Client: '+x.client,'badge v-warn'));
+  for(const x of d.spaces){const c=el('section','','sp-card');const h=el('h3',x.name);h.append(el('span',x.kind_label||'Team',x.kind==='restricted'?'badge v-warn':'badge v-none'));if(x.client)h.append(el('span','Client: '+x.client,'badge v-warn'));
    if(x.kind==='shared')h.append(el('span',x.closed?'Closed':x.open?'Open to everyone':'Members only',x.closed?'badge v-warn':'badge v-ok'));c.append(h);
    if(x.description)c.append(el('p',x.description,'small muted'));
    if(x.closed&&x.closed_reason)c.append(el('p','Closed: '+x.closed_reason,'small'));
@@ -3347,6 +3353,16 @@ if(PAGE==='spaces'){
    if(x.kind==='shared'&&x.can_manage){const t=el('button',x.closed?'Open it to everyone':'Close it to its members','mini secondary');t.type='button';
     t.onclick=()=>{let reason='';if(!x.closed){reason=prompt('Why close '+x.name+'? Only its members will read it (kept in the activity log).');if(!reason)return}else if(!confirm('Open '+x.name+' to everyone with an Alice role?'))return;
      run(async()=>{await api('/admin/api/spaces/'+x.id+'/closed','PUT',{closed:!x.closed,reason});$('notice').textContent=x.closed?'Open to everyone again.':'Closed: only its members read it.';await load()})};c.append(t)}
+   if(x.kind==='restricted')c.append(el('p','Only its members ever see what is in it. Never open to the organisation.','small'));
+   if(x.can_manage&&x.kind!=='personal'){const r=el('div','','sp-rules');
+    if(x.kind==='shared'){const rs=document.createElement('select');rs.setAttribute('aria-label','Restricted space for items about named people');const none=el('option','None: held for the author');none.value='';rs.append(none);
+     for(const y of d.spaces.filter(y=>y.kind==='restricted')){const o=el('option',y.name);o.value=y.id;rs.append(o)}rs.value=x.restricted_space||'';
+     rs.onchange=()=>run(async()=>{await api('/admin/api/spaces/'+x.id+'/rules','PUT',{restricted_space:rs.value});$('notice').textContent='Saved: items about named people go to '+rs.selectedOptions[0].textContent+'.';await load()});
+     const l=el('label','Items about named people go to ','small');l.append(rs);r.append(l)}
+    const cp=document.createElement('select');cp.setAttribute('aria-label','When an item clashes with one already here');for(const [k,t] of [['wait','waits for this space\u2019s managers'],['note','is noted on it, never held']]){const o=el('option',t);o.value=k;cp.append(o)}cp.value=x.clash_policy||'note';
+    cp.onchange=()=>run(async()=>{await api('/admin/api/spaces/'+x.id+'/rules','PUT',{clash:cp.value});$('notice').textContent='Saved.';await load()});
+    const l2=el('label','A clash with an item already here ','small');l2.append(cp);r.append(l2);c.append(r)}
+   else if(x.restricted_space&&x.kind==='shared'){const rn=(d.spaces.find(y=>y.id===x.restricted_space)||{}).name;if(rn)c.append(el('p','Items about named people go to '+rn+'.','small muted'))}
    const cnt=Object.entries(x.counts||{});if(cnt.length)c.append(el('p',cnt.map(([k,v])=>v+' '+k+(v===1?'':'s')).join(' · '),'small'));
    if(x.kind!=='personal'&&x.members.length){const ul=el('ul','','sp-members');for(const m of x.members){const li=el('li',m.name+' · '+RL[m.role]);
      if(x.can_manage&&!(m.role==='manage'&&x.members.filter(y=>y.role==='manage').length<2)){const rm=el('button','Remove','mini secondary');rm.type='button';rm.onclick=()=>run(async()=>{if(!confirm('Remove '+m.name+' from '+x.name+'? They stop seeing everything in it at once.'))return;await api('/admin/api/spaces/'+x.id+'/members/'+(m.key==='owner'?'owner':m.key),'DELETE');await load()});li.append(rm)}
@@ -3371,18 +3387,20 @@ if(PAGE==='spaces'){
    go.onclick=()=>run(async()=>{if(!confirm('Move '+p.counts.organisations+' organisations, '+p.counts.knowledge+' knowledge items and '+p.counts.decisions+' decisions into '+p.to_name+'? Everyone with an Alice role will read them.'))return;
     await api('/admin/api/spaces/organisation/move','POST',{counts:p.counts});$('notice').textContent='Moving now: each item goes through the sharing check.';await load()});out.append(go)})}
  $('sp-default').onchange=()=>run(async()=>{await api('/admin/api/spaces/default','PUT',{space:$('sp-default').value});$('notice').textContent='New items now go to that space.'});
- $('sp-create').onsubmit=e=>{e.preventDefault();run(async()=>{await api('/admin/api/spaces','POST',{name:$('sp-name').value,description:$('sp-desc').value,client:$('sp-client').value});$('sp-name').value='';$('notice').textContent='Space created. Only you are in it until you add people.';await load()})};
+ $('sp-create').onsubmit=e=>{e.preventDefault();const kind=$('sp-kind').value;if(kind==='restricted'&&$('sp-desc').value.trim().length<5){$('notice').textContent='Say what the restricted space is for.';return}
+  run(async()=>{await api('/admin/api/spaces','POST',{name:$('sp-name').value,description:$('sp-desc').value,client:$('sp-client').value,kind});$('sp-name').value='';$('sp-desc').value='';$('notice').textContent=kind==='restricted'?'Restricted space created. Only you are in it until you add people; name it on a team space so items about named people go there.':'Space created. Only you are in it until you add people.';await load()})};
  run(load);
 }
 """
 PAGES['spaces'] = ('Spaces', 'Where your memories, decisions, knowledge, organisations, proposals and digital teams live. Your personal space is yours alone; '
                    'a shared space shows everything in it to its members. Sharing is always deliberate: Alice checks an item for personal details '
                    'before it enters a shared space, and adding someone to Alice never adds them to a space.')
-SECTIONS['spaces'] = r'''<section><div class="mem-head"><h2>Waiting for you</h2><span class="small muted">Items the sharing check held: share anyway or keep personal</span></div><div id="sp-waiting"></div></section>
+SECTIONS['spaces'] = r'''<section id="sp-approvals-box" hidden><div class="mem-head"><h2>Waiting for your approval</h2><span class="small muted">New items in the spaces you manage that the automatic checks held: approve or reject</span></div><div id="sp-approvals"></div></section>
+<section><div class="mem-head"><h2>Waiting for you</h2><span class="small muted">Items the sharing check held: share anyway or keep personal</span></div><div id="sp-waiting"></div></section>
 <section><div class="mem-head"><h2>Your spaces</h2><label class="small">New items go to <select id="sp-default"></select></label></div><div id="sp-list" class="sp-grid"></div><div id="sp-migration"></div></section>
 <section id="sp-org" hidden></section>
-<section id="sp-new" hidden><div class="mem-head"><h2>New shared space</h2></div><form id="sp-create" class="sp-form"><label>Name <input id="sp-name" maxlength="80" required></label>
-<label>What it is for <input id="sp-desc" maxlength="300"></label><label>Tied to a client (optional) <input id="sp-client" maxlength="60" placeholder="Only this space's members then see that client's material"></label>
+<section id="sp-new" hidden><div class="mem-head"><h2>New shared space</h2></div><form id="sp-create" class="sp-form"><label>Kind <select id="sp-kind"></select></label><label>Name <input id="sp-name" maxlength="80" required></label>
+<label>What it is for (required for a restricted space) <input id="sp-desc" maxlength="300"></label><label>Tied to a client (optional) <input id="sp-client" maxlength="60" placeholder="Only this space's members then see that client's material"></label>
 <button type="submit">Create space</button></form></section>'''
 NAV_GROUPS[1][1].append('spaces')
 NAV_ICONS['spaces'] = _I('<rect x="3" y="4" width="8" height="7" rx="1.5"/><rect x="13" y="4" width="8" height="7" rx="1.5"/><rect x="3" y="13" width="8" height="7" rx="1.5"/><rect x="13" y="13" width="8" height="7" rx="1.5"/>')
@@ -3391,7 +3409,7 @@ CSS += r'''
 .space-switch{margin-right:10px;max-width:220px;background:#11233a;color:#fff;border:1px solid #33506a;border-radius:8px;padding:4px 8px}
 .sp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}.sp-card{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:0}
 .sp-card h3{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 6px;font-size:16px}.sp-members{margin:6px 0;padding-left:18px;font-size:14px}.sp-members li{margin:3px 0}
-.sp-members .mini{margin-left:8px}.sp-add{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.sp-held{border:1px solid #e2bf85;background:#fdf3e1;border-radius:8px;padding:10px 12px;margin:8px 0}
+.sp-members .mini{margin-left:8px}.sp-add{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.sp-rules{display:grid;gap:4px;margin:6px 0}.sp-rules select{margin-left:4px;max-width:100%}.sp-held{border:1px solid #e2bf85;background:#fdf3e1;border-radius:8px;padding:10px 12px;margin:8px 0}
 .sp-held ul{margin:6px 0 8px;padding-left:18px;font-size:14px}.sp-form label{display:block;margin:8px 0}.sp-form input{width:min(480px,100%)}#sp-new[hidden],#sp-org[hidden]{display:none}
 '''
 

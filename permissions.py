@@ -269,7 +269,9 @@ ROUTES = {
     'POST /admin/api/spaces/sweep/{sid}/dismiss': 'any',
     # open by default (CR-4 phase 1): a manager closes a team space (spaces.py checks); the move into the Organisation space is an
     # Owner's; Entra group mappings and which organisation sections are internal: Owners and Admins
-    'PUT /admin/api/spaces/{sid}/closed': 'any', 'GET /admin/api/spaces/organisation/move': 'full', 'POST /admin/api/spaces/organisation/move': 'full',
+    'PUT /admin/api/spaces/{sid}/closed': 'any', 'PUT /admin/api/spaces/{sid}/rules': 'any',
+    # Temple's router and restricted spaces (CR-4 phase 2): each space's managers approve what waits in it (spaces.py checks)
+    'GET /admin/api/spaces/approvals': 'any', 'POST /admin/api/spaces/approvals/{kind}/{iid}': 'any', 'GET /admin/api/spaces/organisation/move': 'full', 'POST /admin/api/spaces/organisation/move': 'full',
     'PUT /admin/api/spaces/organisation/internal-sections': 'admin',
     'GET /admin/api/groups': 'admin', 'POST /admin/api/groups': 'admin', 'PUT /admin/api/groups/{mid}': 'admin',
     'DELETE /admin/api/groups/{mid}': 'admin', 'POST /admin/api/groups/apply': 'admin',
