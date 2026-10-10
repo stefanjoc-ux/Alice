@@ -5,6 +5,10 @@ there is a manual step. Every pull request that changes code adds its line under
 pull request check fails without it. At each deploy Alice reads this file: Admin › What's new shows it, and each release
 becomes a knowledge item in the category "Alice changes".
 
+## 2026-10-10
+
+- #41 Work items no longer get stuck in personal spaces: the sharing check waits for Temple's review and holds only an actual finding; Temple's category is enough for work items; new items go to each person's team space by default; Actions lists work items in personal spaces to move; an Owner can link a person's accounts. You need to: back up data\ on the PC first; then link your Tuduma admin account to your everyday account on Users and permissions.
+
 ## 2026-10-09
 
 - #40 /signed-out is now a "Sign in to Alice" page to bookmark: Alice's look, a secure-connection badge showing the address you are really on, one Sign in with Microsoft button (it clears this browser's old sign-in first) and a note on what to check; no fields to type into, and the signed-out messages still show when they apply.
