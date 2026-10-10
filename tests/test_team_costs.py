@@ -29,7 +29,7 @@ STATE = {'measure': []}
 USAGE = SimpleNamespace(usage={'input_tokens': 10000, 'output_tokens': 1000})        # Sonnet: $0.02 in + $0.01 out = $0.03 a call
 
 
-def fake_call(provider, system, messages, max_tokens=1500, timeout=60, workload='', meta=None):
+def fake_call(provider, system, messages, max_tokens=1500, timeout=60, workload='', meta=None, **kw):
     payload = messages[0]['content']
     CALLS.append({'workload': workload, 'payload': payload, 'system': system})
     usage_meter.log(USAGE, 'claude', 'claude-sonnet-5-5', workload)              # the real ledger path: Usage, the agent run, the team

@@ -277,17 +277,19 @@ def vision_content(provider, text, attachments):
     return out
 
 
-def _call(provider, system, messages, max_tokens=1500, timeout=60, workload='Assistant', meta=None):
-    """The model's text. Pass a dict as meta to learn whether the answer was cut off at max_tokens (meta['truncated'])."""
-    import os, usage_meter
+def _call(provider, system, messages, max_tokens=1500, timeout=60, workload='Assistant', meta=None, json_mode=False):
+    """The model's text. Pass a dict as meta to learn whether the answer was cut off at max_tokens (meta['truncated']).
+    json_mode: ask OpenAI for one JSON object (openai_json adds the word JSON to the input, which the API requires); Claude
+    has no such mode and follows the instructions."""
+    import os, usage_meter, openai_json
     meta = meta if isinstance(meta, dict) else {}
     model = PROVIDERS[provider][0]
     if family(provider) == 'openai':
         if not os.getenv('OPENAI_API_KEY'): raise ValueError('Missing OPENAI_API_KEY.')
         from openai import OpenAI
         with OpenAI(timeout=timeout, max_retries=0) as client:
-            r = client.responses.create(model=model, instructions=system, input=messages, max_output_tokens=max_tokens,
-                                        reasoning={'effort': 'medium' if model == 'gpt-6-astra' else 'none'}, store=False)
+            r = openai_json.create(client, json_mode=json_mode, model=model, instructions=system, input=messages, max_output_tokens=max_tokens,
+                                   reasoning={'effort': 'medium' if model == 'gpt-6-astra' else 'none'}, store=False)
         usage_meter.log(r, 'openai', model, workload)
         why = getattr(getattr(r, 'incomplete_details', None), 'reason', None)
         meta['truncated'] = getattr(r, 'status', '') == 'incomplete' and why in ('max_output_tokens', None)

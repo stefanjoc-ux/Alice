@@ -28,7 +28,7 @@ ITEMS = [{'element': 'Walls', 'description': 'Wall item 1', 'quantity': 10, 'uni
 USAGE = SimpleNamespace(usage={'input_tokens': 10000, 'output_tokens': 1000})        # Sonnet: $0.03 a call
 
 
-def fake_call(provider, system, messages, max_tokens=1500, timeout=60, workload='', meta=None):
+def fake_call(provider, system, messages, max_tokens=1500, timeout=60, workload='', meta=None, **kw):
     payload = messages[0]['content']
     usage_meter.log(USAGE, 'claude', 'claude-sonnet-5-5', workload)
     if 'Lead QS' in workload and 'message_from_the_user' in payload:

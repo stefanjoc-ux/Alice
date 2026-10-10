@@ -45,10 +45,12 @@ def summary(tz=0):
     orgs = _safe(lambda: organisations.listing()['organisations'], [])
     docs = _safe(lambda: sum(s['files'] for s in doc_library.sources()), 0)
     ag = _safe(lambda: agents.listing()['agents'], [])
-    attention = [{'id': a['id'], 'name': a['name'],
-                  'why': (a['status'] + (': ' + a['status_reason'] if a['status_reason'] else '')) if a['status'] != 'active'
-                  else 'last run failed' if a.get('failure_open') else 'review date passed'}
-                 for a in ag if a['status'] != 'active' or a.get('failure_open') or a.get('review_overdue')]
+    def flag(a):        # name and state on one line, the reason (e.g. the provider's error) on the next; the page cuts it to two lines
+        state = a['status'] if a['status'] != 'active' else 'last run failed' if a.get('failure_open') else 'review date passed'
+        detail = (a['status_reason'] or '') if a['status'] != 'active' else ((a.get('last_run') or {}).get('error') or '') if a.get('failure_open') else ''
+        return {'id': a['id'], 'name': a['name'], 'state': state, 'detail': detail,
+                'why': (state + (': ' + detail if detail and a['status'] != 'active' else ''))}
+    attention = [flag(a) for a in ag if a['status'] != 'active' or a.get('failure_open') or a.get('review_overdue')]
     asst = _safe(lambda: assistants.listing()['assistants'], [])
     hour = (datetime.now(timezone.utc).hour - (tz or 0) // 60) % 24
     return {

@@ -23,7 +23,7 @@ STATE = {'plan': [], 'talk': []}
 SEEN = []
 
 
-def fake_call(provider, system, messages, max_tokens=1500, timeout=60, workload='', meta=None):
+def fake_call(provider, system, messages, max_tokens=1500, timeout=60, workload='', meta=None, **kw):
     payload = messages[0]['content']
     SEEN.append((workload, system, payload))
     if 'lead of' in system:

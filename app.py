@@ -3441,6 +3441,11 @@ if os.environ.get('ALICE_NO_RELEASE_RECORD') != '1':     # the test suites switc
     try: changelog.record_release()
     except Exception as e: logging.getLogger('alice.changelog').warning('Release not recorded: %s', str(e)[:300])
 
+# Agents Alice paused for a failure a release has since fixed (agents.FIXED) are resumed once, and catch up on what they missed
+if not os.environ.get('ALICE_NO_SCHEDULER'):        # no background work in tests or the outside-connector container
+    try: agents.resume_fixed()
+    except Exception as e: logging.getLogger('alice.agents').warning('Fixed agents not resumed: %s', str(e)[:300])
+
 @app.get('/admin/api/whats-new')
 def admin_whats_new(): return changelog.overview()
 

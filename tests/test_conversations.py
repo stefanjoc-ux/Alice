@@ -27,7 +27,7 @@ t('duplicate save detected', M.save_conversation(title='Planning the Fife tenant
 try: M.save_conversation(title='Keys',summary='We set up the deployment and the key is sk-proj-'+'z'*48+' which goes in the pipeline.');t('secret in a conversation refused',False)
 except ValueError as e: t('secret in a conversation refused: '+str(e)[:55],True)
 # 2. Temple whole-chat review of the saved conversation (model mocked)
-def fake(payload):
+def fake(payload, *a):
     return json.dumps({'suggestions':[
         {'kind':'memory','title':'Rollback plans','content':'Wants a rollback plan for every migration batch','quote':'I want a rollback plan for every batch','reason':'Stated preference'},
         {'kind':'knowledge','title':'Pilot method','content':'Pilot on a small group before bulk moves','quote':'always pilot on a small group first','reason':'Reusable method'},
@@ -50,12 +50,12 @@ ac=s.create_chat()['id']
 with s.db() as c:
     for u,rp in [('I only work from the Blairgowrie office on Fridays','Noted.'),('Can you draft the agenda?','Here it is.')]:
         c.execute("INSERT INTO chat_turns(id,chat_id,user_text,reply,provider,status,created_at) VALUES (?,?,?,?,?,?,?)",(uuid.uuid4().hex,ac,u,rp,'openai','complete',s.now()))
-V._ask=lambda p: (json.dumps({'suggestions':[{'kind':'memory','title':'Office days','content':'Works from the Blairgowrie office on Fridays','quote':'only work from the Blairgowrie office on Fridays','reason':'fact'},{'kind':'memory','title':'From assistant','content':'x','quote':'Here it is.','reason':'assistant text'}]}),'openai')
+V._ask=lambda p, *a: (json.dumps({'suggestions':[{'kind':'memory','title':'Office days','content':'Works from the Blairgowrie office on Fridays','quote':'only work from the Blairgowrie office on Fridays','reason':'fact'},{'kind':'memory','title':'From assistant','content':'x','quote':'Here it is.','reason':'assistant text'}]}),'openai')
 res=V.review_chat(ac,manual=True);t('Alice chat review keeps your quote, drops the assistant\'s', res['suggestions']==1 and res['dropped']==1)
 # 4. never send marked material to Temple
 mc=s.create_chat()['id']
 with s.db() as c: c.execute("INSERT INTO chat_turns(id,chat_id,user_text,reply,provider,status,created_at) VALUES (?,?,?,?,?,?,?)",(uuid.uuid4().hex,mc,'OFFICIAL-SENSITIVE\nbid numbers','ok','openai','complete',s.now()))
-called=[];V._ask=lambda p: called.append(1)
+called=[];V._ask=lambda p, *a: called.append(1)
 res=V.review_chat(mc,manual=True);t('marked chat blocked, Temple never called', res['status']=='blocked' and not called)
 # 5. bulk review of flagged archived chats
 with s.db() as c: c.execute("UPDATE chats SET updated_at='2026-01-01T00:00:00+00:00' WHERE id IN (?,?)",(ac,mc))
@@ -70,6 +70,6 @@ t('a single option given as text is accepted', p.suggestions[0].options == ['Azu
 for r_, why in [('', 'empty'), ('Sorry, I cannot help.', 'no JSON'), ('{"suggestions":[{"kind":"memory"', 'no JSON'), ('{"suggestions": {"a": 1}}', 'no suggestions list')]:
     try: V.parse_suggestions(r_); t(f'unusable reply refused ({why})', False)
     except ValueError as e: t(f'unusable reply refused ({why})', why.split()[0] in str(e) or 'JSON' in str(e))
-V._ask = lambda p: ('I could not find anything.', 'claude')
+V._ask = lambda p, *a: ('I could not find anything.', 'claude')
 res = V.review_chat(ac, manual=True)
 t('unusable reply: failure says why', res['status'] == 'failed' and 'expected format' in res['message'] and 'no JSON' in res['message'])
