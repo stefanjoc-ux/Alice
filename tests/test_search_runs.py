@@ -85,14 +85,14 @@ t('with both rules on, a suggestion holding a secret or a marking is left out as
 with s.db() as c:
     blocks = [r_[0] for r_ in c.execute("SELECT target FROM activity WHERE action='rule_blocked' AND target LIKE 'opportunity suggestion%'")]
 t('…and each is logged as a block, like every other rule block', len(blocks) >= 2)
-RE.update_rule('secret_detection', enabled=False); RE.update_rule('protective_marking', enabled=False)
+RE.update_rule('secret_detection', enabled=False, reason='Test: rules off'); RE.update_rule('protective_marking', enabled=False, reason='Test: rules off')
 rb = SR.get(OP.scan('Example Council')['run_id'])['record']
 t('switched off on the Rules page, neither filter applies here either', {'Key rotation help', 'Records review'} <= {x['title'] for x in rb['found']})
-RE.update_rule('protective_marking', enabled=True, new_params={'markings': ['SECRET']})
+RE.update_rule('protective_marking', enabled=True, new_params={'markings': ['SECRET']}, reason='Test: one marking')
 with s.db() as c: c.execute("DELETE FROM opportunities WHERE title IN ('Key rotation help','Records review')")
 rc_ = SR.get(OP.scan('Example Council')['run_id'])['record']
 t('the marking check follows the rule\'s own list of markings', 'Records review' in {x['title'] for x in rc_['found']})
-RE.update_rule('secret_detection', enabled=True); RE.update_rule('protective_marking', new_params={'markings': ['OFFICIAL-SENSITIVE', 'SECRET', 'TOP SECRET']})
+RE.update_rule('secret_detection', enabled=True, reason='Test: back on'); RE.update_rule('protective_marking', new_params={'markings': ['OFFICIAL-SENSITIVE', 'SECRET', 'TOP SECRET']}, reason='Test: back to the default')
 with s.db() as c: c.execute("DELETE FROM opportunities WHERE title IN ('Key rotation help','Records review')")
 SCAN.update(SCAN_SAVED)
 

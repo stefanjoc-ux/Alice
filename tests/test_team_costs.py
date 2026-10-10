@@ -354,9 +354,8 @@ t('…and none of its costs reach live Alice', 'Demo team' not in [x['name'] for
 import mcp_server, copilot_package, asyncio
 tools = {x.name: x for x in asyncio.run(mcp_server.mcp.list_tools())}
 dd, rd = tools['propose_decision'].description, tools['propose_record'].description
-t('propose_decision says Temple checks and records it with who made it, unless the decision policy holds it',
-  'Temple checks it' in dd and 'who made it' in dd and 'decision policy' in dd and 'awaiting their approval' not in dd)
-t('propose_record says memories follow Temple\'s checks and the per-app "Memories from outside apps" switch',
-  'Memories from outside apps' in rd and 'Temple checks every memory' in rd)
+t('propose_decision says how decisions are approved under the current setting (Approval and library management)',
+  mcp_server.approval_text('decision') in dd and '{approval' not in dd and 'awaiting their approval' not in dd)
+t('propose_record says how memories are approved under the current setting', mcp_server.approval_text('memory') in rd and '{approval' not in rd)
 t('the tool names are unchanged', {'propose_record', 'propose_decision'} <= set(tools))
-t('the Copilot package version is raised for the new wording', copilot_package.VERSION == '1.2.9')
+t('the Copilot package version is raised for the new wording', copilot_package.VERSION == '1.3.0')

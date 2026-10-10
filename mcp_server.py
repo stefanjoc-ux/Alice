@@ -612,7 +612,7 @@ def propose_knowledge(title: Annotated[str, Field(min_length=1, max_length=200)]
     if supersedes:
         n = len(result.get('replaces') or [])
         import library
-        msg += ((f' It replaces {n} existing item(s): ' + ('Temple has superseded them (kept, linked to this one).' if auto == 'approved' and library.may('supersede')
+        msg += ((f' It is marked as replacing {n} existing item(s): ' + ('Temple has superseded them (kept, linked to this one).' if auto == 'approved' and library.may('supersede')
                  else 'the user can retire them when approving.')) if n else
                 ' No existing item matched the supersedes names; Temple will look for replaced items after approval.')
     return {'id': result['id'], 'status': 'active' if auto == 'approved' else 'draft', 'message': msg}

@@ -430,7 +430,7 @@ def resolve_replacements(ids, action, reason=''):
         if not r: continue
         if action == 'accept':
             why = reason or (('Temple: ' if r['source'] == 'temple' else 'Proposer: ') + (r['reason'] or 'newer version'))
-            try: supersede(r['old_id'], r['new_id'], why); done += 1
+            try: supersede(r['old_id'], r['new_id'], why, by='Temple' if store.actor() in ('Alice', 'Temple') else 'you'); done += 1
             except ValueError as e: errors.append(str(e))
         else:
             with store.db() as c:
