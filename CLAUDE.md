@@ -208,6 +208,13 @@ A browser refresh is not enough: the old server process keeps running the old co
   the OpenAI and Anthropic libraries pointed at a dead address. `test_zz_safety.py` verifies this.
 - New tests: `tests\test_<name>.py`, starting with `import _util` then `from _util import t`, **before**
   importing any Alice module. Mock providers; never call a real model.
+- **A test sets up its own settings; it never relies on the environment it runs in** (lesson, 10 Oct 2026: a check for "no repository
+  configured" passed on PCs and failed inside the pipeline's image, which is built with `ALICE_REPO_URL`). `_util` clears every
+  deployment setting (`ALICE_<KEY>` of `deployment.py`, `_util.DEPLOYMENT_KEYS`) for each suite; a test that needs one uses
+  `with _util.deployment_settings(repo_url=..., file={...}):` (exactly those set, the rest cleared, put back afterwards). Before a pull
+  request that changes the image, the workflow or test set-up, run the suites the way the pipeline does: inside the image (`docker build`
+  with the workflow's build arguments, then `ALICE_ROLE=test`, SQLite and with `ALICE_TEST_DATABASE_URL`), or, where images cannot be
+  pulled, a copy of the tree without `.git` run as a non-root user with the image's environment.
 - Not covered by tests (check by hand): tray behaviour, hotkey, window sizing, voice, page layout.
 - **JavaScript lives inside Python strings** (`app.py` for the chat page, `admin_ui.py` for the Command
   centre). Python compiling does not check it. After editing it, extract the rendered `<script>` and run

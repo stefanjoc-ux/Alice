@@ -88,12 +88,16 @@ t('no object ID but Microsoft\'s fixed IDs and Alice\'s own (named above)', not 
 import json, deployment
 shipped = json.load(open(os.path.join(_util.ROOT, 'config', 'deployment.json'), encoding='utf-8'))
 t('the shipped deployment settings name no one', not any(v for k, v in shipped.items() if not k.startswith('_') and k != 'product'))
-for k in ('ALICE_REPO_URL', 'ALICE_OWNER_NAME', 'ALICE_ORGANISATION', 'ALICE_TENANT'): os.environ.pop(k, None)   # the image sets ALICE_REPO_URL at build
-t('without configuration Alice calls the owner "Owner" and the organisation "your organisation"',
-  deployment.owner_name() == 'Owner' and deployment.organisation() == 'your organisation' and deployment.repo_url() == '')
-os.environ['ALICE_ORGANISATION'] = 'FICTIONAL Example Ltd'
-t('…a deployment names them in its own settings', deployment.organisation() == 'FICTIONAL Example Ltd')
-del os.environ['ALICE_ORGANISATION']
+with _util.deployment_settings():          # none set, whatever the machine or image running the tests carries
+    t('without configuration Alice calls the owner "Owner" and the organisation "your organisation"',
+      deployment.owner_name() == 'Owner' and deployment.organisation() == 'your organisation' and deployment.repo_url() == '')
+with _util.deployment_settings(organisation='FICTIONAL Example Ltd'):
+    t('…a deployment names them in its own settings', deployment.organisation() == 'FICTIONAL Example Ltd')
+with _util.deployment_settings(organisation='FICTIONAL Env Ltd', file={'organisation': 'FICTIONAL File Ltd', 'tenant': 'FICTIONAL tenant'}):
+    t('…the environment first, then deployment.json in the data folder', deployment.organisation() == 'FICTIONAL Env Ltd'
+      and deployment.tenant() == 'FICTIONAL tenant')
+import os as _os
+t('…and the tests start with none of them set (tests/_util.py)', not any(_os.environ.get('ALICE_' + k.upper()) for k in _util.DEPLOYMENT_KEYS))
 t('backup advice says what applies to the deployment: nothing to copy in Azure, the data folder on a PC',
   'point-in-time' in deployment.backup_advice({'CONTAINER_APP_NAME': 'alice-web'}) and 'data folder' in deployment.backup_advice({}))
 

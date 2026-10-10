@@ -140,12 +140,21 @@ os.environ.pop('ALICE_TRUST_EASYAUTH', None)
 
 # which release is running, at the bottom of the Console menu
 from ui_theme import version_info
-vi = version_info({'ALICE_VERSION': '5c49135', 'ALICE_BUILT': '2026-10-04T15:40:00Z', 'CONTAINER_APP_REVISION': 'alice-web--r5c49135',
-                   'ALICE_REPO_URL': 'https://github.com/example-org/Alice'})
-t('version: the release code, when it was built, the running revision and a link to the change (the repository is a setting, D-0052)',
-  vi['version'] == '5c49135' and vi['revision'] == 'alice-web--r5c49135' and vi['link'] == 'https://github.com/example-org/Alice/commit/5c49135')
-os.environ.pop('ALICE_REPO_URL', None)        # the pipeline's image is built with it: this check is about none configured
-t('version: no repository configured, no link', version_info({'ALICE_VERSION': '5c49135'})['link'] == '')
+# Each check sets exactly the deployment settings it is about (_util.deployment_settings), so it passes the same way on a PC, in a
+# pull request's image and in main's (whose build carries ALICE_REPO_URL).
+with _util.deployment_settings():
+    vi = version_info({'ALICE_VERSION': '5c49135', 'ALICE_BUILT': '2026-10-04T15:40:00Z', 'CONTAINER_APP_REVISION': 'alice-web--r5c49135',
+                       'ALICE_REPO_URL': 'https://github.com/example-org/Alice'})
+    t('version: the release code, when it was built, the running revision and a link to the change (the repository is a setting, D-0052)',
+      vi['version'] == '5c49135' and vi['revision'] == 'alice-web--r5c49135' and vi['link'] == 'https://github.com/example-org/Alice/commit/5c49135')
+    t('version: no repository configured, no link', version_info({'ALICE_VERSION': '5c49135'})['link'] == '')
+with _util.deployment_settings(repo_url='https://github.com/example-org/Alice'):
+    t('version: the repository from the deployment settings (as the image is built) links the commit',
+      version_info({'ALICE_VERSION': '5c49135'})['link'] == 'https://github.com/example-org/Alice/commit/5c49135')
+with _util.deployment_settings(file={'repo_url': 'https://github.com/example-org/Alice'}):
+    t('version: …or from deployment.json in the data folder', version_info({'ALICE_VERSION': '5c49135'})['link'].endswith('/commit/5c49135'))
+with _util.deployment_settings(repo_url='http://insecure.example.org/Alice'):
+    t('version: never a link to a repository address that is not https', version_info({'ALICE_VERSION': '5c49135'})['link'] == '')
 t('version: on the PC it says local, with no link', version_info({}) == {'version': 'local', 'built': '', 'revision': '', 'link': ''})
 t('version: anything odd is not shown', version_info({'ALICE_VERSION': '<script>'})['version'] == 'local')
 h = cl.get('/admin/memories').text

@@ -58,6 +58,11 @@ os.environ['ALICE_TAXONOMY_DEFAULT'] = 'off'      # Temple's category/tag housek
 os.environ['ALICE_AUTO_APPROVE_DEFAULT'] = 'off'   # suites test the approval gates; test_autoapprove switches it on
 os.environ['ALICE_OPEN_SPACES_DEFAULT'] = 'off'    # team spaces members-only in tests; test_spaces_teams switches the rule on
 os.environ['ALICE_ROUTER_DEFAULT'] = 'off'         # Temple's router off in tests; test_spaces_router switches it on
+# This deployment's own names and places (deployment.py, decision D-0052) start UNSET in every suite, whatever the machine, the
+# pipeline or the image running the tests carries (the pipeline builds the image with ALICE_REPO_URL; a PC may have any of them).
+# A test that needs one sets it itself, with deployment_settings() below, so it passes the same way everywhere.
+DEPLOYMENT_KEYS = ('product', 'owner_name', 'organisation', 'tenant', 'domain', 'repo_url')
+for _k in DEPLOYMENT_KEYS: os.environ.pop('ALICE_' + _k.upper(), None)
 try:
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     sys.stderr.reconfigure(encoding='utf-8', errors='replace')
@@ -77,3 +82,35 @@ def t(label, condition):
 def path(*parts):
     """A path inside this run's throwaway data folder."""
     return os.path.join(DATA, *parts)
+
+
+import contextlib
+
+
+@contextlib.contextmanager
+def deployment_settings(**values):
+    """Exactly these deployment settings inside the block, whatever was there before: every ALICE_<KEY> of deployment.py set
+    to the value given or cleared, and no deployment.json in the data folder (one is written when `file` is given, a dict).
+    Everything is put back afterwards. e.g. `with deployment_settings(repo_url='https://github.com/example-org/Alice'): ...`"""
+    unknown = set(values) - set(DEPLOYMENT_KEYS) - {'file'}
+    if unknown: raise ValueError('Not a deployment setting: ' + ', '.join(sorted(unknown)))
+    names = ['ALICE_' + k.upper() for k in DEPLOYMENT_KEYS]
+    saved_env = {n: os.environ.get(n) for n in names}
+    path = os.path.join(os.environ['AISUBSTRATE_DATA_DIR'], 'deployment.json')
+    saved_file = open(path, encoding='utf-8').read() if os.path.exists(path) else None
+    try:
+        for k in DEPLOYMENT_KEYS:
+            if values.get(k) is not None: os.environ['ALICE_' + k.upper()] = values[k]
+            else: os.environ.pop('ALICE_' + k.upper(), None)
+        if os.path.exists(path): os.remove(path)
+        if values.get('file') is not None:
+            import json
+            with open(path, 'w', encoding='utf-8') as f: json.dump(values['file'], f)
+        yield
+    finally:
+        for n, v in saved_env.items():
+            if v is None: os.environ.pop(n, None)
+            else: os.environ[n] = v
+        if os.path.exists(path): os.remove(path)
+        if saved_file is not None:
+            with open(path, 'w', encoding='utf-8') as f: f.write(saved_file)
