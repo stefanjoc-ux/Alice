@@ -315,7 +315,7 @@ for route in ('GET /admin/api/teams/jobs/{jid}/comparisons', 'POST /admin/api/te
               'POST /admin/api/teams/{tid}/benchmarks/run'):
     assert route in permissions.ROUTES, route
 t('every comparison and benchmark route declares its section (comparisons follow the job\'s permissions and spaces)', True)
-r = cl.get(f'/admin/api/teams/jobs/{JID}/comparisons/{bm["id"][:-1]}0')
+r = cl.get(f'/admin/api/teams/jobs/{JID}/comparisons/{"f" * 16}')
 t('an unknown comparison on the job is not found', r.status_code == 404)
 other_job = start('FICTIONAL other job')
 r = cl.get(f'/admin/api/teams/jobs/{other_job["id"]}/comparisons/{CID}')
