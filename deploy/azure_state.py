@@ -496,7 +496,7 @@ RECORDED = ('ResourceGroup', 'Location', 'ExtAppId', 'ExtCallers', 'ExtAllowedUs
             'GitHubSubject', 'CopilotAudience', 'CopilotAuthId', 'CopilotDemoAudience', 'CopilotDemoAuthId', 'MailFrom', 'BackupNotify',
             'FilesBackupDays', 'OffsiteKeepDays', 'OffsiteSoftDeleteDays', 'PgBackupDays', 'NoLock', 'LockImmutability', 'PgGeoBackup',
             'RecoverFrom', 'RecoverCopy', 'DatabaseHost', 'UseAppRoles', 'OwnerObjectId', 'AdminObjectIds', 'LocalModel',
-            'LocalModelName', 'UseLocalState', 'OwnerName', 'Organisation')
+            'LocalModelName', 'UseLocalState', 'OwnerName', 'Organisation', 'RemoveBranchSignIn')
 NOT_RECORDED = '(not recorded)'
 _SECRET_NAME = re.compile(r'(?i)(password|passwd|secret|token|credential|apikey|api_key|accountkey|account_key|connectionstring|sas)')
 _GUID = re.compile(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')

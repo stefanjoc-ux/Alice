@@ -1,5 +1,5 @@
 # The restore drill: Actions > "Restore drill" > Run workflow (and on the 1st of each month at 03:17 UTC, after the nightly copy).
-# Copy to .github/workflows/restore-drill.yml (the owner; like deploy.yml). It starts the same Container Apps job as the
+# It runs in the GitHub environment "production" (main branch only; tests/test_workflows.py). It starts the same Container Apps job as the
 # "Run a restore drill now" button on Alice's Backup page (alice-drill, drill.py) and waits for it:
 #   last night's off-site copy -> throwaway database, file share and temporary Alice in the drill resource group ->
 #   checks it starts and the counts match -> ALWAYS deletes the throwaway resources -> reports on the Backup page and by email.
@@ -12,7 +12,6 @@ on:
     - cron: '17 3 1 * *'
 
 permissions:
-  id-token: write
   contents: read
 
 concurrency:
@@ -21,9 +20,12 @@ concurrency:
 
 jobs:
   drill:
-    if: ${{ vars.AZURE_CLIENT_ID != '' }}
+    if: ${{ vars.AZURE_CLIENT_ID != '' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     environment: production
+    permissions:
+      id-token: write
+      contents: read
     timeout-minutes: 200
     steps:
       - uses: azure/login@v3

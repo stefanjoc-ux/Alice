@@ -5,7 +5,7 @@
 Lists the files the pull request changes (git diff against where it branched from the base) and fails when code changed
 but CHANGELOG.md did not. Exempt: documentation only (*.md, *.txt, docs/) and tests only (tests/), or both. When
 CHANGELOG.md changed it must also read cleanly (changelog.parse: a "## YYYY-MM-DD" heading per day, newest first, and
-"- #<number> what changed" one line per pull request). Run by deploy/github/deploy.yml (job changelog) on pull requests.
+"- #<number> what changed" one line per pull request). Run by .github/workflows/deploy.yml (job changelog) on pull requests.
 Stdlib only. Exit codes: 0 fine, 1 refused, 2 git could not list the changes.
 """
 import argparse

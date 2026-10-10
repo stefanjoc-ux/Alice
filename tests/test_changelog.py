@@ -31,7 +31,7 @@ ok, msg = CC.decide(['app.py', 'admin_ui.py'])
 t('check: a code change without a CHANGELOG.md line fails, naming the files', not ok and 'app.py' in msg and 'CHANGELOG.md' in msg)
 t('check: …and the same with a test changed too', not CC.decide(['changelog.py', 'tests/test_changelog.py'])[0])
 t('check: a change to the pipeline, infrastructure or setup script is code too',
-  not CC.decide(['deploy/github/deploy.yml'])[0] and not CC.decide(['infra/main.bicep'])[0] and not CC.decide(['deploy/azure-setup.ps1'])[0])
+  not CC.decide(['.github/workflows/deploy.yml'])[0] and not CC.decide(['infra/main.bicep'])[0] and not CC.decide(['deploy/azure-setup.ps1'])[0])
 good = open(os.path.join(ROOT, 'CHANGELOG.md'), encoding='utf-8').read()
 t('check: code with its CHANGELOG.md line passes', CC.decide(['app.py', 'CHANGELOG.md'], good)[0])
 t('check: documentation only passes', CC.decide(['CLAUDE.md', 'docs/restore.md', 'INSTALL.txt'])[0])
@@ -53,7 +53,7 @@ t('check: the changed files come from git, against where the branch left the bas
   and g.args == ['git', 'diff', '--name-only', 'origin/main...HEAD'])
 t('check: the command line exits 1 for a code change without its line, 0 with it',
   CC.main(['--files', 'app.py']) == 1 and CC.main(['--files', 'app.py', 'CHANGELOG.md']) == 0 and CC.main(['--files', 'docs/restore.md']) == 0)
-wf = open(os.path.join(ROOT, 'deploy', 'github', 'deploy.yml'), encoding='utf-8').read()
+wf = open(os.path.join(ROOT, '.github', 'workflows', 'deploy.yml'), encoding='utf-8').read()
 t('check: the workflow for Stefan to copy runs it on pull requests, with the full history',
   'python3 deploy/changelog_check.py --base "origin/${{ github.base_ref }}"' in wf and "github.event_name == 'pull_request'" in wf and 'fetch-depth: 0' in wf)
 
