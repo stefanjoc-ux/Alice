@@ -83,9 +83,9 @@ Return JSON only:
 "knowledge":[{"kind":"meeting or note","title":"...","summary":"a paragraph","author":"...","days_ago":60,"category":"...",
  "attendees":["team names"],"decisions":["..."],"actions":[{"action":"...","owner":"team name","due":"YYYY-MM-DD"}]}] (6),
 "conversations":[{"title":"...","app":"Microsoft Copilot or Claude","summary":"three or four sentences","key_points":["..."],"author":"...","days_ago":30}] (2),
-"pending":[{"title":"...","content":"...","author":"..."}] (2: recent memories still waiting for approval){extra}}'''
+"pending":[{"title":"...","content":"...","author":"...","category":"..."}] (2: recent memories still waiting for approval){extra}}'''
 CLASH_EXTRA = ''',
-"clash":{"title":"...","decision":"a NEW decision that contradicts or overturns one of your decisions above","rationale":"...","options":["..."],"author":"...","contradicts":"the exact title of that earlier decision"},
+"clash":{"title":"...","decision":"a NEW decision that contradicts or overturns one of your decisions above","rationale":"...","options":["..."],"author":"...","contradicts":"the exact title of that earlier decision","category":"..."},
 "replaces":{"old_title":"the exact title of one of your knowledge items above","title":"its newer version","summary":"what changed and the new position","author":"...","days_ago":10}'''
 
 
@@ -432,15 +432,21 @@ def _load(s, plan, content, facts):
         for x in c_.get('pending') or []:
             try:
                 with store.acting(x['author']):
-                    r = store.propose(x['title'][:200], str(x.get('content') or x['title'])[:8000], f"{x['author']}, {c_['workstream']}")
+                    r = store.propose(x['title'][:200], str(x.get('content') or x['title'])[:8000], f"{x['author']}, {c_['workstream']}",
+                                      x.get('category') or '')
                 pending.append(r.get('id'))
             except Exception: pass
         cl = c_.get('clash')
         if cl:
             try:
+                # its category: the one it gives, else that of the decision it overturns (Temple never approves an item with none)
+                cats = {x['name'].lower(): x['name'] for x in store.list_categories()['categories']}
+                cat = cats.get(str(cl.get('category') or '').lower()) or next(
+                    (d.get('category') or '' for d in c_.get('decisions') or [] if d.get('title') == cl.get('contradicts')), '')
                 with store.acting(cl['author']):
                     r = store.propose_decision(cl['title'][:200], str(cl.get('decision') or '')[:2000], f"{cl['author']}, {c_['workstream']}",
-                                               str(cl.get('rationale') or ''), [str(o)[:200] for o in (cl.get('options') or [])][:6], 'Next quarter')
+                                               str(cl.get('rationale') or ''), [str(o)[:200] for o in (cl.get('options') or [])][:6], 'Next quarter',
+                                               category=cat)
                 pending.append(r.get('id'))
             except Exception: pass
     def tidy():
