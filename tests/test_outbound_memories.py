@@ -36,7 +36,7 @@ class _OpenAI:
 
 import openai
 openai.OpenAI = _OpenAI
-conversations._ask = lambda payload: (SENT.append(payload) or (json.dumps({'suggestions': []}), 'openai'))
+conversations._ask = lambda payload, *a: (SENT.append(payload) or (json.dumps({'suggestions': []}), 'openai'))
 
 
 def mem(title, content, status='approved'):

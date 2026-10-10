@@ -32,6 +32,7 @@ LABELS = {
     'knowledge_approved': ('knowledge', 'Knowledge draft approved'), 'knowledge_rejected': ('knowledge', 'Knowledge draft rejected'),
     'knowledge_updated': ('knowledge', 'Knowledge details changed'),
     'agent_active': ('agents', 'Agent resumed'), 'agent_paused': ('agents', 'Agent paused'), 'agent_stopped': ('agents', 'Agent stopped'),
+    'agent_catch_up': ('agents', 'Agent caught up after a pause'),
     'agent_updated': ('agents', 'Agent settings changed'), 'agent_registered': ('agents', 'Agent registered'),
     'org_created': ('organisations', 'Organisation added'), 'org_updated': ('organisations', 'Organisation details changed'),
     'org_fact_added': ('organisations', 'Organisation fact added by you'), 'org_fact_proposed': ('organisations', 'Organisation fact proposed'),

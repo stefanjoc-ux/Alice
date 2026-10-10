@@ -41,7 +41,7 @@ STATE = {'plan': [], 'measure': [], 'talk': []}
 P = {'f': None}
 
 
-def fake_call(provider, system, messages, max_tokens=1500, timeout=60, workload='', meta=None):
+def fake_call(provider, system, messages, max_tokens=1500, timeout=60, workload='', meta=None, **kw):
     payload = messages[0]['content']
     CALLS.append({'workload': workload, 'system': system, 'payload': payload})
     if 'Lead QS' in workload and 'message_from_the_user' in payload:

@@ -10,6 +10,7 @@ sent to Temple: such chats are refused for review and the reason is recorded.
 """
 import json
 import os
+import re
 import threading
 from datetime import datetime
 import uuid
@@ -181,8 +182,16 @@ def parse_suggestions(raw):
     text = (raw or '').strip()
     a, b = text.find('{'), text.rfind('}')
     if a < 0 or b <= a: raise ValueError('no JSON in the reply' if text else 'empty reply')
-    try: data = _j.loads(text[a:b + 1])
-    except ValueError: raise ValueError('reply was not valid JSON, possibly cut off') from None
+    data = None
+    try: data = _j.loads(text[a:b + 1], strict=False)       # strict=False: a line break inside a string is read, not refused
+    except ValueError:
+        dec = _j.JSONDecoder(strict=False)                  # words after the JSON with braces of their own
+        for n, m in enumerate(re.finditer(r'\{', text)):
+            if n >= 50: break
+            try: got, _ = dec.raw_decode(text, m.start())
+            except ValueError: continue
+            if isinstance(got, dict) and 'suggestions' in got: data = got; break
+        if data is None: raise ValueError('reply was not valid JSON, possibly cut off') from None
     items = data.get('suggestions') if isinstance(data, dict) else None
     if not isinstance(items, list): raise ValueError('no suggestions list in the reply')
     good, bad = [], 0
@@ -251,21 +260,27 @@ def _material(cid):
     return f"CONVERSATION IN ALICE: {chat['title']}\n\n" + '\n\n'.join(reversed(lines)), user_texts, chat
 
 
-def _ask(payload):
-    import temple, usage_meter
+SHORTER = ('\n\nYour last answer could not be read (cut off or not JSON). Return the JSON object only, with at most 4 suggestions, '
+           'each "content" under 60 words.')
+
+
+def _ask(payload, extra=''):
+    """Temple's reply and the provider. OpenAI is asked for a JSON object (openai_json: the word JSON goes into the input, which
+    its JSON mode requires); extra is added to the instructions (the shorter retry)."""
+    import temple, usage_meter, openai_json
     provider = temple.reviewer()
     key = 'OPENAI_API_KEY' if provider == 'openai' else 'ANTHROPIC_API_KEY'
     if not os.getenv(key): raise ValueError('Missing ' + key + ' for Temple.')
     if provider == 'openai':
         from openai import OpenAI
         with OpenAI(timeout=90, max_retries=0) as client:
-            r = client.responses.create(model='gpt-6-luna', instructions=PROMPT, input=payload,
-                                        max_output_tokens=3500, reasoning={'effort': 'none'}, store=False)
+            r = openai_json.create(client, model='gpt-6-luna', instructions=PROMPT + extra, input=payload,
+                                   max_output_tokens=3500, reasoning={'effort': 'none'}, store=False)
         usage_meter.log(r, provider, 'gpt-6-luna', 'Temple chat review')
         return r.output_text, provider
     from anthropic import Anthropic
     with Anthropic(timeout=90, max_retries=0) as client:
-        r = client.messages.create(model='claude-haiku-4-5-20251001', system=PROMPT, max_tokens=3500,
+        r = client.messages.create(model='claude-haiku-4-5-20251001', system=PROMPT + extra, max_tokens=3500,
                                    messages=[{'role': 'user', 'content': payload}])
     usage_meter.log(r, 'claude', 'claude-haiku-4-5-20251001', 'Temple chat review')
     return '\n'.join(b.text for b in r.content if b.type == 'text'), provider
@@ -312,6 +327,9 @@ def _review_chat(cid, manual=False):
         payload = text + '\n\nEXISTING_MEMORIES: ' + json.dumps(memories, ensure_ascii=False)[:8000]
         try:
             raw, provider = _ask(payload)
+            try: parse_suggestions(raw)
+            except ValueError:          # cut off at the length limit, or not JSON (10 Oct 2026): once more, asked for fewer and shorter
+                raw, provider = _ask(payload, SHORTER)
         except Exception as e:
             import provider_errors
             if isinstance(e, ValueError) and 'Missing' in str(e): msg = str(e)

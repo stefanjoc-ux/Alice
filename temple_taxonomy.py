@@ -381,9 +381,10 @@ def _cloud(payload):
     if not os.getenv(key): raise ValueError('Missing ' + key + ' for Temple.')
     if provider == 'openai':
         from openai import OpenAI
+        import openai_json          # JSON mode needs the word "json" in the input, not just the instructions (paused it, 10 Oct 2026)
         with OpenAI(timeout=90, max_retries=0) as client:
-            r = client.responses.create(model='gpt-6-luna', instructions=PROMPT, input=payload, max_output_tokens=MAX_TOKENS, reasoning={'effort': 'none'},
-                                        store=False, text={'format': {'type': 'json_object'}})
+            r = openai_json.create(client, model='gpt-6-luna', instructions=PROMPT, input=payload, max_output_tokens=MAX_TOKENS,
+                                   reasoning={'effort': 'none'}, store=False)
         usage_meter.log(r, provider, 'gpt-6-luna', 'Temple taxonomy review')
         return r.output_text, getattr(r, 'status', '') == 'incomplete'
     from anthropic import Anthropic
@@ -506,6 +507,26 @@ def review(manual=False):
         return {'status': 'complete', **done}
     finally:
         _lock.release()
+
+
+def catch_up():
+    """After the review was paused for failing (resumed by a fix at start-up, or by Resume on the Agents page): go back over what it
+    missed. Temple's housekeeping review once, then categorising again for every memory and knowledge item with no category (approved
+    ones included, and those it found no fit for before: the review may have made one), then the shares held only for want of a
+    category tried again. Each step as the rules and Temple's settings allow (a step switched off is skipped); returns what each did."""
+    import temple_categorise, knowledge, spaces
+    out = {}
+    steps = [('review', review),
+             ('memories', lambda: temple_categorise.run(None, manual=True) if temple_categorise.mode() != 'off' else {'status': 'off'}),
+             ('knowledge', lambda: knowledge.categorise(manual=True) if temple_categorise.mode() != 'off' else {'status': 'off'}),
+             ('shares', lambda: {'status': 'complete', **spaces.retry()})]
+    for name, fn in steps:
+        try: out[name] = fn() or {}
+        except Exception as e: out[name] = {'status': 'failed', 'error': str(e)[:200]}
+    with store.db() as c:
+        store.audit(c, 'agent_catch_up', 'temple-taxonomy', 'automatic_safeguard', 'Temple caught up after its housekeeping was resumed: '
+                    + '; '.join(f'{k} {v.get("status", "done")}' for k, v in out.items()))
+    return out
 
 
 # ---------------- your decisions, undo, listing ----------------

@@ -707,6 +707,7 @@ def versions(aid):
 def set_status(aid, status, reason='', by='you'):
     if status not in ('active', 'paused', 'stopped'): raise ValueError('Status must be active, paused or stopped.')
     a = get(aid)
+    resumed = status == 'active' and a['status'] != 'active'
     reason = ' '.join((reason or '').split())[:300]
     with store.db() as c:
         c.execute('UPDATE agents SET status=?,status_reason=?,updated_at=? WHERE id=?',
@@ -715,7 +716,59 @@ def set_status(aid, status, reason='', by='you'):
             c.execute("UPDATE agent_runs SET status='failed (cleared)' WHERE agent_id=? AND status='failed'", (aid,))
         store.audit(c, 'agent_' + status, aid, 'human_review' if by == 'you' else 'automatic_safeguard',
                     f'{a["name"]}: {status}' + (f' ({reason})' if reason else '') + f' by {by}')
+    if resumed and aid in CATCH_UP: catch_up(aid)        # back over what it missed while it was paused
     return get(aid)
+
+
+# ---------------- resuming after a fix (10 Oct 2026) ----------------
+# An agent Alice paused itself (FAIL_LIMIT failed runs in a row) whose cause has since been fixed in code is resumed at start-up,
+# once per fix (FIXED, setting 'agent_fix:<fix id>'); a person's Resume on the Agents page works the same way. Either way, an agent
+# in CATCH_UP then goes back over what it missed while it failed ('module:function', in the background, as the system).
+CATCH_UP = {'temple-taxonomy': 'temple_taxonomy:catch_up'}
+FIXED = [   # (fix id, agent id, words in its last failed run's error that this fix cures, what was fixed)
+    ('openai-json-mode', 'temple-taxonomy', "must contain the word 'json'",
+     'OpenAI\'s JSON mode now always gets the word JSON in its input (openai_json.py)'),
+]
+
+
+def catch_up(aid, wait=False):
+    """Start the agent's catch-up in the background (wait: run it here and return its result)."""
+    mod, fn = CATCH_UP[aid].split(':')
+    def work():
+        import importlib
+        with store.as_viewer(None):
+            try: return getattr(importlib.import_module(mod), fn)()
+            except Exception as e:
+                import logging; logging.getLogger('alice.agents').warning('Catch-up for %s failed: %s', aid, type(e).__name__)
+                return {'status': 'failed', 'error': type(e).__name__}
+    if wait: return work()
+    store.spawn(work, name='catch-up-' + aid)
+    return None
+
+
+def _last_error(aid):
+    with store.db() as c:
+        r = c.execute("SELECT error FROM agent_runs WHERE agent_id=? AND status IN ('failed','failed (cleared)') ORDER BY started_at DESC LIMIT 1",
+                      (aid,)).fetchone()
+    return r[0] if r else ''
+
+
+def resume_fixed():
+    """At start-up: resume each agent Alice paused for a failure a fix in FIXED cures (and start its catch-up). Each fix is looked at
+    once; an agent paused by a person, or for another reason, is left as it is. Returns the agents resumed."""
+    done = []
+    for fid, aid, words, what in FIXED:
+        key = 'agent_fix:' + fid
+        with store.db() as c:
+            if c.execute('SELECT 1 FROM settings WHERE key=?', (key,)).fetchone(): continue
+            c.execute('INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING', (key, store.now()))
+        try: a = get(aid)
+        except Exception: continue
+        if a['status'] != 'paused' or not (a['status_reason'] or '').startswith(f'{FAIL_LIMIT} failed runs in a row'): continue
+        if words.lower() not in (_last_error(aid) + ' ' + (a['status_reason'] or '')).lower(): continue
+        set_status(aid, 'active', 'Resumed after a fix: ' + what, by='Alice')
+        done.append(aid)
+    return done
 
 
 def _clean_anatomy(an, a):
