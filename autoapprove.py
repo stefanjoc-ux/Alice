@@ -520,6 +520,16 @@ def decide_decision(rid, reviewed=True, force=False):
         return 'held'
     who, via = _made_by(rid)
     clash = CONFLICT.search(report)
+    if clash and clash.group(1).lower() == 'yes':
+        # The space's own rule (CR-4 phase 2): in a space whose clash rule is 'wait', a clash waits for that space's managers
+        # (Spaces page); spaces from before keep 'note' (recorded, the clash noted, as decided on 5 Oct 2026).
+        import spaces
+        sid = spaces.destination('record', rid)
+        if spaces.clash_policy(sid) == 'wait':
+            name = (spaces.names().get(sid) or {}).get('name', 'its space')
+            hold('memory', rid, f'Clashes with an earlier decision or memory: waits for the managers of {name}. '
+                 + (temple.reason_line(report) or ''))
+            return 'held'
     note = f'Decision recorded by Temple for {who}' + (f' (via {via})' if via else '') + \
            (f', {impact} impact' if impact else '') + ('' if reviewed and report else ', not checked by Temple')
     if clash and clash.group(1).lower() == 'yes':

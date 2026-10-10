@@ -3413,6 +3413,7 @@ class SpaceIn(BaseModel):
     name: str = Field(min_length=2, max_length=80)
     description: str = Field(default='', max_length=300)
     client: str = Field(default='', max_length=60)
+    kind: Literal['shared','restricted'] = 'shared'
 
 class SpaceMemberIn(BaseModel):
     member: str = Field(min_length=1, max_length=64)
@@ -3453,7 +3454,7 @@ def admin_spaces_mine():
                        for s, r in spaces.my_spaces(v).items()], 'can_add_to': spaces.options(v), 'default': spaces.default_for(v)}
 
 @app.post('/admin/api/spaces')
-def admin_space_add(q: SpaceIn): return _people(spaces.create, q.name, q.description, q.client)
+def admin_space_add(q: SpaceIn): return _people(spaces.create, q.name, q.description, q.client, q.kind)
 
 @app.put('/admin/api/spaces/default')
 def admin_space_default(q: SpaceDefaultIn): return _people(spaces.set_default, q.space)
@@ -3507,6 +3508,25 @@ class GroupMapIn(BaseModel):
     label: str = Field(default='', max_length=80)
     spaces: list[SpaceRoleIn] = Field(default_factory=list, max_length=20)
     profile: str = Field(default='', max_length=40)
+
+class SpaceRulesIn(BaseModel):
+    restricted_space: Optional[str] = Field(default=None, max_length=40)
+    clash: Optional[Literal['wait','note']] = None
+
+class ApprovalIn(BaseModel):
+    decision: Literal['approved','rejected']
+    note: str = Field(default='', max_length=500)
+
+@app.put('/admin/api/spaces/{sid}/rules')
+def admin_space_rules(q: SpaceRulesIn, sid: str = FPath(pattern=r'^[ps]-[0-9a-f]{12}$')):
+    return _people(spaces.set_space_rules, sid, q.restricted_space, q.clash)
+
+@app.get('/admin/api/spaces/approvals')
+def admin_space_approvals(): return _people(lambda: {'items': spaces.approvals()})
+
+@app.post('/admin/api/spaces/approvals/{kind}/{iid}')
+def admin_space_approval(q: ApprovalIn, kind: Literal['memory','knowledge'], iid: str = FPath(pattern=r'^[0-9a-f]{32}$')):
+    return _people(spaces.decide_approval, kind, iid, q.decision, q.note)
 
 @app.put('/admin/api/spaces/{sid}/closed')
 def admin_space_closed(q: SpaceCloseIn, sid: str = FPath(pattern=r'^[ps]-[0-9a-f]{12}$')): return _people(spaces.set_closed, sid, q.closed, q.reason)

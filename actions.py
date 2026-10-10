@@ -44,6 +44,10 @@ def _summary():
 
     # 1. Decisions: always yours, explained (why it is a decision, what it is for, Temple's recommendation)
     q = temple.queue('pending')
+    # Approval goes to each space's managers (CR-4 phase 2): what belongs to a space the owner does not manage is theirs to decide,
+    # on the Spaces page; here it is only counted (section 'space_managers' below).
+    import spaces
+    q['items'] = [i for i in q['items'] if not spaces.decided_by_others('record', i['id'])]
     kinds = store.record_kinds(i['id'] for i in q['items'])
     rmap = refs.of('record', [i['id'] for i in q['items']])
     dec = [i for i in q['items'] if (kinds.get(i['id']) or {}).get('kind') == 'decision']
@@ -58,7 +62,7 @@ def _summary():
 
     # 2. Held back: automatic approval stopped, and says why
     mems = [i for i in q['items'] if i not in dec]
-    drafts = knowledge.listing(status='draft', limit=100000)['items']
+    drafts = [d for d in knowledge.listing(status='draft', limit=100000)['items'] if not spaces.decided_by_others('file', d['id'])]
     import organisations
     facts = organisations.pending(limit=100000)
     def _mem(i, why=''):
@@ -91,6 +95,14 @@ def _summary():
         w_items = [_mem(i) for i in mems] + [_draft(i) for i in drafts] + [_fact(f) for f in facts]
         out.append(_section('waiting', 'Awaiting approval', len(w_items), '/admin/memories?status=proposed', w_items,
                             'Automatic approval is off: memories, knowledge and organisation facts wait for you.'))
+
+    # 2-ii. What waits for other spaces' managers (counts only: theirs to decide; an Owner can step in on the Spaces page)
+    try: sm = spaces.managers_summary()
+    except Exception: sm = []
+    out.append(_section('space_managers', 'Waiting for the managers of other spaces', sum(x['count'] for x in sm), '/admin/spaces',
+                        [{'type': 'link', 'id': x['space'], 'title': f"{x['name']}: {x['count']} waiting", 'detail': 'Its managers decide on the Spaces page.',
+                          'href': '/admin/spaces'} for x in sm],
+                        'Approval goes to each space\'s managers. For your information: nothing here waits for you.' if sm else '', info=True))
 
     # 2a. What went live automatically (for information; each can be undone)
     if auto_on:
@@ -215,7 +227,7 @@ def _summary():
     # Each one says why it cannot move yet; one held only for want of a category moves on its own once it has one.
     import spaces
     me = spaces._actor()
-    sh = [h for h in spaces.held(me) if h['as']]
+    sh = [h for h in spaces.held(me) if h['as'] in ('author', 'manager')]     # an Owner steps in on the Spaces page, not here
     AS = {'author': 'Your', 'manager': 'For a space you manage:', 'owner': 'As an Owner of Alice:'}
     out.append(_section('shares', 'Shares the sharing check held', len(sh), '/admin/spaces',
                         [{'type': 'link', 'id': h['id'], 'title': f"{h['title']} → {h['to_name'] or 'a shared space'}",
