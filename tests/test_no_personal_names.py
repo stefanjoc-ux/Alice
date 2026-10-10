@@ -2,8 +2,8 @@
 data, setup scripts, infrastructure and the documents she shows carry no real person's name, email or object ID, and no real
 organisation's, tenant's or domain's name: those come from configuration (deployment.py, the setup parameters) or the signed-in user.
 
-Fails the build on any of them in a file git tracks, except tests/ (fixtures), CHANGELOG.md (the history, read by Alice as data),
-CLAUDE.md (instructions for whoever works on the code, never shown in Alice) and .github/ (changed by the owner only). Fictional
+Fails the build on any of them in a file git tracks, except tests/ (fixtures), CHANGELOG.md (the history, read by Alice as data) and
+CLAUDE.md (instructions for whoever works on the code, never shown in Alice). The workflows in .github/ are checked like any other file. Fictional
 people in demo data and examples use reserved addresses (example.com, example.org, *.example), and every GUID is one of Microsoft's
 fixed IDs or Alice's own (listed below with what each is)."""
 import _util  # first: throwaway data folder, dummy keys, no real model calls
@@ -12,7 +12,7 @@ import os, re, subprocess
 
 GUID = re.compile(r'\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b')
 
-EXEMPT = ('tests/', 'CHANGELOG.md', 'CLAUDE.md', '.github/', 'Static/vendor/')
+EXEMPT = ('tests/', 'CHANGELOG.md', 'CLAUDE.md', 'Static/vendor/')
 # Names that must never appear again: the person and the organisations that were in the code before D-0052.
 DENY = re.compile(r"stefan|o['’]?connor|tuduma|es3cloud|northants|\bInsight\b(?!s)|\bRGU\b|f955e821|e610cc9b", re.I)
 EMAIL = re.compile(r'[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})')
@@ -88,11 +88,16 @@ t('no object ID but Microsoft\'s fixed IDs and Alice\'s own (named above)', not 
 import json, deployment
 shipped = json.load(open(os.path.join(_util.ROOT, 'config', 'deployment.json'), encoding='utf-8'))
 t('the shipped deployment settings name no one', not any(v for k, v in shipped.items() if not k.startswith('_') and k != 'product'))
-t('without configuration Alice calls the owner "Owner" and the organisation "your organisation"',
-  deployment.owner_name() == 'Owner' and deployment.organisation() == 'your organisation' and deployment.repo_url() == '')
-os.environ['ALICE_ORGANISATION'] = 'FICTIONAL Example Ltd'
-t('…a deployment names them in its own settings', deployment.organisation() == 'FICTIONAL Example Ltd')
-del os.environ['ALICE_ORGANISATION']
+with _util.deployment_settings():          # none set, whatever the machine or image running the tests carries
+    t('without configuration Alice calls the owner "Owner" and the organisation "your organisation"',
+      deployment.owner_name() == 'Owner' and deployment.organisation() == 'your organisation' and deployment.repo_url() == '')
+with _util.deployment_settings(organisation='FICTIONAL Example Ltd'):
+    t('…a deployment names them in its own settings', deployment.organisation() == 'FICTIONAL Example Ltd')
+with _util.deployment_settings(organisation='FICTIONAL Env Ltd', file={'organisation': 'FICTIONAL File Ltd', 'tenant': 'FICTIONAL tenant'}):
+    t('…the environment first, then deployment.json in the data folder', deployment.organisation() == 'FICTIONAL Env Ltd'
+      and deployment.tenant() == 'FICTIONAL tenant')
+import os as _os
+t('…and the tests start with none of them set (tests/_util.py)', not any(_os.environ.get('ALICE_' + k.upper()) for k in _util.DEPLOYMENT_KEYS))
 t('backup advice says what applies to the deployment: nothing to copy in Azure, the data folder on a PC',
   'point-in-time' in deployment.backup_advice({'CONTAINER_APP_NAME': 'alice-web'}) and 'data folder' in deployment.backup_advice({}))
 
