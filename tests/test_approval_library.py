@@ -63,7 +63,9 @@ def status(rid):
 
 def activity(action, target=None):
     with store.db() as c:
-        return [dict(r) for r in c.execute('SELECT * FROM activity WHERE action=? AND (? IS NULL OR target=?) ORDER BY id', (action, target, target))]
+        sql, args = ('SELECT * FROM activity WHERE action=? AND target=? ORDER BY id', (action, target)) if target is not None else \
+                    ('SELECT * FROM activity WHERE action=? ORDER BY id', (action,))
+        return [dict(r) for r in c.execute(sql, args)]
 
 
 def raises(fn, kind=R.RuleViolation):
@@ -343,10 +345,11 @@ def exact(*ids):
 
 old = mem('Dog name', 'The dog is called Lexi.', 'Family')
 REPORTS['Dog name update'] = f'Recommendation: approve\nReasons: newer.\nReplaces: {old}\nConflict: no'
+A.set_on(False, 'Test: hold it while the background review settles')
 new = store.propose('Dog name update', 'The dog Lexi is a spaniel.', 'Stefan said so')['id']
-SPAWNED.pop(0).join(timeout=30) if SPAWNED else None
+settle()
+A.set_on(True, 'Test: Temple approves again')
 before = exact(new, old)
-with store.db() as c: c.execute('DELETE FROM auto_approvals WHERE item_id=?', (new,))
 A.after_review(new)
 with store.db() as c: arch = c.execute('SELECT state,replaced_by FROM memory_archive WHERE record_id=?', (old,)).fetchone()
 t('Temple supersedes the older memory: the new one approved, the old one kept and linked to it', status(new) == 'approved' and arch

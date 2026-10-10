@@ -282,8 +282,9 @@ def update_rule(rid, enabled=None, new_params=None, text=None, name=None, reason
 def history(rid=None, limit=50):
     """Changes to one rule (or every rule), newest first, each with whether it can still be reverted."""
     with store.db() as c:
-        rows = [dict(x) for x in c.execute('SELECT * FROM rule_changes WHERE (?=\'\' OR rule_id=?) ORDER BY changed_at DESC, id DESC LIMIT ?',
-                                           (rid or '', rid or '', max(1, min(500, int(limit)))))]
+        where, args = ('WHERE rule_id=? ', [rid]) if rid else ('', [])
+        rows = [dict(x) for x in c.execute('SELECT * FROM rule_changes ' + where + 'ORDER BY changed_at DESC, id DESC LIMIT ?',
+                                           args + [max(1, min(500, int(limit)))])]
     names = {r['id']: r['name'] for r in all_rules()}
     for x in rows:
         x['before'], x['after'] = json.loads(x['before'] or '{}'), json.loads(x['after'] or '{}')

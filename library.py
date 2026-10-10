@@ -301,8 +301,8 @@ def recent(days=7, limit=200, action=''):
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     with store.db() as c:
         rows = [dict(r) for r in c.execute('SELECT id,at,action,item_type,item_id,title,reason,items,actor,link,undone_at,undone_by FROM library_actions '
-                                           'WHERE at>=? AND (?=\'\' OR action=?) ORDER BY at DESC, id DESC LIMIT ?',
-                                           (since, action, action, max(1, min(1000, int(limit)))))]
+                                           'WHERE at>=? ' + ('AND action=? ' if action else '') + 'ORDER BY at DESC, id DESC LIMIT ?',
+                                           (since, *([action] if action else []), max(1, min(1000, int(limit)))))]
     if store.viewer() is not None:
         def _vis(r):
             if r['item_type'] in ('record', 'file'): return store.can_see(r['item_type'], r['item_id'])

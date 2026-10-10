@@ -113,7 +113,12 @@ def schedule(ids):
     """Background categorisation after a proposal, then Temple's tags (which see the category); failures are silent
     (manual runs remain available)."""
     def work():
-        try: done = (run(ids) or {}).get('status') != 'busy'        # busy: another run has these and retries when it ends
+        try:
+            st = (run(ids) or {}).get('status')
+            if st == 'busy' and ids and _lock.acquire(timeout=120):   # another run (for other items) holds the lock: wait for it, then
+                _lock.release()                                     # categorise these, so they are never left unchecked
+                st = (run(ids) or {}).get('status')
+            done = st != 'busy'
         except Exception: done = True                                # Temple could not categorise: a person gives the category
         try:                                # Temple's review is done: shares waiting on it go through the sharing gate now
             import spaces
