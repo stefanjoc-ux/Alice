@@ -34,6 +34,7 @@ def fake_call(provider, system, messages, max_tokens=1500, timeout=60, workload=
         return json.dumps({'drawing_number': f'A-10{page}', 'title': 'Ground floor plan', 'scale': '1:100 at A1',
                            'dimensions': [f'Hall internal width 12.0 m (page {page})'], 'levels': ['FFL 10.150'], 'notes': ['Walls: 140 mm blockwork'], 'unreadable': ''})
     CALLS.append({'workload': workload, 'payload': content, 'system': system})
+    if 'NEW FILES' in content: return json.dumps(STATE.get('review') or {'files': [], 'summary': 'FICTIONAL review.'})
     if 'Lead QS' in workload and 'COST PLAN FIGURES' in content:
         return json.dumps({'accept': True, 'summary': 'A hall.', 'assumptions': [], 'exclusions': ['VAT'], 'risks': [], 'note': 'On.'})
     if 'Lead QS' in workload and 'SUGGESTED MARKET ADJUSTMENT' in content:
@@ -103,12 +104,15 @@ up = [{'name': SPEC, 'kind': 'spec', 'text': 'FICTIONAL specification. [Page 1] 
       {'name': 'FICTIONAL site photo plan.png', 'kind': 'drawing', 'data': b64(PNG)}]
 j = start(TID, 'FICTIONAL hall with drawings', up)
 t('the job runs to sign-off', j['status'] == 'waiting' and j['pending'][0]['kind'] == 'signoff')
-R = team_files.reads(j['id'])
+ALL = team_files.reads(j['id'])
+R = [r for r in ALL if r['provider'] != 'code']
 got = sorted((r['doc_name'], r['page']) for r in R)
-t('pages read as images: every page of the drawing, the image, and only the scanned page of the schedule (never the text spec or a page with text)',
-  got == sorted([(DRAW, 1), (DRAW, 2), ('FICTIONAL scanned schedule.pdf', 2), ('FICTIONAL site photo plan.png', 1)]) and all(r['status'] == 'read' for r in R))
-t('each page is sent on its own: a one-page PDF cut from the document, or the image itself', len(VISION) == 4
-  and sum(1 for v in VISION if v['types'] == ['document'] and v['pages'] == [1]) == 3 and sum(1 for v in VISION if v['types'] == ['image']) == 1)
+t('code reads every drawing page and the scanned page first (10 Oct 2026: code first)', sorted((r['doc_name'], r['page']) for r in ALL if r['provider'] == 'code')
+  == sorted([(DRAW, 1), (DRAW, 2), ('FICTIONAL scanned schedule.pdf', 2)]) and all(r['cost_usd'] == 0 and r['model'] == 'Alice (code)' for r in ALL if r['provider'] == 'code'))
+t('pages read as images: only what code could not read (the blank drawing page, the scanned schedule page) and the image; never the text spec or a page with text',
+  got == sorted([(DRAW, 1), ('FICTIONAL scanned schedule.pdf', 2), ('FICTIONAL site photo plan.png', 1)]) and all(r['status'] == 'read' for r in R))
+t('each page is sent on its own: a one-page PDF cut from the document, or the image itself', len(VISION) == 3
+  and sum(1 for v in VISION if v['types'] == ['document'] and v['pages'] == [1]) == 2 and sum(1 for v in VISION if v['types'] == ['image']) == 1)
 t('…to Sonnet 5.5 (the Lead QS\'s model), asking for dimensions, levels, notes, scale and drawing number, citing the page',
   all(v['provider'] == 'claude_sonnet' for v in VISION) and 'drawing number' in VISION[0]['system'] and 'scale' in VISION[0]['system']
   and all(re.search(r'DOCUMENT: .+\nPAGE: \d', v['text']) for v in VISION))
@@ -118,13 +122,15 @@ t('members see each reading under its page, with the drawing number, scale and p
   and 'scale 1:100 at A1' in meas['payload'] and f'Dimension: Hall internal width 12.0 m (page 1) ({DRAW}, page 1, drawing A-101)' in meas['payload'])
 with s.db() as c:
     tc = [dict(r) for r in c.execute("SELECT * FROM team_costs WHERE job_id=? AND kind='drawing'", (j['id'],))]
-t('image costs are recorded against the member who needed them (a team cost of kind drawing)', len(tc) == 4 and all(r['member_id'] == 'lead-qs' and abs(r['usd'] - 0.03) < 1e-9 for r in tc))
+t('image costs are recorded against the member who needed them (a team cost of kind drawing)', len(tc) == 3 and all(r['member_id'] == 'lead-qs' and abs(r['usd'] - 0.03) < 1e-9 for r in tc))
 t('…on each page\'s reading, and in the job\'s AI cost', all(abs(r['cost_usd'] - 0.03) < 1e-9 for r in R)
-  and teams._row(j['id'])['ai_cost'] >= 0.12 - 1e-9)
+  and teams._row(j['id'])['ai_cost'] >= 0.09 - 1e-9)
 pg = cl.get(f'/admin/api/teams/jobs/{j["id"]}/page').json()
-t('the job page lists the pages read, the model, the member and the cost', pg['drawings']['read'] == 4 and abs(pg['drawings']['total']['usd'] - 0.12) < 1e-9
-  and pg['drawings']['pages'][0]['role'] == 'Lead QS' and pg['drawings']['pages'][0]['model'] == 'claude-sonnet-5-5')
-t('…and the job\'s history says which pages were read', any(x['kind'] == 'drawings' and '4 pages read as images' in x['text'] for x in pg['timeline']))
+mp = [p_ for p_ in pg['drawings']['pages'] if p_['by'] == 'model']
+t('the job page lists the pages read, by code or which model, the member and the cost', pg['drawings']['read'] == 3 and pg['drawings']['by_code'] == 3
+  and abs(pg['drawings']['total']['usd'] - 0.09) < 1e-9 and mp[0]['role'] == 'Lead QS' and mp[0]['model'] == 'claude-sonnet-5-5')
+t('…and the job\'s history says which pages were read, and how', any(x['kind'] == 'drawings' and 'Alice read 3 drawing pages in code' in x['text']
+  and '3 pages or areas that code could not read were read as images' in x['text'] for x in pg['timeline']))
 
 # ---------------- the checks on every page ----------------
 VISION.clear()
@@ -155,12 +161,14 @@ def fussy(text, target='chat message', provider=None, packs=True):
     return real_check(text, target, provider, packs)
 rules_engine.check_outbound = fussy
 VISION.clear()
+import _drawings as DR                      # text in area A1, drawn lines with no text in area C1: code reads A1, the C1 crop goes to the model
 j3 = start(TID, 'FICTIONAL hall, outbound', [{'name': SPEC, 'kind': 'spec', 'text': 'FICTIONAL specification. Page 1: walls.'},
-                                             {'name': 'FICTIONAL noted drawing.pdf', 'kind': 'drawing', 'data': b64(pdf('refuse me'))}])
+                                             {'name': 'FICTIONAL noted drawing.pdf', 'kind': 'drawing',
+                                              'data': b64(DR.pdf([DR.text(100, 750, 'refuse me') + '\n' + DR.line(900, 700, 1100, 700)]))}])
 rules_engine.check_outbound = real_check
-r3 = team_files.reads(j3['id'])
-t('check_outbound runs on every page sent (its own text included), and a refusal keeps the page back', blocked['n'] == 1 and r3[0]['status'] == 'refused'
-  and 'may not be sent' in r3[0]['reason'] and not VISION)
+r3 = [r for r in team_files.reads(j3['id']) if r['provider'] != 'code']
+t('check_outbound runs on every page or area sent (the page\'s own text included), and a refusal keeps it back', blocked['n'] == 1 and len(r3) == 1
+  and r3[0]['status'] == 'refused' and r3[0]['area'] == 'C1' and 'may not be sent' in r3[0]['reason'] and not VISION)
 
 # ---------------- Assume and flag ----------------
 CALLS.clear()
@@ -201,40 +209,62 @@ t('Ask me still asks (no reason needed)', jk['status'] == 'waiting' and jk['pend
 t('an unknown setting is refused', cl.put(f'/admin/api/teams/{TID}/missing-info', json={'mode': 'guess'}, headers=H).status_code == 422)
 teams.set_missing_info(TID, 'assume')
 
-# ---------------- a file added mid-job: only what depends on it, as a new version ----------------
+# ---------------- a file added mid-job: the lead says what it changes, you choose what to redo (10 Oct 2026) ----------------
 STATE['plan'] = plan('Walls', 'Roof')
 jf = start(TID, 'FICTIONAL hall, add a file', [{'name': SPEC, 'kind': 'spec', 'text': 'FICTIONAL specification. Page 1: walls and roof.'}])
 t('the job reaches sign-off at v1', jf['status'] == 'waiting' and jf['version'] == 1)
 CALLS.clear(); VISION.clear()
+STATE['review'] = {'files': [{'name': 'FICTIONAL roof drawing rev B.pdf', 'change': 'new_scope', 'elements': ['Roof'], 'answers': [], 'summary': 'A new roof light.'}],
+                   'summary': 'The new drawing adds a roof light to the Roof.'}
 r = cl.post(f'/admin/api/teams/jobs/{jf["id"]}/files', headers=H, json={'uploads': [{'name': 'FICTIONAL roof drawing rev B.pdf', 'kind': 'drawing', 'data': b64(pdf(None))}],
                                                                        'elements': ['Roof'], 'note': 'Revision B of the roof.'})
 x = r.json()
 J = teams._row(jf['id'])
-t('adding a file to a measured job starts a new version', r.status_code == 200 and x['rerun'] == 'started' and J['version'] == 2
-  and teams.job_versions(jf['id'])['versions'][-1]['kind'] == 'files')
+rv = x.get('review') or {}
+t('adding a file to a measured job redoes nothing yet: the lead reports what it changes', r.status_code == 200 and x['rerun'] == 'choose' and J['version'] == 1
+  and rv['files'][0]['change'] == 'new_scope' and rv['elements'] == ['Roof'] and 'roof light' in x['message'] and not [c for c in CALLS if 'Measurement' in c['workload']])
+opts = {o['key']: o for o in rv['options']}
+t('…and offers re-measure the affected elements, re-price their items, the full re-run or nothing', list(opts) == ['remeasure', 'reprice', 'full', 'none']
+  and opts['remeasure']['elements'] == ['Roof'] and opts['reprice']['refs'] == ['Q2'])
+from decimal import Decimal as D_
+sc = team_files._stage_costs(jf['id'])
+want = sc['measure'] / 2 * 1 + sc['price'] / 2 * 1 + sc['assemble']
+t('…each with its estimated cost first, worked out in code from what this job\'s stages cost (per element, per item, reassembling)',
+  abs(D_(str(opts['remeasure']['estimate']['usd'])) - want) < D_('1e-9') and opts['remeasure']['basis'].startswith('Estimate')
+  and abs(D_(str(opts['full']['estimate']['usd'])) - sum(sc.values(), D_(0))) < D_('1e-9') and opts['none']['estimate'] is None)
+t('…the lead\'s report is a tracked run, recorded against the lead in the team\'s costs', any(c['workload'] == 'Digital team: Lead QS' and 'NEW FILES' in c['payload'] for c in CALLS))
+with s.db() as c:
+    t('…(kind files)', c.execute("SELECT count(*) FROM team_costs WHERE job_id=? AND kind='files' AND member_id='lead-qs'", (jf['id'],)).fetchone()[0] == 1)
+r = cl.post(f'/admin/api/teams/jobs/{jf["id"]}/files/rerun', headers=H, json={'choice': 'remeasure'})
+J = teams._row(jf['id'])
+t('choosing Re-measure starts a new version', r.status_code == 200 and J['version'] == 2 and teams.job_versions(jf['id'])['versions'][-1]['kind'] == 'files'
+  and '_files_review' not in J['outputs'] and J['outputs']['_files_reviews'][-1]['choice'] == 'remeasure')
 wl = [c['workload'] for c in CALLS]
 t('…which re-runs only what depends on it: no new plan, the Roof measured again, only its items priced again',
-  not any('Lead QS' in w and 'plan' in c['system'].lower() and 'COST PLAN FIGURES' not in c['payload'] and 'SUGGESTED' not in c['payload'] for w, c in zip(wl, CALLS))
+  not any('Lead QS' in w and 'plan' in c['system'].lower() and 'COST PLAN FIGURES' not in c['payload'] and 'SUGGESTED' not in c['payload'] and 'NEW FILES' not in c['payload']
+          for w, c in zip(wl, CALLS))
   and [c for c in CALLS if 'Measurement' in c['workload']] and all('ONLY these elements: Roof' in c['payload'] for c in CALLS if 'Measurement' in c['workload'])
   and all('Walls item' not in c['payload'] for c in CALLS if 'MEASURED ITEMS' in c['payload']))
-t('…the new drawing was read as an image for the take-off', len(VISION) == 1 and 'Measurement' in VISION[0]['workload'])
+t('…the new drawing was read (code first, then the blank page as an image) for the take-off', len(VISION) == 1 and 'Measurement' in VISION[0]['workload'])
 items = {i['element']: i for i in J['outputs']['price']['items']}
 t('…the Walls item and its price are kept exactly', items['Walls']['ref'] == 'Q1' and items['Walls']['rate'] == 50 and J['status'] == 'waiting')
 steps = teams._steps(jf['id'])
-t('…and the job\'s history records the file, who added it and the note', any(s_['kind'] == 'files' and 'FICTIONAL roof drawing rev B.pdf (Drawing)' in s_['note']
-  and 'Revision B' in s_['note'] for s_ in steps))
+t('…and the job\'s history records the file, who added it, the note and your choice', any(s_['kind'] == 'files' and 'FICTIONAL roof drawing rev B.pdf (Drawing)' in s_['note']
+  and 'Revision B' in s_['note'] for s_ in steps) and any(s_['kind'] == 'files' and s_['note'].startswith('You chose: Re-measure Roof') for s_ in steps))
 t('the new file joins the documents of the elements it concerns', 'FICTIONAL roof drawing rev B.pdf' in J['outputs']['plan']['element_documents']['Roof']
   and 'FICTIONAL roof drawing rev B.pdf' not in J['outputs']['plan']['element_documents'].get('Walls', []))
 t('a file with the same name as one the job has is refused', cl.post(f'/admin/api/teams/jobs/{jf["id"]}/files', headers=H, json={'uploads': [{'name': SPEC, 'kind': 'spec', 'text': 'x y z'}]}).status_code == 400)
 t('secrets in an added file are refused, and nothing is added', cl.post(f'/admin/api/teams/jobs/{jf["id"]}/files', headers=H,
   json={'uploads': [{'name': 'FICTIONAL keys.md', 'kind': 'spec', 'text': 'key sk-ant-api03-' + 'A' * 40}]}).status_code == 400
   and not any(d['name'] == 'FICTIONAL keys.md' for d in teams._docs_in(jf['id'])))
-# while the team works, the re-run waits for it to stop
+# while the team works, the chosen re-run waits for it to stop
 teams._set(jf['id'], status='running')
+STATE['review'] = {'files': [{'name': 'FICTIONAL wall schedule.md', 'change': 'new_scope', 'elements': ['Walls'], 'answers': [], 'summary': 'More walls.'}], 'summary': 'More walls.'}
 r = cl.post(f'/admin/api/teams/jobs/{jf["id"]}/files', headers=H, json={'uploads': [{'name': 'FICTIONAL wall schedule.md', 'kind': 'schedule', 'text': 'FICTIONAL wall schedule lines.'}],
                                                                        'elements': ['Walls']})
-t('while the team is working, the re-run waits (nothing is re-run under it)', r.json()['rerun'] == 'pending' and teams._row(jf['id'])['version'] == 2
-  and teams._row(jf['id'])['outputs']['_files_pending']['elements'] == ['Walls'])
+r = cl.post(f'/admin/api/teams/jobs/{jf["id"]}/files/rerun', headers=H, json={'choice': 'remeasure'})
+t('while the team is working, the chosen re-run waits (nothing is re-run under it)', r.status_code == 200 and teams._row(jf['id'])['version'] == 2
+  and teams._row(jf['id'])['outputs']['_files_pending']['choice'] == 'remeasure' and teams._row(jf['id'])['outputs']['_files_pending']['elements'] == ['Walls'])
 teams._set(jf['id'], status='waiting')
 team_files.apply_pending(jf['id'])
 J = teams._row(jf['id'])
@@ -242,8 +272,14 @@ t('…and starts as soon as the team stops for you: v3, only the Walls measured 
   and [c for c in CALLS if 'Measurement' in c['workload']][-1]['payload'].count('ONLY these elements: Walls') == 1)
 so = next(s_ for s_ in teams._steps(jf['id']) if s_['status'] == 'pending' and s_['kind'] == 'signoff')
 cl.post(f'/admin/api/teams/steps/{so["id"]}', json={'action': 'approve'}, headers=H)
+STATE['review'] = {'files': [{'name': 'FICTIONAL late.md', 'change': 'other', 'elements': [], 'answers': [], 'summary': 'Background only.'}], 'summary': 'Nothing to redo.'}
 r = cl.post(f'/admin/api/teams/jobs/{jf["id"]}/files', headers=H, json={'uploads': [{'name': 'FICTIONAL late.md', 'kind': 'spec', 'text': 'Late.'}]})
-t('a signed-off job takes no files (copy it as a new job instead)', teams._row(jf['id'])['status'] == 'done' and r.status_code == 400 and 'copy it' in r.json()['detail'])
+t('a signed-off job takes files too: the lead reports, nothing is redone until you choose', teams._row(jf['id'])['status'] == 'done' and r.status_code == 200
+  and r.json()['rerun'] == 'choose')
+r = cl.post(f'/admin/api/teams/jobs/{jf["id"]}/files/rerun', headers=H, json={'choice': 'none'})
+t('…Redo nothing keeps the file on the job and the job signed off', r.status_code == 200 and teams._row(jf['id'])['status'] == 'done'
+  and any(d['name'] == 'FICTIONAL late.md' for d in teams._docs_in(jf['id'])))
+STATE['review'] = None
 
 # a job not measured yet just uses the file
 STATE['plan'] = plan('Walls', questions=['Is there a mezzanine?'], why_ask='It changes the floor area.')
@@ -280,7 +316,11 @@ r = cl.post(f'/admin/api/teams/{gen["id"]}/jobs', headers=H, json={'job_type': '
 jg = r.json()
 CALLS.clear()
 r = cl.post(f'/admin/api/teams/jobs/{jg["id"]}/files', headers=H, json={'uploads': [{'name': 'FICTIONAL more notes.md', 'kind': 'brief', 'text': 'More notes.'}]})
-t('a team without its own rule runs again from its first stage, as a new version', r.json()['rerun'] == 'started' and teams._row(jg['id'])['version'] == 2
+t('a team without its own rule offers the full re-run or nothing', r.json()['rerun'] == 'choose' and [o['key'] for o in r.json()['review']['options']] == ['full', 'none']
+  and teams._row(jg['id'])['version'] == 1)
+CALLS.clear()
+r = cl.post(f'/admin/api/teams/jobs/{jg["id"]}/files/rerun', headers=H, json={'choice': 'full'})
+t('…and the full re-run runs again from its first stage, as a new version', r.status_code == 200 and teams._row(jg['id'])['version'] == 2
   and [c['workload'] for c in CALLS] == ['Digital team: Writer', 'Digital team: Checker'] and 'FICTIONAL more notes.md' in CALLS[0]['payload'])
 
 # ---------------- routes and pages ----------------

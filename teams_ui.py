@@ -179,7 +179,7 @@ SECTION = r'''<style>
 .tm-edfoot{display:flex;gap:8px;flex-wrap:wrap;align-items:center;width:100%}.tm-edfoot button{margin:0}.tm-edfoot .tm-rm{margin-left:auto}.tm-edmsg{flex-basis:100%;margin:0;color:#b42318}.tm-edmsg:empty{display:none}
 @media(max-width:640px){.tm-mgrid{grid-template-columns:minmax(0,1fr)}.tm-period{display:flex;flex-wrap:wrap}.tm-period button.ghost{flex:1 1 auto}}
 #tm-app .tm-answer{display:flex;gap:8px;align-items:flex-start}#tm-app .tm-answer textarea{flex:1}#tm-app .tm-answer button{margin:6px 0 0;flex:none}
-.tm-asm{margin:0;padding-left:20px;display:grid;gap:8px;font-size:13.5px}.tm-assumed{border-left:4px solid #e8b27a}
+.tm-asm{margin:0;padding-left:20px;display:grid;gap:8px;font-size:13.5px}.tm-opts{display:grid;gap:10px;margin-top:8px}.tm-opt{display:grid;gap:2px}.tm-opt button{justify-self:start}.tm-assumed{border-left:4px solid #e8b27a}
 @media(max-width:1000px){.ts-grid{grid-template-columns:minmax(0,1fr)}.ts-next{position:static}}
 @media(max-width:640px){.ts-step .row{grid-template-columns:minmax(0,1fr)}.ts-file{grid-template-columns:minmax(0,1fr)}.ts-file select{min-width:0;width:100%}}
 @media(max-width:1100px){.tm-cols{grid-template-columns:minmax(0,1fr)}}
@@ -561,7 +561,12 @@ if(PAGE==='teams'){
    row.append(btn('Save percentages',async()=>{const s={};for(const k of keys)s[k]=+ins[k].value;await api('/admin/api/teams/'+enc(t.id)+'/settings','PUT',{settings:s});$('notice').textContent='Saved as a new team version.';await loadTeam()},'secondary'));a.append(h('h4',null,'Percentages applied by Alice'),row)}
   const mi=h('section',{class:'tm-panel tm-auto'},h('h3',null,'When information is missing'));
   for(const [k,l] of Object.entries(d.missing_info_options)){const r=h('input',{type:'radio',name:'tm-missing',value:k});r.checked=d.missing_info===k;r.onchange=()=>run(async()=>{await api('/admin/api/teams/'+enc(t.id)+'/missing-info','PUT',{mode:k});$('notice').textContent='Saved as a new team version: '+l+'. Jobs already started keep the version they started on.';await loadTeam()});
-   mi.append(h('label',null,r,h('span',null,h('strong',null,l),h('div',{class:'small muted'},k==='ask'?'A member that lacks something it needs asks you, and waits for your answer.':'A member states a reasonable assumption and carries on; every assumption is listed in the cost plan, the outputs and the filled templates. It asks only when an assumption would change the result materially, and says why.'))))}
+   mi.append(h('label',null,r,h('span',null,h('strong',null,l),h('div',{class:'small muted'},{ask:'No assumptions: a member that lacks something it needs asks you, and waits for your answer.',
+    minor:'A member assumes only minor points (a few lines, a little) and flags them; anything bigger it asks you about.',
+    assume:'A member states a reasonable assumption and carries on; every assumption is flagged on the job and listed in the cost plan, the outputs and the filled templates. It asks only when an assumption would change the result materially, and says why.'}[k]||''))))}
+  const lim=h('input',{type:'number',min:'0',step:'50',value:String(d.assume_limit||0),'aria-label':'Ask above this cost effect, in pounds (0 = no limit)',style:'max-width:140px'});
+  mi.append(h('div',{class:'tm-acts',style:'margin-top:8px'},h('label',{class:'small'},'Must ask when an assumption’s lines come to more than £ ',lim),btn('Save limit',async()=>{await api('/admin/api/teams/'+enc(t.id)+'/missing-info','PUT',{mode:d.missing_info,limit:Number(lim.value||0)});$('notice').textContent='Saved as a new team version.';await loadTeam()},'secondary')),
+   h('p',{class:'small muted'},'Worked out in code from the priced lines each assumption affects. 0 = no limit.'));
   p.append(a,mi,rulesPanel(true));const jts=h('section',{class:'tm-panel'},h('h3',null,'Job types and hand-offs'),h('p',{class:'small muted'},'Each stage says who works, what they hand on, and what the next member checks before accepting it. The receiver can send work back with reasons.'));drawTypes(jts);p.append(jts)}
  function drawTypes(box){const t=V.d.team;const mopts=t.members.map(m=>[m.id,m.role]);const sel=(opts,v)=>{const s=h('select');for(const [k,l] of opts)s.append(h('option',{value:k},l));s.value=v;return s};
   for(const jt of t.job_types){const c=h('div',{class:'tm-mem'},h('h3',null,jt.name));const name=h('input',{type:'text',maxlength:'80',value:jt.name}),desc=h('textarea',{maxlength:'600',rows:'2'});desc.value=jt.description||'';c.append(field('Name',name),field('Description',desc));
@@ -606,7 +611,7 @@ if(PAGE==='teams'){
   const q=A.answers?d.pending.find(x=>x.id===A.answers):null;
   s.append(h('h3',{id:'tm-rp-h'},q?'Add a file to answer '+(q.role||'the member'):'Add files to this job'),
    h('p',{class:'small muted'},q?'The file answers the question: '+(q.content.questions||[]).join(' ')+' The member carries on with it.':
-    'Same roles and checks as the Start screen. Only the work that depends on the new files is done again, as a new version'+(d.status==='running'?' (once the team stops for you)':'')+'; work not done yet simply uses them.'));
+    'Same roles and checks as the Start screen. A newer revision of a document already here takes its place (the old one is kept). Nothing is redone until the lead has said what the files change and you choose what to redo, with its estimated cost; work not done yet simply uses them.'));
   const file=h('input',{type:'file',multiple:true,accept:'.pdf,.docx,.xlsx,.xlsm,.csv,.txt,.md,.png,.jpg,.jpeg,.webp','aria-label':'Files to add'});
   file.onchange=()=>run(async()=>{for(const fl of file.files){if(fl.size>15*1024*1024)throw Error(fl.name+' is larger than 15 MB.');const data=await new Promise((ok,no)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]);r.onerror=()=>no(Error('Could not read '+fl.name));r.readAsDataURL(fl)});
     const doc={name:fl.name,data,role:'brief'};try{const info=await api('/admin/api/teams/'+enc(d.team_id)+'/inspect','POST',{name:fl.name,data});doc.role=info.guess;doc.info=info}catch(e){doc.info={problem:e.message}}A.docs.push(doc)}file.value='';drawJob()});
@@ -624,15 +629,38 @@ if(PAGE==='teams'){
    const rest=A.docs.filter(x=>x.role!=='template');if(rest.length){const r=await api('/admin/api/teams/jobs/'+d.id+'/files','POST',{uploads:rest.map(x=>({name:x.name,data:x.data,kind:x.role})),elements:A.els,answers:A.answers||'',note:A.note});msg.push(r.message)}
    J.panel='';J.add=null;$('notice').textContent=msg.join(' ');await loadJob()}),cancel));return s}
  function openAdd(answers){J.panel='files';J.add={docs:[],els:[],note:'',answers:answers||''};drawJob();const x=$('tm-rp');if(x)x.scrollIntoView({block:'nearest'})}
- function assumedPanel(){const d=V.d;if(!d.assumed.length)return null;const s=h('section',{class:'tm-panel tm-assumed','aria-labelledby':'tm-asm-h'},h('h3',{id:'tm-asm-h'},'Assumed where information was missing'),
-   h('p',{class:'small muted'},d.missing_info.mode==='assume'?'The team is set to Assume and flag: it carried on with these instead of asking you. Each is listed in the cost plan, the workbook and the filled template.':'Assumptions the team still made, listed in the outputs.'));
-  const ul=h('ul',{class:'tm-asm'});for(const a of d.assumed)ul.append(h('li',null,a.assumption,a.why?h('div',{class:'small muted'},'Missing: '+a.why):null,a.affects?h('div',{class:'small muted'},'Affects: '+a.affects):null,h('div',{class:'small muted'},a.role+' · '+a.stage_title)));s.append(ul);return s}
- function drawingsPanel(){const d=V.d,x=d.drawings;if(!x||!x.pages.length)return null;const s=h('section',{class:'tm-panel','aria-labelledby':'tm-dr-h'},h('h3',{id:'tm-dr-h'},'Pages read as images'),
-   h('p',{class:'small muted'},plural(x.read,'page')+' read by a vision model'+(x.total?', '+x.total.text+' ('+x.total.note+')':'')+'. Each reading is under its page in the documents the team reads.'));
-  const ul=h('ul',{class:'tm-ver'});for(const p of x.pages)ul.append(h('li',null,h('div',{class:'h'},h('b',null,p.doc+' p.'+p.page),p.drawing_no?h('span',{class:'small'},'Drawing '+p.drawing_no):null,h('span',{class:'c'},p.cost?money(p.cost):'')),
-   h('div',{class:'small'+(p.status==='read'?'':' tm-state blocked')},p.status==='read'?(p.scale?'Scale '+p.scale:'No scale shown')+' · '+p.model+' · for '+p.role:'Not read: '+p.reason)));s.append(ul);return s}
+ // Flagged assumptions (10 Oct 2026): the effect on cost is worked out in code from the lines each affects; you accept it, change it
+ // (only those lines are redone, as a new version) or put it to the client.
+ function assumedPanel(){const d=V.d;if(!d.assumed.length)return null;const s=h('section',{class:'tm-panel tm-assumed','aria-labelledby':'tm-asm-h'},h('h3',{id:'tm-asm-h'},'Flagged assumptions'),
+   h('p',{class:'small muted'},(d.missing_info.mode==='ask'?'Assumptions the team still made.':d.missing_info.label+': the team carried on with these instead of asking you.')+' Each is listed in the cost plan, the workbook and the filled template.'+(d.missing_info.limit?' It must ask when one affects more than £'+d.missing_info.limit.toLocaleString('en-GB')+'.':'')));
+  const ul=h('ul',{class:'tm-asm'});
+  for(const a of d.assumed){const dec=a.decision||{};const li=h('li',null,h('div',null,a.assumption,' ',h('span',{class:'tm-chip'+(a.status==='open'||a.status==='asked'?' warn':'')},a.status_label)),
+    a.why?h('div',{class:'small muted'},'Missing: '+a.why):null,a.affects?h('div',{class:'small muted'},'Affects: '+a.affects):null,
+    h('div',{class:'small'},a.impact?['Effect on cost: its lines come to ',h('b',null,a.impact.text),' ('+a.impact.refs.join(', ')+')']:'Effect on cost: not priced yet'),
+    dec.text?h('div',{class:'small'},({changed:'Changed to: ',asked_client:'Question for the client: ',answered:'Answer: '}[a.status]||'')+dec.text+(dec.by?' ('+dec.by+')':'')):null,
+    h('div',{class:'small muted'},[a.role,a.stage_title].filter(Boolean).join(' · ')));
+   if((a.status==='open'||a.status==='asked')&&d.can.decide_flags){const go=(action,text)=>run(async()=>{const r=await api('/admin/api/teams/jobs/'+d.id+'/assumptions/'+a.id,'POST',{action,text:text||''});$('notice').textContent=r.message;await loadJob()});
+    const acc=h('button',{type:'button',class:'secondary'},'Accept');acc.onclick=()=>go('accept');
+    const ch=h('button',{type:'button',class:'secondary'},'Change');ch.onclick=()=>{const v=prompt('What should it be instead? Only the lines it affects are measured or priced again, as a new version.',a.assumption);if(v&&v.trim())go('change',v.trim())};
+    const ask=h('button',{type:'button',class:'secondary'},'Ask the client');ask.onclick=()=>{const v=prompt('The question for the client (listed on the job and in the cost plan):','Please confirm: '+a.assumption);if(v!==null)go('ask_client',v.trim())};
+    li.append(h('div',{class:'tm-acts'},acc,ch,ask))}
+   ul.append(li)}
+  s.append(ul);const lf=(d.lessons_filed||[]).slice(-1)[0];if(lf)s.append(h('p',{class:'small muted'},'What you decided was filed in Knowledge.'));else if(d.lessons&&d.lessons.not_filed)s.append(h('p',{class:'small muted'},'Not filed in Knowledge: '+d.lessons.not_filed));return s}
+ // New files (10 Oct 2026): the lead's report and what you can redo, each with its estimated cost shown before anything runs.
+ function reviewPanel(){const d=V.d,r=d.files_review;if(!r)return null;const s=h('section',{class:'tm-panel tm-review','aria-labelledby':'tm-rv-h'},h('h3',{id:'tm-rv-h'},'New files: choose what to redo'),
+   h('p',{class:'small'},r.summary||'What the new files change:'));
+  const ul=h('ul',{class:'tm-ver'});for(const f of r.files)ul.append(h('li',null,h('div',{class:'h'},h('b',null,f.name),h('span',{class:'tm-chip'},{revision:'Replaces '+(f.replaces||'an earlier revision'),new_scope:'New scope',answers:'Answers assumptions',other:'No change to the work'}[f.change]||f.change)),
+   f.summary?h('div',{class:'small'},f.summary):null,f.elements.length?h('div',{class:'small muted'},'Affects: '+f.elements.join(', ')):null,f.found_by==='code'?h('div',{class:'small muted'},'Revision found by Alice in code.'):null));s.append(ul);
+  if(r.not_reviewed)s.append(h('p',{class:'small',role:'note'},'The lead could not report: '+r.not_reviewed+' Alice’s own findings are shown.'));
+  const box=h('div',{class:'tm-opts'});for(const o of r.options){const b=btn(o.label,async()=>{if(o.key!=='none'&&!confirm(o.label+'?\n\n'+o.what+(o.estimate?'\nEstimated cost: '+o.estimate.text:'')))return;const x=await api('/admin/api/teams/jobs/'+d.id+'/files/rerun','POST',{choice:o.key});$('notice').textContent=x.message;await loadJob()},o.key==='none'?'secondary':'');
+   box.append(h('div',{class:'tm-opt'},b,h('div',{class:'small'},o.what),h('div',{class:'small'},o.estimate?['Estimated cost: ',h('b',null,o.estimate.text),' · '+o.basis]:o.basis)))}
+  s.append(box);return s}
+ function drawingsPanel(){const d=V.d,x=d.drawings;if(!x||!x.pages.length)return null;const s=h('section',{class:'tm-panel','aria-labelledby':'tm-dr-h'},h('h3',{id:'tm-dr-h'},'Drawings read'),
+   h('p',{class:'small muted'},plural(x.by_code||0,'page')+' read by Alice in code (no model), '+plural(x.read,'page or area','pages or areas')+' read by a vision model'+(x.total?', '+x.total.text+' ('+x.total.note+')':'')+'. Each reading is under its page in the documents the team reads, citing page and area.'));
+  const ul=h('ul',{class:'tm-ver'});for(const p of x.pages)ul.append(h('li',null,h('div',{class:'h'},h('b',null,p.doc+' p.'+p.page+(p.area?' area '+p.area:'')),p.drawing_no?h('span',{class:'small'},'Drawing '+p.drawing_no):null,h('span',{class:'c'},p.by==='code'?'no cost':p.cost?money(p.cost):'')),
+   h('div',{class:'small'+(p.status==='read'?'':' tm-state blocked')},p.status==='read'?(p.by==='code'?'Code: '+(p.scale?'scale from '+p.scale:'no usable scale'):(p.scale?'Scale '+p.scale:'No scale shown')+' · '+p.model+' · for '+p.role):'Not read: '+p.reason)));s.append(ul);return s}
  function briefCard(){const d=V.d;openCard({ref:d.ref,kind_label:'Digital team · Brief and files',title:d.title,subtitle:d.team.name+' · '+d.job_type_name,
-  sections:[{key:'what',title:'Brief',text:d.brief},{key:'what',title:'Documents',rows:d.documents.length?d.documents.map(x=>[d.doc_kinds[x.kind]||x.kind,x.source==='library'?x.name+' (document source: '+x.path+')':x.name]):null,text:d.documents.length?'':'No documents.'},
+  sections:[{key:'what',title:'Brief',text:d.brief},{key:'what',title:'Documents',rows:d.documents.length?d.documents.map(x=>[d.doc_kinds[x.kind]||x.kind,(x.source==='library'?x.name+' (document source: '+x.path+')':x.name)+(x.replaced_by?' (replaced by '+x.replaced_by+'; kept)':'')+(x.replaces?' (replaces '+x.replaces+')':'')]):null,text:d.documents.length?'':'No documents.'},
    {key:'where',title:'Where',rows:[['Location',d.location||'Not given (national rates)'],['Client',d.client||'None (General material only for client-facing work)']]},{key:'when',title:'When',rows:[['Started',{time:d.created_at}],['Last change',{time:d.updated_at}]]},
    {key:'who',title:'Who',text:'Started by '+(d.created_by||'you')+'. Team version v'+d.team_version+'.'}],actions:[]},
    {footer:()=>d.can.add_files?(()=>{const b=h('button',{type:'button'},'Add files');b.onclick=()=>{closeCard();openAdd('')};return b})():null})}
@@ -656,7 +684,8 @@ if(PAGE==='teams'){
   if(d.error)main.append(h('div',{class:'tm-err',role:'alert'},h('strong',null,'Stopped: '),d.error,failedPart?h('div',{class:'small'},'Try again redoes only '+pp.failed.label+(pp.kept?'; the '+plural(pp.kept,'part')+' already done '+(pp.kept===1?'is':'are')+' kept.':'.')):null));
   const cols=h('div',{class:'tm-cols'});const left=h('div'),side=h('div',{class:'tm-side'});cols.append(left,side);main.append(cols);
   if(J.panel)left.append(J.panel==='files'?filesPanel():rerunPanel(J.panel));
-  if(d.files_pending)left.append(h('div',{class:'tm-rerun',role:'status'},h('b',null,'New files waiting: '),d.files_pending.names.join(', ')+'. The work that depends on them is done again as soon as the team stops for you.'));
+  if(d.files_pending)left.append(h('div',{class:'tm-rerun',role:'status'},h('b',null,'New files waiting: '),d.files_pending.names.join(', ')+'. What you chose to redo starts as soon as the team stops for you.'));
+  const rvp=reviewPanel();if(rvp)left.append(rvp);
   if(d.rerun)left.append(h('div',{class:'tm-rerun',role:'status'},h('b',null,'v'+d.rerun.version+' in progress: '),(d.versions.versions.find(x=>x.current)||{}).what||'',d.rerun.by?' Asked by '+d.rerun.by+'.':''));
   if(d.copied_from)left.append(h('p',{class:'small muted'},'Copied from ',h('a',{href:'/admin/teams/'+enc(d.team_id)+'/jobs/'+d.copied_from.job},d.copied_from.ref+' v'+d.copied_from.version),': documents, plan and settings kept; the client was chosen again.'));
   for(const c of (d.view&&d.view.conflicts)||[])left.append(h('div',{class:'tm-conflict',role:'note'},h('strong',null,(d.view.lead||'The lead')+': '),c.text,h('div',{style:'margin-top:6px'},...(c.links||[]).map(l=>h('a',{href:l.href},l.label+' ↗')))));
