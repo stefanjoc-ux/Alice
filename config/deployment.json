@@ -1,0 +1,9 @@
+{
+ "_about": "This deployment's own names and places, shipped as roles and neutral words (decision D-0052: no personal names in the product). A deployment sets its own in deployment.json in its data folder, or as ALICE_<KEY> environment settings; only what it names changes.",
+ "product": "Alice",
+ "owner_name": "",
+ "organisation": "",
+ "tenant": "",
+ "domain": "",
+ "repo_url": ""
+}

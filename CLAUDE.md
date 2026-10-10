@@ -9,6 +9,10 @@ Read this whole file before changing anything. For what Alice does feature by fe
 knowledge note "AI Substrate: status summary" through the `alice` connector, or ask Stefan for
 `AI-Substrate-status-2026-09-30.txt`.
 
+**Before building anything from a prompt, check main for what already exists.** List each requested item as: already done
+(where), partly done (what's missing), or new. Skip what's done, say so in the PR, and never rebuild or change working behaviour
+unless the prompt explicitly asks.
+
 ---
 
 ## Rules that must never be broken

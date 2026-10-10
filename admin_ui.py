@@ -1297,11 +1297,12 @@ if(PAGE==='actions'){
    run(async()=>{try{const r=await api('/admin/api/records/'+i.id+'/discussion','POST',{message:msg});show(r.messages)}catch(err){wait.remove();ta.value=msg;throw err}finally{send.disabled=false}})};
   if(keen&&!i.discussion)wrap.classList.add('dec-talk-keen');return wrap}
  // Work items in personal spaces (spaces.sweep_*): Temple lists them, you confirm; each move goes through the sharing check
- function sweepBlock(w){const box=el('div','','sweep');
+ function sweepBlock(w,head){const box=el('div','','sweep');
   const look=btn(w.scanned_at?'Ask Temple to look again':'Ask Temple to look',async()=>{look.disabled=true;$('notice').textContent='Temple is reading your personal space…';try{const x=await api('/admin/api/spaces/sweep/scan','POST',{});$('notice').textContent='Temple found '+x.counts.work+' about the work, '+x.counts.self+' about you, '+x.counts.sensitive+' sensitive and '+x.counts.unsure+' it was not sure about. Nothing has moved.'}finally{look.disabled=false}},!!w.scanned_at);
   const bar=el('div','','sweep-bar');bar.append(look);
   if(w.scanned_at){bar.append(el('span','Last looked '+new Date(w.scanned_at).toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+' · '+w.counts.work+' work · '+w.counts.self+' about you · '+w.counts.sensitive+' sensitive · '+w.counts.unsure+' unsure'+(w.counts.moved?' · '+w.counts.moved+' moved':''),'small muted'))}
-  if(w.items.length&&w.target){bar.append(btn('Move all '+w.items.length+' to '+w.target_name,async()=>{if(!confirm('Move all '+w.items.length+' to '+w.target_name+'? Everyone in that space will see them. Each goes through the sharing check first.'))return;const x=await api('/admin/api/spaces/sweep/move','POST',{all:true});$('notice').textContent=sweepSaid(x)}))}
+  // Move all sits with the list, top right of the card (as Approve all does on the other Actions cards), not in the status line.
+  if(w.items.length&&w.target){const all=btn('Move all '+w.items.length+' to '+w.target_name,async()=>{if(!confirm('Move all '+w.items.length+' to '+w.target_name+'? Everyone in that space will see them. Each goes through the sharing check first.'))return;const x=await api('/admin/api/spaces/sweep/move','POST',{all:true});$('notice').textContent=sweepSaid(x)},true);all.classList.add('act-all');if(head)head.prepend(all);else bar.append(all)}
   if(w.items.length&&!w.target)bar.append(el('span','You have no team space to move them to yet: an Admin sets one on Users and permissions.','small'));
   box.append(bar);
   for(const i of w.items){const row=el('div','','act-row');const txt=el('div','','act-text');txt.append(el('strong',i.title),el('div',i.detail,'small muted'));if(i.reason)txt.append(el('div','Temple: '+i.reason,'small'));
@@ -1320,7 +1321,7 @@ if(PAGE==='actions'){
    if(s.key==='waiting'&&d.auto_on){const go=btn('Approve these automatically',async()=>{const x=await api('/admin/api/auto-approve/backlog','POST',{});$('notice').textContent='Checked '+x.memories+' memories ('+x.checking+' being reviewed by Temple), '+x.drafts+' knowledge drafts, '+x.facts+' organisation facts'+(x.suggestions?', accepted '+x.suggestions+' suggestions':'')+'. Anything that failed a check is held back for you.'});go.classList.remove('secondary');sec.append(go)}
    let list=sec;if(s.info&&s.items.length>6){const det=document.createElement('details');det.append(el('summary','Show '+s.items.length));sec.append(det);list=det}
    if(s.key==='decisions'){for(const i of s.items)sec.append(decisionCard(i));box.append(sec);continue}
-   if(s.key==='sweep'){sec.append(sweepBlock(s.sweep));box.append(sec);continue}
+   if(s.key==='sweep'){sec.append(sweepBlock(s.sweep,hr));box.append(sec);continue}
    for(const i of s.items){const row=el('div','','act-row');const txt=el('div','','act-text');if(i.ref){const rf=el('span',i.ref,'ref');rf.style.marginRight='6px';txt.append(rf)}const tl=el('strong',i.title);
     if(CARD_KEY[i.type]){const ob=el('button','','act-open');ob.type='button';ob.title='Open the full details, and ask Temple';ob.append(tl);const lst=s.items.filter(x=>CARD_KEY[x.type]),ix=lst.indexOf(i);ob.onclick=()=>openItem(lst,ix);txt.append(ob)}else txt.append(tl);
     if(i.verdict){const [l,c]=V[i.verdict]||V.unclear;const bd=el('span',l,'badge '+c);bd.style.marginLeft='8px';txt.append(bd)}if(i.kind==='decision'&&i.type==='proposal'){const db=el('span','Decision','badge v-run');db.style.marginLeft='6px';txt.append(db)}
@@ -3003,9 +3004,12 @@ NAV_ICONS = {
  'signins': _I('<rect x="3" y="5" width="18" height="11" rx="2"/><path d="M2 19h20"/><rect x="9.5" y="9" width="5" height="4" rx="1"/><path d="M10.5 9V8a1.5 1.5 0 0 1 3 0v1"/>'),
 }
 # ---- Users and permissions (users.py, permissions.py): people, roles, permission profiles ----
-PAGES['users'] = ('Users and permissions', 'Who can use Alice and what each person may see and do. Adding someone in Entra never shares anything by itself: '
-                  'they start with the default Member profile (Chat and their own saved chats). Until shared Spaces arrive, everyone but an Owner '
-                  'sees only what they created themselves. Health, Trading, Mileage and Backups are always the owner\'s alone.')
+PAGES['users'] = ('Users and permissions', 'Who can use Alice and what each person may do. Entra decides who gets in and their role (Owner, '
+                  'Admin, Member); a profile here sets what they may do in each section. What they see is decided by spaces: everyone reads the '
+                  'Organisation space and, while the rule "Team spaces are open to the organisation" is on, every team space a manager has not '
+                  'closed; each person has a personal space only they see; restricted spaces and spaces tied to a client are members only. Entra '
+                  'groups mapped below add people to spaces (and can set their profile). Adding someone in Entra never puts them in a team space '
+                  'by itself. Health, Trading, Mileage and Backups are always the owners\' alone.')
 SECTIONS['users'] = r'''<section><div class="mem-head"><h2>People</h2><span class="small muted" id="us-mode"></span></div>
 <div id="us-tiles" class="mi-tiles"></div><div class="table-wrap"><table id="us-people" class="mem-table"></table></div>
 <p class="small muted">A person appears here after their first sign-in. Their role is the lower of their Entra role and the role set here; the owner of Alice always has full access.
@@ -3121,7 +3125,9 @@ if(PAGE==='users'){
    const st=el('td','');const b=el('button',u.status==='active'?'Suspend':'Restore access','secondary');b.type='button';b.disabled=fixed;
    b.onclick=()=>{if(u.status==='active'&&!confirm('Suspend '+(u.name||u.email)+'? They are refused at once, everywhere in Alice.'))return;run(async()=>{try{await api('/admin/api/users/'+u.oid,'PUT',{status:u.status==='active'?'suspended':'active'})}finally{await load()}})};
    st.append(el('span',u.status==='active'?'Active ':'Suspended ','badge '+(u.status==='active'?'v-ok':'v-bad')),b);
-   if(u.linked_to){const to=D.users.find(x=>x.oid===u.linked_to);who.append(el('div','Linked to '+(to?(to.name||to.email):u.linked_to)+': one person','small'))}
+   {const nm=x=>x.name&&x.email?x.name+' ('+x.email+')':(x.name||x.email||x.oid);   // both rows of a linked pair say so, each naming the other
+    const others=u.linked_to?[D.users.find(x=>x.oid===u.linked_to)||{oid:u.linked_to}]:D.users.filter(x=>x.linked_to===u.oid);
+    if(others.length)who.append(el('div','Linked to '+others.map(nm).join(', ')+': one person','small'))}
    if(D.can_link&&D.users.length>1){const lk=el('button',u.linked_to?'Unlink':'Link…','secondary mini');lk.type='button';
     lk.onclick=()=>{if(u.linked_to){if(!confirm('Unlink '+(u.email||u.oid)+'? It becomes its own author again; nothing it wrote moves.'))return;run(async()=>{await api('/admin/api/users/'+u.oid+'/link','DELETE');await load()})}else openLink(u)};who.append(lk)}
    if(D.handover&&u.oid in D.handover){const ho=el('button','Hand over ('+D.handover[u.oid]+')','secondary');ho.type='button';ho.title='Their personal space stays private until you hand items over';ho.onclick=()=>handOver(u.oid);st.append(' ',ho)}
