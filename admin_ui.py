@@ -948,7 +948,7 @@ if(PAGE==='rules'){
   ow.append(owl,el('p','Off (the default): every attempt is refused and logged; the raw captured item is always kept, and anything merged or superseded links to it.','muted small'));
   const hold=el('fieldset','','r-fs');hold.append(el('legend','Always held for a person'));const holdI={};
   for(const [k,label] of Object.entries(A.holds||{})){const l=el('label','','r-check');const i=document.createElement('input');i.type='checkbox';i.checked=(p.hold||{})[k]!==false;holdI[k]=i;l.append(i,document.createTextNode(' '+label));hold.append(l)}
-  hold.append(el('p','Not held: a sensitive finding or an item Temple is unsure about stays in its author\u2019s personal space (never shared); a clash is approved with the clash noted.','muted small'));
+  hold.append(el('p','Not held: a sensitive finding or an item Temple is unsure about stays in its author\u2019s personal space (never shared); a clash is approved with the clash noted; an item Temple could not give a category is approved and stays in its author\u2019s personal space until someone gives it one.','muted small'));
   box.append(who,may,ow,hold,saveBtn(()=>patch(r.id,{params:{approver:Object.keys(pick).find(k=>pick[k].checked)||p.approver,temple_may:Object.fromEntries(Object.entries(mayI).map(([k,i])=>[k,i.checked])),
    overwrite_delete:owi.checked,hold:Object.fromEntries(Object.entries(holdI).map(([k,i])=>[k,i.checked]))}}),'Save'),el('p','Temple\u2019s library actions, each with its reason and Undo, are on the Activity page.','muted small'))}
  function paramsEditor(r){const box=el('div','','r-params');const p=r.params;
@@ -1236,6 +1236,10 @@ if(PAGE==='knowledge'){
 }
 """
 SCRIPT += r"""
+// A category picker for an item that waits for one (Actions and Spaces): Temple's suggestion first when it made one
+function catPicker(cats,suggested){const sel=document.createElement('select');sel.setAttribute('aria-label','Category');const none=el('option','Choose a category');none.value='';sel.append(none);
+ for(const c of cats||[]){const o=el('option',c);o.value=c;sel.append(o)}sel.value=(cats||[]).includes(suggested)?suggested:'';return sel}
+function shareSaid(x,title){return x.status==='moved'?'Shared: '+title+(x.space_name?' is now in '+x.space_name:'')+'.':x.status==='waiting'?'Category saved: '+title+' moves once Temple has routed it.':'Category saved, but the sharing check held '+title+': see why on Spaces.'}
 if(PAGE==='actions'){
  const V={approve:['Temple: approve','v-ok'],clarify:['Temple: clarify','v-warn'],reject:['Temple: reject','v-bad'],unreviewed:['Not reviewed','v-none'],running:['Reviewing…','v-run'],failed:['Review failed','v-bad'],unclear:['See report','v-none']};
  const ACCEPT={memory:'Propose memory',decision:'Propose decision',knowledge:'Save note',guidance:'Add to guidance',rule_request:'Log request'};
@@ -1254,6 +1258,11 @@ if(PAGE==='actions'){
   else if(i.type==='suggestion'){box.append(btn(ACCEPT[i.kind]||'Accept',async()=>{await api('/admin/api/temple-suggestions/'+i.id,'POST',{action:'accept',content:i.content});$('notice').textContent='Accepted: '+i.title+(i.kind==='memory'||i.kind==='decision'?' (now a proposal awaiting approval)':'')}),btn('Dismiss',async()=>{await api('/admin/api/temple-suggestions/'+i.id,'POST',{action:'dismiss',content:''})},true));const e=document.createElement('a');e.href='/admin/temple?tab=suggestions';e.textContent='Edit first ↗';e.className='small';box.append(e)}
   else if(i.type==='taxonomy'){box.append(btn('Approve',async()=>{await api('/admin/api/taxonomy/'+i.id,'POST',{action:'approve'});$('notice').textContent='Done: '+i.title}),btn('Reject',async()=>{await api('/admin/api/taxonomy/'+i.id,'POST',{action:'reject'});$('notice').textContent='Rejected. Temple will not suggest it again.'},true))}
   else if(i.type==='taxonomy_done'){if(i.can_undo)box.append(btn('Undo',async()=>{if(!confirm('Undo: '+i.title+'?'))return;await api('/admin/api/taxonomy/'+i.id,'POST',{action:'undo'});$('notice').textContent='Undone: '+i.title},true))}
+  else if(i.type==='share_category'||i.type==='uncategorised'){const sel=catPicker(i.categories,i.suggestion);
+   box.append(sel,btn(i.type==='share_category'?'Share now':'Give it this category',async()=>{if(!sel.value){$('notice').textContent='Pick a category first.';return}
+    if(i.type==='share_category'){const x=await api('/admin/api/spaces/held/'+i.id,'POST',{action:'share',category:sel.value});$('notice').textContent=shareSaid(x,i.title)}
+    else{await(i.item_type==='record'?api('/admin/api/memories/category','POST',{ids:[i.id],category:sel.value}):api('/admin/api/knowledge','PUT',{ids:[i.id],category:sel.value}));$('notice').textContent=i.title+' is now in '+sel.value+'.'}}));
+   if(i.type==='share_category')box.append(btn('Keep it where it is',async()=>{const n=prompt('Keep \u201c'+i.title+'\u201d where it is? A note (required when it is not your own item, kept in the activity log):','');if(n===null)return;await api('/admin/api/spaces/held/'+i.id,'POST',{action:'keep',note:n.trim()});$('notice').textContent='Kept where it is.'},true))}
   else if(i.type==='category'){box.append(btn('Accept',()=>api('/admin/api/memories/suggestions','POST',{ids:[i.id],action:'accept'})),btn('Dismiss',()=>api('/admin/api/memories/suggestions','POST',{ids:[i.id],action:'dismiss'}),true))}
   else if(i.type==='kcategory'){box.append(btn('Accept',()=>api('/admin/api/knowledge/suggestions','POST',{ids:[i.id],action:'accept'})),btn('Dismiss',()=>api('/admin/api/knowledge/suggestions','POST',{ids:[i.id],action:'dismiss'}),true))}
   else if(i.type==='client'){box.append(btn('Accept',()=>api('/admin/api/clients/suggestions','POST',{items:[{type:i.item_type,id:i.id}],action:'accept'})),btn('Dismiss',()=>api('/admin/api/clients/suggestions','POST',{items:[{type:i.item_type,id:i.id}],action:'dismiss'}),true))}
@@ -3141,7 +3150,7 @@ if(PAGE==='users'){
   $('us-apps').replaceChildren(...items(C.apps.filter(a=>!a.owner_only),'apps','The apps so far (Health, Trading, Mileage) are the owner\'s alone.'));
   $('us-teams').replaceChildren(...(C.teams.length?C.teams.map(tm=>{const cur=(L.teams||{})[tm.id]||{level:'none'};const r=el('div','','us-row');r.append(el('span',tm.name));const x=sel(LV,cur.level,tm.name);x.dataset.team=tm.id;r.append(x);
    const caps=el('div','','us-caps');for(const c of C.team_caps){const l=el('label','');const cb=document.createElement('input');cb.type='checkbox';cb.checked=!!cur[c.key];cb.dataset.team=tm.id;cb.dataset.cap=c.key;l.append(cb,document.createTextNode(' '+c.label));caps.append(l)}r.append(caps);return r}):[el('p','No digital teams yet.','small muted')]));
-  $('us-fixed').textContent='Not set by a profile: '+Object.values(C.role_sections).join(', ')+' (Admins and Owners), and '+Object.values(C.owner_only).join(', ')+' (the owner only). '+(C.full_only||[]).length+' parts of Alice show everyone\'s material and stay with Owners until shared Spaces arrive.';
+  $('us-fixed').textContent='Not set by a profile: '+Object.values(C.role_sections).join(', ')+' (Admins and Owners), and '+Object.values(C.owner_only).join(', ')+' (the owner only). '+(C.full_only||[]).length+' parts of Alice show material from every space at once and stay with Owners.';
   $('us-edit').scrollIntoView({behavior:'smooth',block:'start'});$('us-name').focus({preventScroll:true})}
  function collect(){const L={sections:{},assistants:{},teams:{},apps:{}};
   for(const s of document.querySelectorAll('#us-secs select'))L.sections[s.dataset.sec]=s.value;
@@ -3382,15 +3391,16 @@ function spaceControl(type,id,current,after){const box=el('div','','space-ctl');
  sel.onchange=()=>{try{sel.value?localStorage.setItem('alice-space',sel.value):localStorage.removeItem('alice-space')}catch{}location.reload()};
  bar.after(sel)}catch{}})();
 if(PAGE==='spaces'){
- const RL={view:'View',contribute:'Contribute',manage:'Manage'};
- async function load(){const d=await api('/admin/api/spaces');SPACES_MINE=null;
+ const RL={view:'View',contribute:'Contribute',manage:'Manage'};let SP_OPEN=false;
+ async function load(){const d=await api('/admin/api/spaces');SPACES_MINE=null;SP_OPEN=!!d.open_rule;
   $('sp-new').hidden=!(d.can_create||d.can_create_restricted);const kd=$('sp-kind');kd.replaceChildren();if(d.can_create){const o=el('option','Team space');o.value='shared';kd.append(o)}if(d.can_create_restricted){const o=el('option','Restricted space (for example HR casework)');o.value='restricted';kd.append(o)}
   const w=$('sp-waiting');w.replaceChildren();
   if(!d.waiting.length)w.append(el('p','Nothing waiting for you.','muted small'));
   for(const h of d.waiting){const c=el('div','','sp-held');c.append(el('b',h.title),el('div',h.type_label+' → '+h.to_name+(h.as&&h.as!=='author'?' · '+h.author_name+'\u2019s item':'')+(h.status==='waiting'?' · waiting for Temple\u2019s review':''),'small muted'));const ul=el('ul','');for(const r of h.reasons)ul.append(el('li',r));c.append(ul);
    const mine=h.as==='author';const why=()=>{if(mine)return '';const n=prompt('Why? You are deciding '+h.author_name+'\u2019s item (kept in the activity log).');return n&&n.trim()?n.trim():null};
+   if(h.as&&h.needs_category&&d.categories&&d.categories.length){const sel=catPicker(d.categories,'');const a=el('button','Share now');a.type='button';a.onclick=()=>{if(!sel.value){$('notice').textContent='Pick a category first.';return}run(async()=>{const x=await api('/admin/api/spaces/held/'+h.id,'POST',{action:'share',category:sel.value});$('notice').textContent=shareSaid(x,h.title);await load()})};const l=el('label','Category ','small');l.append(sel);c.append(l,a)}
    if(h.as&&!h.needs_category){const a=el('button','Share anyway');a.type='button';a.onclick=()=>{if(!confirm('Share “'+h.title+'” to '+h.to_name+' anyway? Everyone in that space will see it.'))return;const note=why();if(note===null)return;run(async()=>{await api('/admin/api/spaces/held/'+h.id,'POST',{action:'share',note});await load()})};c.append(a)}
-   if(h.needs_category&&h.status!=='waiting')c.append(el('p','Give it a category (Memories or Knowledge) and it moves on its own.','small'));
+   if(h.needs_category&&h.status!=='waiting')c.append(el('p',d.categories&&d.categories.length?'Pick its category and Share now: it goes on to '+h.to_name+' through the sharing check.':'Create a category on the Memories page first; then give it one and it moves on its own.','small'));
    if(h.as){const k=el('button',mine?'Keep it where it is':'Keep it out of '+h.to_name,'secondary');k.type='button';k.onclick=()=>{const note=why();if(note===null)return;run(async()=>{await api('/admin/api/spaces/held/'+h.id,'POST',{action:'keep',note});await load()})};c.append(k)}
    if(!h.as)c.append(el('p','A manager of '+h.to_name+' decides this one.','small muted'));
    w.append(c)}
@@ -3404,8 +3414,15 @@ if(PAGE==='spaces'){
   const list=$('sp-list');list.replaceChildren();
   for(const x of d.spaces){const c=el('section','','sp-card');const h=el('h3',x.name);h.append(el('span',x.kind_label||'Team',x.kind==='restricted'?'badge v-warn':'badge v-none'));if(x.client)h.append(el('span','Client: '+x.client,'badge v-warn'));
    if(x.kind==='shared')h.append(el('span',x.closed?'Closed':x.open?'Open to everyone':'Members only',x.closed?'badge v-warn':'badge v-ok'));c.append(h);
+   if(x.archived)h.append(el('span','Retired','badge v-none'));
    if(x.description)c.append(el('p',x.description,'small muted'));
-   if(x.closed&&x.closed_reason)c.append(el('p','Closed: '+x.closed_reason,'small'));
+   if(x.closed&&x.closed_reason)c.append(el('p',x.archived?x.closed_reason:'Closed: '+x.closed_reason,'small'));
+   if(x.can_rename||x.can_retire){const bar=el('div','','sp-edit');
+    if(x.can_rename){const e=el('button','Rename or describe','mini secondary');e.type='button';e.onclick=()=>{const nm=prompt('Name of the space:',x.name);if(nm===null)return;const ds=prompt('What it is for (shown on its card):',x.description||'');if(ds===null)return;
+     run(async()=>{const r=await api('/admin/api/spaces/'+x.id+'/details','PUT',{name:nm,description:ds});$('notice').textContent=r.changed?'Saved: '+r.name+'.':'Nothing changed.';await load()})};bar.append(e)}
+    if(x.can_retire){const rt=el('button','Retire it','mini secondary');rt.type='button';rt.onclick=()=>{const why=prompt('Retire '+x.name+'? It is archived, never deleted, and no longer listed. It must be empty (personal-area items in it go to your personal space). Why?','Emptied: its material moved to the Organisation space and team spaces.');if(why===null)return;
+     run(async()=>{await api('/admin/api/spaces/'+x.id+'/retire','POST',{reason:why});$('notice').textContent='Retired: '+x.name+' (archived, nothing deleted).';await load()})};bar.append(rt)}
+    c.append(bar)}
    c.append(el('p',x.member||x.kind==='organisation'?'Your role: '+RL[x.my_role]:x.my_role?'You read it (it is open to everyone); its members add to it.':'You are not a member (you can manage its members as an Owner of Alice).','small'));
    if(x.kind==='shared'&&x.can_manage){const t=el('button',x.closed?'Open it to everyone':'Close it to its members','mini secondary');t.type='button';
     t.onclick=()=>{let reason='';if(!x.closed){reason=prompt('Why close '+x.name+'? Only its members will read it (kept in the activity log).');if(!reason)return}else if(!confirm('Open '+x.name+' to everyone with an Alice role?'))return;
@@ -3443,30 +3460,37 @@ if(PAGE==='spaces'){
   const go=el('button','Do this');go.type='button';go.onclick=()=>run(async()=>{const actions={};for(const [k,s] of Object.entries(pick))actions[k]=s.value;
    const x=await api('/admin/api/spaces/linked','POST',{actions,note:why.value});$('notice').textContent=x.moved+' moved, '+x.archived+' archived as duplicates'+(x.not_done.length?'; not done: '+x.not_done.map(n=>(n.title||n.id)+' ('+n.why+')').slice(0,3).join(' · '):'')+'.';await load()});
   const bar=el('div','','row');bar.append(why,go);box.append(bar)}
- // The move into the Organisation space (spaces.org_migration_*): preview with counts first, an Owner confirms
+ // The move out of the work space (spaces.org_migration_*, decision D-0053): a preview per destination first, an Owner confirms
  async function orgMove(d){const box=$('sp-org');box.hidden=!d.can_move_org;if(!d.can_move_org)return;box.replaceChildren(el('h2','The Organisation space'));
-  box.append(el('p','Everyone with an Alice role reads the Organisation space. Organisations and their opportunities, general knowledge and decisions belong there; facts from internal sources (pricing, relationship notes) stay in the space they came from. '+(d.open_rule?'Team spaces are open to everyone in the organisation unless closed (rule on the Rules page).':'The rule "Team spaces are open to the organisation" is off: people read only their own spaces.'),'small muted'));
+  box.append(el('p','Everyone with an Alice role reads the Organisation space. Everything in the work space is organisational: organisations, knowledge, memories, decisions, proposals and internal organisation facts go to the Organisation space; each digital team, its jobs and its pricing templates go to a team space named after the team. Items in a personal-area category stay where they are. Client tags and labels are kept, so client separation and the labels still decide who may use client material, wherever it sits. '+(d.open_rule?'Team spaces are open to everyone in the organisation unless closed (rule on the Rules page).':'The rule "Team spaces are open to the organisation" is off: people read only their own spaces.'),'small muted'));
   const st=d.org_move||{};if(st.state)box.append(el('p',st.state==='running'?'Moving: '+st.done+' of '+st.total+'…':'Done '+new Date(st.finished_at||st.started_at).toLocaleString('en-GB')+': '+st.moved+' moved, '+st.held+' held by the sharing check, '+st.waiting+' waiting for Temple, '+st.not_moved+' not moved.','small'));
   const pv=el('button','Preview the move','secondary');pv.type='button';box.append(pv);const out=el('div','','sp-org-plan');box.append(out);
   if(location.hash==='#organisation'&&!orgMove.opened){orgMove.opened=true;setTimeout(()=>{box.scrollIntoView({block:'start'});pv.click()},50)}
-  pv.onclick=()=>run(async()=>{const p=await api('/admin/api/spaces/organisation/move');out.replaceChildren();
-   out.append(el('p','From '+p.from_name+' into '+p.to_name+': '+p.counts.organisations+' organisations, '+p.counts.knowledge+' general knowledge items, '+p.counts.decisions+' decisions. Each goes through the sharing check; nothing is deleted.'));
-   out.append(el('p','Staying in '+p.from_name+': '+Object.entries(p.stays).map(([k,v])=>v+' '+k).join(', ')+'.'+(p.open?' '+p.from_name+' is open to everyone in the organisation: close it on its card if it should be members only.':''),'small'));
-   for(const [k,list] of Object.entries(p.titles))if(list.length){const det=document.createElement('details');det.append(el('summary',k+' ('+p.counts[k]+')'));const ul=el('ul','');for(const t of list)ul.append(el('li',t));det.append(ul);out.append(det)}
-   const go=el('button','Move these into '+p.to_name);go.type='button';go.disabled=!(p.counts.organisations+p.counts.knowledge+p.counts.decisions);
-   go.onclick=()=>run(async()=>{if(!confirm('Move '+p.counts.organisations+' organisations, '+p.counts.knowledge+' knowledge items and '+p.counts.decisions+' decisions into '+p.to_name+'? Everyone with an Alice role will read them.'))return;
+  const listOf=(title,rows)=>{const det=document.createElement('details');det.append(el('summary',title+' ('+rows.length+')'));const ul=el('ul','');for(const x of rows)ul.append(el('li',x.title+(x.client?' · client: '+x.client:'')+(x.label&&x.label!=='general'?' · label: '+x.label:'')+(x.type?' · '+x.type:'')));det.append(ul);return det};
+  pv.onclick=()=>run(async()=>{const p=await api('/admin/api/spaces/organisation/move');out.replaceChildren();let n=0;
+   const o=el('div','','sp-dest');o.append(el('h3','Into '+p.to_name));for(const [k,,label] of p.labels){const rows=p.organisation[k]||[];n+=rows.length;if(rows.length)o.append(listOf(label,rows))}
+   if((p.organisation.pricing_templates||[]).length){n+=p.organisation.pricing_templates.length;o.append(listOf('Pricing templates no team claims',p.organisation.pricing_templates))}
+   if(p.client_items)o.append(el('p',p.client_items+' of these are tagged to a client: they keep their tags, so they are used only in that client’s work.','small'));out.append(o);
+   for(const t of p.teams){const b=el('div','','sp-dest');b.append(el('h3','Into '+t.space_name+(t.exists?'':' (a new team space)')));for(const [k,,label] of p.team_labels){const rows=t[k]||[];n+=rows.length;if(rows.length)b.append(listOf(label,rows))}out.append(b)}
+   if(p.staying.length){const b=el('div','','sp-dest');b.append(el('h3','Staying in '+p.from_name),listOf('Personal-area items',p.staying));out.append(b)}
+   out.append(el('p',p.capture_after+(p.open?' '+p.from_name+' is open to everyone in the organisation until it is emptied.':''),'small'));
+   const go=el('button','Move these '+n+' items');go.type='button';go.disabled=!n;
+   go.onclick=()=>run(async()=>{if(!confirm('Move '+n+' items out of '+p.from_name+'? Everyone with an Alice role will read what goes to the Organisation space and open team spaces. Each goes through the sharing check; nothing is deleted.'))return;
     await api('/admin/api/spaces/organisation/move','POST',{counts:p.counts});$('notice').textContent='Moving now: each item goes through the sharing check.';await load()});out.append(go)})}
  $('sp-default').onchange=()=>run(async()=>{await api('/admin/api/spaces/default','PUT',{space:$('sp-default').value});$('notice').textContent='New items now go to that space.'});
  $('sp-create').onsubmit=e=>{e.preventDefault();const kind=$('sp-kind').value;if(kind==='restricted'&&$('sp-desc').value.trim().length<5){$('notice').textContent='Say what the restricted space is for.';return}
-  run(async()=>{await api('/admin/api/spaces','POST',{name:$('sp-name').value,description:$('sp-desc').value,client:$('sp-client').value,kind});$('sp-name').value='';$('sp-desc').value='';$('notice').textContent=kind==='restricted'?'Restricted space created. Only you are in it until you add people; name it on a team space so items about named people go there.':'Space created. Only you are in it until you add people.';await load()})};
+  run(async()=>{await api('/admin/api/spaces','POST',{name:$('sp-name').value,description:$('sp-desc').value,client:$('sp-client').value,kind});$('sp-name').value='';$('sp-desc').value='';$('notice').textContent=kind==='restricted'?'Restricted space created. Only its members ever see it: you are the only one until you add people; name it on a team space so items about named people go there.':'Space created. You are its only member until you add people or map an Entra group to it (Users and permissions). '+(SP_OPEN?'Everyone in the organisation can read it unless you close it.':'Only its members read it.');await load()})};
  run(load);
 }
 """
-PAGES['spaces'] = ('Spaces', 'Where your memories, decisions, knowledge, organisations, proposals and digital teams live. Your personal space is yours alone; '
-                   'a shared space shows everything in it to its members. Sharing is always deliberate: Alice checks an item for personal details '
-                   'before it enters a shared space, and adding someone to Alice never adds them to a space.')
+PAGES['spaces'] = ('Spaces', 'Where your memories, decisions, knowledge, organisations, proposals and digital teams live. Alice is open by default: '
+                   'everyone reads the Organisation space, and team spaces are open to the organisation unless a manager closes them. Your '
+                   'personal space is yours alone, and a restricted space only ever shows its members. Temple routes each new item once it '
+                   'has reviewed it: work to your team space or the Organisation space, things about you to your personal space, anything '
+                   'about a named person or sensitive to the team\'s restricted space, and anything it is unsure about is held for you. '
+                   'The sharing check still runs before anything enters a shared space. Entra groups can decide who is in each space.')
 SECTIONS['spaces'] = r'''<section id="sp-linked" hidden></section><section id="sp-org" hidden></section><section id="sp-approvals-box" hidden><div class="mem-head"><h2>Waiting for your approval</h2><span class="small muted">New items in the spaces you manage that the automatic checks held: approve or reject</span></div><div id="sp-approvals"></div></section>
-<section><div class="mem-head"><h2>Waiting for you</h2><span class="small muted">Items the sharing check held: share anyway or keep personal</span></div><div id="sp-waiting"></div></section>
+<section><div class="mem-head"><h2>Waiting for you</h2><span class="small muted">Items held for you: give one a category, share it anyway, or keep it where it is</span></div><div id="sp-waiting"></div></section>
 <section><div class="mem-head"><h2>Your spaces</h2><label class="small">New items go to <select id="sp-default"></select></label></div><div id="sp-list" class="sp-grid"></div><div id="sp-migration"></div></section>
 
 <section id="sp-new" hidden><div class="mem-head"><h2>New shared space</h2></div><form id="sp-create" class="sp-form"><label>Kind <select id="sp-kind"></select></label><label>Name <input id="sp-name" maxlength="80" required></label>

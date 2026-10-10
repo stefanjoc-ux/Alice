@@ -95,6 +95,8 @@ LABELS = {
     'space_moved': ('memories', 'Item moved to another space'), 'space_share_held': ('blocks', 'Sharing held for the author (sharing check)'),
     'space_share_refused': ('blocks', 'Sharing refused: not classified'), 'space_share_kept': ('memories', 'Author kept an item personal'),
     'spaces_migrated': ('rules', 'Items placed in spaces'),
+    'space_renamed': ('rules', 'Space renamed'), 'space_described': ('rules', 'Space description changed'),
+    'space_retired': ('rules', 'Space retired (archived, not deleted)'),
     'temple_model_set': ('rules', 'Temple\'s model for screening changed'), 'temple_model_held': ('agents', 'Screening held: local model not answering'),
     'temple_model_retry': ('agents', 'Held screening tried again'), 'temple_model_eval': ('agents', 'Temple\'s models evaluated')
 }

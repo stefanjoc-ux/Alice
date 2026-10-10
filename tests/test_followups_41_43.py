@@ -90,9 +90,14 @@ sec = {s['key']: s for s in cl.get('/admin/api/actions', headers=E).json()['sect
 t('Actions offers the move into the Organisation space while it has not run, linking to its preview on Spaces',
   offer and offer['counts']['knowledge'] >= 1 and 'org_move' in sec and sec['org_move']['items'][0]['href'] == '/admin/spaces#organisation')
 t('…not to someone who is not an Owner', 'org_move' not in {s['key'] for s in cl.get('/admin/api/actions', headers=A).json().get('sections', [])})
-with store.db() as c:
-    c.execute("INSERT INTO settings(key,value) VALUES ('org_migration',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (json.dumps({'state': 'done'}),))
-t('…and not once it has run', spaces.org_migration_offer() is None)
+def _mig(state):
+    with store.db() as c:
+        c.execute("INSERT INTO settings(key,value) VALUES ('org_migration',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (json.dumps({'state': state}),))
+    spaces.forget()
+_mig('running')
+t('…not while it is running', spaces.org_migration_offer() is None)
+_mig('done')
+t('…and still after an earlier move while something is left in the work space (D-0053: all of it is organisational)', spaces.org_migration_offer() is not None)
 
 # ---------------- the pages ----------------
 script = admin_ui.SCRIPT

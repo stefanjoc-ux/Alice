@@ -208,7 +208,7 @@
    "set": "memory",
    "name": "Approval and library management",
    "kind": "enforced",
-   "description": "Who approves new memories, decisions and knowledge, and what Temple may do to the library on its own (decisions D-0042 and D-0044). By default Temple approves new items under each space's rules, and may categorise, route, merge, supersede and archive. Models and Temple never overwrite or delete unless you allow it here: the raw captured item is always kept, anything merged or superseded links to it, and every library change is logged with its reason and can be undone (Activity). Sensitive findings, clashes and anything Temple is unsure about are held for a person. Switched off, Temple manages nothing: every new item waits for a person.",
+   "description": "Who approves new memories, decisions and knowledge, and what Temple may do to the library on its own (decisions D-0042 and D-0044). By default Temple approves new items under each space's rules, and may categorise, route, merge, supersede and archive. Models and Temple never overwrite or delete unless you allow it here: the raw captured item is always kept, anything merged or superseded links to it, and every library change is logged with its reason and can be undone (Activity). Sensitive findings, clashes, anything Temple is unsure about and anything Temple could not give a category are held for a person: Temple never approves an item with no category. Switched off, Temple manages nothing: every new item waits for a person.",
    "enabled": true,
    "params": {
     "approver": "temple",
@@ -224,7 +224,8 @@
     "hold": {
      "sensitive": true,
      "clash": true,
-     "unsure": true
+     "unsure": true,
+     "no_category": true
     }
    },
    "core": true

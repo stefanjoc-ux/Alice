@@ -214,8 +214,10 @@ def _summary():
     me = spaces._actor()
     sh = [h for h in spaces.held(me) if h['as'] in ('author', 'manager')]     # an Owner steps in on the Spaces page, not here
     AS = {'author': 'Your', 'manager': 'For a space you manage:', 'owner': 'As an Owner of Alice:'}
+    cats = [x['name'] for x in store.list_categories()['categories']]
     out.append(_section('shares', 'Shares the sharing check held', len(sh), '/admin/spaces',
-                        [{'type': 'link', 'id': h['id'], 'title': f"{h['title']} → {h['to_name'] or 'a shared space'}",
+                        [{'type': 'share_category' if h['needs_category'] and cats else 'link', 'id': h['id'], 'categories': cats,
+                          'title': f"{h['title']} → {h['to_name'] or 'a shared space'}", 'to_name': h['to_name'],
                           'detail': (f"Your {h['type_label']}" if h['as'] == 'author' else f"{AS[h['as']]} {h['author_name']}'s {h['type_label']}") +
                                     (' is waiting for a category: ' if h['needs_category'] else ' was held before it entered a shared space: ') +
                                     ' '.join(h['reasons'] or ['personal or private details.']),
@@ -223,6 +225,25 @@ def _summary():
                         'Before anything enters a shared space, Temple reviews it, then Alice and Temple check it for an actual finding: personal '
                         'data about a real person, special category data, or something marked private. Open Spaces to share one anyway or keep it '
                         'where it is (a manager or an Owner gives a reason). One waiting for a category moves on its own once it has one.' if sh else ''))
+
+    # 10b1. Approved without a category (D-0048 was): it cannot go to a shared space until it has one. The Owner picks one here;
+    # nothing changes until then. Items already listed above (their share is held for a category) are not listed twice.
+    try:
+        unc = spaces.uncategorised(me) if me.full else {'items': [], 'total': 0}
+    except Exception:
+        unc = {'items': [], 'total': 0}
+    shown = {(h['item_type'], str(h['item_id'])) for h in sh}
+    ui = [x for x in unc['items'] if (x['item_type'], str(x['id'])) not in shown]
+    KL = {'decision': 'Decision', 'fact': 'Memory', 'knowledge': 'Knowledge item'}
+    out.append(_section('uncategorised', 'Approved without a category', max(0, unc['total'] - (len(unc['items']) - len(ui))), '/admin/memories',
+                        [{'type': 'uncategorised', 'id': x['id'], 'item_type': x['item_type'], 'title': x['title'], 'categories': cats,
+                          'suggestion': x['suggestion'],
+                          'detail': f"{KL.get(x['kind'], 'Memory')} in {x['space_name'] or 'its space'}" +
+                                    (f", waiting to go to {x['going_to_name']}" if x['going_to_name'] else '') +
+                                    (f". Temple suggested {x['suggestion']}." if x['suggestion'] else '.')} for x in ui],
+                        'These were approved with no category. An item needs one before it can go to a shared space, and the library is '
+                        'easier to search with one. Pick a category for each: nothing changes until you do, and one waiting to go to a '
+                        'space moves there once it has its category (through the sharing check).' if ui else '', top=20, info=True))
 
     # 10b2. The one-off sweep: work items stuck in your personal space (Temple lists them; nothing moves until you confirm)
     try:
@@ -239,19 +260,22 @@ def _summary():
                              f"{sw['in_personal']} items sit in your personal space. Ask Temple to look for the ones about the work, so they can go to "
                              f"{sw['target_name'] or 'your team space'}. Nothing moves until you confirm."), info=True) | {'sweep': sw})
 
-    # 10b3. The move into the Organisation space (#42) waits for an Owner to preview and confirm it; until it has run it is
-    # offered here, so it is not missed at the bottom of the Spaces page (10 Oct 2026: the Organisation space stayed empty).
+    # 10b3. The move out of the work space (#42; everything in it since D-0053) waits for an Owner to preview and confirm it; while
+    # anything is left to move it is offered here, so it is not missed at the bottom of the Spaces page.
     try:
         om = spaces.org_migration_offer() if me.full else None
     except Exception:
         om = None
     if om:
         c_ = om['counts']
-        out.append(_section('org_move', 'Move shared material into the Organisation space', 1, '/admin/spaces#organisation',   # one thing to do: the move
-                            [{'type': 'link', 'id': 'org-move', 'title': f"{c_['organisations']} organisations, {c_['knowledge']} general knowledge items "
-                              f"and {c_['decisions']} decisions in {om['from_name']}", 'detail': 'Preview first: nothing moves until you confirm, and each '
-                              'item goes through the sharing check.', 'href': '/admin/spaces#organisation'}],
-                            'Everyone with an Alice role reads the Organisation space. It is empty until you move these from your work space.', info=True))
+        what = ', '.join(f"{c_[k]} {label.lower()}" for k, _, label in spaces.ORG_MOVE_KINDS + spaces.TEAM_MOVE_KINDS if c_.get(k))
+        out.append(_section('org_move', 'Move the work space\'s material to the Organisation and team spaces', 1, '/admin/spaces#organisation',   # one thing to do: the move
+                            [{'type': 'link', 'id': 'org-move', 'title': f"{om['total']} items in {om['from_name']}: {what}",
+                              'detail': 'Preview first: nothing moves until you confirm, and each item goes through the sharing check. '
+                              + (f"Digital teams go to {', '.join(om['teams'])}. " if om['teams'] else '')
+                              + (f"{c_['staying']} personal-area items stay." if c_.get('staying') else ''), 'href': '/admin/spaces#organisation'}],
+                            'Everything in the work space is organisational (D-0053): it goes to the Organisation space, which everyone with an '
+                            'Alice role reads, and each digital team to a team space of its own.', info=True))
 
     # 10c. Hand-over items the sharing check held (handover.py): an Owner decides, on Users and permissions
     try: ho = spaces.handover_held() if me.full and me.role == 'owner' else []

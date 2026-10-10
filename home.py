@@ -95,5 +95,5 @@ def _own(tz=0):
         'agents': {'total': 0, 'active': 0, 'attention': []}, 'backup': None,
         'substrate': {'memories': mem, 'knowledge': kn, 'organisations': 0, 'clients': 0,
                       'documents': _safe(lambda: sum(s['files'] for s in doc_library.sources()), 0) if permissions.library_ok(v) else 0},
-        'restricted': True, 'note': 'You see only what you created yourself, until shared Spaces arrive.',
+        'restricted': True, 'note': 'You see your personal space, the Organisation space, team spaces open to the organisation and the spaces you are a member of.',
     }
