@@ -74,14 +74,13 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      # deploy/push_image.sh: the registry sign-in and the push are retried (the #45 release stopped on a one-off empty answer
+      # from Azure during `az acr login`); tested without Azure by tests/test_push_image.py.
       - name: Push the tested image (the same one, not a rebuild)
-        run: |
-          TAG=$(echo "${{ github.sha }}" | cut -c1-7)
-          gunzip -c image.tar.gz | docker load
-          az acr login -n "${{ vars.ACR_NAME }}"
-          IMAGE="${{ vars.ACR_NAME }}.azurecr.io/alice:$TAG"
-          docker tag alice:${{ github.sha }} "$IMAGE" && docker push "$IMAGE"
-          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"; echo "TAG=$TAG" >> "$GITHUB_ENV"
+        env:
+          ACR: ${{ vars.ACR_NAME }}
+          SHA: ${{ github.sha }}
+        run: bash deploy/push_image.sh image.tar.gz
       - name: New revisions with no traffic
         run: |
           RG="${{ vars.AZURE_RESOURCE_GROUP }}"
