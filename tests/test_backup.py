@@ -217,7 +217,7 @@ t('resource group lock: CanNotDelete, on by default, with how to lift it', "leve
 t('database: 35 days by default; geo-redundant a parameter, off', 'param pgBackupRetentionDays int = 35' in main and 'backupRetentionDays: pgBackupRetentionDays' in main and 'param pgGeoRedundantBackup bool = false' in main)
 t('setup: -Step backup exists, and every later step keeps backups on', re.search(r"ValidateSet\([^)]*'backup'[^)]*\)\]\[string\]\$Step", setup) and "if ($State.backup) {" in setup and "Run-Job 'alice-backup'" in setup)
 t('the image has pg_dump', 'postgresql-client' in read('Dockerfile'))
-t('the pipeline moves the backup job to each new image', 'alice-backup' in read('deploy', 'github', 'deploy.yml'))
+t('the pipeline moves the backup job to each new image', 'alice-backup' in read('.github', 'workflows', 'deploy.yml'))
 
 # ---------------- a real pg_dump, when this run has a test PostgreSQL server and pg_dump (the pipeline's image does) ----------------
 import shutil

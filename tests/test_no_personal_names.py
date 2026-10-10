@@ -2,8 +2,8 @@
 data, setup scripts, infrastructure and the documents she shows carry no real person's name, email or object ID, and no real
 organisation's, tenant's or domain's name: those come from configuration (deployment.py, the setup parameters) or the signed-in user.
 
-Fails the build on any of them in a file git tracks, except tests/ (fixtures), CHANGELOG.md (the history, read by Alice as data),
-CLAUDE.md (instructions for whoever works on the code, never shown in Alice) and .github/ (changed by the owner only). Fictional
+Fails the build on any of them in a file git tracks, except tests/ (fixtures), CHANGELOG.md (the history, read by Alice as data) and
+CLAUDE.md (instructions for whoever works on the code, never shown in Alice). The workflows in .github/ are checked like any other file. Fictional
 people in demo data and examples use reserved addresses (example.com, example.org, *.example), and every GUID is one of Microsoft's
 fixed IDs or Alice's own (listed below with what each is)."""
 import _util  # first: throwaway data folder, dummy keys, no real model calls
@@ -12,7 +12,7 @@ import os, re, subprocess
 
 GUID = re.compile(r'\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b')
 
-EXEMPT = ('tests/', 'CHANGELOG.md', 'CLAUDE.md', '.github/', 'Static/vendor/')
+EXEMPT = ('tests/', 'CHANGELOG.md', 'CLAUDE.md', 'Static/vendor/')
 # Names that must never appear again: the person and the organisations that were in the code before D-0052.
 DENY = re.compile(r"stefan|o['’]?connor|tuduma|es3cloud|northants|\bInsight\b(?!s)|\bRGU\b|f955e821|e610cc9b", re.I)
 EMAIL = re.compile(r'[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,})')

@@ -235,7 +235,7 @@ for part, words in (('## A. One file or folder', 'restore-azurefiles'), ('## B. 
     t(f'runbook: {part[3:]} with its Cloud Shell commands', part in rb and words in rb)
 t('runbook: placeholders only, never a secret (passwords are read from Key Vault into a variable)', '<subscription id>' in rb
   and not re.search(r'password=(?!\$)[^\s"]+', rb) and 'sk-' not in rb)
-wf = read('deploy', 'github', 'restore-drill.yml')
+wf = read('.github', 'workflows', 'restore-drill.yml')
 t('workflow: a manual button and a monthly run, starting the same job and failing when the drill fails', 'workflow_dispatch' in wf and "cron: '17 3 1 * *'" in wf
   and 'az containerapp job start -n alice-drill' in wf and '[ "$ST" = "Succeeded" ] || {' in wf)
 bk, main, access, setup = read('infra', 'backup.bicep'), read('infra', 'main.bicep'), read('infra', 'drill-access.bicep'), read('deploy', 'azure-setup.ps1')
@@ -247,4 +247,4 @@ t('infra: the drill job has no database address and no keys', 'ALICE_DATABASE_UR
 t('infra: Alice may start that one job and nothing else', "'Microsoft.App/jobs/start/action'" in bk and 'scope: drillJob' in bk)
 t('setup: -Step backup creates the drill resource group; -Step recover only in a new resource group', 'group create -n "$ResourceGroup-drill"' in setup
   and '-Step recover only runs in a new resource group' in setup)
-t('the pipeline moves the drill job to each new image', 'alice-drill' in read('deploy', 'github', 'deploy.yml'))
+t('the pipeline moves the drill job to each new image', 'alice-drill' in read('.github', 'workflows', 'deploy.yml'))

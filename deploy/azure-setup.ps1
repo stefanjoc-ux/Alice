@@ -12,7 +12,8 @@ Steps (all by default, or one with -Step):
   migrate  dry run of the database copy, then (after you confirm) the real copy into PostgreSQL
   signin   creates the "Alice web sign-in" app registration (only you can sign in) and stores its secret in Key Vault
   apps     starts alice-web and alice-mcp
-  github   lets the GitHub pipeline deploy (OIDC, no stored secrets) and prints the repo variables to set
+  github   lets the GitHub pipeline deploy (OIDC, no stored secrets) and prints the repo variables to set. Only jobs in the GitHub
+           environment "production" (main branch only) sign in; -RemoveBranchSignIn then removes the older main-branch record
   connector  (run on its own) the Claude connector: an "Alice connector sign-in" app registration, its secret and a
            signing key in Key Vault, then alice-mcp updated so Claude can sign in through Alice
   demo     (run on its own) the demo Alice for client demos: alice-demo-web and alice-demo-mcp on the live image, with their
@@ -113,6 +114,7 @@ param(
   [string]$AdminObjectIds = '',       # -Step users: accounts given Alice.Admin (comma separated); remembered as adminObjectIds
   [ValidateSet('', 'on', 'off')][string]$LocalModel = '',   # -Step localmodel: Temple's local model on or off; remembered
   [string]$LocalModelName = '',       # -Step localmodel: the Ollama model tag (default qwen3:4b); remembered
+  [switch]$RemoveBranchSignIn,        # -Step github: remove the old main-branch sign-in record, once deploys sign in through the production environment; remembered
   [switch]$UseLocalState,             # use deploy\azure-state.json even though it differs from the Azure copy (it then replaces it)
   [ValidateSet('all', 'infra', 'secrets', 'image', 'files', 'migrate', 'signin', 'apps', 'github', 'connector', 'demo', 'copilot', 'mail', 'backup', 'recover', 'users', 'localmodel', 'check')][string]$Step = 'all'
 )
@@ -918,9 +920,13 @@ if (Want 'github') {
   $app = $State.githubClientId
   $sp = AzTry ad sp show --id $app --query id -o tsv
   if (-not $sp) { $sp = Retry 'Creating the GitHub service principal' { AzCli ad sp create --id $app --query id -o tsv } }
-  # The deploy job runs in the "production" environment, and GitHub names the repo by owner and repo ID as well as name,
-  # e.g. repo:<owner>@<owner id>/<repo>@<repo id>:environment:production (the deploy log shows the exact subject).
-  $subjects = @(@('github-main', "repo:${GitHubRepo}:ref:refs/heads/main"), @('github-production', "repo:${GitHubRepo}:environment:production"))
+  # The jobs that deploy run in the GitHub environment "production" (main branch only), and GitHub names the repo by owner and repo
+  # ID as well as name, e.g. repo:<owner>@<owner id>/<repo>@<repo id>:environment:production (the deploy log shows the exact subject).
+  # The older record for any job on the main branch (github-main) is kept until -RemoveBranchSignIn says deploys work without it.
+  if ($RemoveBranchSignIn) { Set-Prop $State 'githubBranchSignInRemoved' $true; Save-State $State }
+  $subjects = @()
+  if (-not $State.githubBranchSignInRemoved) { $subjects += ,@('github-main', "repo:${GitHubRepo}:ref:refs/heads/main") }
+  $subjects += ,@('github-production', "repo:${GitHubRepo}:environment:production")
   if ($GitHubSubject) { $subjects += ,@('github-production-ids', $GitHubSubject) }
   $existing = @(AzTry ad app federated-credential list --id $app --query '[].subject' -o tsv)
   foreach ($fc in $subjects) {
@@ -929,6 +935,22 @@ if (Want 'github') {
     $tmp = New-TemporaryFile; [IO.File]::WriteAllText($tmp, $fed)
     try { Retry "Adding the GitHub sign-in record $($fc[0])" { AzCli ad app federated-credential create --id $app --parameters "@$tmp" --output none | Out-Null } } finally { Remove-Item $tmp -ErrorAction SilentlyContinue }
   }
+  if ($State.githubBranchSignInRemoved) {
+    # Only with a production environment record in place: otherwise removing the branch record would stop every deploy.
+    $records = @(AzTry ad app federated-credential list --id $app --query "[].[name, subject]" -o tsv | Where-Object { $_ })
+    if (-not @($records | Where-Object { ($_ -split "`t")[1] -like '*:environment:production' }).Count) {
+      throw 'There is no sign-in record for the production environment yet, so the main-branch record was not removed. Run -Step github -GitHubRepo <owner>/<repo> first.'
+    }
+    foreach ($r in $records) {
+      $name, $subject = $r -split "`t"
+      if ($subject -like '*:ref:refs/heads/main') {
+        Retry "Removing the main-branch sign-in record $name" { AzCli ad app federated-credential delete --id $app --federated-credential-id $name --output none | Out-Null }
+        Write-Host "Removed the main-branch sign-in record $name ($subject): only jobs in the production environment can sign in now."
+      }
+    }
+  }
+  Write-Host 'GitHub sign-in records now:'
+  AzTry ad app federated-credential list --id $app --query "[].[name, subject]" -o tsv | ForEach-Object { Write-Host "  $_" }
   $rg = AzCli group show -n $ResourceGroup --query id -o tsv
   $acr = AzCli acr show -n $State.acrName --query id -o tsv
   foreach ($ra in @(@('Contributor', $rg), @('AcrPush', $acr))) {

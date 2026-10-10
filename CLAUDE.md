@@ -105,8 +105,8 @@ unless the prompt explicitly asks.
 
 13. **Every pull request adds its line to `CHANGELOG.md`** (Stefan, 9 Oct 2026): under the day's `## YYYY-MM-DD` heading (newest
     first), one line `- #<PR number> <what changed, in plain English, for Stefan>`, ending with `You need to: …` when he has a manual
-    step (copy a workflow, run a setup step, rebuild the Copilot package). Open the PR first if you need its number, then add the line.
-    The pull request check (`deploy/changelog_check.py`, job `changelog` in `deploy/github/deploy.yml`) fails a PR that changes code
+    step (run a setup step, rebuild the Copilot package, change a setting). Open the PR first if you need its number, then add the line.
+    The pull request check (`deploy/changelog_check.py`, job `changelog` in `.github/workflows/deploy.yml`) fails a PR that changes code
     without touching CHANGELOG.md, or leaves it unreadable; documentation-only (`*.md`, `*.txt`, `docs/`) and test-only (`tests/`)
     changes are exempt. Alice reads the file at each deploy (`changelog.py`).
 
@@ -134,8 +134,8 @@ unless the prompt explicitly asks.
     remembered) or from the signed-in user. Deployment-specific IDs and addresses live in config or parameters (`deploy/run-all.ps1`
     reads `deploy\run-all.local.json`, not in git). Existing data (a space called "<name>: work", stored team steps) is data and stays;
     the digital teams' old key for the person is recognised by its hash (`teams.is_you`). Fictional people use example.com,
-    example.org or *.example. `tests/test_no_personal_names.py` fails the build otherwise (tests/, CHANGELOG.md, this file and
-    .github/ are exempt; a new Microsoft or Alice GUID is added to its allow-list with what it is).
+    example.org or *.example. `tests/test_no_personal_names.py` fails the build otherwise (tests/, CHANGELOG.md and this file
+    are exempt; the workflows in .github/ are checked like any other file; a new Microsoft or Alice GUID is added to its allow-list with what it is).
 
 ## How Alice runs
 
@@ -166,7 +166,18 @@ unless the prompt explicitly asks.
 - **The setup state lives in Azure** (Stefan, 8 Oct 2026; `deploy/azure_state.py`, stdlib only, called by the script): blob `alice-setup/azure-state.json` in Alice's own storage account (the file share's), written with its ETag (two runs at once never overwrite each other; each version also under `alice-setup/history/`); `deploy\azure-state.json` is only a cache. Every step but check also appends to the **setup history** (`setupHistory` in the state, never compared; `azure_state.py history`, called by `Record-Step` in the script at the end and from its `trap` when a step fails: who, when, step, the parameters given by name from `RECORDED` with any value that looks like a key or password replaced by "(not recorded)", result, the first line of an error) and mirrors it to the file share `setup/setup-history.json`, shown on Admin › What's new. Every step first runs `load`: a missing Azure copy, or one older than the newest deployment in the resource group (`deployedAt`), is rebuilt from what is deployed (deployment outputs and parameters, alice-web/alice-mcp settings, the web sign-in, the backup vault, lock, off-site account, jobs) and saved, showing each value and its source; the rebuild adds and updates but never switches off or blanks what the Azure copy has (`merge`). A local file that differs stops the step unless `-UseLocalState`. `save` runs on every `Save-State` and once at the end; the pending database password never leaves the machine. `-Step check` is read-only (`read_only` refuses any az command but show/list/download) and lists what each step set up, flagging what is missing or differs. **databaseHost is never empty once a server exists** (Stefan, 8 Oct 2026): the rebuild takes it from the newest deployment's parameter, else the address of `postgresServer` (`server_fqdn`); every `Deploy` of main.bicep first runs `database-host` (`Ensure-DatabaseHost`), which sets it the same way or stops the step if the address cannot be read; only a resource group with no server yet (the first `-Step infra`) deploys without one. Test: `test_azure_state.py`.
 - **Temple's local model** (Stefan, 9 Oct 2026; `infra/local-model.bicep`, module of main.bicep, `localModel` off by default; `azure-setup.ps1 -Step localmodel -LocalModel on [-LocalModelName qwen3:4b]`, remembered in the setup state and kept by every later step): Container App `alice-local-model` running Ollama (image pinned), INTERNAL INGRESS ONLY (`external: false`, http://alice-local-model from alice-web and alice-mcp), no identity, secrets or database; its own share `<prefix>-models` (env storage `alice-models`) for the downloaded model, never Alice's own share, so the nightly backup does not copy it; 4 vCPU / 8 GiB on Consumption, one replica always on. main.bicep passes `ALICE_LOCAL_MODEL_URL`/`ALICE_LOCAL_MODEL` to the apps only while it is on. `-LocalModel off` removes those settings (Alice stops using it) and parks the app at zero replicas (`localModelParked`; the resource group lock means it is not deleted). Choosing Local in Alice is a separate step (Agents page). `-Step check` lists the app, internal ingress only, and whether Alice uses it (`azure_state.py`).
 - **Role IDs in infra/*.bicep** are Microsoft's built-in role GUIDs, hyphenated, via `subscriptionResourceId('Microsoft.Authorization/roleDefinitions', …)` (lesson, 8 Oct 2026: backup.bicep carried a made-up Reader ID and -Step backup failed with RoleDefinitionDoesNotExist; Azure prints the ID without hyphens in that error). Copy a new role's ID from Microsoft's built-in roles page and add it to `tests/test_infra_roles.py`'s `BUILT_IN`, which fails on any other ID.
-- Pipeline (`.github/workflows/deploy.yml`): all suites inside the image (SQLite and PostgreSQL), push, then a new revision
+- **Deploying is locked to main** (10 Oct 2026): every job that signs in to Azure or deploys (deploy in `deploy.yml`, `promote.yml`,
+  `restore-drill.yml`) runs in the GitHub environment `production` (the repository's settings limit it to the main branch), checks
+  `github.ref == 'refs/heads/main'`, and alone gets `id-token: write` (job-level permissions; workflow-level is `contents: read`), so a
+  pull request run can never sign in to Azure. Sign-in is OIDC: azure/login with the repository VARIABLES `AZURE_CLIENT_ID`,
+  `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` (no Azure secret anywhere), against the app "Alice GitHub deploy", whose federated
+  credentials `azure-setup.ps1 -Step github` manages: `github-production` and `github-production-ids` (the subject GitHub actually
+  presents, repo:<owner>@<id>/<repo>@<id>:environment:production, given with `-GitHubSubject`), and the older `github-main`
+  (ref:refs/heads/main), which `-RemoveBranchSignIn` removes (remembered; refused while no production record exists).
+  `tests/test_workflows.py` fails the build if any job breaks this.
+- Pipeline (`.github/workflows/deploy.yml`): all suites inside the image (SQLite and PostgreSQL), push (`deploy/push_image.sh`: the
+  registry sign-in and the push are tried up to 4 times, since the #45 release stopped on a one-off empty answer from `az acr login`;
+  tested with stand-in az and docker by `tests/test_push_image.py`), then a new revision
   with no traffic, then automatic go-live (the deploy step first pins traffic to the live revision BY NAME, found with `revision list`, because Bicep's
   `latestRevision: true` (set again by `azure-setup -Step apps`) would otherwise put every new revision live at once; then
   `promote.sh promote` with `PROMOTE_WAIT=1`, same checks; off when the repository
@@ -308,7 +319,7 @@ later step that redeploys keeps backups exactly as set). `infra/backup.bicep` is
   `az lock delete --name alice-do-not-delete --resource-group <rg>`, then `-Step backup -NoLock` so no later step puts it back. With it on,
   nothing in the resource group can be deleted (revisions are deactivated, not deleted, so releases are unaffected); throwaway resources
   (e.g. a restore drill) must live in a resource group of their own.
-- The pipeline moves `alice-backup` to each new image (`deploy/github/deploy.yml`; Stefan copies it into `.github`).
+- The pipeline moves `alice-backup` to each new image (`.github/workflows/deploy.yml`).
 - **Restore runbook**: `docs/restore.md` (also drawn on the Backup page): (A) one file or folder from the vault, into a `restored-…` folder;
   (B) the database to a point in time into a NEW server, then `database-url` switched and the live revisions restarted, and the next setup
   step run once with `-DatabaseHost <fqdn>` (remembered; main.bicep's `databaseHost`) so redeploys keep pointing at it; (C) everything
@@ -316,7 +327,7 @@ later step that redeploys keeps backups exactly as set). `infra/backup.bicep` is
   <offsite account>`, which grants the new identity read on the copies and runs the `alice-recover` job (`main.bicep` `recoverFrom`), then
   `signin`, `apps`, `backup`); (D) rolling back a release (Go live button or `deploy/promote.sh rollback`).
 - **Restore drill** (`drill.py`, job `alice-drill`, resource group `<rg>-drill` created by `-Step backup`): started by the Backup page's
-  button or the Restore drill workflow (`deploy/github/restore-drill.yml`, Stefan copies it into `.github`; manual and monthly), the same
+  button or the Restore drill workflow (`.github/workflows/restore-drill.yml`; manual and monthly), the same
   job either way. Targets on the Backup page: recovery point database minutes, files 24 hours; recovery time 4 hours.
 - Never write backup data anywhere but the off-site account, never open the live share read-write from a backup or restore path, and
   never delete or overwrite live data in a restore: restores go into NEW resources, then Alice is pointed at them. The drill never gets
@@ -442,8 +453,11 @@ call real AI services. Never read the demo store anywhere else, and never let a 
 ## Git
 
 **Working on the GitHub repo directly (Claude):** never push to `main`. Push a branch (`claude/<short-topic>`) and open a
-pull request into `main`, with its line in `CHANGELOG.md` (rule 13); the pipeline runs every test on it without deploying. Stefan reviews and merges; the merge is what
-goes live (automatic go-live). Files under `.github/` are changed by Stefan only: change `deploy/github/*.yml` and ask him to copy.
+pull request into `main`, with its line in `CHANGELOG.md` (rule 13); the pipeline runs every test on it without deploying. Stefan reviews and merges;
+**never merge a pull request yourself**; the merge is what goes live (automatic go-live). The workflows in `.github/workflows` change in
+pull requests like any other file (Stefan, 10 Oct 2026: the deploy/github copies are retired); a pull request cannot sign in to Azure,
+so a workflow change that deploys is first exercised by its tests (e.g. `tests/test_workflows.py`, `tests/test_push_image.py`) and then
+for real by the merge.
 
 `.gitignore` excludes `.env`, `data\`, `.venv\`, caches and downloads. Commit after each passing change:
 ```

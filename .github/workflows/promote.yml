@@ -1,6 +1,7 @@
 # The Promote button: Actions > "Go live (promote or roll back)" > Run workflow.
 # After a green "Test and deploy" run the new version waits with no traffic; this moves traffic to it, or back.
-# Copy to .github/workflows/promote.yml (same as deploy.yml). The work itself is in deploy/promote.sh.
+# The work itself is in deploy/promote.sh. It runs in the GitHub environment "production" (main branch only), the one place allowed to
+# sign in to Azure (tests/test_workflows.py).
 name: Go live (promote or roll back)
 
 on:
@@ -13,7 +14,6 @@ on:
         default: promote
 
 permissions:
-  id-token: write
   contents: read
 
 concurrency:
@@ -22,9 +22,12 @@ concurrency:
 
 jobs:
   live:
-    if: ${{ vars.AZURE_CLIENT_ID != '' }}
+    if: ${{ vars.AZURE_CLIENT_ID != '' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     environment: production
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v5
       - uses: azure/login@v3
