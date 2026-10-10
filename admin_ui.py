@@ -2959,6 +2959,13 @@ Someone with more than one account (for example an everyday account and a tenant
 <label>Why (kept in the activity log) <input id="us-link-note" maxlength="300" required placeholder="For example: both are Stefan's accounts (everyday and tenant admin)"></label>
 <button type="button" id="us-link-check" class="secondary">Show what changes</button></form><div id="us-link-preview" class="small"></div>
 <button type="button" id="us-link-go" hidden>Link and repair</button></section>
+<section id="us-groups" hidden><div class="mem-head"><h2>Entra groups</h2><button type="button" id="us-groups-apply" class="secondary">Apply now</button></div>
+<p class="small muted">Map an Entra group to spaces (with a role) and a permission profile. Applied when people sign in and every day; leaving the group removes the membership it gave, and what they made stays where it is. Memberships and profiles set by hand here or on Spaces are never changed by a group.</p>
+<div id="us-groups-list"></div>
+<form id="us-groups-form" class="us-form"><label>Entra group object ID <input id="ug-id" maxlength="36" required placeholder="00000000-0000-0000-0000-000000000000"></label>
+<label>Name (for you) <input id="ug-label" maxlength="80" placeholder="For example: HR-Team"></label><div id="ug-spaces"></div>
+<button type="button" id="ug-more" class="secondary">Add another space</button>
+<label>Permission profile <select id="ug-profile"></select></label><button type="submit">Save mapping</button></form></section>
 <section id="us-cap" hidden><div class="mem-head"><h2>Where new items go</h2></div>
 <p class="small muted">The default space for new memories, decisions and knowledge when nobody names one (connectors and Alice's pages alike). A person's own choice on the Spaces page ("New items go to") still wins. Anything going into a shared space waits for Temple's review and the sharing check first.</p>
 <label class="small">For everyone <select id="us-cap-default" aria-label="Default space for new items"></select></label>
@@ -2986,7 +2993,7 @@ CSS += r'''
 .us-card h3{margin:0 0 4px;font-size:15px}.us-card p{margin:4px 0;font-size:13px}.us-form label{display:block;margin:8px 0;font-size:14px}.us-form input[type=text],.us-form input:not([type]){width:min(480px,100%)}
 .us-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:6px 16px}.us-grid .us-row{display:flex;gap:8px;align-items:center;justify-content:space-between;font-size:14px;flex-wrap:wrap}
 .us-row select{min-width:96px}.us-caps{display:flex;gap:8px;flex-wrap:wrap;font-size:12px;width:100%}.us-badge{font-size:11px;padding:1px 6px;border-radius:4px;background:#eef3f6;margin-left:6px}
-#us-edit[hidden],#us-delete[hidden],#us-ho[hidden],.us-ho-open[hidden],#us-link[hidden],#us-cap[hidden],#us-link-go[hidden]{display:none!important}
+#us-edit[hidden],#us-delete[hidden],#us-ho[hidden],.us-ho-open[hidden],#us-link[hidden],#us-cap[hidden],#us-link-go[hidden],#us-groups[hidden]{display:none!important}
 .us-ho-list h3{margin:14px 0 4px;font-size:15px}.us-ho-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:4px 0;border-bottom:1px solid var(--line);font-size:14px}
 .us-ho-row label{display:flex;gap:8px;align-items:center;flex:1 1 260px;min-width:0}.us-ho-row select{font-size:13px;max-width:100%}
 .us-ho-open{border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin:10px 0;background:#fff;max-height:50vh;overflow:auto}
@@ -2998,7 +3005,22 @@ if(PAGE==='users'){
  const when=iso=>iso?new Date(iso).toLocaleString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}):'–';
  const sel=(opts,val,label)=>{const s=document.createElement('select');s.setAttribute('aria-label',label);for(const [v,t] of opts){const o=el('option',t);o.value=v;s.append(o)}s.value=val;return s};
  const LV=[['none','None'],['view','View'],['use','Use'],['manage','Manage']];
- async function load(){[D,C]=await Promise.all([api('/admin/api/users'),api('/admin/api/permissions/catalogue')]);draw();capture().catch(()=>{})}
+ async function load(){[D,C]=await Promise.all([api('/admin/api/users'),api('/admin/api/permissions/catalogue')]);draw();capture().catch(()=>{});groupsDraw().catch(()=>{})}
+ // Entra groups (groups.py): group → spaces with a role → profile
+ let G=null;
+ function ugRow(sp){const r=el('div','','us-row');const s=document.createElement('select');s.setAttribute('aria-label','Space');const o0=el('option','Choose a space');o0.value='';s.append(o0);
+  for(const x of G.spaces){const o=el('option',x.name);o.value=x.id;s.append(o)}const rl=document.createElement('select');rl.setAttribute('aria-label','Role');for(const x of G.roles){const o=el('option',x.label);o.value=x.key;rl.append(o)}
+  s.value=sp?sp.space:'';rl.value=sp?sp.role:'view';r.append(s,rl);return r}
+ async function groupsDraw(){G=await api('/admin/api/groups');$('us-groups').hidden=false;const L=$('us-groups-list');L.replaceChildren();
+  if(!G.mappings.length)L.append(el('p','No groups mapped yet.','small muted'));
+  for(const m of G.mappings){const c=el('div','','us-card');c.append(el('h3',m.label||m.group_id),el('p',m.group_id,'small muted'),
+    el('p',(m.spaces.map(x=>x.name+' ('+x.role+')').join(', ')||'No spaces')+(m.profile?' · profile '+m.profile:''),'small'),el('p',(G.groups_seen[m.group_id]||0)+' signed-in people in this group','small muted'));
+   const del=el('button','Remove','secondary mini');del.type='button';del.onclick=()=>{if(!confirm('Remove this mapping? The memberships it gave are removed; what people made stays.'))return;run(async()=>{await api('/admin/api/groups/'+m.id,'DELETE');await groupsDraw()})};c.append(del);L.append(c)}
+  $('ug-spaces').replaceChildren(ugRow());$('ug-profile').replaceChildren(el('option','Leave their profile as it is'),...G.profiles.map(p=>{const o=el('option',p.name);o.value=p.id;return o}));$('ug-profile').options[0].value=''}
+ $('ug-more').onclick=()=>{if(G)$('ug-spaces').append(ugRow())};
+ $('us-groups-form').onsubmit=e=>{e.preventDefault();const sp=[...document.querySelectorAll('#ug-spaces .us-row')].map(r=>({space:r.children[0].value,role:r.children[1].value})).filter(x=>x.space);
+  run(async()=>{await api('/admin/api/groups','POST',{group_id:$('ug-id').value.trim(),label:$('ug-label').value,spaces:sp,profile:$('ug-profile').value});$('ug-id').value='';$('ug-label').value='';$('notice').textContent='Mapping saved and applied.';await groupsDraw()})};
+ $('us-groups-apply').onclick=()=>run(async()=>{const x=await api('/admin/api/groups/apply','POST',{});$('notice').textContent='Applied to '+x.people+' people ('+x.changed+' changed).'});
  // Where new items go (spaces.capture_*): the organisation's default, and the space set for each person
  async function capture(){const P=await api('/admin/api/spaces/capture');$('us-cap').hidden=false;
   const d=$('us-cap-default');d.replaceChildren(...P.modes.concat(P.spaces).map(x=>{const o=el('option',x.name);o.value=x.id;return o}));d.value=P.default;
@@ -3286,9 +3308,9 @@ function spaceControl(type,id,current,after){const box=el('div','','space-ctl');
   box.replaceChildren(el('span','Space: '+name(current),'small muted'));
   const targets=m.can_add_to.filter(x=>x.id!==current);if(!targets.length)return;
   const sel=document.createElement('select');sel.setAttribute('aria-label','Space to share or move it to');const o0=document.createElement('option');o0.value='';o0.textContent='Share or move to…';sel.append(o0);
-  for(const t of targets){const o=document.createElement('option');o.value=t.id;o.textContent=(t.kind==='shared'?'Share to ':'Move to ')+t.name;sel.append(o)}
+  for(const t of targets){const o=document.createElement('option');o.value=t.id;o.textContent=(t.kind!=='personal'?'Share to ':'Move to ')+t.name;sel.append(o)}
   const go=el('button','Go','secondary mini');go.type='button';
-  go.onclick=()=>run(async()=>{if(!sel.value)return;const shared=kind(sel.value)==='shared';
+  go.onclick=()=>run(async()=>{if(!sel.value)return;const shared=kind(sel.value)!=='personal';
    if(shared&&!confirm('Share it to '+name(sel.value)+'? Everyone in that space will see it. Alice checks it for personal details first.'))return;
    const x=await api('/admin/api/spaces/move','POST',{item_type:type,item_id:id,space:sel.value});
    $('notice').textContent=x.status==='moved'?'Now in '+name(sel.value)+'.':x.status==='held'?'Held for you: '+x.reasons.join(' ')+' Decide on the Spaces page.':x.status==='refused'?'Not shared: '+x.reasons.join(' '):'No change.';
@@ -3317,11 +3339,16 @@ if(PAGE==='spaces'){
    w.append(c)}
   const def=$('sp-default');def.replaceChildren();for(const x of d.spaces.filter(x=>x.my_role&&x.my_role!=='view')){const o=document.createElement('option');o.value=x.id;o.textContent=x.name;def.append(o)}def.value=d.default;
   const list=$('sp-list');list.replaceChildren();
-  for(const x of d.spaces){const c=el('section','','sp-card');const h=el('h3',x.name);h.append(el('span',x.kind==='personal'?'Personal':'Shared','badge v-none'));if(x.client)h.append(el('span','Client: '+x.client,'badge v-warn'));c.append(h);
+  for(const x of d.spaces){const c=el('section','','sp-card');const h=el('h3',x.name);h.append(el('span',x.kind==='personal'?'Personal':x.kind==='organisation'?'Organisation':'Team','badge v-none'));if(x.client)h.append(el('span','Client: '+x.client,'badge v-warn'));
+   if(x.kind==='shared')h.append(el('span',x.closed?'Closed':x.open?'Open to everyone':'Members only',x.closed?'badge v-warn':'badge v-ok'));c.append(h);
    if(x.description)c.append(el('p',x.description,'small muted'));
-   c.append(el('p',x.my_role?'Your role: '+RL[x.my_role]:'You are not a member (you can manage its members as an Owner of Alice).','small'));
+   if(x.closed&&x.closed_reason)c.append(el('p','Closed: '+x.closed_reason,'small'));
+   c.append(el('p',x.member||x.kind==='organisation'?'Your role: '+RL[x.my_role]:x.my_role?'You read it (it is open to everyone); its members add to it.':'You are not a member (you can manage its members as an Owner of Alice).','small'));
+   if(x.kind==='shared'&&x.can_manage){const t=el('button',x.closed?'Open it to everyone':'Close it to its members','mini secondary');t.type='button';
+    t.onclick=()=>{let reason='';if(!x.closed){reason=prompt('Why close '+x.name+'? Only its members will read it (kept in the activity log).');if(!reason)return}else if(!confirm('Open '+x.name+' to everyone with an Alice role?'))return;
+     run(async()=>{await api('/admin/api/spaces/'+x.id+'/closed','PUT',{closed:!x.closed,reason});$('notice').textContent=x.closed?'Open to everyone again.':'Closed: only its members read it.';await load()})};c.append(t)}
    const cnt=Object.entries(x.counts||{});if(cnt.length)c.append(el('p',cnt.map(([k,v])=>v+' '+k+(v===1?'':'s')).join(' · '),'small'));
-   if(x.kind==='shared'&&x.members.length){const ul=el('ul','','sp-members');for(const m of x.members){const li=el('li',m.name+' · '+RL[m.role]);
+   if(x.kind!=='personal'&&x.members.length){const ul=el('ul','','sp-members');for(const m of x.members){const li=el('li',m.name+' · '+RL[m.role]);
      if(x.can_manage&&!(m.role==='manage'&&x.members.filter(y=>y.role==='manage').length<2)){const rm=el('button','Remove','mini secondary');rm.type='button';rm.onclick=()=>run(async()=>{if(!confirm('Remove '+m.name+' from '+x.name+'? They stop seeing everything in it at once.'))return;await api('/admin/api/spaces/'+x.id+'/members/'+(m.key==='owner'?'owner':m.key),'DELETE');await load()});li.append(rm)}
      ul.append(li)}c.append(ul)}
    if(x.can_manage&&d.people.length){const f=el('div','','sp-add');const ps=document.createElement('select');ps.setAttribute('aria-label','Person to add');for(const p of d.people){const o=document.createElement('option');o.value=p.key;o.textContent=p.name+(p.email&&p.email!==p.name?' ('+p.email+')':'');ps.append(o)}
@@ -3329,7 +3356,20 @@ if(PAGE==='spaces'){
     const b=el('button','Add to this space');b.type='button';b.onclick=()=>run(async()=>{if(!confirm('Add them to '+x.name+'? They will see everything in it.'))return;await api('/admin/api/spaces/'+x.id+'/members','PUT',{member:ps.value,role:rs.value});$('notice').textContent='Added.';await load()});
     f.append(ps,rs,b);c.append(f)}
    list.append(c)}
+  orgMove(d).catch(()=>{});
   const mg=$('sp-migration');mg.replaceChildren();if(d.migration&&d.migration.counts){mg.append(el('p','When spaces arrived, Alice placed your items (nothing was copied or deleted): '+Object.entries(d.migration.counts).map(([k,v])=>v+' '+k.replace(':',' → ')).join(', ')+'.','small muted'))}}
+ // The move into the Organisation space (spaces.org_migration_*): preview with counts first, an Owner confirms
+ async function orgMove(d){const box=$('sp-org');box.hidden=!d.can_move_org;if(!d.can_move_org)return;box.replaceChildren(el('h2','The Organisation space'));
+  box.append(el('p','Everyone with an Alice role reads the Organisation space. Organisations and their opportunities, general knowledge and decisions belong there; facts from internal sources (pricing, relationship notes) stay in the space they came from. '+(d.open_rule?'Team spaces are open to everyone in the organisation unless closed (rule on the Rules page).':'The rule "Team spaces are open to the organisation" is off: people read only their own spaces.'),'small muted'));
+  const st=d.org_move||{};if(st.state)box.append(el('p',st.state==='running'?'Moving: '+st.done+' of '+st.total+'…':'Done '+new Date(st.finished_at||st.started_at).toLocaleString('en-GB')+': '+st.moved+' moved, '+st.held+' held by the sharing check, '+st.waiting+' waiting for Temple, '+st.not_moved+' not moved.','small'));
+  const pv=el('button','Preview the move','secondary');pv.type='button';box.append(pv);const out=el('div','','sp-org-plan');box.append(out);
+  pv.onclick=()=>run(async()=>{const p=await api('/admin/api/spaces/organisation/move');out.replaceChildren();
+   out.append(el('p','From '+p.from_name+' into '+p.to_name+': '+p.counts.organisations+' organisations, '+p.counts.knowledge+' general knowledge items, '+p.counts.decisions+' decisions. Each goes through the sharing check; nothing is deleted.'));
+   out.append(el('p','Staying in '+p.from_name+': '+Object.entries(p.stays).map(([k,v])=>v+' '+k).join(', ')+'.'+(p.open?' '+p.from_name+' is open to everyone in the organisation: close it on its card if it should be members only.':''),'small'));
+   for(const [k,list] of Object.entries(p.titles))if(list.length){const det=document.createElement('details');det.append(el('summary',k+' ('+p.counts[k]+')'));const ul=el('ul','');for(const t of list)ul.append(el('li',t));det.append(ul);out.append(det)}
+   const go=el('button','Move these into '+p.to_name);go.type='button';go.disabled=!(p.counts.organisations+p.counts.knowledge+p.counts.decisions);
+   go.onclick=()=>run(async()=>{if(!confirm('Move '+p.counts.organisations+' organisations, '+p.counts.knowledge+' knowledge items and '+p.counts.decisions+' decisions into '+p.to_name+'? Everyone with an Alice role will read them.'))return;
+    await api('/admin/api/spaces/organisation/move','POST',{counts:p.counts});$('notice').textContent='Moving now: each item goes through the sharing check.';await load()});out.append(go)})}
  $('sp-default').onchange=()=>run(async()=>{await api('/admin/api/spaces/default','PUT',{space:$('sp-default').value});$('notice').textContent='New items now go to that space.'});
  $('sp-create').onsubmit=e=>{e.preventDefault();run(async()=>{await api('/admin/api/spaces','POST',{name:$('sp-name').value,description:$('sp-desc').value,client:$('sp-client').value});$('sp-name').value='';$('notice').textContent='Space created. Only you are in it until you add people.';await load()})};
  run(load);
@@ -3340,6 +3380,7 @@ PAGES['spaces'] = ('Spaces', 'Where your memories, decisions, knowledge, organis
                    'before it enters a shared space, and adding someone to Alice never adds them to a space.')
 SECTIONS['spaces'] = r'''<section><div class="mem-head"><h2>Waiting for you</h2><span class="small muted">Items the sharing check held: share anyway or keep personal</span></div><div id="sp-waiting"></div></section>
 <section><div class="mem-head"><h2>Your spaces</h2><label class="small">New items go to <select id="sp-default"></select></label></div><div id="sp-list" class="sp-grid"></div><div id="sp-migration"></div></section>
+<section id="sp-org" hidden></section>
 <section id="sp-new" hidden><div class="mem-head"><h2>New shared space</h2></div><form id="sp-create" class="sp-form"><label>Name <input id="sp-name" maxlength="80" required></label>
 <label>What it is for <input id="sp-desc" maxlength="300"></label><label>Tied to a client (optional) <input id="sp-client" maxlength="60" placeholder="Only this space's members then see that client's material"></label>
 <button type="submit">Create space</button></form></section>'''
@@ -3351,7 +3392,7 @@ CSS += r'''
 .sp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}.sp-card{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:0}
 .sp-card h3{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 6px;font-size:16px}.sp-members{margin:6px 0;padding-left:18px;font-size:14px}.sp-members li{margin:3px 0}
 .sp-members .mini{margin-left:8px}.sp-add{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.sp-held{border:1px solid #e2bf85;background:#fdf3e1;border-radius:8px;padding:10px 12px;margin:8px 0}
-.sp-held ul{margin:6px 0 8px;padding-left:18px;font-size:14px}.sp-form label{display:block;margin:8px 0}.sp-form input{width:min(480px,100%)}#sp-new[hidden]{display:none}
+.sp-held ul{margin:6px 0 8px;padding-left:18px;font-size:14px}.sp-form label{display:block;margin:8px 0}.sp-form input{width:min(480px,100%)}#sp-new[hidden],#sp-org[hidden]{display:none}
 '''
 
 # ---- What's new (changelog.py): CHANGELOG.md as imported at each deploy, the releases and the setup steps run (Admin or Owner) ----

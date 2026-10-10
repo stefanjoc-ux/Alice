@@ -40,6 +40,7 @@ SECTIONS = [
     ('organisations', 'Organisations', 'Workspace', LEVELS),
     ('memories', 'Memories', 'Knowledge', LEVELS),
     ('knowledge', 'Knowledge', 'Knowledge', LEVELS),
+    ('org_space', 'Organisation space (everyone reads it; Use = add to it)', 'Knowledge', LEVELS),
     ('documents', 'Documents', 'Knowledge', LEVELS),
     ('archive', 'Saved chats (their own)', 'Knowledge', ('none', 'view', 'use', 'manage')),
     ('agents', 'Agents', 'Admin', LEVELS),
@@ -52,13 +53,21 @@ SECTION_KEYS = [s[0] for s in SECTIONS]
 ROLE_SECTIONS = {'users': 'Users and permissions', 'rules': 'Rules', 'rule-packs': 'Rule packs', 'whats-new': "What's new"}   # Admin or Owner role
 OWNER_ONLY = {'health': 'Health Insights', 'trading': 'Trading desk', 'mileage': 'Mileage', 'backup': 'Backups'}
 # Parts of Alice that show everyone's material at once: Owner role only until Spaces (what a profile gives is not enough).
-FULL_ONLY_PAGES = {'organisations', 'temple', 'actions', 'demo'}
+FULL_ONLY_PAGES = {'temple', 'actions', 'demo'}   # Organisations: a shared directory since CR-4 phase 1 (its own section)
 FULL_ONLY_REASON = ('This part of Alice shows material from everyone, so until shared Spaces arrive only an Owner can use it.')
 
 
 def default_levels():
     """The default Member profile: Chat, and their own saved chats. Nothing of anyone else's."""
     return clean_levels({'sections': {'chat': 'use', 'archive': 'use'}})
+
+
+def team_member_levels():
+    """The built-in "Team member" profile (CR-4 phase 1): Chat, assistants, digital teams and Knowledge to use; Organisations,
+    Memories and Decisions to view; their own saved chats."""
+    return clean_levels({'sections': {'chat': 'use', 'archive': 'use', 'knowledge': 'use', 'organisations': 'view', 'memories': 'view',
+                                      'assistants': 'view', 'teams': 'view', 'org_space': 'view'},
+                         'assistants': {'*': 'use'}, 'teams': {'*': {'level': 'use', 'run': True}}})
 
 
 def clean_levels(d):
@@ -258,6 +267,12 @@ ROUTES = {
     'GET /admin/api/spaces/capture': 'admin', 'PUT /admin/api/spaces/capture': 'admin',
     'GET /admin/api/spaces/sweep': 'any', 'POST /admin/api/spaces/sweep/scan': 'any', 'POST /admin/api/spaces/sweep/move': 'any',
     'POST /admin/api/spaces/sweep/{sid}/dismiss': 'any',
+    # open by default (CR-4 phase 1): a manager closes a team space (spaces.py checks); the move into the Organisation space is an
+    # Owner's; Entra group mappings and which organisation sections are internal: Owners and Admins
+    'PUT /admin/api/spaces/{sid}/closed': 'any', 'GET /admin/api/spaces/organisation/move': 'full', 'POST /admin/api/spaces/organisation/move': 'full',
+    'PUT /admin/api/spaces/organisation/internal-sections': 'admin',
+    'GET /admin/api/groups': 'admin', 'POST /admin/api/groups': 'admin', 'PUT /admin/api/groups/{mid}': 'admin',
+    'DELETE /admin/api/groups/{mid}': 'admin', 'POST /admin/api/groups/apply': 'admin',
     # linked accounts (users.link, spaces.link_accounts): an Owner's only
     'POST /admin/api/users/{oid}/link/preview': 'full', 'POST /admin/api/users/{oid}/link': 'full', 'DELETE /admin/api/users/{oid}/link': 'full',
     # sign-ins (the handler shows other people's sessions to Admins and Owners only)
@@ -299,19 +314,20 @@ ROUTES = {
     'POST /admin/api/knowledge/supersede': 'full', 'GET /admin/api/knowledge/replacements': 'full', 'POST /admin/api/knowledge/replacements': 'full',
     'POST /admin/api/knowledge/find-replaced': 'full', 'POST /admin/api/knowledge/categorise': 'full', 'POST /admin/api/knowledge/suggestions': 'full',
     'GET /admin/api/knowledge-review-days': 'knowledge:view', 'PUT /admin/api/knowledge-review-days': 'full',
-    # clients and organisations (everyone's: Owner role until Spaces)
+    # clients and organisations: the directory reads by section (it lives in the Organisation space; facts from internal
+    # sources only for people who can see their space); research, scans and settings stay an Owner's
     'GET /admin/api/clients': 'full', 'POST /admin/api/clients': 'full', 'PUT /admin/api/clients/{name}': 'full', 'DELETE /admin/api/clients/{name}': 'full',
     'GET /admin/api/clients/items': 'full', 'POST /admin/api/clients/tag': 'full', 'POST /admin/api/clients/suggestions': 'full',
     'POST /admin/api/clients/temple-run': 'full',
-    'GET /admin/api/organisations': 'full', 'POST /admin/api/organisations': 'full', 'PUT /admin/api/organisations': 'full',
+    'GET /admin/api/organisations': 'organisations:view', 'POST /admin/api/organisations': 'full', 'PUT /admin/api/organisations': 'full',
     'POST /admin/api/organisations/research': 'full', 'POST /admin/api/organisations/context': 'full', 'POST /admin/api/organisations/add': 'full',
     'GET /admin/api/organisations/research': 'full', 'GET /admin/api/organisations/searches': 'full', 'PUT /admin/api/organisations/guidance': 'full',
     'POST /admin/api/organisations/guidance/{gid}': 'full', 'GET /admin/api/search-runs/{rid}/discussion': 'full',
-    'POST /admin/api/search-runs/{rid}/discussion': 'full', 'GET /admin/api/opportunities': 'full', 'POST /admin/api/opportunities/scan': 'full',
+    'POST /admin/api/search-runs/{rid}/discussion': 'full', 'GET /admin/api/opportunities': 'organisations:view', 'POST /admin/api/opportunities/scan': 'full',
     'POST /admin/api/opportunities/schedule': 'full', 'PUT /admin/api/opportunities-expiry': 'full', 'PUT /admin/api/opportunities/{oid}': 'full',
-    'PUT /admin/api/opportunities-offerings': 'full', 'GET /admin/api/organisations/facts': 'full', 'POST /admin/api/organisations/facts': 'full',
+    'PUT /admin/api/opportunities-offerings': 'full', 'GET /admin/api/organisations/facts': 'organisations:view', 'POST /admin/api/organisations/facts': 'organisations:use',
     'POST /admin/api/organisations/facts/review': 'full', 'PUT /admin/api/organisations/facts/{fid}': 'full',
-    'POST /admin/api/organisations/facts/{fid}/retire': 'full', 'GET /admin/api/organisations/brief': 'full',
+    'POST /admin/api/organisations/facts/{fid}/retire': 'full', 'GET /admin/api/organisations/brief': 'organisations:view',
     'GET /admin/api/organisations/source': 'full', 'POST /admin/api/organisations/remove-source': 'full',
     'POST /admin/api/demo-data/reset': 'full',
     # rules and rule packs (Admin or Owner)

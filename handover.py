@@ -94,7 +94,7 @@ def listing(oid):
                                          'classified': classified if t in ('record', 'file') else True, 'private': private})
     nm = spaces.names()
     targets = [{'id': sid, 'name': nm[sid]['name'], 'client': nm[sid]['client']} for sid, role in spaces.my_spaces(v).items()
-               if role == 'manage' and (nm.get(sid) or {}).get('kind') == 'shared']
+               if role == 'manage' and (nm.get(sid) or {}).get('kind') in spaces.SHARED_KINDS]
     with store.db() as c:
         cats = [r[0] for r in c.execute('SELECT name FROM categories ORDER BY lower(name)')]
     return {'person': {'oid': key, 'name': p['name'], 'email': p['email'], 'status': p['status'], 'why': why},
@@ -136,7 +136,7 @@ def move(oid, items, space, note, categories=None):
     if not items: raise ValueError('Tick at least one item to hand over.')
     if not space: raise ValueError('Choose the shared space to hand them over to.')
     tgt = spaces._space(space)
-    if tgt['kind'] != 'shared' or spaces.role_in(_actor(), space) != 'manage':
+    if tgt['kind'] not in spaces.SHARED_KINDS or spaces.role_in(_actor(), space) != 'manage':
         raise PermissionError('Hand work over only into a shared space you manage.')
     categories = categories or {}
     out = {'moved': [], 'held': [], 'refused': []}
